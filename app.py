@@ -19,9 +19,24 @@ from flask import Flask, Response, jsonify, redirect, request, session
 
 import os as _os
 
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
 RAIZ = Path(__file__).resolve().parent
 app = Flask(__name__)
 app.secret_key = _os.getenv("SECRET_KEY", "profitflow-dev-key-cambiar-en-produccion")
+
+# Rate limiting: frena a quien intente martillar los endpoints sensibles (OAuth) para tirar
+# la app o abusar. NO limita el dashboard (así no se rompe la carga normal).
+limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
+
+
+@app.after_request
+def _headers_seguridad(resp):
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return resp
 
 # ---------------- MercadoPago OAuth (conectar con un click) ----------------
 MP_SECRETS = RAIZ / "mp_secrets.json"     # tu Client ID + Secret (los pega el dueño de la app)
@@ -77,14 +92,14 @@ _SOLO_DASH = """
 })();
 </script>
 <div id="mpConnect" style="position:fixed;right:20px;bottom:20px;z-index:99999;font-family:system-ui,-apple-system,sans-serif">
- <a id="mpBtn" href="/conectar-mp" style="display:inline-flex;align-items:center;gap:9px;background:#009ee3;color:#fff;font-weight:700;font-size:14px;padding:13px 20px;border-radius:13px;text-decoration:none;box-shadow:0 10px 28px rgba(0,158,227,.45)">🔗 Conectar con MercadoPago</a>
+ <a id="mpBtn" href="/conectar-mp" onclick="window.location.assign('/conectar-mp');return false;" style="display:inline-flex;align-items:center;gap:9px;background:#009ee3;color:#fff;font-weight:700;font-size:14px;padding:13px 20px;border-radius:13px;text-decoration:none;box-shadow:0 10px 28px rgba(0,158,227,.45);cursor:pointer">🔗 Conectar con MercadoPago</a>
 </div>
 <script>
 (function(){
  if(new URLSearchParams(location.search).get('conectado')==='1'){ try{history.replaceState({},'','/');}catch(e){} }
  fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){
   var b=document.getElementById('mpBtn'); if(!b)return;
-  if(j&&j.conectado){ b.textContent='✓ MercadoPago conectado'; b.style.background='#16a34a'; b.style.boxShadow='0 10px 28px rgba(22,163,74,.4)'; b.removeAttribute('href'); b.style.cursor='default'; }
+  if(j&&j.conectado){ b.textContent='✓ MercadoPago conectado'; b.style.background='#16a34a'; b.style.boxShadow='0 10px 28px rgba(22,163,74,.4)'; b.removeAttribute('href'); b.onclick=function(){return false;}; b.style.cursor='default'; }
  }).catch(function(){});
 })();
 </script>
@@ -180,6 +195,7 @@ def pf_ordenes():
 
 
 @app.get("/conectar-mp")
+@limiter.limit("30 per hour")
 def conectar_mp():
     """Manda al usuario a la pantalla oficial de MercadoPago para que autorice (OAuth)."""
     cfg = _mp_cfg()
@@ -194,38 +210,43 @@ def conectar_mp():
 
 
 @app.get("/mp/callback")
+@limiter.limit("30 per hour")
 def mp_callback():
     """MercadoPago devuelve acá con un 'code'. Lo cambiamos por el token del usuario."""
     cfg = _mp_cfg()
     code = request.args.get("code")
     state = request.args.get("state")
     if not code:
-        return ("MercadoPago no devolvió el código. " +
-                (request.args.get("error_description") or ""), 400)
-    if state and session.get("mp_state") and state != session.get("mp_state"):
-        return ("State inválido (control de seguridad). Reintentá.", 400)
+        # Visita SIN código = MercadoPago validando la URL (o alguien la abrió directo).
+        # Devolvemos 200 OK para pasar la validación de MP (si damos 400, rechaza la Redirect URL).
+        return ("RealProfit — punto de conexión con MercadoPago. "
+                "Volvé a la app y usá el botón «Conectar con MercadoPago».", 200)
+    # Anti-CSRF: el state tiene que coincidir con el que generamos al iniciar.
+    if not state or state != session.get("mp_state"):
+        return ("La conexión no pasó el control de seguridad. Reintentá desde el botón.", 400)
     try:
         r = requests.post("https://api.mercadopago.com/oauth/token", json={
             "client_id": cfg["client_id"], "client_secret": cfg["client_secret"],
             "grant_type": "authorization_code", "code": code,
             "redirect_uri": cfg["redirect_uri"]}, timeout=30)
-        tok = r.json()
-    except Exception as e:
-        return (f"Error pidiendo el token a MercadoPago: {e}", 500)
+        tok = r.json() if r.content else {}
+    except Exception:
+        return ("No pudimos conectar con MercadoPago en este momento. Probá de nuevo.", 502)
     if not tok.get("access_token"):
-        return (f"MercadoPago no devolvió token. Respuesta: {tok}", 400)
+        # No exponemos la respuesta cruda de MP (podría filtrar detalles).
+        return ("MercadoPago no autorizó la conexión. Reintentá.", 400)
     _mp_save_token(tok.get("user_id"), tok)
+    session.pop("mp_state", None)                 # el state es de un solo uso
     session["mp_user"] = str(tok.get("user_id"))
     return redirect("/?conectado=1", code=302)
 
 
 @app.get("/mp/estado")
 def mp_estado():
-    """¿Está conectada una cuenta de MercadoPago? (para el botón)."""
+    """¿ESTE usuario (su sesión) tiene su MercadoPago conectado? Cada uno ve SOLO lo suyo."""
     u = session.get("mp_user")
-    toks = _mp_tokens()
-    conectado = bool((u and u in toks) or toks)
-    return jsonify({"ok": True, "conectado": conectado, "cuentas": len(toks)})
+    conectado = bool(u and u in _mp_tokens())
+    return jsonify({"ok": True, "conectado": conectado})
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
