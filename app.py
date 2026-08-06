@@ -107,16 +107,38 @@ _SOLO_DASH = """
 <script>
 (function(){
  function strip(){
-  var nav=document.querySelector('aside nav'); if(!nav)return;
+  var aside=document.querySelector('aside'); if(!aside)return;
+  var nav=aside.querySelector('nav'); if(!nav)return;
+  // 1) dejar SOLO Dashboard (+ nuestro Integraciones inyectado)
   var kids=nav.querySelectorAll(':scope > *');
   for(var i=0;i<kids.length;i++){
    var ch=kids[i];
-   var keep=ch.querySelector('a[href="/dashboard"],a[href="/integraciones"]');
-   ch.style.display = keep ? '' : 'none';   // oculta cada opción y los títulos de grupo
+   var keep = ch.querySelector('a[href="/dashboard"]') || ch.id==='rp-integ';
+   ch.style.display = keep ? '' : 'none';
   }
-  // "Integraciones" abre NUESTRA página (full nav, no la ruta React interna)
-  var ig=nav.querySelector('a[href="/integraciones"]');
-  if(ig && !ig._rw){ ig._rw=1; ig.addEventListener('click',function(e){ e.preventDefault(); window.location.assign('/integraciones'); }); }
+  // 2) inyectar NUESTRO "Integraciones" justo debajo de Dashboard (clonando su estilo)
+  if(!nav.querySelector('#rp-integ')){
+   var dashA=nav.querySelector('a[href="/dashboard"]');
+   if(dashA){
+    var wrap=dashA; while(wrap && wrap.parentElement!==nav) wrap=wrap.parentElement;
+    if(wrap){
+     var clone=wrap.cloneNode(true); clone.id='rp-integ'; clone.style.display='';
+     var a=clone.querySelector('a');
+     if(a){ a.setAttribute('href','/integraciones'); a.removeAttribute('aria-current');
+      a.className=(a.className||'').replace('bg-white/[0.08]','').replace('text-primary','');
+      a.addEventListener('click',function(e){e.preventDefault();window.location.assign('/integraciones');}); }
+     var sp=clone.querySelectorAll('span');
+     for(var s=0;s<sp.length;s++){
+      if(sp[s].classList && sp[s].classList.contains('material-symbols-outlined')) sp[s].textContent='hub';
+      else if((sp[s].textContent||'').trim()==='Dashboard') sp[s].textContent='Integraciones';
+     }
+     wrap.parentNode.insertBefore(clone, wrap.nextSibling);
+    }
+   }
+  }
+  // 3) ocultar el footer propio de pf.html (CUENTA/avatar) que queda debajo del nav
+  var top=nav; while(top && top.parentElement!==aside) top=top.parentElement;
+  if(top){ var n=top.nextElementSibling; while(n){ n.style.display='none'; n=n.nextElementSibling; } }
  }
  function boot(){ strip(); try{ new MutationObserver(strip).observe(document.body,{childList:true,subtree:true}); }catch(e){} }
  if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
