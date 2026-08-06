@@ -21,6 +21,7 @@ import os as _os
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.security import generate_password_hash, check_password_hash
 
 RAIZ = Path(__file__).resolve().parent
 app = Flask(__name__)
@@ -63,10 +64,30 @@ def _mp_tokens() -> dict:
         return {}
 
 
-def _mp_save_token(user_id, data) -> None:
+def _mp_save_token(key, data) -> None:
     d = _mp_tokens()
-    d[str(user_id)] = data
+    d[str(key)] = data
     MP_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+# ---------------- Cuentas de usuario (email + contraseña) ----------------
+USERS = RAIZ / "users.json"   # cada usuario de la app; su MP se guarda por email en mp_tokens
+
+
+def _users() -> dict:
+    try:
+        return _json.loads(USERS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _users_save(d: dict) -> None:
+    USERS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _user_actual():
+    """Email del usuario logueado (o None)."""
+    return session.get("email")
 
 
 # Deja SOLO "Dashboard" e "Integraciones" en el menú, y saca el logo. Como pf.html es React
@@ -134,9 +155,103 @@ def _blob_vacio() -> dict:
     return {"raw": resumen_vacio(), "prod": [], "ords": []}
 
 
+# ---------------- Login / Registro ----------------
+_LOGIN_PAGE = """<!doctype html><html lang=es><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>RealProfit — Ingresá</title>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#0f1826;border:1px solid #1e2b3d;border-radius:18px;padding:34px 30px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.logo{font-size:24px;font-weight:800;text-align:center;color:#fff}
+.sub{text-align:center;color:#94a3b8;font-size:13px;margin:4px 0 24px}
+.tabs{display:flex;gap:8px;margin-bottom:18px}
+.tab{flex:1;padding:10px;border-radius:10px;background:#111c2b;color:#94a3b8;text-align:center;cursor:pointer;font-weight:600;font-size:14px;border:1px solid transparent}
+.tab.on{background:#137fec;color:#fff}
+label{display:block;font-size:12px;color:#94a3b8;margin:12px 0 6px}
+input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #1e2b3d;background:#0b1220;color:#e2e8f0;font-size:15px;outline:none}
+input:focus{border-color:#137fec}
+.btn{width:100%;margin-top:20px;padding:13px;border-radius:10px;border:0;background:#137fec;color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+.btn:hover{background:#0f6ad0}
+.err{color:#f87171;font-size:13px;margin-top:12px;text-align:center;min-height:18px}
+</style></head><body>
+<div class=card>
+ <div class=logo>📊 RealProfit</div>
+ <div class=sub>Tu ganancia real, en tiempo real</div>
+ <div class=tabs>
+  <div class=tab id=tLogin onclick="modo('login')">Ingresar</div>
+  <div class=tab id=tReg onclick="modo('registro')">Crear cuenta</div>
+ </div>
+ <form id=f onsubmit="return enviar(event)">
+  <label>Email</label><input id=email type=email autocomplete=email required placeholder="tu@email.com">
+  <label>Contraseña</label><input id=password type=password autocomplete=current-password required placeholder="Mínimo 4 caracteres">
+  <button class=btn id=submit type=submit>Ingresar</button>
+  <div class=err id=err></div>
+ </form>
+</div>
+<script>
+var M='login';
+function modo(m){M=m;
+ document.getElementById('tLogin').classList.toggle('on',m==='login');
+ document.getElementById('tReg').classList.toggle('on',m==='registro');
+ document.getElementById('submit').textContent=m==='login'?'Ingresar':'Crear cuenta';
+ document.getElementById('err').textContent='';}
+modo('login');
+async function enviar(e){e.preventDefault();
+ var err=document.getElementById('err');err.textContent='';
+ var fd=new FormData();
+ fd.append('email',document.getElementById('email').value);
+ fd.append('password',document.getElementById('password').value);
+ try{var r=await fetch('/'+(M==='login'?'login':'registro'),{method:'POST',body:fd});
+  var j=await r.json();
+  if(j.ok){location.href='/';}else{err.textContent=j.msg||'Error';}
+ }catch(x){err.textContent='Error de conexión';}
+ return false;}
+</script></body></html>"""
+
+
+@app.post("/registro")
+@limiter.limit("20 per hour")
+def registro():
+    email = (request.form.get("email") or "").strip().lower()
+    pw = request.form.get("password") or ""
+    if not email or "@" not in email or "." not in email:
+        return jsonify({"ok": False, "msg": "Ingresá un email válido."})
+    if len(pw) < 4:
+        return jsonify({"ok": False, "msg": "La contraseña necesita al menos 4 caracteres."})
+    us = _users()
+    if email in us:
+        return jsonify({"ok": False, "msg": "Ya existe una cuenta con ese email. Iniciá sesión."})
+    us[email] = {"pass": generate_password_hash(pw), "creado": _hoy()}
+    _users_save(us)
+    session.clear()
+    session["email"] = email
+    return jsonify({"ok": True})
+
+
+@app.post("/login")
+@limiter.limit("30 per hour")
+def login():
+    email = (request.form.get("email") or "").strip().lower()
+    pw = request.form.get("password") or ""
+    u = _users().get(email)
+    if not u or not check_password_hash(u.get("pass", ""), pw):
+        return jsonify({"ok": False, "msg": "Email o contraseña incorrectos."})
+    session.clear()
+    session["email"] = email
+    return jsonify({"ok": True})
+
+
+@app.get("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+
 # ---------------- Dashboard ----------------
 @app.get("/")
 def home():
+    email = _user_actual()
+    if not email:                       # sin login → pantalla de ingreso
+        return Response(_LOGIN_PAGE, mimetype="text/html")
     try:
         html = (RAIZ / "pf.html").read_text(encoding="utf-8")
     except Exception as e:
@@ -147,11 +262,25 @@ def home():
     # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
     if "</head>" in html:
         html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
-    # Dejar solo Dashboard + Integraciones y sacar el logo.
+    # Caja de usuario abajo a la izquierda (email + cerrar sesión).
+    inicial = (email[0] if email else "?").upper()
+    userbox = ('<div style="position:fixed;left:16px;bottom:16px;z-index:99998;font-family:system-ui,'
+               'sans-serif;display:flex;align-items:center;gap:10px;background:rgba(15,23,42,.92);'
+               'backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.08);padding:9px 13px;'
+               'border-radius:12px;color:#e2e8f0">'
+               '<div style="width:34px;height:34px;border-radius:50%;background:#137fec;display:flex;'
+               'align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px">'
+               + inicial + '</div><div style="line-height:1.25">'
+               '<div style="font-weight:600;font-size:13px;max-width:160px;overflow:hidden;'
+               'text-overflow:ellipsis;white-space:nowrap">' + email + '</div>'
+               '<a href="/logout" style="color:#94a3b8;font-size:11px;text-decoration:none">Cerrar sesión</a>'
+               '</div></div>')
+    # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
+    extra = _SOLO_DASH + userbox
     if "</body>" in html:
-        html = html.replace("</body>", _SOLO_DASH + "</body>", 1)
+        html = html.replace("</body>", extra + "</body>", 1)
     else:
-        html = html + _SOLO_DASH
+        html = html + extra
     resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return resp
@@ -198,6 +327,8 @@ def pf_ordenes():
 @limiter.limit("30 per hour")
 def conectar_mp():
     """Manda al usuario a la pantalla oficial de MercadoPago para que autorice (OAuth)."""
+    if not _user_actual():                # hay que estar logueado para conectar SU cuenta
+        return redirect("/")
     cfg = _mp_cfg()
     if not cfg["client_id"]:
         return ("Falta configurar el Client ID de MercadoPago en mp_secrets.json "
@@ -235,17 +366,20 @@ def mp_callback():
     if not tok.get("access_token"):
         # No exponemos la respuesta cruda de MP (podría filtrar detalles).
         return ("MercadoPago no autorizó la conexión. Reintentá.", 400)
-    _mp_save_token(tok.get("user_id"), tok)
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    # El token de MP se guarda BAJO EL EMAIL del usuario → cada uno ve solo lo suyo.
+    _mp_save_token(email, tok)
     session.pop("mp_state", None)                 # el state es de un solo uso
-    session["mp_user"] = str(tok.get("user_id"))
     return redirect("/?conectado=1", code=302)
 
 
 @app.get("/mp/estado")
 def mp_estado():
-    """¿ESTE usuario (su sesión) tiene su MercadoPago conectado? Cada uno ve SOLO lo suyo."""
-    u = session.get("mp_user")
-    conectado = bool(u and u in _mp_tokens())
+    """¿ESTE usuario (su email logueado) tiene su MercadoPago conectado? Cada uno ve SOLO lo suyo."""
+    email = _user_actual()
+    conectado = bool(email and email in _mp_tokens())
     return jsonify({"ok": True, "conectado": conectado})
 
 

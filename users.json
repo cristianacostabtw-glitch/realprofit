@@ -1,0 +1,6 @@
+{
+ "test@demo.com": {
+  "pass": "scrypt:32768:8:1$KJgpzAerYBPOKhkk$2c7d12127658121413e55128ba1d9bf1d59d6a6b86df13700692cb04f30ec961f945d4a106fdb61cdd9bce42b8eaddda21e4ca6f6e973b3e348af123d9a3087b",
+  "creado": "2026-08-06"
+ }
+}
