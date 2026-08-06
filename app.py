@@ -24,6 +24,13 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 
 RAIZ = Path(__file__).resolve().parent
+# Carpeta de datos persistentes (usuarios + tokens de MP). En Render apuntamos DATA_DIR a un
+# disco persistente (ej. /var/data) → las cuentas NO se borran en los deploys. Local: la raíz.
+DATA_DIR = Path(_os.getenv("DATA_DIR", str(RAIZ)))
+try:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    DATA_DIR = RAIZ
 app = Flask(__name__)
 app.secret_key = _os.getenv("SECRET_KEY", "profitflow-dev-key-cambiar-en-produccion")
 
@@ -41,7 +48,7 @@ def _headers_seguridad(resp):
 
 # ---------------- MercadoPago OAuth (conectar con un click) ----------------
 MP_SECRETS = RAIZ / "mp_secrets.json"     # tu Client ID + Secret (los pega el dueño de la app)
-MP_TOKENS = RAIZ / "mp_tokens.json"       # tokens de cada usuario que se conecta
+MP_TOKENS = DATA_DIR / "mp_tokens.json"   # tokens de cada usuario que se conecta (persistente)
 
 
 def _mp_cfg() -> dict:
@@ -71,7 +78,7 @@ def _mp_save_token(key, data) -> None:
 
 
 # ---------------- Cuentas de usuario (email + contraseña) ----------------
-USERS = RAIZ / "users.json"   # cada usuario de la app; su MP se guarda por email en mp_tokens
+USERS = DATA_DIR / "users.json"   # cada usuario de la app (persistente); su MP se guarda por email
 
 
 def _users() -> dict:
@@ -107,6 +114,9 @@ _SOLO_DASH = """
    var keep=ch.querySelector('a[href="/dashboard"],a[href="/integraciones"]');
    ch.style.display = keep ? '' : 'none';   // oculta cada opción y los títulos de grupo
   }
+  // "Integraciones" abre NUESTRA página (full nav, no la ruta React interna)
+  var ig=nav.querySelector('a[href="/integraciones"]');
+  if(ig && !ig._rw){ ig._rw=1; ig.addEventListener('click',function(e){ e.preventDefault(); window.location.assign('/integraciones'); }); }
  }
  function boot(){ strip(); try{ new MutationObserver(strip).observe(document.body,{childList:true,subtree:true}); }catch(e){} }
  if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
@@ -246,6 +256,114 @@ def logout():
     return redirect("/")
 
 
+# ---------------- Página de Integraciones (Mercado Pago, Mercado Libre, Tiendanube, Shopify, Meta) ----------------
+_INTEGRACIONES_PAGE = """<!doctype html><html lang=es><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>RealProfit — Integraciones</title>
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e2e8f0;min-height:100vh}
+.wrap{display:flex;min-height:100vh}
+.side{width:230px;flex:none;background:#0f1826;border-right:1px solid #1e2b3d;display:flex;flex-direction:column;padding:20px 14px;position:sticky;top:0;height:100vh}
+.brand{font-size:19px;font-weight:800;color:#fff;padding:6px 10px 20px}
+.nav a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;color:#94a3b8;text-decoration:none;font-weight:600;font-size:14px;margin-bottom:4px}
+.nav a.on{background:#137fec;color:#fff} .nav a:hover:not(.on){background:#111c2b;color:#e2e8f0}
+.userbox{margin-top:auto;display:flex;align-items:center;gap:10px;background:#111c2b;border:1px solid #1e2b3d;padding:9px 11px;border-radius:12px}
+.av{width:34px;height:34px;border-radius:50%;background:#137fec;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+.main{flex:1;padding:34px 40px;max-width:1000px}
+h1{margin:0;font-size:26px;color:#f1f5f9} .lead{color:#94a3b8;margin:6px 0 28px;font-size:14px}
+.sechead{font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:0 0 14px;font-weight:700}
+.card{display:flex;align-items:center;gap:16px;background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:18px 20px;margin-bottom:12px}
+.ic{width:46px;height:46px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800}
+.info{flex:1;min-width:0} .nm{font-weight:700;font-size:16px;color:#f1f5f9;display:flex;align-items:center;gap:8px}
+.tag{font-size:11px;color:#94a3b8;background:#111c2b;border:1px solid #1e2b3d;padding:2px 8px;border-radius:20px;font-weight:600}
+.desc{color:#94a3b8;font-size:13px;margin-top:3px}
+.right{display:flex;align-items:center;gap:12px;flex:none}
+.pill{font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;color:#94a3b8}
+.dot{width:8px;height:8px;border-radius:50%;background:#475569}
+.pill.on{color:#34d399}.pill.on .dot{background:#34d399}
+.btn{background:#137fec;color:#fff;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{background:#0f6ad0}
+.btn.soon{background:#1a2536;color:#7b8aa0}
+.btn.off{background:#241a10;color:#ffb35a;border:1px solid #4a3a1a}
+@media(max-width:720px){.side{display:none}.main{padding:22px 18px}.card{flex-wrap:wrap}}
+</style></head><body>
+<div class=wrap>
+ <div class=side>
+  <div class=brand>📊 RealProfit</div>
+  <div class=nav>
+   <a href="/">▦ Dashboard</a>
+   <a href="/integraciones" class=on>⚙ Integraciones</a>
+  </div>
+  <div class=userbox><div class=av>{{INICIAL}}</div>
+   <div style="line-height:1.25;min-width:0"><div style="font-weight:600;font-size:13px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{EMAIL}}</div>
+   <a href="/logout" style="color:#94a3b8;font-size:11px;text-decoration:none">Cerrar sesión</a></div></div>
+ </div>
+ <div class=main>
+  <h1>Integraciones</h1>
+  <div class=lead>Conectá tus ventas, pagos y anuncios para ver, en un solo lugar, si tu negocio gana o pierde plata.</div>
+  <div class=sechead>Plataformas disponibles</div>
+  <div id=cards></div>
+ </div>
+</div>
+<script>
+var PLAT=[
+ {key:'mp',   nm:'Mercado Pago', tag:'Pagos',    desc:'Trae tus pagos y movimientos para calcular tu ganancia real.', col:'#009ee3', ic:'💳', real:true},
+ {key:'meli', nm:'Mercado Libre',tag:'Ventas',   desc:'Incluye tus ventas de marketplace en el cálculo de beneficio.', col:'#ffe600', ic:'🛒'},
+ {key:'tn',   nm:'Tiendanube',   tag:'Ventas',   desc:'Trae tus ventas online de tu tienda para el beneficio real.', col:'#2d6cdf', ic:'🌩️'},
+ {key:'shopify',nm:'Shopify',    tag:'Ventas',   desc:'Conectá tu tienda para centralizar ventas y costos por orden.', col:'#95bf47', ic:'🛍️'},
+ {key:'meta', nm:'Meta Ads',     tag:'Anuncios', desc:'Trae tus campañas de Facebook e Instagram Ads.', col:'#0866ff', ic:'📣'},
+];
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function render(mpOn){
+ var h='';
+ PLAT.forEach(function(p){
+  var conectado = (p.key==='mp' && mpOn);
+  var estado = conectado
+    ? '<span class="pill on"><span class=dot></span>Conectado</span>'
+    : '<span class=pill><span class=dot></span>No conectado</span>';
+  var boton;
+  if(p.key==='mp'){
+   boton = conectado
+     ? '<a class="btn off" href="/desconectar-mp" onclick="window.location.assign(\\'/desconectar-mp\\');return false;">Desconectar</a>'
+     : '<a class="btn" href="/conectar-mp" onclick="window.location.assign(\\'/conectar-mp\\');return false;">⚡ Conectar</a>';
+  } else {
+   boton = '<button class="btn soon" onclick="alert(\\'Muy pronto podés conectar '+esc(p.nm)+'. Lo estamos activando.\\')">Conectar</button>';
+  }
+  var dark = (p.col==='#ffe600'||p.col==='#95bf47');
+  h += '<div class=card>'
+    + '<div class=ic style="background:'+p.col+(dark?';color:#0b1220':';color:#fff')+'">'+p.ic+'</div>'
+    + '<div class=info><div class=nm>'+esc(p.nm)+' <span class=tag>'+p.tag+'</span></div><div class=desc>'+esc(p.desc)+'</div></div>'
+    + '<div class=right>'+estado+boton+'</div></div>';
+ });
+ document.getElementById('cards').innerHTML=h;
+}
+render(false);
+fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ render(!!(j&&j.conectado)); }).catch(function(){});
+if(new URLSearchParams(location.search).get('conectado')==='1'){ try{history.replaceState({},'','/integraciones');}catch(e){} }
+</script></body></html>"""
+
+
+@app.get("/integraciones")
+def integraciones():
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    inicial = (email[0] if email else "?").upper()
+    html = _INTEGRACIONES_PAGE.replace("{{EMAIL}}", email).replace("{{INICIAL}}", inicial)
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.get("/desconectar-mp")
+def desconectar_mp():
+    email = _user_actual()
+    if email:
+        d = _mp_tokens()
+        d.pop(email, None)
+        MP_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return redirect("/integraciones")
+
+
 # ---------------- Dashboard ----------------
 @app.get("/")
 def home():
@@ -372,7 +490,7 @@ def mp_callback():
     # El token de MP se guarda BAJO EL EMAIL del usuario → cada uno ve solo lo suyo.
     _mp_save_token(email, tok)
     session.pop("mp_state", None)                 # el state es de un solo uso
-    return redirect("/?conectado=1", code=302)
+    return redirect("/integraciones?conectado=1", code=302)
 
 
 @app.get("/mp/estado")
