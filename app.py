@@ -107,53 +107,86 @@ _SOLO_DASH = """
 <script>
 (function(){
  function strip(){
-  var aside=document.querySelector('aside'); if(!aside)return;
-  var nav=aside.querySelector('nav'); if(!nav)return;
-  // 1) dejar SOLO Dashboard (+ nuestro Integraciones inyectado)
-  var kids=nav.querySelectorAll(':scope > *');
-  for(var i=0;i<kids.length;i++){
-   var ch=kids[i];
-   var keep = ch.querySelector('a[href="/dashboard"]') || ch.id==='rp-integ';
-   ch.style.display = keep ? '' : 'none';
-  }
-  // 2) inyectar NUESTRO "Integraciones" justo debajo de Dashboard (clonando su estilo)
-  if(!nav.querySelector('#rp-integ')){
-   var dashA=nav.querySelector('a[href="/dashboard"]');
-   if(dashA){
-    var wrap=dashA; while(wrap && wrap.parentElement!==nav) wrap=wrap.parentElement;
-    if(wrap){
-     var clone=wrap.cloneNode(true); clone.id='rp-integ'; clone.style.display='';
-     var a=clone.querySelector('a');
-     if(a){ a.setAttribute('href','/integraciones'); a.removeAttribute('aria-current');
-      a.className=(a.className||'').replace('bg-white/[0.08]','').replace('text-primary','');
-      a.addEventListener('click',function(e){e.preventDefault();window.location.assign('/integraciones');}); }
-     var sp=clone.querySelectorAll('span');
-     for(var s=0;s<sp.length;s++){
-      if(sp[s].classList && sp[s].classList.contains('material-symbols-outlined')) sp[s].textContent='hub';
-      else if((sp[s].textContent||'').trim()==='Dashboard') sp[s].textContent='Integraciones';
-     }
-     wrap.parentNode.insertBefore(clone, wrap.nextSibling);
-    }
+  try{
+   var aside=document.querySelector('aside'); if(!aside)return;
+   var nav=aside.querySelector('nav'); if(!nav)return;
+   // dejar SOLO Dashboard en el menú de pf.html (el resto oculto)
+   var kids=nav.querySelectorAll(':scope > *');
+   for(var i=0;i<kids.length;i++){
+    var ch=kids[i];
+    ch.style.display = ch.querySelector('a[href="/dashboard"]') ? '' : 'none';
    }
-  }
-  // 3) ocultar el footer propio de pf.html (CUENTA/avatar) que queda debajo del nav
-  var top=nav; while(top && top.parentElement!==aside) top=top.parentElement;
-  if(top){ var n=top.nextElementSibling; while(n){ n.style.display='none'; n=n.nextElementSibling; } }
+   // ocultar el footer propio de pf.html (CUENTA/avatar) — usamos el nuestro
+   Array.prototype.forEach.call(aside.children,function(c){
+    if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label'))) c.style.display='none';
+   });
+  }catch(e){}
  }
  function boot(){ strip(); try{ new MutationObserver(strip).observe(document.body,{childList:true,subtree:true}); }catch(e){} }
  if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
 })();
 </script>
-<div id="mpConnect" style="position:fixed;right:20px;bottom:20px;z-index:99999;font-family:system-ui,-apple-system,sans-serif">
- <a id="mpBtn" href="/conectar-mp" onclick="window.location.assign('/conectar-mp');return false;" style="display:inline-flex;align-items:center;gap:9px;background:#009ee3;color:#fff;font-weight:700;font-size:14px;padding:13px 20px;border-radius:13px;text-decoration:none;box-shadow:0 10px 28px rgba(0,158,227,.45);cursor:pointer">🔗 Conectar con MercadoPago</a>
+<!-- Trigger "Integraciones" (abajo a la izquierda, arriba de la cuenta) -->
+<div style="position:fixed;left:16px;bottom:74px;z-index:99998;font-family:system-ui,sans-serif">
+ <a href="#" onclick="rpInteg(true);return false;" style="display:inline-flex;align-items:center;gap:9px;background:rgba(15,23,42,.92);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.09);color:#e2e8f0;font-weight:600;font-size:13px;padding:10px 14px;border-radius:12px;text-decoration:none;cursor:pointer"><span style="font-size:15px">⚙️</span> Integraciones</a>
+</div>
+
+<!-- OVERLAY Integraciones (se abre ADENTRO, sin cambiar de página) -->
+<div id="rp-integ-ov" style="position:fixed;inset:0;z-index:100000;background:#0b1220;display:none;overflow:auto;font-family:system-ui,-apple-system,sans-serif">
+ <div style="max-width:1000px;margin:0 auto;padding:32px 28px 60px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+   <div><h1 style="margin:0;font-size:26px;color:#f1f5f9">Integraciones</h1>
+    <div style="color:#94a3b8;font-size:14px;margin-top:6px">Conectá tus ventas, pagos y anuncios para ver, en un solo lugar, si tu negocio gana o pierde plata.</div></div>
+   <button onclick="rpInteg(false)" title="Cerrar" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:40px;height:40px;border-radius:11px;font-size:17px;cursor:pointer">✕</button>
+  </div>
+  <div style="font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px;margin:28px 0 14px;font-weight:700">Plataformas disponibles</div>
+  <div id="rp-integ-cards"></div>
+ </div>
 </div>
 <script>
 (function(){
- if(new URLSearchParams(location.search).get('conectado')==='1'){ try{history.replaceState({},'','/');}catch(e){} }
- fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){
-  var b=document.getElementById('mpBtn'); if(!b)return;
-  if(j&&j.conectado){ b.textContent='✓ MercadoPago conectado'; b.style.background='#16a34a'; b.style.boxShadow='0 10px 28px rgba(22,163,74,.4)'; b.removeAttribute('href'); b.onclick=function(){return false;}; b.style.cursor='default'; }
- }).catch(function(){});
+ // Logos (SVG inline, estilo marca)
+ var L={
+  mp:'<svg width=27 height=27 viewBox="0 0 24 24" fill="#fff"><path d="M11.115 16.479a.93.927 0 0 1-.939-.886c-.002-.042-.006-.155-.103-.155-.04 0-.074.023-.113.059-.112.103-.254.206-.46.206a.816.814 0 0 1-.305-.066c-.535-.214-.542-.578-.521-.725.006-.038.007-.08-.02-.11l-.032-.03h-.034c-.027 0-.055.012-.093.039a.788.786 0 0 1-.454.16.7.699 0 0 1-.253-.05c-.708-.27-.65-.928-.617-1.126.005-.041-.005-.072-.03-.092l-.05-.04-.047.043a.728.726 0 0 1-.505.203.73.728 0 0 1-.732-.725c0-.4.328-.722.732-.722.364 0 .675.27.721.63l.026.195.11-.165c.01-.018.307-.46.852-.46.102 0 .21.016.316.05.434.13.508.52.519.68.008.094.075.1.09.1.037 0 .064-.024.083-.045a.746.744 0 0 1 .54-.225c.128 0 .263.03.402.09.69.293.379 1.158.374 1.167-.058.144-.061.207-.005.244l.027.013h.02c.03 0 .07-.014.134-.035.093-.032.235-.08.367-.08a.944.942 0 0 1 .94.93.936.934 0 0 1-.94.928zm7.302-4.171c-1.138-.98-3.768-3.24-4.481-3.77-.406-.302-.685-.462-.928-.533a1.559 1.554 0 0 0-.456-.07c-.182 0-.376.032-.58.095-.46.145-.918.505-1.362.854l-.023.018c-.414.324-.84.66-1.164.73a1.986 1.98 0 0 1-.43.049c-.362 0-.687-.104-.81-.258-.02-.025-.007-.066.04-.125l.008-.008 1-1.067c.783-.774 1.525-1.506 3.23-1.545h.085c1.062 0 2.12.469 2.24.524a7.03 7.03 0 0 0 3.056.724c1.076 0 2.188-.263 3.354-.795a9.135 9.11 0 0 0-.405-.317c-1.025.44-2.003.66-2.946.66-.962 0-1.925-.229-2.858-.68-.05-.022-1.22-.567-2.44-.57-.032 0-.065 0-.096.002-1.434.033-2.24.536-2.782.976-.528.013-.982.138-1.388.25-.361.1-.673.186-.979.185-.125 0-.35-.01-.37-.012-.35-.01-2.115-.437-3.518-.962-.143.1-.28.203-.415.31 1.466.593 3.25 1.053 3.812 1.089.157.01.323.027.491.027.372 0 .744-.103 1.104-.203.213-.059.446-.123.692-.17l-.196.194-1.017 1.087c-.08.08-.254.294-.14.557a.705.703 0 0 0 .268.292c.243.162.677.27 1.08.271.152 0 .297-.015.43-.044.427-.095.874-.448 1.349-.82.377-.296.913-.672 1.323-.782a1.494 1.49 0 0 1 .37-.05.611.61 0 0 1 .095.005c.27.034.533.125 1.003.472.835.62 4.531 3.815 4.566 3.846.002.002.238.203.22.537-.007.186-.11.352-.294.466a.902.9 0 0 1-.484.15.804.802 0 0 1-.428-.124c-.014-.01-1.28-1.157-1.746-1.543-.074-.06-.146-.115-.22-.115a.122.122 0 0 0-.096.045c-.073.09.01.212.105.294l1.48 1.47c.002 0 .184.17.204.395.012.244-.106.447-.35.606a.957.955 0 0 1-.526.171.766.764 0 0 1-.42-.127l-.214-.206a21.035 20.978 0 0 0-1.08-1.009c-.072-.058-.148-.112-.221-.112a.127.127 0 0 0-.094.038c-.033.037-.056.103.028.212a.698.696 0 0 0 .075.083l1.078 1.198c.01.01.222.26.024.511l-.038.048a1.18 1.178 0 0 1-.1.096c-.184.15-.43.164-.527.164a.8.798 0 0 1-.147-.012c-.106-.018-.178-.048-.212-.089l-.013-.013c-.06-.06-.602-.609-1.054-.98-.059-.05-.133-.11-.21-.11a.128.128 0 0 0-.096.042c-.09.096.044.24.1.293l.92 1.003a.204.204 0 0 1-.033.062c-.033.044-.144.155-.479.196a.91.907 0 0 1-.122.007c-.345 0-.712-.164-.902-.264a1.343 1.34 0 0 0 .13-.576 1.368 1.365 0 0 0-1.42-1.357c.024-.342-.025-.99-.697-1.274a1.455 1.452 0 0 0-.575-.125c-.146 0-.287.025-.42.075a1.153 1.15 0 0 0-.671-.564 1.52 1.515 0 0 0-.494-.085c-.28 0-.537.08-.767.242a1.168 1.165 0 0 0-.903-.43 1.173 1.17 0 0 0-.82.335c-.287-.217-1.425-.93-4.467-1.613a17.39 17.344 0 0 1-.692-.189 4.822 4.82 0 0 0-.077.494l.67.157c3.108.682 4.136 1.391 4.309 1.525a1.145 1.142 0 0 0-.09.442 1.16 1.158 0 0 0 1.378 1.132c.096.467.406.821.879 1.003a1.165 1.162 0 0 0 .415.08c.09 0 .179-.012.266-.034.086.22.282.493.722.668a1.233 1.23 0 0 0 .457.094c.122 0 .241-.022.355-.063a1.373 1.37 0 0 0 1.269.841c.37.002.726-.147.985-.41.221.121.688.341 1.163.341.06 0 .118-.002.175-.01.47-.059.689-.24.789-.382a.571.57 0 0 0 .048-.078c.11.032.234.058.373.058.255 0 .501-.086.75-.265.244-.174.418-.424.444-.637v-.01c.083.017.167.026.251.026.265 0 .527-.082.773-.242.48-.31.562-.715.554-.98a1.28 1.279 0 0 0 .978-.194 1.04 1.04 0 0 0 .502-.808 1.088 1.085 0 0 0-.16-.653c.804-.342 2.636-1.003 4.795-1.483a4.734 4.721 0 0 0-.067-.492 27.742 27.667 0 0 0-5.049 1.62zm5.123-.763c0 4.027-5.166 7.293-11.537 7.293-6.372 0-11.538-3.266-11.538-7.293 0-4.028 5.165-7.293 11.539-7.293 6.371 0 11.537 3.265 11.537 7.293zm.46.004c0-4.272-5.374-7.755-12-7.755S.002 7.277.002 11.55L0 12.004c0 4.533 4.695 8.203 11.999 8.203 7.347 0 12-3.67 12-8.204z"/></svg>',
+  meli:'<svg width=27 height=27 viewBox="0 0 24 24" fill="#2d3436"><path d="M11.115 16.479a.93.927 0 0 1-.939-.886c-.002-.042-.006-.155-.103-.155-.04 0-.074.023-.113.059-.112.103-.254.206-.46.206a.816.814 0 0 1-.305-.066c-.535-.214-.542-.578-.521-.725.006-.038.007-.08-.02-.11l-.032-.03h-.034c-.027 0-.055.012-.093.039a.788.786 0 0 1-.454.16.7.699 0 0 1-.253-.05c-.708-.27-.65-.928-.617-1.126.005-.041-.005-.072-.03-.092l-.05-.04-.047.043a.728.726 0 0 1-.505.203.73.728 0 0 1-.732-.725c0-.4.328-.722.732-.722.364 0 .675.27.721.63l.026.195.11-.165c.01-.018.307-.46.852-.46.102 0 .21.016.316.05.434.13.508.52.519.68.008.094.075.1.09.1.037 0 .064-.024.083-.045a.746.744 0 0 1 .54-.225c.128 0 .263.03.402.09.69.293.379 1.158.374 1.167-.058.144-.061.207-.005.244l.027.013h.02c.03 0 .07-.014.134-.035.093-.032.235-.08.367-.08a.944.942 0 0 1 .94.93.936.934 0 0 1-.94.928zm7.302-4.171c-1.138-.98-3.768-3.24-4.481-3.77-.406-.302-.685-.462-.928-.533a1.559 1.554 0 0 0-.456-.07c-.182 0-.376.032-.58.095-.46.145-.918.505-1.362.854l-.023.018c-.414.324-.84.66-1.164.73a1.986 1.98 0 0 1-.43.049c-.362 0-.687-.104-.81-.258-.02-.025-.007-.066.04-.125l.008-.008 1-1.067c.783-.774 1.525-1.506 3.23-1.545h.085c1.062 0 2.12.469 2.24.524a7.03 7.03 0 0 0 3.056.724c1.076 0 2.188-.263 3.354-.795a9.135 9.11 0 0 0-.405-.317c-1.025.44-2.003.66-2.946.66-.962 0-1.925-.229-2.858-.68-.05-.022-1.22-.567-2.44-.57-.032 0-.065 0-.096.002-1.434.033-2.24.536-2.782.976-.528.013-.982.138-1.388.25-.361.1-.673.186-.979.185-.125 0-.35-.01-.37-.012-.35-.01-2.115-.437-3.518-.962-.143.1-.28.203-.415.31 1.466.593 3.25 1.053 3.812 1.089.157.01.323.027.491.027.372 0 .744-.103 1.104-.203.213-.059.446-.123.692-.17l-.196.194-1.017 1.087c-.08.08-.254.294-.14.557a.705.703 0 0 0 .268.292c.243.162.677.27 1.08.271.152 0 .297-.015.43-.044.427-.095.874-.448 1.349-.82.377-.296.913-.672 1.323-.782a1.494 1.49 0 0 1 .37-.05.611.61 0 0 1 .095.005c.27.034.533.125 1.003.472.835.62 4.531 3.815 4.566 3.846.002.002.238.203.22.537-.007.186-.11.352-.294.466a.902.9 0 0 1-.484.15.804.802 0 0 1-.428-.124c-.014-.01-1.28-1.157-1.746-1.543-.074-.06-.146-.115-.22-.115a.122.122 0 0 0-.096.045c-.073.09.01.212.105.294l1.48 1.47c.002 0 .184.17.204.395.012.244-.106.447-.35.606a.957.955 0 0 1-.526.171.766.764 0 0 1-.42-.127l-.214-.206a21.035 20.978 0 0 0-1.08-1.009c-.072-.058-.148-.112-.221-.112a.127.127 0 0 0-.094.038c-.033.037-.056.103.028.212a.698.696 0 0 0 .075.083l1.078 1.198c.01.01.222.26.024.511l-.038.048a1.18 1.178 0 0 1-.1.096c-.184.15-.43.164-.527.164a.8.798 0 0 1-.147-.012c-.106-.018-.178-.048-.212-.089l-.013-.013c-.06-.06-.602-.609-1.054-.98-.059-.05-.133-.11-.21-.11a.128.128 0 0 0-.096.042c-.09.096.044.24.1.293l.92 1.003a.204.204 0 0 1-.033.062c-.033.044-.144.155-.479.196a.91.907 0 0 1-.122.007c-.345 0-.712-.164-.902-.264a1.343 1.34 0 0 0 .13-.576 1.368 1.365 0 0 0-1.42-1.357c.024-.342-.025-.99-.697-1.274a1.455 1.452 0 0 0-.575-.125c-.146 0-.287.025-.42.075a1.153 1.15 0 0 0-.671-.564 1.52 1.515 0 0 0-.494-.085c-.28 0-.537.08-.767.242a1.168 1.165 0 0 0-.903-.43 1.173 1.17 0 0 0-.82.335c-.287-.217-1.425-.93-4.467-1.613a17.39 17.344 0 0 1-.692-.189 4.822 4.82 0 0 0-.077.494l.67.157c3.108.682 4.136 1.391 4.309 1.525a1.145 1.142 0 0 0-.09.442 1.16 1.158 0 0 0 1.378 1.132c.096.467.406.821.879 1.003a1.165 1.162 0 0 0 .415.08c.09 0 .179-.012.266-.034.086.22.282.493.722.668a1.233 1.23 0 0 0 .457.094c.122 0 .241-.022.355-.063a1.373 1.37 0 0 0 1.269.841c.37.002.726-.147.985-.41.221.121.688.341 1.163.341.06 0 .118-.002.175-.01.47-.059.689-.24.789-.382a.571.57 0 0 0 .048-.078c.11.032.234.058.373.058.255 0 .501-.086.75-.265.244-.174.418-.424.444-.637v-.01c.083.017.167.026.251.026.265 0 .527-.082.773-.242.48-.31.562-.715.554-.98a1.28 1.279 0 0 0 .978-.194 1.04 1.04 0 0 0 .502-.808 1.088 1.085 0 0 0-.16-.653c.804-.342 2.636-1.003 4.795-1.483a4.734 4.721 0 0 0-.067-.492 27.742 27.667 0 0 0-5.049 1.62zm5.123-.763c0 4.027-5.166 7.293-11.537 7.293-6.372 0-11.538-3.266-11.538-7.293 0-4.028 5.165-7.293 11.539-7.293 6.371 0 11.537 3.265 11.537 7.293zm.46.004c0-4.272-5.374-7.755-12-7.755S.002 7.277.002 11.55L0 12.004c0 4.533 4.695 8.203 11.999 8.203 7.347 0 12-3.67 12-8.204z"/></svg>',
+  tn:'<svg width=27 height=27 viewBox="0 0 24 24" fill="#fff"><path d="M6.5 20q-2.28 0-3.89-1.57Q1 16.85 1 14.58q0-1.95 1.17-3.48Q3.35 9.57 5.25 9.15q.63-2.3 2.5-3.72Q9.63 4 12 4q2.93 0 4.96 2.04Q19 8.07 19 11q1.73.2 2.86 1.5Q23 13.78 23 15.5q0 1.87-1.31 3.19Q20.37 20 18.5 20z"/></svg>',
+  shopify:'<svg width=27 height=27 viewBox="0 0 24 24" fill="#fff"><path d="M15.337 23.979l7.216-1.561s-2.604-17.613-2.625-17.73c-.018-.116-.114-.192-.211-.192s-1.929-.136-1.929-.136-1.275-1.274-1.439-1.411c-.045-.037-.075-.057-.121-.074l-.914 21.104h.023zM11.71 11.305s-.81-.424-1.774-.424c-1.447 0-1.504.906-1.504 1.141 0 1.232 3.24 1.715 3.24 4.629 0 2.295-1.44 3.76-3.406 3.76-2.354 0-3.54-1.465-3.54-1.465l.646-2.086s1.245 1.066 2.28 1.066c.675 0 .975-.545.975-.932 0-1.619-2.654-1.694-2.654-4.359-.034-2.237 1.571-4.416 4.827-4.416 1.257 0 1.875.361 1.875.361l-.945 2.715-.02.01zM11.17.83c.136 0 .271.038.405.135-.984.465-2.064 1.639-2.508 3.992-.656.213-1.293.405-1.889.578C7.697 3.75 8.951.84 11.17.84V.83zm1.235 2.949v.135c-.754.232-1.583.484-2.394.736.466-1.777 1.333-2.645 2.085-2.971.193.501.309 1.176.309 2.1zm.539-2.234c.694.074 1.141.867 1.429 1.755-.349.114-.735.231-1.158.366v-.252c0-.752-.096-1.371-.271-1.871v.002zm2.992 1.289c-.02 0-.06.021-.078.021s-.289.075-.714.21c-.423-1.233-1.176-2.37-2.508-2.37h-.115C12.135.209 11.669 0 11.265 0 8.159 0 6.675 3.877 6.21 5.846c-1.194.365-2.063.636-2.16.674-.675.213-.694.232-.772.87-.075.462-1.83 14.063-1.83 14.063L15.009 24l.927-21.166z"/></svg>',
+  meta:'<svg width=27 height=27 viewBox="0 0 24 24" fill="#fff"><path d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></svg>'
+ };
+ var PLAT=[
+  {key:'mp',   nm:'Mercado Pago', tag:'Pagos',    desc:'Trae tus pagos y movimientos para calcular tu ganancia real.', col:'#009ee3', real:true},
+  {key:'meli', nm:'Mercado Libre',tag:'Ventas',   desc:'Incluye tus ventas de marketplace en el cálculo de beneficio.', col:'#ffe600'},
+  {key:'tn',   nm:'Tiendanube',   tag:'Ventas',   desc:'Trae tus ventas online de tu tienda para el beneficio real.', col:'#2d6cdf'},
+  {key:'shopify',nm:'Shopify',    tag:'Ventas',   desc:'Conectá tu tienda para centralizar ventas y costos por orden.', col:'#95bf47'},
+  {key:'meta', nm:'Meta Ads',     tag:'Anuncios', desc:'Trae tus campañas de Facebook e Instagram Ads.', col:'#0866ff'}
+ ];
+ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+ function cards(mpOn){
+  var h='';
+  PLAT.forEach(function(p){
+   var conn=(p.key==='mp'&&mpOn);
+   var estado=conn?'<span style="font-size:12.5px;font-weight:600;color:#34d399;display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#34d399"></span>Conectado</span>'
+                  :'<span style="font-size:12.5px;font-weight:600;color:#94a3b8;display:inline-flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:#475569"></span>No conectado</span>';
+   var btn;
+   if(p.key==='mp'){
+    btn=conn?'<a href="/desconectar-mp" onclick="window.location.assign(\\'/desconectar-mp\\');return false;" style="background:#241a10;color:#ffb35a;border:1px solid #4a3a1a;border-radius:10px;padding:10px 16px;font-weight:700;font-size:13.5px;text-decoration:none">Desconectar</a>'
+            :'<a href="/conectar-mp" onclick="window.location.assign(\\'/conectar-mp\\');return false;" style="background:#137fec;color:#fff;border-radius:10px;padding:10px 18px;font-weight:700;font-size:13.5px;text-decoration:none;display:inline-flex;align-items:center;gap:6px">⚡ Conectar</a>';
+   } else {
+    btn='<button onclick="alert(\\'Muy pronto podés conectar '+esc(p.nm)+'. Lo estamos activando.\\')" style="background:#1a2536;color:#8fa2bd;border:0;border-radius:10px;padding:10px 18px;font-weight:700;font-size:13.5px;cursor:pointer">Conectar</button>';
+   }
+   var dark=(p.key==='meli');
+   h+='<div style="display:flex;align-items:center;gap:16px;background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:16px 20px;margin-bottom:12px">'
+     +'<div style="width:50px;height:50px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;background:'+p.col+'">'+L[p.key]+'</div>'
+     +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:16px;color:#f1f5f9;display:flex;align-items:center;gap:9px">'+esc(p.nm)+' <span style="font-size:11px;color:#94a3b8;background:#111c2b;border:1px solid #1e2b3d;padding:2px 9px;border-radius:20px;font-weight:600">'+p.tag+'</span></div>'
+     +'<div style="color:#94a3b8;font-size:13px;margin-top:3px">'+esc(p.desc)+'</div></div>'
+     +'<div style="display:flex;align-items:center;gap:14px;flex:none">'+estado+btn+'</div></div>';
+  });
+  document.getElementById('rp-integ-cards').innerHTML=h;
+ }
+ function load(){ cards(false); fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ cards(!!(j&&j.conectado)); }).catch(function(){}); }
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; o.style.display=open?'block':'none'; if(open) load(); };
+ // Si volvés de conectar MP, abrimos Integraciones y mostramos conectado.
+ if(new URLSearchParams(location.search).get('integ')==='1'){ try{history.replaceState({},'','/');}catch(e){} setTimeout(function(){ window.rpInteg(true); },400); }
 })();
 </script>
 """
@@ -512,7 +545,7 @@ def mp_callback():
     # El token de MP se guarda BAJO EL EMAIL del usuario → cada uno ve solo lo suyo.
     _mp_save_token(email, tok)
     session.pop("mp_state", None)                 # el state es de un solo uso
-    return redirect("/integraciones?conectado=1", code=302)
+    return redirect("/?integ=1", code=302)
 
 
 @app.get("/mp/estado")
