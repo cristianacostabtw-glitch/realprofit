@@ -233,27 +233,52 @@ _SOLO_DASH = r"""
    else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
-    else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToken();return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
-   h+='<div style="display:flex;align-items:center;gap:13px;background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;padding:13px 17px;margin-bottom:9px">'
+   var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
      +'<div style="width:44px;height:44px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:#131c2b">'+L[p.logo]+'</div>'
      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14.5px;color:#f1f5f9;display:flex;align-items:center;gap:8px">'+esc(p.nm)+' <span style="font-size:10px;color:#94a3b8;background:#111c2b;border:1px solid #1e2b3d;padding:2px 8px;border-radius:16px;font-weight:600">'+p.tag+'</span></div>'
      +'<div style="color:#94a3b8;font-size:12.5px;margin-top:2px">'+esc(p.desc)+'</div></div>'
      +'<div style="display:flex;align-items:center;gap:11px;flex:none">'+right+'</div></div>';
+   var panel=(p.key==='shopify' && window._rpShopOpen && !shopOn) ? rpShopPanel() : '';
+   h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
  }
  function load(){ cards(!!window._rpMp,!!window._rpShop);
   fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){});
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){}); }
- window.rpShopToken=function(){
-  var s=prompt('1) Dominio de tu tienda Shopify (ej: mitienda.myshopify.com):'); if(!s)return;
-  var t=prompt('2) Pegá el Admin API access token (empieza con shpat_):'); if(!t)return;
-  fetch('/shopify/guardar-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shop:s.trim(),token:t.trim()})})
+ function rpShopPanel(){ return ''
+  +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
+  +'<input id="rp-shop-dom" placeholder="mitienda.myshopify.com" oninput="rpShopLink()" style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
+  +'<a id="rp-shop-open" href="#" target="_blank" rel="noopener" style="display:none;color:#60a5fa;font-size:12px;margin-top:6px;text-decoration:none">&#128279; Abrir &laquo;Desarrollar apps&raquo; de mi tienda &#8599;</a>'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:14px">2) Cre&aacute; una app &laquo;RealProfit&raquo; y en &laquo;API de Admin&raquo; tild&aacute; estos permisos:</div>'
+  +'<div style="position:relative;margin-top:6px">'
+  +'<textarea id="rp-shop-scopes" readonly rows="3" style="width:100%;background:#0b1220;border:1px solid #1e2b3d;color:#93c5fd;border-radius:8px;padding:9px 40px 9px 11px;font-size:11.5px;font-family:ui-monospace,monospace;box-sizing:border-box;resize:none">read_orders,read_products,read_inventory,read_customers,read_fulfillments,read_merchant_managed_fulfillment_orders,read_assigned_fulfillment_orders,read_third_party_fulfillment_orders,read_locations,read_shipping</textarea>'
+  +'<button id="rp-shop-copybtn" onclick="rpShopCopy()" style="position:absolute;top:7px;right:7px;background:#137fec;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer">Copiar</button>'
+  +'</div>'
+  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:4px">Todos <b style="color:#cbd5e1">read</b> (solo lectura), ning&uacute;n write. Busc&aacute; y tild&aacute; cada uno.</div>'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:14px">3) Guard&aacute; &rarr; <b>Instalar app</b> &rarr; peg&aacute; el <b>Admin API access token</b>:</div>'
+  +'<input id="rp-shop-tok" placeholder="shpat_..." style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
+  +'<div id="rp-shop-msg" style="margin-top:12px;font-size:12.5px;display:none;font-weight:600"></div>'
+  +'<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">'
+  +'<button onclick="rpShopToggle()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:9px 15px;font-weight:600;font-size:12.5px;cursor:pointer">Cancelar</button>'
+  +'<button id="rp-shop-go" onclick="rpShopGo()" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:9px 20px;font-weight:700;font-size:12.5px;cursor:pointer">Conectar</button>'
+  +'</div></div>'; }
+ window.rpShopToggle=function(){ window._rpShopOpen=!window._rpShopOpen; cards(!!window._rpMp,!!window._rpShop); };
+ window.rpShopCopy=function(){ var t=document.getElementById('rp-shop-scopes'); if(!t)return; t.select(); try{ document.execCommand('copy'); }catch(e){} try{ navigator.clipboard.writeText(t.value); }catch(e){} var b=document.getElementById('rp-shop-copybtn'); if(b){ b.textContent='¡Copiado!'; setTimeout(function(){ b.textContent='Copiar'; },1200); } };
+ window.rpShopLink=function(){ var el=document.getElementById('rp-shop-dom'); if(!el)return; var d=(el.value||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,''); var a=document.getElementById('rp-shop-open'); if(!a)return; if(d.indexOf('.myshopify.com')>-1){ a.href='https://admin.shopify.com/store/'+d.replace('.myshopify.com','')+'/settings/apps/development'; a.style.display='inline-block'; } else { a.style.display='none'; } };
+ window.rpShopGo=function(){ var d=document.getElementById('rp-shop-dom').value.trim(); var t=document.getElementById('rp-shop-tok').value.trim(); var msg=document.getElementById('rp-shop-msg'); var go=document.getElementById('rp-shop-go');
+  function show(txt,ok){ msg.style.display='block'; msg.style.color=ok?'#34d399':'#f87171'; msg.textContent=txt; }
+  if(!d){ show('Poné el dominio de tu tienda (paso 1).',false); return; }
+  if(!t){ show('Pegá el token del paso 3 (shpat_...).',false); return; }
+  go.disabled=true; go.textContent='Conectando...';
+  fetch('/shopify/guardar-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shop:d,token:t})})
    .then(function(r){return r.json();})
-   .then(function(j){ if(j&&j.ok){ window._rpShop=true; load(); alert('¡Shopify conectado! ('+(j.shop||'')+')'); } else { alert((j&&j.error)||'No se pudo conectar.'); } })
-   .catch(function(){ alert('Error de conexión. Probá de nuevo.'); }); };
+   .then(function(j){ if(j&&j.ok){ show('¡Conectado! ('+(j.shop||'')+')',true); window._rpShop=true; window._rpShopOpen=false; setTimeout(function(){ load(); },800); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo conectar.',false); } })
+   .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  if(new URLSearchParams(location.search).get('integ')==='1'){ try{history.replaceState({},'','/');}catch(e){} var _n=0,_t=setInterval(function(){ _n++; var o=document.getElementById('rp-integ-ov'); if(o){ window.rpInteg(true); o.style.display='block'; } if(_n>50)clearInterval(_t); },300); }
 })();
