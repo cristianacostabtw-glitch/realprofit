@@ -166,8 +166,21 @@ _SOLO_DASH = r"""
 </style>
 <script>
 (function(){
+ var SHOP_SVG='<svg width="16" height="16" viewBox="0 0 256 292" preserveAspectRatio="xMidYMid" style="flex:none"><path d="M223.774 57.34c-.2-1.46-1.48-2.27-2.54-2.36-1.05-.09-23.38-1.74-23.38-1.74s-15.5-15.39-17.21-17.1c-1.7-1.7-5.03-1.18-6.32-.8-.19.06-3.39 1.05-8.68 2.68C165.46 24.11 158.63 9.4 142.55 9.4c-.44 0-.9.02-1.36.04C136.61 3.4 130.94.78 126.05.78c-37.46 0-55.36 46.83-60.98 70.63-14.55 4.51-24.9 7.72-26.22 8.13-8.12 2.55-8.38 2.8-9.44 10.46C28.66 95.8 7.4 260.24 7.4 260.24l165.68 31.04 89.77-19.42S224.05 58.8 223.77 57.34z" fill="#95BF46"/><path d="M221.24 54.98c-1.06-.09-23.39-1.74-23.39-1.74s-15.5-15.39-17.21-17.1c-.64-.63-1.5-.96-2.4-1.1l-12.53 256.23 89.77-19.42S224.05 58.8 223.77 57.34c-.2-1.46-1.48-2.27-2.53-2.36z" fill="#5E8E3E"/><path d="M135.24 104.59l-11.07 32.92s-9.7-5.18-21.59-5.18c-17.43 0-18.3 10.94-18.3 13.7 0 15.03 39.2 20.8 39.2 56.02 0 27.71-17.58 45.56-41.28 45.56-28.44 0-42.98-17.7-42.98-17.7l7.61-25.16s14.95 12.84 27.57 12.84c8.24 0 11.6-6.49 11.6-11.23 0-19.62-32.16-20.5-32.16-52.73 0-27.13 19.47-53.38 58.78-53.38 15.14 0 22.62 4.34 22.62 4.34z" fill="#fff"/></svg>';
+ function fixTiendaChip(){
+  try{ var bs=document.querySelectorAll('button,a,[role="tab"]');
+   for(var i=0;i<bs.length;i++){ var b=bs[i]; if((b.textContent||'').trim()!=='TiendaNube') continue;
+     for(var j=0;j<b.childNodes.length;j++){ var cn=b.childNodes[j];
+       if(cn.nodeType===3 && /TiendaNube/.test(cn.nodeValue||'')) cn.nodeValue=cn.nodeValue.replace('TiendaNube','Shopify');
+       else if(cn.nodeType===1 && (cn.textContent||'').trim()==='TiendaNube' && cn.children.length===0) cn.textContent='Shopify'; }
+     var old=b.querySelector('svg:not([data-rpshop]),img:not([data-rpshop])');
+     if(old){ var w=document.createElement('span'); w.setAttribute('data-rpshop','1'); w.style.cssText='display:inline-flex;align-items:center'; w.innerHTML=SHOP_SVG; old.replaceWith(w); }
+   }
+  }catch(e){}
+ }
  function strip(){
   try{
+   fixTiendaChip();
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
@@ -359,12 +372,16 @@ def _hoy() -> str:
 def resumen_vacio() -> dict:
     h = _hoy()
     ceros_int = ["ordenes", "unidades", "reemb_cantidad", "reemb_monto", "reemb_despachados",
-                 "ventas_recompras", "ventas_periodo", "meli_ventas", "meli_unidades"]
+                 "ventas_recompras", "ventas_periodo", "meli_ventas", "meli_unidades", "tot_ordenes"]
     ceros_float = ["facturado", "cobrado", "costo_prod", "envio", "comision", "impuestos",
                    "com_plataforma", "com_pago", "fullfilment", "envios", "envio_prom",
                    "costos_extra", "reemb_perdida", "gan_por_venta", "cpa", "publi_ars",
                    "publi_cuenta", "ganancia", "margen", "roas", "roas_be", "ticket",
-                   "tasa_recompra", "facturacion_recompras", "meli_facturado"]
+                   "tasa_recompra", "facturacion_recompras",
+                   "meli_facturado", "meli_cobrado", "meli_comision", "meli_costo", "meli_ganancia",
+                   "meli_rent", "meli_fullfilment", "meli_aov", "meli_roas",
+                   "tot_facturado", "tot_ganancia", "tot_margen", "tot_costo", "tot_fullfilment",
+                   "tot_gan_por_venta", "tot_aov"]
     r = {"fecha": h, "desde": h, "hasta": h, "actualizado": h,
          "moneda": "ARS", "dolar": 1200.0}
     for k in ceros_int:
@@ -376,6 +393,98 @@ def resumen_vacio() -> dict:
 
 def _blob_vacio() -> dict:
     return {"raw": resumen_vacio(), "prod": [], "ords": []}
+
+
+# ---------------- Datos reales de Shopify → dashboard ----------------
+def _shopify_orders(shop, token, desde, hasta):
+    """Trae los pedidos de Shopify del período (paginado por Link header)."""
+    out = []
+    url = "https://%s/admin/api/2026-07/orders.json" % shop
+    params = {"status": "any", "limit": 250,
+              "created_at_min": desde + "T00:00:00-03:00",
+              "created_at_max": hasta + "T23:59:59-03:00",
+              "fields": "id,total_price,current_total_price,financial_status,cancelled_at,line_items,refunds,created_at"}
+    headers = {"X-Shopify-Access-Token": token}
+    for _ in range(40):
+        r = requests.get(url, headers=headers, params=params, timeout=30)
+        if r.status_code != 200:
+            break
+        out.extend(r.json().get("orders", []))
+        link = r.headers.get("Link", "") or r.headers.get("link", "")
+        nxt = None
+        for part in link.split(","):
+            if 'rel="next"' in part and "<" in part and ">" in part:
+                nxt = part[part.find("<") + 1:part.find(">")]
+        if not nxt:
+            break
+        url = nxt
+        params = None
+    return out
+
+
+def _shopify_resumen(email, desde, hasta):
+    """Arma el 'raw' que espera el dashboard con los pedidos reales de Shopify + costos cargados."""
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return None
+    shop = tk.get("shop"); token = tk.get("access_token")
+    try:
+        orders = _shopify_orders(shop, token, desde, hasta)
+    except Exception:
+        return None
+    costos = (_costos().get(email) or {})
+    r = resumen_vacio()
+    r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
+    r["desde"] = desde; r["hasta"] = hasta
+    r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
+    fact = cobr = costo_prod = reemb_monto = 0.0
+    unidades = ordenes = reemb_cant = 0
+    prodmap = {}
+    for o in orders:
+        if o.get("cancelled_at"):
+            continue
+        ordenes += 1
+        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        fact += tot
+        if (o.get("financial_status") or "") in ("paid", "partially_paid", "authorized"):
+            cobr += tot
+        for li in (o.get("line_items") or []):
+            q = int(li.get("quantity") or 0)
+            unidades += q
+            pid = str(li.get("product_id") or "")
+            c = costos.get(pid)
+            if c:
+                costo_prod += float(c) * q
+            nm = li.get("title") or "?"
+            prodmap[nm] = prodmap.get(nm, 0) + q
+        for rf in (o.get("refunds") or []):
+            reemb_cant += 1
+            for tx in (rf.get("transactions") or []):
+                reemb_monto += float(tx.get("amount") or 0)
+    ganancia = fact - costo_prod
+    r["ordenes"] = ordenes
+    r["ventas_periodo"] = ordenes
+    r["unidades"] = unidades
+    r["facturado"] = round(fact, 2)
+    r["cobrado"] = round(cobr, 2)
+    r["costo_prod"] = round(costo_prod, 2)
+    r["ganancia"] = round(ganancia, 2)
+    r["margen"] = round(ganancia / fact * 100, 2) if fact else 0.0
+    r["ticket"] = round(fact / ordenes, 2) if ordenes else 0.0
+    r["gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    r["reemb_cantidad"] = reemb_cant
+    r["reemb_monto"] = round(reemb_monto, 2)
+    # Totales (por ahora solo Shopify, sin MELI)
+    r["tot_ordenes"] = ordenes
+    r["tot_facturado"] = round(fact, 2)
+    r["tot_ganancia"] = round(ganancia, 2)
+    r["tot_costo"] = round(costo_prod, 2)
+    r["tot_margen"] = round(ganancia / fact * 100, 2) if fact else 0.0
+    r["tot_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
+    r["tot_gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
+            for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
+    return {"raw": r, "prod": prod, "ords": []}
 
 
 # ---------------- Login / Registro ----------------
@@ -612,8 +721,24 @@ def home():
 
 
 # ---------------- Endpoints en blanco (para que no rompa nada) ----------------
+_PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
+
+
 @app.get("/pf-periodo")
 def pf_periodo():
+    email = _user_actual()
+    desde = request.args.get("desde") or _hoy()
+    hasta = request.args.get("hasta") or desde
+    if email and email in _shop_tokens():
+        key = (email, desde, hasta)
+        now = _dt.datetime.utcnow()
+        c = _PF_CACHE.get(key)
+        if c and (now - c[0]).total_seconds() < 60:
+            return jsonify({"ok": True, **c[1]})
+        blob = _shopify_resumen(email, desde, hasta)
+        if blob:
+            _PF_CACHE[key] = (now, blob)
+            return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
 
 
