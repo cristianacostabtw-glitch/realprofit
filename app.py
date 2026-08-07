@@ -233,7 +233,7 @@ _SOLO_DASH = r"""
    else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
-    else if(p.key==='shopify'){ b='<a href="#" onclick="var s=prompt(\'Dominio de tu tienda Shopify (ej: mitienda.myshopify.com):\'); if(s){ window.location.assign(\'/conectar-shopify?shop=\'+encodeURIComponent(s.trim())); } return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToken();return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    h+='<div style="display:flex;align-items:center;gap:13px;background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;padding:13px 17px;margin-bottom:9px">'
@@ -247,6 +247,13 @@ _SOLO_DASH = r"""
  function load(){ cards(!!window._rpMp,!!window._rpShop);
   fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){});
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){}); }
+ window.rpShopToken=function(){
+  var s=prompt('1) Dominio de tu tienda Shopify (ej: mitienda.myshopify.com):'); if(!s)return;
+  var t=prompt('2) Pegá el Admin API access token (empieza con shpat_):'); if(!t)return;
+  fetch('/shopify/guardar-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shop:s.trim(),token:t.trim()})})
+   .then(function(r){return r.json();})
+   .then(function(j){ if(j&&j.ok){ window._rpShop=true; load(); alert('¡Shopify conectado! ('+(j.shop||'')+')'); } else { alert((j&&j.error)||'No se pudo conectar.'); } })
+   .catch(function(){ alert('Error de conexión. Probá de nuevo.'); }); };
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  if(new URLSearchParams(location.search).get('integ')==='1'){ try{history.replaceState({},'','/');}catch(e){} var _n=0,_t=setInterval(function(){ _n++; var o=document.getElementById('rp-integ-ov'); if(o){ window.rpInteg(true); o.style.display='block'; } if(_n>50)clearInterval(_t); },300); }
 })();
@@ -683,6 +690,32 @@ def shopify_estado():
     conectado = bool(email and email in d)
     shop = (d.get(email) or {}).get("shop", "") if conectado else ""
     return jsonify({"ok": True, "conectado": conectado, "shop": shop})
+
+
+@app.post("/shopify/guardar-token")
+@limiter.limit("40 per hour")
+def shopify_guardar_token():
+    """Guarda la conexión de Shopify por TOKEN (app propia de cada tienda). Verifica el token antes."""
+    if not _user_actual():
+        return jsonify({"ok": False, "error": "Tenés que iniciar sesión."}), 401
+    data = request.get_json(silent=True) or request.form
+    shop = _shop_normalizar(data.get("shop", ""))
+    token = (data.get("token", "") or "").strip()
+    if not _shop_valido(shop):
+        return jsonify({"ok": False, "error": "Dominio inválido. Usá el formato tutienda.myshopify.com"}), 400
+    if not token:
+        return jsonify({"ok": False, "error": "Falta pegar el token."}), 400
+    # Verificar el token contra la tienda (si anda, es válido).
+    try:
+        r = requests.get("https://" + shop + "/admin/api/2026-07/shop.json",
+                         headers={"X-Shopify-Access-Token": token}, timeout=20)
+    except Exception:
+        return jsonify({"ok": False, "error": "No pudimos contactar la tienda. Revisá el dominio."}), 502
+    if r.status_code != 200:
+        return jsonify({"ok": False, "error": "El token no es válido para esa tienda (revisá que lo copiaste completo)."}), 400
+    email = _user_actual()
+    _shop_save_token(email, {"access_token": token, "shop": shop, "modo": "token"})
+    return jsonify({"ok": True, "shop": shop})
 
 
 @app.get("/desconectar-shopify")
