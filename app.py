@@ -77,6 +77,37 @@ def _mp_save_token(key, data) -> None:
     MP_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+# ---------------- Meta (Facebook / Instagram Ads) OAuth ----------------
+META_SECRETS = RAIZ / "meta_secrets.json"     # App ID + App Secret (dueño de la app)
+META_TOKENS = DATA_DIR / "meta_tokens.json"   # tokens por usuario (persistente)
+META_API = "v21.0"
+
+
+def _meta_cfg() -> dict:
+    import os
+    try:
+        c = _json.loads(META_SECRETS.read_text(encoding="utf-8"))
+    except Exception:
+        c = {}
+    return {"app_id": os.getenv("META_APP_ID") or c.get("app_id", ""),
+            "app_secret": os.getenv("META_APP_SECRET") or c.get("app_secret", ""),
+            "redirect_uri": os.getenv("META_REDIRECT_URI") or c.get("redirect_uri",
+                                                                    "http://127.0.0.1:8010/meta/callback")}
+
+
+def _meta_tokens() -> dict:
+    try:
+        return _json.loads(META_TOKENS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _meta_save_token(key, data) -> None:
+    d = _meta_tokens()
+    d[str(key)] = data
+    META_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 # ---------------- Shopify OAuth (conectar con un click) ----------------
 SHOPIFY_SECRETS = RAIZ / "shopify_secrets.json"   # tu Client ID + Secret (dueño de la app)
 SHOPIFY_TOKENS = DATA_DIR / "shopify_tokens.json"  # tokens por usuario (persistente)
@@ -325,17 +356,18 @@ _SOLO_DASH = r"""
  ];
  function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
  function chip(txt,color,bg,bd){return '<span style="display:inline-flex;align-items:center;gap:7px;background:'+bg+';border:1px solid '+bd+';color:'+color+';border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:'+color+'"></span>'+txt+'</span>';}
- function cards(mpOn, shopOn){
+ function cards(mpOn, shopOn, metaOn){
   var h='';
   var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
   var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn);
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
+    else if(p.key==='meta'){ b='<a href="/conectar-meta" onclick="window.location.assign(\'/conectar-meta\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
@@ -343,14 +375,29 @@ _SOLO_DASH = r"""
      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14.5px;color:#f1f5f9;display:flex;align-items:center;gap:8px">'+esc(p.nm)+' <span style="font-size:10px;color:#94a3b8;background:#111c2b;border:1px solid #1e2b3d;padding:2px 8px;border-radius:16px;font-weight:600">'+p.tag+'</span></div>'
      +'<div style="color:#94a3b8;font-size:12.5px;margin-top:2px">'+esc(p.desc)+'</div></div>'
      +'<div style="display:flex;align-items:center;gap:11px;flex:none">'+right+'</div></div>';
-   var panel=(p.key==='shopify' && window._rpShopOpen && !shopOn) ? rpShopPanel() : '';
+   var panel='';
+   if(p.key==='shopify' && window._rpShopOpen && !shopOn) panel=rpShopPanel();
+   else if(p.key==='meta' && metaOn) panel=rpMetaPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
+  if(metaOn){ try{ rpMetaLoad(); }catch(e){} }
  }
- function load(){ cards(!!window._rpMp,!!window._rpShop);
-  fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){});
-  fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){}); }
+ function rpMetaPanel(){ return '<div style="border-top:1px solid #1e2b3d;padding:14px 17px;background:#0c1521"><div style="font-weight:700;color:#e2e8f0;font-size:12.5px;margin-bottom:8px">Cuenta publicitaria <span style="color:#94a3b8;font-weight:400">(de ac&aacute; sale el gasto de ads)</span></div><div id="rp-meta-cuentas" style="color:#94a3b8;font-size:12.5px">Cargando cuentas...</div></div>'; }
+ function rpMetaRender(cuentas,elegida){ var c=document.getElementById('rp-meta-cuentas'); if(!c)return;
+  if(!cuentas.length){ c.innerHTML='<span style="color:#94a3b8;font-size:12px">No encontramos cuentas publicitarias en tu Meta (revis&aacute; permisos).</span>'; return; }
+  var h='<select onchange="rpMetaSave(this.value)" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;min-width:280px;max-width:100%"><option value="">Eleg&iacute; una cuenta...</option>';
+  cuentas.forEach(function(a){ var sel=(String(a.id)===String(elegida))?' selected':''; h+='<option value="'+a.id+'"'+sel+'>'+esc(a.name)+' (act_'+a.id+')</option>'; });
+  h+='</select>'+(elegida?'<span style="color:#34d399;font-size:12px;margin-left:10px;font-weight:600">&#10003; guardada</span>':'');
+  c.innerHTML=h; }
+ window.rpMetaLoad=function(force){ var c=document.getElementById('rp-meta-cuentas'); if(!c)return;
+  if(window._rpMetaCuentas && !force){ rpMetaRender(window._rpMetaCuentas.cuentas, window._rpMetaCuentas.elegida); return; }
+  fetch('/meta/cuentas').then(function(r){return r.json();}).then(function(j){ window._rpMetaCuentas={cuentas:(j&&j.cuentas)||[],elegida:j&&j.elegida}; rpMetaRender(window._rpMetaCuentas.cuentas, window._rpMetaCuentas.elegida); }).catch(function(){ var e=document.getElementById('rp-meta-cuentas'); if(e)e.innerHTML='<span style="color:#f87171;font-size:12px">No se pudieron cargar las cuentas.</span>'; }); };
+ window.rpMetaSave=function(cid){ if(!cid)return; fetch('/meta/cuenta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:cid})}).then(function(r){return r.json();}).then(function(){ if(window._rpMetaCuentas)window._rpMetaCuentas.elegida=cid; rpMetaRender((window._rpMetaCuentas||{}).cuentas||[],cid); }).catch(function(){}); };
+ function load(){ cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta);
+  fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/meta/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeta=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
  function rpShopPanel(){ var CB='https://www.realprofitapp.com/shopify/callback'; return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
@@ -374,7 +421,7 @@ _SOLO_DASH = r"""
   +'<button onclick="rpShopToggle()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:9px 15px;font-weight:600;font-size:12.5px;cursor:pointer">Cancelar</button>'
   +'<button id="rp-shop-go" onclick="rpShopGo()" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:9px 20px;font-weight:700;font-size:12.5px;cursor:pointer">Conectar</button>'
   +'</div></div>'; }
- window.rpShopToggle=function(){ window._rpShopOpen=!window._rpShopOpen; cards(!!window._rpMp,!!window._rpShop); };
+ window.rpShopToggle=function(){ window._rpShopOpen=!window._rpShopOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
  window.rpCopy=function(id,btn){ var t=document.getElementById(id); if(!t)return; var v=(t.value!==undefined&&t.value!=='')?t.value:t.textContent; try{ if(t.select)t.select(); document.execCommand('copy'); }catch(e){} try{ navigator.clipboard.writeText(v); }catch(e){} if(btn){ var o=btn.textContent; btn.textContent='¡Copiado!'; setTimeout(function(){ btn.textContent=o; },1200); } };
  window.rpShopGo=function(){ var d=document.getElementById('rp-shop-dom').value.trim(); var cid=document.getElementById('rp-shop-cid').value.trim(); var sec=document.getElementById('rp-shop-secret').value.trim(); var msg=document.getElementById('rp-shop-msg'); var go=document.getElementById('rp-shop-go');
   function show(txt,ok){ msg.style.display='block'; msg.style.color=ok?'#34d399':'#f87171'; msg.textContent=txt; }
@@ -765,6 +812,134 @@ def desconectar_mp():
     return redirect("/integraciones")
 
 
+@app.get("/conectar-meta")
+@limiter.limit("30 per hour")
+def conectar_meta():
+    """Manda al usuario a autorizar Meta (Facebook Login) para leer sus Ads."""
+    if not _user_actual():
+        return redirect("/")
+    cfg = _meta_cfg()
+    if not cfg["app_id"]:
+        return ("Falta configurar el App ID de Meta (variables en Render).", 400)
+    state = _secrets.token_urlsafe(16)
+    session["meta_state"] = state
+    qs = _url.urlencode({"client_id": cfg["app_id"], "redirect_uri": cfg["redirect_uri"],
+                         "state": state, "response_type": "code",
+                         "scope": "ads_read,read_insights,business_management"})
+    return redirect("https://www.facebook.com/%s/dialog/oauth?%s" % (META_API, qs), code=302)
+
+
+@app.get("/meta/callback")
+@limiter.limit("30 per hour")
+def meta_callback():
+    """Meta vuelve con 'code'. Lo cambiamos por token y lo hacemos de larga duración (60 días)."""
+    cfg = _meta_cfg()
+    code = request.args.get("code")
+    state = request.args.get("state")
+    if not code:
+        return ("RealProfit — punto de conexión con Meta. Volvé a la app y usá «Conectar».", 200)
+    if not state or state != session.get("meta_state"):
+        return ("La conexión no pasó el control de seguridad. Reintentá desde el botón.", 400)
+    try:
+        r = requests.get("https://graph.facebook.com/%s/oauth/access_token" % META_API,
+                         params={"client_id": cfg["app_id"], "redirect_uri": cfg["redirect_uri"],
+                                 "client_secret": cfg["app_secret"], "code": code}, timeout=30)
+        tok = r.json() if r.content else {}
+    except Exception:
+        return ("No pudimos conectar con Meta en este momento. Probá de nuevo.", 502)
+    if not tok.get("access_token"):
+        return ("Meta no autorizó la conexión. Reintentá.", 400)
+    # Token de larga duración (60 días) para no reconectar seguido.
+    try:
+        r2 = requests.get("https://graph.facebook.com/%s/oauth/access_token" % META_API,
+                          params={"grant_type": "fb_exchange_token", "client_id": cfg["app_id"],
+                                  "client_secret": cfg["app_secret"], "fb_exchange_token": tok["access_token"]},
+                          timeout=30)
+        j2 = r2.json() if r2.content else {}
+        if j2.get("access_token"):
+            tok = j2
+    except Exception:
+        pass
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    _meta_save_token(email, tok)
+    session.pop("meta_state", None)
+    return redirect("/?integ=1", code=302)
+
+
+@app.get("/meta/estado")
+def meta_estado():
+    email = _user_actual()
+    tk = _meta_tokens().get(email) if email else None
+    conectado = bool(tk and tk.get("access_token"))
+    return jsonify({"ok": True, "conectado": conectado, "cuenta": (tk or {}).get("cuenta")})
+
+
+@app.get("/meta/cuentas")
+def meta_cuentas():
+    """Lista las cuentas publicitarias a las que el usuario dio acceso al conectar."""
+    email = _user_actual()
+    tk = _meta_tokens().get(email) if email else None
+    if not tk or not tk.get("access_token"):
+        return jsonify({"ok": True, "cuentas": [], "elegida": None})
+    cuentas = []
+    try:
+        r = requests.get("https://graph.facebook.com/%s/me/adaccounts" % META_API,
+                         params={"access_token": tk["access_token"],
+                                 "fields": "account_id,name,currency", "limit": 500}, timeout=30)
+        for a in (r.json().get("data") or []):
+            cuentas.append({"id": a.get("account_id"), "name": a.get("name") or ("Cuenta " + str(a.get("account_id"))),
+                            "moneda": a.get("currency")})
+    except Exception:
+        pass
+    return jsonify({"ok": True, "cuentas": cuentas, "elegida": tk.get("cuenta")})
+
+
+@app.post("/meta/cuenta")
+def meta_elegir_cuenta():
+    """Guarda cuál cuenta publicitaria mira este usuario (de ahí sale el gasto)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "login"}), 401
+    data = request.get_json(silent=True) or {}
+    cid = str(data.get("cuenta") or "").strip()
+    d = _meta_tokens(); tk = d.get(email) or {}
+    tk["cuenta"] = cid
+    d[email] = tk
+    META_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return jsonify({"ok": True})
+
+
+def _meta_spend(email, desde, hasta):
+    """Gasto en ads (ARS) de la cuenta elegida, en el período. 0 si no hay cuenta/conexión."""
+    tk = _meta_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("cuenta"):
+        return 0.0
+    acc = str(tk["cuenta"]).replace("act_", "")
+    try:
+        r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
+                         params={"access_token": tk["access_token"], "fields": "spend",
+                                 "time_range": _json.dumps({"since": desde, "until": hasta}),
+                                 "level": "account"}, timeout=30)
+        data = r.json().get("data") or []
+        if data:
+            return float(data[0].get("spend") or 0)
+    except Exception:
+        pass
+    return 0.0
+
+
+@app.get("/desconectar-meta")
+def desconectar_meta():
+    email = _user_actual()
+    if email:
+        d = _meta_tokens()
+        d.pop(email, None)
+        META_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return redirect("/?integ=1")
+
+
 # ---------------- Dashboard ----------------
 @app.get("/")
 def home():
@@ -808,16 +983,34 @@ def pf_periodo():
     email = _user_actual()
     desde = request.args.get("desde") or _hoy()
     hasta = request.args.get("hasta") or desde
-    if email and email in _shop_tokens():
+    if email:
         key = (email, desde, hasta)
         now = _dt.datetime.utcnow()
         c = _PF_CACHE.get(key)
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
-        blob = _shopify_resumen(email, desde, hasta)
-        if blob:
-            _PF_CACHE[key] = (now, blob)
-            return jsonify({"ok": True, **blob})
+        blob = None
+        if email in _shop_tokens():
+            blob = _shopify_resumen(email, desde, hasta)
+        if blob is None:
+            blob = _blob_vacio()
+        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
+        spend = _meta_spend(email, desde, hasta)
+        if spend:
+            r = blob["raw"]
+            fact = r.get("facturado", 0.0)
+            ordenes = r.get("ordenes", 0)
+            r["publi_ars"] = round(spend, 2)
+            r["publi_cuenta"] = round(spend, 2)
+            r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+            r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
+            r["roas"] = round(fact / spend, 2) if spend else 0.0
+            r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+            r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
+            r["tot_ganancia"] = r["ganancia"]
+            r["tot_margen"] = r["margen"]
+        _PF_CACHE[key] = (now, blob)
+        return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
 
 
