@@ -234,7 +234,7 @@ _SOLO_DASH = r"""
    else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
-    else if(p.key==='shopify'){ b='<a href="#" onclick="var s=prompt(\'Dominio de tu tienda Shopify (ej: mitienda.myshopify.com):\'); if(s){ window.location.assign(\'/conectar-shopify?shop=\'+encodeURIComponent(s.trim())); } return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
@@ -250,37 +250,39 @@ _SOLO_DASH = r"""
  function load(){ cards(!!window._rpMp,!!window._rpShop);
   fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){});
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){}); }
- function rpShopPanel(){ return ''
+ function rpShopPanel(){ var CB='https://www.realprofitapp.com/shopify/callback'; return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
-  +'<div style="color:#93c5fd;font-size:12px;margin-bottom:13px;background:#0b1626;border:1px solid #1e3050;border-radius:8px;padding:9px 11px">&#8505;&#65039; La app custom de tu tienda <b style="color:#cbd5e1">no pide URL</b>. Si alguna pantalla te pide la &laquo;URL de la app&raquo;, us&aacute;: <b style="color:#dbeafe">https://www.realprofitapp.com</b></div>'
   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
-  +'<input id="rp-shop-dom" placeholder="mitienda.myshopify.com" oninput="rpShopLink()" style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
-  +'<a id="rp-shop-open" href="#" target="_blank" rel="noopener" style="display:none;color:#60a5fa;font-size:12px;margin-top:6px;text-decoration:none">&#128279; Abrir &laquo;Desarrollar apps&raquo; de mi tienda &#8599;</a>'
-  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:14px">2) Cre&aacute; una app &laquo;RealProfit&raquo; y en &laquo;API de Admin&raquo; tild&aacute; estos permisos:</div>'
+  +'<input id="rp-shop-dom" placeholder="mitienda.myshopify.com" style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:14px">2) En tu app de Shopify, peg&aacute; esta <b>URL de redireccionamiento</b>:</div>'
+  +'<div style="position:relative;margin-top:6px">'
+  +'<input id="rp-shop-redirect" readonly value="'+CB+'" style="width:100%;background:#0b1220;border:1px solid #1e2b3d;color:#93c5fd;border-radius:8px;padding:9px 64px 9px 11px;font-size:12px;font-family:ui-monospace,monospace;box-sizing:border-box">'
+  +'<button onclick="rpCopy(\'rp-shop-redirect\',this)" style="position:absolute;top:6px;right:6px;background:#137fec;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer">Copiar</button>'
+  +'</div>'
+  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:6px">Pon&eacute; la app en <b style="color:#cbd5e1">Distribuci&oacute;n personalizada</b> (NO p&uacute;blica) y tild&aacute; estos permisos:</div>'
   +'<div style="position:relative;margin-top:6px">'
   +'<textarea id="rp-shop-scopes" readonly rows="4" style="width:100%;background:#0b1220;border:1px solid #1e2b3d;color:#93c5fd;border-radius:8px;padding:9px 40px 9px 11px;font-size:11.5px;font-family:ui-monospace,monospace;box-sizing:border-box;resize:none">read_orders,write_orders,write_order_edits,read_fulfillments,write_fulfillments,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,read_assigned_fulfillment_orders,read_third_party_fulfillment_orders,read_shipping,write_shipping,read_products,read_inventory,read_customers,write_customers,read_locations,read_checkouts,write_draft_orders,write_price_rules</textarea>'
-  +'<button id="rp-shop-copybtn" onclick="rpShopCopy()" style="position:absolute;top:7px;right:7px;background:#137fec;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer">Copiar</button>'
+  +'<button onclick="rpCopy(\'rp-shop-scopes\',this)" style="position:absolute;top:7px;right:7px;background:#137fec;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer">Copiar</button>'
   +'</div>'
-  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:4px">Pedidos, env&iacute;os, seguimientos y clientes (leer <b style="color:#cbd5e1">y</b> cargar). Busc&aacute; y tild&aacute; cada uno.</div>'
-  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:14px">3) Guard&aacute; &rarr; <b>Instalar app</b>. En la pesta&ntilde;a <b>&laquo;Credenciales de la API&raquo;</b> toc&aacute; <b>Revelar el token de acceso</b> una vez y pegalo ac&aacute;:</div>'
-  +'<input id="rp-shop-tok" placeholder="shpat_..." style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
-  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:4px">Es el <b style="color:#cbd5e1">Token de acceso de la API de Admin</b> (empieza con <b style="color:#cbd5e1">shpat_</b>). NO es el Client ID ni el Client Secret.</div>'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:14px">3) Peg&aacute; el <b>Client ID</b> y el <b>Client Secret</b> de tu app:</div>'
+  +'<input id="rp-shop-cid" placeholder="Client ID" style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
+  +'<input id="rp-shop-secret" placeholder="Client Secret (shpss_...)" style="width:100%;margin-top:7px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
+  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:6px">Al tocar Conectar te lleva a Shopify a <b style="color:#cbd5e1">aprobar</b>, y vuelve conectado.</div>'
   +'<div id="rp-shop-msg" style="margin-top:12px;font-size:12.5px;display:none;font-weight:600"></div>'
   +'<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">'
   +'<button onclick="rpShopToggle()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:9px 15px;font-weight:600;font-size:12.5px;cursor:pointer">Cancelar</button>'
   +'<button id="rp-shop-go" onclick="rpShopGo()" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:9px 20px;font-weight:700;font-size:12.5px;cursor:pointer">Conectar</button>'
   +'</div></div>'; }
  window.rpShopToggle=function(){ window._rpShopOpen=!window._rpShopOpen; cards(!!window._rpMp,!!window._rpShop); };
- window.rpShopCopy=function(){ var t=document.getElementById('rp-shop-scopes'); if(!t)return; t.select(); try{ document.execCommand('copy'); }catch(e){} try{ navigator.clipboard.writeText(t.value); }catch(e){} var b=document.getElementById('rp-shop-copybtn'); if(b){ b.textContent='¡Copiado!'; setTimeout(function(){ b.textContent='Copiar'; },1200); } };
- window.rpShopLink=function(){ var el=document.getElementById('rp-shop-dom'); if(!el)return; var d=(el.value||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,''); var a=document.getElementById('rp-shop-open'); if(!a)return; if(d.indexOf('.myshopify.com')>-1){ a.href='https://admin.shopify.com/store/'+d.replace('.myshopify.com','')+'/settings/apps/development'; a.style.display='inline-block'; } else { a.style.display='none'; } };
- window.rpShopGo=function(){ var d=document.getElementById('rp-shop-dom').value.trim(); var t=document.getElementById('rp-shop-tok').value.trim(); var msg=document.getElementById('rp-shop-msg'); var go=document.getElementById('rp-shop-go');
+ window.rpCopy=function(id,btn){ var t=document.getElementById(id); if(!t)return; var v=(t.value!==undefined&&t.value!=='')?t.value:t.textContent; try{ if(t.select)t.select(); document.execCommand('copy'); }catch(e){} try{ navigator.clipboard.writeText(v); }catch(e){} if(btn){ var o=btn.textContent; btn.textContent='¡Copiado!'; setTimeout(function(){ btn.textContent=o; },1200); } };
+ window.rpShopGo=function(){ var d=document.getElementById('rp-shop-dom').value.trim(); var cid=document.getElementById('rp-shop-cid').value.trim(); var sec=document.getElementById('rp-shop-secret').value.trim(); var msg=document.getElementById('rp-shop-msg'); var go=document.getElementById('rp-shop-go');
   function show(txt,ok){ msg.style.display='block'; msg.style.color=ok?'#34d399':'#f87171'; msg.textContent=txt; }
   if(!d){ show('Poné el dominio de tu tienda (paso 1).',false); return; }
-  if(!t){ show('Pegá el token del paso 3 (shpat_...).',false); return; }
+  if(!cid||!sec){ show('Pegá el Client ID y el Client Secret (paso 3).',false); return; }
   go.disabled=true; go.textContent='Conectando...';
-  fetch('/shopify/guardar-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shop:d,token:t})})
+  fetch('/shopify/byoa-start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shop:d,client_id:cid,client_secret:sec})})
    .then(function(r){return r.json();})
-   .then(function(j){ if(j&&j.ok){ show('¡Conectado! ('+(j.shop||'')+')',true); window._rpShop=true; window._rpShopOpen=false; setTimeout(function(){ load(); },800); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo conectar.',false); } })
+   .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  if(new URLSearchParams(location.search).get('integ')==='1'){ try{history.replaceState({},'','/');}catch(e){} var _n=0,_t=setInterval(function(){ _n++; var o=document.getElementById('rp-integ-ov'); if(o){ window.rpInteg(true); o.style.display='block'; } if(_n>50)clearInterval(_t); },300); }
@@ -647,10 +649,35 @@ def mp_estado():
     return jsonify({"ok": True, "conectado": conectado})
 
 
+@app.post("/shopify/byoa-start")
+@limiter.limit("30 per hour")
+def shopify_byoa_start():
+    """OAuth con la app PROPIA de cada tienda (estilo Envialo): recibe shop + Client ID + Client Secret."""
+    if not _user_actual():
+        return jsonify({"ok": False, "error": "Tenés que iniciar sesión."}), 401
+    data = request.get_json(silent=True) or request.form
+    shop = _shop_normalizar(data.get("shop", ""))
+    cid = (data.get("client_id", "") or "").strip()
+    secret = (data.get("client_secret", "") or "").strip()
+    if not _shop_valido(shop):
+        return jsonify({"ok": False, "error": "Dominio inválido. Usá el formato tutienda.myshopify.com"}), 400
+    if not cid or not secret:
+        return jsonify({"ok": False, "error": "Faltan el Client ID o el Client Secret."}), 400
+    cfg = _shop_cfg()
+    state = _secrets.token_urlsafe(16)
+    session["shop_state"] = state
+    session["shop_dom"] = shop
+    session["shop_cid"] = cid
+    session["shop_secret"] = secret
+    qs = _url.urlencode({"client_id": cid, "scope": cfg["scopes"],
+                         "redirect_uri": cfg["redirect_uri"], "state": state})
+    return jsonify({"ok": True, "url": "https://" + shop + "/admin/oauth/authorize?" + qs})
+
+
 @app.get("/conectar-shopify")
 @limiter.limit("30 per hour")
 def conectar_shopify():
-    """Manda al usuario a autorizar SU tienda Shopify (OAuth)."""
+    """Manda al usuario a autorizar SU tienda Shopify (OAuth con la app global de env)."""
     if not _user_actual():
         return redirect("/")
     cfg = _shop_cfg()
@@ -674,6 +701,9 @@ def shopify_callback():
     import hmac as _hmac
     import hashlib as _hashlib
     cfg = _shop_cfg()
+    # Si vino por «tu propia app» (BYOA), usamos las claves que pegó el usuario; si no, las de env.
+    cid = session.get("shop_cid") or cfg["client_id"]
+    secret = session.get("shop_secret") or cfg["client_secret"]
     code = request.args.get("code")
     shop = _shop_normalizar(request.args.get("shop", ""))
     state = request.args.get("state")
@@ -688,12 +718,12 @@ def shopify_callback():
     # Verificar HMAC: firma de todos los params (menos hmac/signature) ordenados, con el client_secret.
     params = {k: v for k, v in request.args.items() if k not in ("hmac", "signature")}
     mensaje = "&".join("%s=%s" % (k, params[k]) for k in sorted(params))
-    calc = _hmac.new(cfg["client_secret"].encode(), mensaje.encode(), _hashlib.sha256).hexdigest()
+    calc = _hmac.new(secret.encode(), mensaje.encode(), _hashlib.sha256).hexdigest()
     if not hmac_recibido or not _hmac.compare_digest(calc, hmac_recibido):
         return ("La firma de Shopify no es válida. Reintentá.", 400)
     try:
         r = requests.post("https://" + shop + "/admin/oauth/access_token", json={
-            "client_id": cfg["client_id"], "client_secret": cfg["client_secret"],
+            "client_id": cid, "client_secret": secret,
             "code": code}, timeout=30)
         tok = r.json() if r.content else {}
     except Exception:
@@ -705,8 +735,8 @@ def shopify_callback():
         return redirect("/")
     tok["shop"] = shop
     _shop_save_token(email, tok)          # token guardado BAJO EL EMAIL → cada uno ve solo lo suyo
-    session.pop("shop_state", None)
-    session.pop("shop_dom", None)
+    for k in ("shop_state", "shop_dom", "shop_cid", "shop_secret"):
+        session.pop(k, None)
     return redirect("/?integ=1", code=302)
 
 
