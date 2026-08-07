@@ -166,23 +166,8 @@ _SOLO_DASH = r"""
 </style>
 <script>
 (function(){
- var SHOP_SVG='<svg width="16" height="16" viewBox="0 0 256 292" preserveAspectRatio="xMidYMid" style="flex:none"><path d="M223.774 57.34c-.2-1.46-1.48-2.27-2.54-2.36-1.05-.09-23.38-1.74-23.38-1.74s-15.5-15.39-17.21-17.1c-1.7-1.7-5.03-1.18-6.32-.8-.19.06-3.39 1.05-8.68 2.68C165.46 24.11 158.63 9.4 142.55 9.4c-.44 0-.9.02-1.36.04C136.61 3.4 130.94.78 126.05.78c-37.46 0-55.36 46.83-60.98 70.63-14.55 4.51-24.9 7.72-26.22 8.13-8.12 2.55-8.38 2.8-9.44 10.46C28.66 95.8 7.4 260.24 7.4 260.24l165.68 31.04 89.77-19.42S224.05 58.8 223.77 57.34z" fill="#95BF46"/><path d="M221.24 54.98c-1.06-.09-23.39-1.74-23.39-1.74s-15.5-15.39-17.21-17.1c-.64-.63-1.5-.96-2.4-1.1l-12.53 256.23 89.77-19.42S224.05 58.8 223.77 57.34c-.2-1.46-1.48-2.27-2.53-2.36z" fill="#5E8E3E"/><path d="M135.24 104.59l-11.07 32.92s-9.7-5.18-21.59-5.18c-17.43 0-18.3 10.94-18.3 13.7 0 15.03 39.2 20.8 39.2 56.02 0 27.71-17.58 45.56-41.28 45.56-28.44 0-42.98-17.7-42.98-17.7l7.61-25.16s14.95 12.84 27.57 12.84c8.24 0 11.6-6.49 11.6-11.23 0-19.62-32.16-20.5-32.16-52.73 0-27.13 19.47-53.38 58.78-53.38 15.14 0 22.62 4.34 22.62 4.34z" fill="#fff"/></svg>';
- var SHOP_URI=''; try{ SHOP_URI='data:image/svg+xml;base64,'+btoa(SHOP_SVG); }catch(e){}
- // Solo cambia TEXTO (nodeValue) y src del img — NUNCA reemplaza elementos (rompería el click de React).
- function fixTiendaChip(){
-  try{ var bs=document.querySelectorAll('button,a,[role="tab"]');
-   for(var i=0;i<bs.length;i++){ var b=bs[i]; if((b.textContent||'').trim()!=='TiendaNube') continue;
-     for(var j=0;j<b.childNodes.length;j++){ var cn=b.childNodes[j];
-       if(cn.nodeType===3 && /TiendaNube/.test(cn.nodeValue||'')) cn.nodeValue=cn.nodeValue.replace('TiendaNube','Shopify'); }
-     var im=b.querySelector('img'); if(im && SHOP_URI && (im.src||'').indexOf('svg+xml')<0) im.src=SHOP_URI;
-   }
-   var cs=document.querySelectorAll('.mfy-canales');
-   for(var ci=0;ci<cs.length;ci++){ var im2=cs[ci].querySelector('img'); if(im2 && SHOP_URI && (im2.src||'').indexOf('svg+xml')<0) im2.src=SHOP_URI; }
-  }catch(e){}
- }
  function strip(){
   try{
-   fixTiendaChip();
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
@@ -199,6 +184,9 @@ _SOLO_DASH = r"""
      di.parentNode.insertBefore(cl, di.nextSibling);
     }
    }
+   // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
+   var dls=aside.querySelectorAll('a[href="/dashboard"]');
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} }); } }
    // Ocultar la seccion demo "Top productos" (data hardcodeada del pf.html).
    if(aside._rpTopNode && document.contains(aside._rpTopNode)){ aside._rpTopNode.style.display='none'; }
    else { aside._rpTopNode=null; var cnd=document.querySelectorAll('h2,h3,h4,div,span');
@@ -330,11 +318,11 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  function rpProdSetActive(on){ try{ var pa=document.querySelector('#rp-prod-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]',!on); da.classList.toggle('text-primary',!on); } }catch(e){} }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
  function rpProdWarn(){ var warn=document.getElementById('rp-prod-warn'); if(!warn)return; var n=document.querySelectorAll('#rp-prod-body .rp-sincosto').length;
   warn.innerHTML = n>0 ? '<div style="display:flex;align-items:center;gap:14px;background:#1c1608;border:1px solid #4a3a1a;border-radius:12px;padding:13px 16px"><span style="font-size:18px">&#9888;&#65039;</span><div style="flex:1"><b style="color:#f1f5f9;font-size:13.5px">'+n+' '+(n===1?'producto':'productos')+' sin costo cargado</b><div style="color:#c9a35b;font-size:12.5px;margin-top:2px">Su ganancia se calcula de m&aacute;s. Carg&aacute; el costo para que el margen sea real.</div></div></div>' : ''; }
  window.rpSaveCosto=function(inp,id){ var v=parseFloat(String(inp.value||'').replace(/\./g,'').replace(',','.'))||0;
