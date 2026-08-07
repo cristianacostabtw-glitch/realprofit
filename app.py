@@ -176,6 +176,9 @@ _SOLO_DASH = r"""
      var old=b.querySelector('svg:not([data-rpshop]),img:not([data-rpshop])');
      if(old){ var w=document.createElement('span'); w.setAttribute('data-rpshop','1'); w.style.cssText='display:inline-flex;align-items:center'; w.innerHTML=SHOP_SVG; old.replaceWith(w); }
    }
+   // Ícono TN del mini-desglose por canal (tarjeta VENTAS) -> Shopify (solo el primero = TN)
+   var cs=document.querySelectorAll('.mfy-canales');
+   for(var ci=0;ci<cs.length;ci++){ var ims=cs[ci].querySelectorAll('img:not([data-rpshop])'); if(ims.length){ for(var ik=1;ik<ims.length;ik++){ ims[ik].setAttribute('data-rpshop','1'); } var w2=document.createElement('span'); w2.setAttribute('data-rpshop','1'); w2.style.cssText='display:inline-flex;align-items:center;width:15px;height:15px'; w2.innerHTML=SHOP_SVG; ims[0].replaceWith(w2); } }
   }catch(e){}
  }
  function strip(){
