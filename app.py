@@ -77,6 +77,56 @@ def _mp_save_token(key, data) -> None:
     MP_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+# ---------------- Shopify OAuth (conectar con un click) ----------------
+SHOPIFY_SECRETS = RAIZ / "shopify_secrets.json"   # tu Client ID + Secret (dueño de la app)
+SHOPIFY_TOKENS = DATA_DIR / "shopify_tokens.json"  # tokens por usuario (persistente)
+SHOPIFY_SCOPES = ("read_orders,read_fulfillments,write_fulfillments,"
+                  "read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,"
+                  "read_third_party_fulfillment_orders,read_products,read_customers,"
+                  "read_locations,read_shipping")
+
+
+def _shop_cfg() -> dict:
+    import os
+    try:
+        c = _json.loads(SHOPIFY_SECRETS.read_text(encoding="utf-8"))
+    except Exception:
+        c = {}
+    return {"client_id": os.getenv("SHOPIFY_CLIENT_ID") or c.get("client_id", ""),
+            "client_secret": os.getenv("SHOPIFY_CLIENT_SECRET") or c.get("client_secret", ""),
+            "redirect_uri": os.getenv("SHOPIFY_REDIRECT_URI") or c.get("redirect_uri",
+                                                                       "http://127.0.0.1:8010/shopify/callback"),
+            "scopes": os.getenv("SHOPIFY_SCOPES") or c.get("scopes", SHOPIFY_SCOPES)}
+
+
+def _shop_tokens() -> dict:
+    try:
+        return _json.loads(SHOPIFY_TOKENS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _shop_save_token(key, data) -> None:
+    d = _shop_tokens()
+    d[str(key)] = data
+    SHOPIFY_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _shop_normalizar(shop: str) -> str:
+    """Acepta 'mitienda', 'mitienda.myshopify.com' o con http(s):// y devuelve el dominio limpio."""
+    shop = (shop or "").strip().lower()
+    shop = shop.replace("https://", "").replace("http://", "")
+    shop = shop.split("/")[0].split("?")[0]
+    if shop and "." not in shop:
+        shop = shop + ".myshopify.com"
+    return shop
+
+
+def _shop_valido(shop: str) -> bool:
+    import re
+    return bool(shop and re.match(r"^[a-z0-9][a-z0-9\-]*\.myshopify\.com$", shop))
+
+
 # ---------------- Cuentas de usuario (email + contraseña) ----------------
 USERS = DATA_DIR / "users.json"   # cada usuario de la app (persistente); su MP se guarda por email
 
@@ -173,13 +223,19 @@ _SOLO_DASH = r"""
  ];
  function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
  function chip(txt,color,bg,bd){return '<span style="display:inline-flex;align-items:center;gap:7px;background:'+bg+';border:1px solid '+bd+';color:'+color+';border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:'+color+'"></span>'+txt+'</span>';}
- function cards(mpOn){
+ function cards(mpOn, shopOn){
   var h='';
+  var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
+  var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right;
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(p.key==='mp' && mpOn){ right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="/desconectar-mp" onclick="window.location.assign(\'/desconectar-mp\');return false;" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none">Desconectar</a>'; }
-   else { var b = p.real ? '<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none">&#9889; Conectar</a>' : '<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none">&#9889; Conectar</a>'; right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else { var b;
+    if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='shopify'){ b='<a href="#" onclick="var s=prompt(\'Dominio de tu tienda Shopify (ej: mitienda.myshopify.com):\'); if(s){ window.location.assign(\'/conectar-shopify?shop=\'+encodeURIComponent(s.trim())); } return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    h+='<div style="display:flex;align-items:center;gap:13px;background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;padding:13px 17px;margin-bottom:9px">'
      +'<div style="width:44px;height:44px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:#131c2b">'+L[p.logo]+'</div>'
      +'<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14.5px;color:#f1f5f9;display:flex;align-items:center;gap:8px">'+esc(p.nm)+' <span style="font-size:10px;color:#94a3b8;background:#111c2b;border:1px solid #1e2b3d;padding:2px 8px;border-radius:16px;font-weight:600">'+p.tag+'</span></div>'
@@ -188,7 +244,9 @@ _SOLO_DASH = r"""
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
  }
- function load(){ cards(false); fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ cards(!!(j&&j.conectado)); }).catch(function(){}); }
+ function load(){ cards(!!window._rpMp,!!window._rpShop);
+  fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){});
+  fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){}); }
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  if(new URLSearchParams(location.search).get('integ')==='1'){ try{history.replaceState({},'','/');}catch(e){} var _n=0,_t=setInterval(function(){ _n++; var o=document.getElementById('rp-integ-ov'); if(o){ window.rpInteg(true); o.style.display='block'; } if(_n>50)clearInterval(_t); },300); }
 })();
@@ -552,6 +610,89 @@ def mp_estado():
     email = _user_actual()
     conectado = bool(email and email in _mp_tokens())
     return jsonify({"ok": True, "conectado": conectado})
+
+
+@app.get("/conectar-shopify")
+@limiter.limit("30 per hour")
+def conectar_shopify():
+    """Manda al usuario a autorizar SU tienda Shopify (OAuth)."""
+    if not _user_actual():
+        return redirect("/")
+    cfg = _shop_cfg()
+    if not cfg["client_id"]:
+        return ("Falta configurar el Client ID de Shopify (variables en Render).", 400)
+    shop = _shop_normalizar(request.args.get("shop", ""))
+    if not _shop_valido(shop):
+        return ("Dominio de tienda inválido. Usá el formato tutienda.myshopify.com", 400)
+    state = _secrets.token_urlsafe(16)
+    session["shop_state"] = state
+    session["shop_dom"] = shop
+    qs = _url.urlencode({"client_id": cfg["client_id"], "scope": cfg["scopes"],
+                         "redirect_uri": cfg["redirect_uri"], "state": state})
+    return redirect("https://" + shop + "/admin/oauth/authorize?" + qs, code=302)
+
+
+@app.get("/shopify/callback")
+@limiter.limit("30 per hour")
+def shopify_callback():
+    """Shopify vuelve acá con 'code' + 'hmac'. Verificamos la firma y cambiamos el code por el token."""
+    import hmac as _hmac
+    import hashlib as _hashlib
+    cfg = _shop_cfg()
+    code = request.args.get("code")
+    shop = _shop_normalizar(request.args.get("shop", ""))
+    state = request.args.get("state")
+    hmac_recibido = request.args.get("hmac", "")
+    if not code:
+        return ("RealProfit — punto de conexión con Shopify. "
+                "Volvé a la app y usá el botón «Conectar».", 200)
+    if not state or state != session.get("shop_state"):
+        return ("La conexión no pasó el control de seguridad. Reintentá desde el botón.", 400)
+    if not _shop_valido(shop):
+        return ("Tienda inválida.", 400)
+    # Verificar HMAC: firma de todos los params (menos hmac/signature) ordenados, con el client_secret.
+    params = {k: v for k, v in request.args.items() if k not in ("hmac", "signature")}
+    mensaje = "&".join("%s=%s" % (k, params[k]) for k in sorted(params))
+    calc = _hmac.new(cfg["client_secret"].encode(), mensaje.encode(), _hashlib.sha256).hexdigest()
+    if not hmac_recibido or not _hmac.compare_digest(calc, hmac_recibido):
+        return ("La firma de Shopify no es válida. Reintentá.", 400)
+    try:
+        r = requests.post("https://" + shop + "/admin/oauth/access_token", json={
+            "client_id": cfg["client_id"], "client_secret": cfg["client_secret"],
+            "code": code}, timeout=30)
+        tok = r.json() if r.content else {}
+    except Exception:
+        return ("No pudimos conectar con Shopify en este momento. Probá de nuevo.", 502)
+    if not tok.get("access_token"):
+        return ("Shopify no autorizó la conexión. Reintentá.", 400)
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    tok["shop"] = shop
+    _shop_save_token(email, tok)          # token guardado BAJO EL EMAIL → cada uno ve solo lo suyo
+    session.pop("shop_state", None)
+    session.pop("shop_dom", None)
+    return redirect("/?integ=1", code=302)
+
+
+@app.get("/shopify/estado")
+def shopify_estado():
+    """¿ESTE usuario tiene su Shopify conectado? Devuelve también el dominio de la tienda."""
+    email = _user_actual()
+    d = _shop_tokens()
+    conectado = bool(email and email in d)
+    shop = (d.get(email) or {}).get("shop", "") if conectado else ""
+    return jsonify({"ok": True, "conectado": conectado, "shop": shop})
+
+
+@app.get("/desconectar-shopify")
+def desconectar_shopify():
+    email = _user_actual()
+    if email:
+        d = _shop_tokens()
+        d.pop(email, None)
+        SHOPIFY_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return redirect("/?integ=1")
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
