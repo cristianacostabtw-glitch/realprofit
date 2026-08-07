@@ -167,18 +167,17 @@ _SOLO_DASH = r"""
 <script>
 (function(){
  var SHOP_SVG='<svg width="16" height="16" viewBox="0 0 256 292" preserveAspectRatio="xMidYMid" style="flex:none"><path d="M223.774 57.34c-.2-1.46-1.48-2.27-2.54-2.36-1.05-.09-23.38-1.74-23.38-1.74s-15.5-15.39-17.21-17.1c-1.7-1.7-5.03-1.18-6.32-.8-.19.06-3.39 1.05-8.68 2.68C165.46 24.11 158.63 9.4 142.55 9.4c-.44 0-.9.02-1.36.04C136.61 3.4 130.94.78 126.05.78c-37.46 0-55.36 46.83-60.98 70.63-14.55 4.51-24.9 7.72-26.22 8.13-8.12 2.55-8.38 2.8-9.44 10.46C28.66 95.8 7.4 260.24 7.4 260.24l165.68 31.04 89.77-19.42S224.05 58.8 223.77 57.34z" fill="#95BF46"/><path d="M221.24 54.98c-1.06-.09-23.39-1.74-23.39-1.74s-15.5-15.39-17.21-17.1c-.64-.63-1.5-.96-2.4-1.1l-12.53 256.23 89.77-19.42S224.05 58.8 223.77 57.34c-.2-1.46-1.48-2.27-2.53-2.36z" fill="#5E8E3E"/><path d="M135.24 104.59l-11.07 32.92s-9.7-5.18-21.59-5.18c-17.43 0-18.3 10.94-18.3 13.7 0 15.03 39.2 20.8 39.2 56.02 0 27.71-17.58 45.56-41.28 45.56-28.44 0-42.98-17.7-42.98-17.7l7.61-25.16s14.95 12.84 27.57 12.84c8.24 0 11.6-6.49 11.6-11.23 0-19.62-32.16-20.5-32.16-52.73 0-27.13 19.47-53.38 58.78-53.38 15.14 0 22.62 4.34 22.62 4.34z" fill="#fff"/></svg>';
+ var SHOP_URI=''; try{ SHOP_URI='data:image/svg+xml;base64,'+btoa(SHOP_SVG); }catch(e){}
+ // Solo cambia TEXTO (nodeValue) y src del img — NUNCA reemplaza elementos (rompería el click de React).
  function fixTiendaChip(){
   try{ var bs=document.querySelectorAll('button,a,[role="tab"]');
    for(var i=0;i<bs.length;i++){ var b=bs[i]; if((b.textContent||'').trim()!=='TiendaNube') continue;
      for(var j=0;j<b.childNodes.length;j++){ var cn=b.childNodes[j];
-       if(cn.nodeType===3 && /TiendaNube/.test(cn.nodeValue||'')) cn.nodeValue=cn.nodeValue.replace('TiendaNube','Shopify');
-       else if(cn.nodeType===1 && (cn.textContent||'').trim()==='TiendaNube' && cn.children.length===0) cn.textContent='Shopify'; }
-     var old=b.querySelector('svg:not([data-rpshop]),img:not([data-rpshop])');
-     if(old){ var w=document.createElement('span'); w.setAttribute('data-rpshop','1'); w.style.cssText='display:inline-flex;align-items:center'; w.innerHTML=SHOP_SVG; old.replaceWith(w); }
+       if(cn.nodeType===3 && /TiendaNube/.test(cn.nodeValue||'')) cn.nodeValue=cn.nodeValue.replace('TiendaNube','Shopify'); }
+     var im=b.querySelector('img'); if(im && SHOP_URI && (im.src||'').indexOf('svg+xml')<0) im.src=SHOP_URI;
    }
-   // Ícono TN del mini-desglose por canal (tarjeta VENTAS) -> Shopify (solo el primero = TN)
    var cs=document.querySelectorAll('.mfy-canales');
-   for(var ci=0;ci<cs.length;ci++){ var ims=cs[ci].querySelectorAll('img:not([data-rpshop])'); if(ims.length){ for(var ik=1;ik<ims.length;ik++){ ims[ik].setAttribute('data-rpshop','1'); } var w2=document.createElement('span'); w2.setAttribute('data-rpshop','1'); w2.style.cssText='display:inline-flex;align-items:center;width:15px;height:15px'; w2.innerHTML=SHOP_SVG; ims[0].replaceWith(w2); } }
+   for(var ci=0;ci<cs.length;ci++){ var im2=cs[ci].querySelector('img'); if(im2 && SHOP_URI && (im2.src||'').indexOf('svg+xml')<0) im2.src=SHOP_URI; }
   }catch(e){}
  }
  function strip(){
@@ -707,11 +706,11 @@ def home():
         html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
     # Caja de usuario abajo a la izquierda (email + cerrar sesión).
     inicial = (email[0] if email else "?").upper()
-    userbox = ('<div class="rp-pill" style="bottom:16px">'
+    userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px">'
                '<span class="rp-ic" style="background:#137fec;color:#fff;font-weight:700;font-size:14px">'
                + inicial + '</span>'
                '<span class="rp-lbl"><span class="em">' + email + '</span>'
-               '<a href="/logout">Cerrar sesión</a></span></div>')
+               '<span style="color:#94a3b8;font-size:11px">Cerrar sesión &#8594;</span></span></a>')
     # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
     extra = _SOLO_DASH + userbox
     if "</body>" in html:
