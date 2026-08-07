@@ -171,7 +171,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -184,9 +184,20 @@ _SOLO_DASH = r"""
      di.parentNode.insertBefore(cl, di.nextSibling);
     }
    }
+   // Agregar "Comisiones" en la barra (debajo de Productos).
+   if(!nav.querySelector('#rp-comis-nav')){
+    var pn=nav.querySelector('#rp-prod-nav');
+    if(pn){ var cc=pn.cloneNode(true); cc.id='rp-comis-nav'; cc.style.display='';
+     var ac=cc.querySelector('a'); if(ac){ ac.setAttribute('href','#'); ac.removeAttribute('aria-current'); ac.classList.remove('bg-white/[0.08]'); ac.classList.remove('text-primary');
+      var newac=ac.cloneNode(true); ac.parentNode.replaceChild(newac,ac); newac.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpComis(true); }); ac=newac; }
+     var ico=cc.querySelector('.material-symbols-outlined'); if(ico) ico.textContent='percent';
+     var sp3=cc.querySelectorAll('span'); for(var sk=0;sk<sp3.length;sk++){ var s3=sp3[sk]; if(!s3.classList.contains('material-symbols-outlined') && s3.children.length===0 && (s3.textContent||'').trim()){ s3.textContent='Comisiones'; } }
+     pn.parentNode.insertBefore(cc, pn.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} }); } }
    // Ocultar la seccion demo "Top productos" (data hardcodeada del pf.html).
    if(aside._rpTopNode && document.contains(aside._rpTopNode)){ aside._rpTopNode.style.display='none'; }
    else { aside._rpTopNode=null; var cnd=document.querySelectorAll('h2,h3,h4,div,span');
@@ -241,6 +252,63 @@ _SOLO_DASH = r"""
     <div id="rp-prod-warn" style="margin-top:16px"></div>
     <div id="rp-prod-body" style="margin-top:8px"></div>
    </div>
+  </div>
+ </div>
+</div>
+<div id="rp-comis-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0a111e;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif">
+ <div style="max-width:900px;margin:0 auto;padding:26px 30px 60px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+   <div style="display:flex;align-items:center;gap:12px">
+    <div style="width:42px;height:42px;border-radius:11px;background:#101c2e;border:1px solid #1e2b3d;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#60a5fa">percent</span></div>
+    <div><h1 style="margin:0;font-size:22px;color:#f1f5f9">Costos</h1><div style="color:#94a3b8;font-size:13px;margin-top:3px">Comisiones e impuestos. Restan del margen real del Dashboard.</div></div>
+   </div>
+   <button onclick="rpComis(false)" title="Cerrar" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:11px;margin:22px 0 4px"><span class="material-symbols-outlined" style="color:#60a5fa;font-size:22px">account_balance_wallet</span><div style="font-weight:800;color:#f1f5f9;font-size:16px">Comisiones e impuestos</div></div>
+  <div style="color:#94a3b8;font-size:12.5px;margin-bottom:6px">Carg&aacute; una vez lo que se lleva cada venta. Se descuenta de tu ganancia real.</div>
+
+  <div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:18px 20px;margin-top:14px;display:flex;gap:15px">
+   <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#0d1b30;border:1px solid #1c3350;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:22px">credit_card</span></div>
+   <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap"><div style="font-weight:700;color:#f1f5f9;font-size:15px">Mercado Pago</div><span style="background:#0d1b30;border:1px solid #1c3350;color:#7db3f5;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px">COBROS</span></div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Lo que te descuenta MP al cobrar. Te lo dice en el recibo (ej: 6.6) &mdash; el IVA lo sum&aacute;s en su tarjeta.</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:14px">
+     <div><div style="color:#94a3b8;font-size:11.5px;margin-bottom:6px">Comisi&oacute;n (retiro al instante)</div><div style="display:inline-flex;align-items:center;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden"><span style="padding:9px 11px;color:#64748b;font-size:13px;border-right:1px solid #1e2b3d">%</span><input id="rp-c-mp" type="number" step="0.01" placeholder="0" style="border:none;background:transparent;color:#f1f5f9;padding:9px 12px;width:120px;font-size:13px;text-align:right;outline:none"></div></div>
+     <div><div style="color:#94a3b8;font-size:11.5px;margin-bottom:6px">3 cuotas sin inter&eacute;s</div><div style="display:inline-flex;align-items:center;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden"><span style="padding:9px 11px;color:#64748b;font-size:13px;border-right:1px solid #1e2b3d">%</span><input id="rp-c-cuotas" type="number" step="0.01" placeholder="0" style="border:none;background:transparent;color:#f1f5f9;padding:9px 12px;width:120px;font-size:13px;text-align:right;outline:none"></div></div>
+    </div>
+   </div>
+  </div>
+
+  <div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:18px 20px;margin-top:14px;display:flex;gap:15px">
+   <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#0e2a1c;border:1px solid #17492f;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#34d399;font-size:22px">storefront</span></div>
+   <div style="flex:1;min-width:0">
+    <div style="font-weight:700;color:#f1f5f9;font-size:15px">Comisi&oacute;n de tienda</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Lo que cobra tu plataforma (Shopify / Tiendanube) por cada venta.</div>
+    <div style="margin-top:14px"><div style="display:inline-flex;align-items:center;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden"><span style="padding:9px 11px;color:#64748b;font-size:13px;border-right:1px solid #1e2b3d">%</span><input id="rp-c-tienda" type="number" step="0.01" placeholder="0" style="border:none;background:transparent;color:#f1f5f9;padding:9px 12px;width:120px;font-size:13px;text-align:right;outline:none"></div></div>
+   </div>
+  </div>
+
+  <div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:18px 20px;margin-top:14px;display:flex;gap:15px">
+   <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#241a0e;border:1px solid #4a3a1a;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#f0b429;font-size:22px">receipt_long</span></div>
+   <div style="flex:1;min-width:0">
+    <div style="font-weight:700;color:#f1f5f9;font-size:15px">IVA</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se suma a las comisiones de arriba (MP + cuotas + tienda). Pon&eacute; 0 o 21.</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="display:inline-flex;align-items:center;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden"><span style="padding:9px 11px;color:#64748b;font-size:13px;border-right:1px solid #1e2b3d">%</span><input id="rp-c-iva" type="number" step="0.01" placeholder="0" style="border:none;background:transparent;color:#f1f5f9;padding:9px 12px;width:120px;font-size:13px;text-align:right;outline:none"></div><span style="color:#5b6b82;font-size:12px">Tasa com&uacute;n en Argentina: 21%</span></div>
+   </div>
+  </div>
+
+  <div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:18px 20px;margin-top:14px;display:flex;gap:15px">
+   <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#1a1533;border:1px solid #322a5a;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#a78bfa;font-size:22px">account_balance</span></div>
+   <div style="flex:1;min-width:0">
+    <div style="font-weight:700;color:#f1f5f9;font-size:15px">Ingresos Brutos</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">IIBB provincial sobre la venta. A este <b style="color:#cbd5e1">NO</b> se le suma IVA.</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px"><div style="display:inline-flex;align-items:center;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden"><span style="padding:9px 11px;color:#64748b;font-size:13px;border-right:1px solid #1e2b3d">%</span><input id="rp-c-iibb" type="number" step="0.01" placeholder="0" style="border:none;background:transparent;color:#f1f5f9;padding:9px 12px;width:120px;font-size:13px;text-align:right;outline:none"></div><span style="color:#5b6b82;font-size:12px">Promedio 3&mdash;5%</span></div>
+   </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:14px;flex-wrap:wrap;background:#0c1521;border:1px solid #1e2b3d;border-radius:14px;padding:16px 20px">
+   <div><div style="color:#94a3b8;font-size:12px">Costo total sobre cada venta</div><b id="rp-c-total" style="color:#34d399;font-size:24px;font-weight:800">0%</b></div>
+   <div style="display:flex;gap:12px;align-items:center"><span id="rp-c-msg" style="font-size:12.5px;font-weight:600;display:none"></span><button id="rp-c-go" onclick="rpComisSave()" style="background:#137fec;border:none;color:#fff;border-radius:10px;padding:11px 26px;font-weight:700;font-size:13.5px;cursor:pointer">Guardar</button></div>
   </div>
  </div>
 </div>
@@ -318,11 +386,26 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  function rpProdSetActive(on){ try{ var pa=document.querySelector('#rp-prod-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]',!on); da.classList.toggle('text-primary',!on); } }catch(e){} }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ function rpComisSetActive(on){ try{ var pa=document.querySelector('#rp-comis-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); } }catch(e){} }
+ function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
+   var t=(g('rp-c-mp')+g('rp-c-cuotas')+g('rp-c-tienda'))*(1+g('rp-c-iva')/100)+g('rp-c-iibb');
+   var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
+ window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+ function rpComisLoad(){ fetch('/pf-comisiones').then(function(r){return r.json();}).then(function(j){ var c=(j&&j.comis)||{};
+    var set=function(id,v){var el=document.getElementById(id); if(el)el.value=(!v||v===0)?'':v;};
+    set('rp-c-mp',c.mp_comision); set('rp-c-cuotas',c.mp_cuotas); set('rp-c-tienda',c.comision_tienda); set('rp-c-iva',c.iva); set('rp-c-iibb',c.ingresos_brutos);
+    ['rp-c-mp','rp-c-cuotas','rp-c-tienda','rp-c-iva','rp-c-iibb'].forEach(function(id){ var el=document.getElementById(id); if(el) el.oninput=rpComisTotal; });
+    rpComisTotal();
+   }).catch(function(){ rpComisTotal(); }); }
+ window.rpComisSave=function(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
+   var body={mp_comision:g('rp-c-mp'),mp_cuotas:g('rp-c-cuotas'),comision_tienda:g('rp-c-tienda'),iva:g('rp-c-iva'),ingresos_brutos:g('rp-c-iibb')};
+   var go=document.getElementById('rp-c-go'),msg=document.getElementById('rp-c-msg'); if(go){go.disabled=true; go.textContent='Guardando...';}
+   fetch('/pf-comisiones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#34d399'; msg.textContent='¡Guardado!'; setTimeout(function(){msg.style.display='none';},1500);} rpComisTotal(); }).catch(function(){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#f87171'; msg.textContent='Error, probá de nuevo';} }); };
  function rpProdWarn(){ var warn=document.getElementById('rp-prod-warn'); if(!warn)return; var n=document.querySelectorAll('#rp-prod-body .rp-sincosto').length;
   warn.innerHTML = n>0 ? '<div style="display:flex;align-items:center;gap:14px;background:#1c1608;border:1px solid #4a3a1a;border-radius:12px;padding:13px 16px"><span style="font-size:18px">&#9888;&#65039;</span><div style="flex:1"><b style="color:#f1f5f9;font-size:13.5px">'+n+' '+(n===1?'producto':'productos')+' sin costo cargado</b><div style="color:#c9a35b;font-size:12.5px;margin-top:2px">Su ganancia se calcula de m&aacute;s. Carg&aacute; el costo para que el margen sea real.</div></div></div>' : ''; }
  window.rpSaveCosto=function(inp,id){ var v=parseFloat(String(inp.value||'').replace(/\./g,'').replace(',','.'))||0;
@@ -451,13 +534,15 @@ def _shopify_resumen(email, desde, hasta):
             reemb_cant += 1
             for tx in (rf.get("transactions") or []):
                 reemb_monto += float(tx.get("amount") or 0)
-    ganancia = fact - costo_prod
+    comision_monto = fact * _comis_pct(email) / 100.0
+    ganancia = fact - costo_prod - comision_monto
     r["ordenes"] = ordenes
     r["ventas_periodo"] = ordenes
     r["unidades"] = unidades
     r["facturado"] = round(fact, 2)
     r["cobrado"] = round(cobr, 2)
     r["costo_prod"] = round(costo_prod, 2)
+    r["comision"] = round(comision_monto, 2)
     r["ganancia"] = round(ganancia, 2)
     r["margen"] = round(ganancia / fact * 100, 2) if fact else 0.0
     r["ticket"] = round(fact / ordenes, 2) if ordenes else 0.0
@@ -803,6 +888,56 @@ def pf_guardar_costo():
         costo = 0
     _guardar_costo(email, pid, costo)
     return jsonify({"ok": True})
+
+
+# ---------------- Comisiones (MP + tienda + IVA + IIBB) ----------------
+COMIS = DATA_DIR / "comisiones.json"   # config de comisiones por usuario (persistente)
+_COMIS_CAMPOS = ["mp_comision", "mp_cuotas", "comision_tienda", "iva", "ingresos_brutos"]
+
+
+def _comis() -> dict:
+    try:
+        return _json.loads(COMIS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _comis_user(email) -> dict:
+    u = (_comis().get(email) or {})
+    return {k: float(u.get(k) or 0) for k in _COMIS_CAMPOS}
+
+
+def _comis_pct(email) -> float:
+    """% total que se lleva cada venta: (MP + cuotas + tienda) con IVA + Ingresos Brutos (sin IVA)."""
+    c = _comis_user(email)
+    con_iva = (c["mp_comision"] + c["mp_cuotas"] + c["comision_tienda"]) * (1 + c["iva"] / 100.0)
+    return round(con_iva + c["ingresos_brutos"], 4)
+
+
+@app.get("/pf-comisiones")
+def pf_comisiones():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": True, "comis": {k: 0 for k in _COMIS_CAMPOS}, "pct": 0})
+    return jsonify({"ok": True, "comis": _comis_user(email), "pct": _comis_pct(email)})
+
+
+@app.post("/pf-comisiones")
+def pf_guardar_comisiones():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "login"}), 401
+    data = request.get_json(silent=True) or {}
+    d = _comis()
+    u = {}
+    for k in _COMIS_CAMPOS:
+        try:
+            u[k] = float(data.get(k) or 0)
+        except Exception:
+            u[k] = 0.0
+    d[email] = u
+    COMIS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return jsonify({"ok": True, "pct": _comis_pct(email)})
 
 
 @app.get("/pf-marketing")
