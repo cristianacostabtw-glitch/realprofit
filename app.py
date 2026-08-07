@@ -198,12 +198,11 @@ _SOLO_DASH = r"""
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
    for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} }); } }
-   // Ocultar la seccion demo "Top productos" (data hardcodeada del pf.html).
-   if(aside._rpTopNode && document.contains(aside._rpTopNode)){ aside._rpTopNode.style.display='none'; }
-   else { aside._rpTopNode=null; var cnd=document.querySelectorAll('h2,h3,h4,div,span');
-    for(var ti=0;ti<cnd.length;ti++){ if((cnd[ti].textContent||'').trim()==='Top productos'){ var nd=cnd[ti];
-      for(var up=0; up<9 && nd.parentElement; up++){ nd=nd.parentElement; var tc=nd.textContent||'';
-       if(/Top productos/.test(tc) && /(ventas|ml)/.test(tc) && nd.parentElement && nd.parentElement.children.length>1){ nd.style.display='none'; aside._rpTopNode=nd; break; } } break; } } }
+   // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
+   var tops=document.querySelectorAll('h1,h2,h3,h4');
+   for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
+     for(var up=0; up<8 && nd.parentElement; up++){ nd=nd.parentElement; var cn=(typeof nd.className==='string')?nd.className:'';
+      if(/rounded/.test(cn) && /border/.test(cn)){ nd.style.display='none'; break; } } } }
    // Meter los pills DENTRO del aside: al pasarles el mouse cuenta como hover de la barra y NO se cierra.
    var _pp=document.querySelectorAll('.rp-pill');
    for(var pi=0;pi<_pp.length;pi++){ if(_pp[pi].parentNode!==aside){ try{ aside.appendChild(_pp[pi]); }catch(e){} } }
