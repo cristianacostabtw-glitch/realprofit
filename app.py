@@ -211,7 +211,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -389,9 +389,14 @@ _SOLO_DASH = r"""
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  function rpProdSetActive(on){ try{ var pa=document.querySelector('#rp-prod-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
-   if(da){ da.classList.toggle('bg-white/[0.08]',!on); da.classList.toggle('text-primary',!on); } }catch(e){} }
+   if(da){ da.classList.toggle('bg-white/[0.08]',!on); da.classList.toggle('text-primary',!on); }
+   var pc=document.querySelector('#rp-comis-nav a'); if(pc && on){ pc.classList.remove('bg-white/[0.08]'); pc.classList.remove('text-primary'); } }catch(e){} }
  window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
- function rpComisSetActive(on){ try{ var pa=document.querySelector('#rp-comis-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); } }catch(e){} }
+ function rpComisSetActive(on){ try{ var pa=document.querySelector('#rp-comis-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
+   var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
+   var pp=document.querySelector('#rp-prod-nav a');
+   if(on){ if(da){ da.classList.remove('bg-white/[0.08]'); da.classList.remove('text-primary'); } if(pp){ pp.classList.remove('bg-white/[0.08]'); pp.classList.remove('text-primary'); } }
+   else { if(da){ da.classList.add('bg-white/[0.08]'); da.classList.add('text-primary'); } } }catch(e){} }
  function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
    var t=(g('rp-c-mp')+g('rp-c-cuotas')+g('rp-c-tienda'))*(1+g('rp-c-iva')/100)+g('rp-c-iibb');
    var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
