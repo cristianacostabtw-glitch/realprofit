@@ -80,10 +80,11 @@ def _mp_save_token(key, data) -> None:
 # ---------------- Shopify OAuth (conectar con un click) ----------------
 SHOPIFY_SECRETS = RAIZ / "shopify_secrets.json"   # tu Client ID + Secret (dueño de la app)
 SHOPIFY_TOKENS = DATA_DIR / "shopify_tokens.json"  # tokens por usuario (persistente)
-SHOPIFY_SCOPES = ("read_orders,read_fulfillments,write_fulfillments,"
-                  "read_assigned_fulfillment_orders,read_merchant_managed_fulfillment_orders,"
-                  "read_third_party_fulfillment_orders,read_products,read_customers,"
-                  "read_locations,read_shipping")
+SHOPIFY_SCOPES = ("read_orders,write_orders,write_order_edits,read_fulfillments,write_fulfillments,"
+                  "read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,"
+                  "read_assigned_fulfillment_orders,read_third_party_fulfillment_orders,"
+                  "read_shipping,write_shipping,read_products,read_inventory,read_customers,"
+                  "write_customers,read_locations,read_checkouts,write_draft_orders,write_price_rules")
 
 
 def _shop_cfg() -> dict:
@@ -233,7 +234,7 @@ _SOLO_DASH = r"""
    else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
-    else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
+    else if(p.key==='shopify'){ b='<a href="#" onclick="var s=prompt(\'Dominio de tu tienda Shopify (ej: mitienda.myshopify.com):\'); if(s){ window.location.assign(\'/conectar-shopify?shop=\'+encodeURIComponent(s.trim())); } return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
