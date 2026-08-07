@@ -251,6 +251,7 @@ _SOLO_DASH = r"""
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop); }).catch(function(){}); }
  function rpShopPanel(){ return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
+  +'<div style="color:#93c5fd;font-size:12px;margin-bottom:13px;background:#0b1626;border:1px solid #1e3050;border-radius:8px;padding:9px 11px">&#8505;&#65039; La app custom de tu tienda <b style="color:#cbd5e1">no pide URL</b>. Si alguna pantalla te pide la &laquo;URL de la app&raquo;, us&aacute;: <b style="color:#dbeafe">https://www.realprofitapp.com</b></div>'
   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
   +'<input id="rp-shop-dom" placeholder="mitienda.myshopify.com" oninput="rpShopLink()" style="width:100%;margin-top:6px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
   +'<a id="rp-shop-open" href="#" target="_blank" rel="noopener" style="display:none;color:#60a5fa;font-size:12px;margin-top:6px;text-decoration:none">&#128279; Abrir &laquo;Desarrollar apps&raquo; de mi tienda &#8599;</a>'
