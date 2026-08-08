@@ -508,6 +508,30 @@ _SOLO_DASH = r"""
  if(new URLSearchParams(location.search).get('integ')==='1'){ try{history.replaceState({},'','/');}catch(e){} var _n=0,_t=setInterval(function(){ _n++; var o=document.getElementById('rp-integ-ov'); if(o){ window.rpInteg(true); o.style.display='block'; } if(_n>50)clearInterval(_t); },300); }
 })();
 </script>
+<script>
+/* Parche breakeven: el dashboard compilado calcula mal el Break Even ROAS (0.00x) y CPA
+   (costos viejos). Sobreescribo esas 2 tarjetas con los valores reales del backend
+   (be_roas = facturación / contribución antes de ads · be_cpa = contribución antes de ads / pedidos). */
+(function(){
+  var _raw=null, _of=window.fetch;
+  window.fetch=function(){ var args=arguments, p=_of.apply(this,args);
+    try{ var u=(args[0]&&args[0].url)||args[0];
+      if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
+        p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
+          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); } }).catch(function(){}); }catch(e){} });
+      } }catch(e){}
+    return p; };
+  function money(n){ try{ return '$'+Math.round(n).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n); } }
+  function set(label,text){ var all=document.querySelectorAll('span');
+    for(var i=0;i<all.length;i++){ if((all[i].textContent||'').trim()===label){ var box=all[i].parentElement; if(!box)continue;
+      var v=box.nextElementSibling; while(v && !(/font-bold/.test(v.className||''))) v=v.nextElementSibling;
+      if(v && v.textContent!==text) v.textContent=text; } } }
+  function paint(){ if(!_raw)return;
+    if(_raw.be_roas!=null) set('Break Even ROAS',(Math.round(_raw.be_roas*100)/100)+'x');
+    if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa)); }
+  try{ new MutationObserver(function(){ if(_raw) paint(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+})();
+</script>
 """
 
 
@@ -764,6 +788,50 @@ def pf_mp_costos():
     return jsonify({"ok": True, "conectado": True, **mp})
 
 
+def _mp_pagos_lista(email, desde, hasta):
+    """Lista de pagos aprobados de MP del usuario: {ref, amount, net, fee}. None si no hay MP.
+    Sirve para MATCHEAR cada pago con su pedido de Shopify (comisión exacta por venta, sin inflar)."""
+    tk = _mp_tokens().get(email)
+    token = tk.get("access_token") if tk else None
+    if not token:
+        return None
+    # Ventana de MP un poco más ancha que el período: un pago puede aprobarse hasta unos días
+    # después de creado el pedido (transferencias, cuotas). Los que no matcheen se ignoran.
+    try:
+        h2 = (_dt.date.fromisoformat(hasta) + _dt.timedelta(days=4)).isoformat()
+    except Exception:
+        h2 = hasta
+    ini = desde + "T00:00:00.000-03:00"
+    fin = h2 + "T23:59:59.999-03:00"
+    out = []
+    offset = 0
+    try:
+        while True:
+            r = requests.get("https://api.mercadopago.com/v1/payments/search",
+                             headers={"Authorization": "Bearer " + token},
+                             params={"sort": "date_approved", "criteria": "desc",
+                                     "range": "date_approved", "begin_date": ini, "end_date": fin,
+                                     "status": "approved", "offset": offset, "limit": 100}, timeout=30)
+            if r.status_code >= 400:
+                return None if offset == 0 else out
+            data = r.json()
+            res = data.get("results") or []
+            for p in res:
+                ta = float(p.get("transaction_amount") or 0)
+                det = p.get("transaction_details") or {}
+                net = float(det.get("net_received_amount") or 0)
+                fee = (ta - net) if net else sum(float(f.get("amount") or 0)
+                                                 for f in (p.get("fee_details") or []))
+                out.append({"ref": (p.get("external_reference") or "").strip(),
+                            "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2)})
+            offset += 100
+            if offset >= (data.get("paging") or {}).get("total", 0) or not res:
+                break
+    except Exception:
+        return None
+    return out
+
+
 def _shopify_resumen(email, desde, hasta):
     """Arma el 'raw' que espera el dashboard con los pedidos reales de Shopify + costos cargados."""
     tk = _shop_tokens().get(email)
@@ -780,6 +848,16 @@ def _shopify_resumen(email, desde, hasta):
     r["desde"] = desde; r["hasta"] = hasta
     r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
     emap = _envialo_costos(email)   # {nº pedido → costo REAL de envío} (vacío si no conectó Envialo)
+    # MP: pagos reales del período para MATCHEAR cada pedido con su pago (comisión exacta).
+    pagos = _mp_pagos_lista(email, desde, hasta)
+    mp_conectado = pagos is not None
+    by_ref, by_amt = {}, {}
+    for p in (pagos or []):
+        if p["ref"]:
+            by_ref.setdefault(str(p["ref"]), []).append(p)
+        by_amt.setdefault(p["amount"], []).append(p)
+    mp_costo = 0.0
+    mp_match = 0
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
     unidades = ordenes = reemb_cant = envio_real = 0
     prodmap = {}
@@ -796,6 +874,19 @@ def _shopify_resumen(email, desde, hasta):
             envio_monto += _real; envio_real += 1
         else:
             envio_monto += _envio_costo(o)
+        # MP: matcheo este pedido con su pago real (por referencia; fallback por monto exacto).
+        if mp_conectado:
+            pago = None
+            for ref in (str(o.get("id")), str(o.get("order_number")), _num):
+                lst = by_ref.get(ref)
+                if lst:
+                    pago = lst.pop(0); break
+            if pago is None:
+                lst = by_amt.get(round(tot))
+                if lst:
+                    pago = lst.pop(0)
+            if pago is not None:
+                mp_costo += pago["fee"]; mp_match += 1
         if (o.get("financial_status") or "") in ("paid", "partially_paid", "authorized"):
             cobr += tot
         for li in (o.get("line_items") or []):
@@ -811,26 +902,28 @@ def _shopify_resumen(email, desde, hasta):
             reemb_cant += 1
             for tx in (rf.get("transactions") or []):
                 reemb_monto += float(tx.get("amount") or 0)
-    # Costos por venta: MercadoPago = neto REAL que entra (comisión y cuotas ya descontadas
-    # por MP; si no hay MP conectado, cae al % manual). FIJOS: 1% tienda + 3,5% Ingresos Brutos.
-    # Envío: $9.000 domicilio / $6.000 sucursal (promedios) por cada pedido.
+    # Costos por venta. MercadoPago: comisión REAL matcheada pedido-por-pedido (mp_costo, ya
+    # sumado en el loop). Así NO infla con pagos que no son de la tienda. Si no hay MP conectado,
+    # cae al % manual. FIJOS: 1% tienda + 3,5% Ingresos Brutos. Envío: real (Envialo) o promedio.
     iibb_monto = fact * IIBB_PCT / 100.0
     tienda_monto = fact * TIENDA_PCT / 100.0
-    mp = _mp_costos(email, desde, hasta)
-    if mp is not None:
-        mp_costo = mp["costo"]
-        r["mp_pct_1pago"] = mp["pct_1pago"]
-        r["mp_pct_cuotas"] = mp["pct_cuotas"]
-    else:
+    if not mp_conectado:
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
     comision_monto = mp_costo + iibb_monto + tienda_monto
     r["mp_costo_real"] = round(mp_costo, 2)
+    r["mp_match"] = mp_match            # pedidos que matchearon su pago de MP (comisión exacta)
     r["iibb_monto"] = round(iibb_monto, 2)
     r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
     ganancia = fact - costo_prod - comision_monto - envio_monto
+    # Break-even: contribución ANTES de ads (lo que queda para pagar publicidad).
+    _pre_ads = fact - costo_prod - comision_monto - envio_monto
+    r["be_roas"] = round(fact / _pre_ads, 2) if _pre_ads > 0 else 0.0
+    r["breakeven_roas"] = r["be_roas"]
+    r["be_cpa"] = round(_pre_ads / ordenes, 2) if ordenes else 0.0
+    r["breakeven_cpa"] = r["be_cpa"]
     r["ordenes"] = ordenes
     r["ventas_periodo"] = ordenes
     r["unidades"] = unidades
