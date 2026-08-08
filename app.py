@@ -825,7 +825,7 @@ def conectar_meta():
     session["meta_state"] = state
     qs = _url.urlencode({"client_id": cfg["app_id"], "redirect_uri": cfg["redirect_uri"],
                          "state": state, "response_type": "code",
-                         "scope": "ads_read,read_insights,business_management"})
+                         "scope": "ads_read,ads_management,read_insights,business_management,pages_show_list,pages_read_engagement,pages_manage_ads,pages_manage_metadata,instagram_basic,instagram_manage_insights"})
     return redirect("https://www.facebook.com/%s/dialog/oauth?%s" % (META_API, qs), code=302)
 
 
@@ -912,22 +912,76 @@ def meta_elegir_cuenta():
 
 
 def _meta_spend(email, desde, hasta):
-    """Gasto en ads (ARS) de la cuenta elegida, en el período. 0 si no hay cuenta/conexión."""
+    """Gasto en ads (USD/ARS) de la cuenta elegida, en el período. 0 si no hay cuenta/conexión.
+
+    ATAJO DUEÑO: si el email logueado es el dueño (env META_OWNER_EMAIL), usa directo el
+    System User token de METAFY (env META_OWNER_TOKEN) + su cuenta (env META_OWNER_ACT),
+    sin OAuth ni App Review. Solo para tu propio usuario."""
     tk = _meta_tokens().get(email)
-    if not tk or not tk.get("access_token") or not tk.get("cuenta"):
+    token = tk.get("access_token") if tk else None
+    cuenta = tk.get("cuenta") if tk else None
+    es_owner = False
+    owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
+    if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
+        token = os.getenv("META_OWNER_TOKEN")
+        cuenta = os.getenv("META_OWNER_ACT") or cuenta
+        es_owner = True
+    if not token or not cuenta:
         return 0.0
-    acc = str(tk["cuenta"]).replace("act_", "")
+    acc = str(cuenta).replace("act_", "")
     try:
         r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
-                         params={"access_token": tk["access_token"], "fields": "spend",
+                         params={"access_token": token, "fields": "spend,account_currency",
                                  "time_range": _json.dumps({"since": desde, "until": hasta}),
                                  "level": "account"}, timeout=30)
         data = r.json().get("data") or []
         if data:
-            return float(data[0].get("spend") or 0)
+            spend = float(data[0].get("spend") or 0)
+            moneda = (data[0].get("account_currency") or "").upper()
+            # Si la cuenta factura en USD y la tienda es en pesos, convierto con el dólar en vivo
+            # (mismo criterio que METAFY: USDC/ARS de criptoya). Para tu usuario (owner) o cualquier
+            # cuenta USD. Se puede fijar con la env DOLAR_ARS (número, 'blue' o 'cripto').
+            if moneda == "USD" or es_owner:
+                spend *= _dolar_ars_vivo()
+            return spend
     except Exception:
         pass
     return 0.0
+
+
+_dolar_cache = {"ts": 0, "val": 0.0}
+
+
+def _dolar_ars_vivo() -> float:
+    """USD→ARS en vivo (USDC/ARS de criptoya, ask de Ripio ≈ lo que se paga en ads), cache 10 min.
+    Config con env DOLAR_ARS: número fijo (ej 1500), 'blue', o 'cripto'/'arq' (default)."""
+    import time as _t
+    c = _dolar_cache
+    if c["val"] and (_t.time() - c["ts"] < 600):
+        return c["val"]
+    cfg = (os.getenv("DOLAR_ARS") or "cripto").strip().lower()
+    try:
+        return float(cfg)                    # valor fijo si pusieron un número
+    except ValueError:
+        pass
+    val = 0.0
+    try:
+        if cfg == "blue":
+            val = float(requests.get("https://dolarapi.com/v1/dolares/blue", timeout=10).json().get("venta") or 0)
+        else:
+            j = requests.get("https://criptoya.com/api/usdc/ars/1", timeout=10).json()
+            val = float((j.get("ripioexchange") or {}).get("ask") or 0)
+            if not val:
+                asks = [float(v.get("ask") or 0) for v in j.values() if isinstance(v, dict) and v.get("ask")]
+                val = sum(asks) / len(asks) if asks else 0.0
+        if not val:
+            val = float(requests.get("https://dolarapi.com/v1/dolares/cripto", timeout=10).json().get("venta") or 0)
+    except Exception:
+        val = 0.0
+    if not val or val < 500:                 # API caída → último bueno o piso sano (nunca 1)
+        return c["val"] or 1000.0
+    c.update({"ts": _t.time(), "val": val})
+    return val
 
 
 @app.get("/desconectar-meta")
