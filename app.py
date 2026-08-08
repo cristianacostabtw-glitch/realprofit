@@ -917,6 +917,7 @@ def _meta_spend(email, desde, hasta):
     ATAJO DUEÑO: si el email logueado es el dueño (env META_OWNER_EMAIL), usa directo el
     System User token de METAFY (env META_OWNER_TOKEN) + su cuenta (env META_OWNER_ACT),
     sin OAuth ni App Review. Solo para tu propio usuario."""
+    import os
     tk = _meta_tokens().get(email)
     token = tk.get("access_token") if tk else None
     cuenta = tk.get("cuenta") if tk else None
@@ -955,7 +956,7 @@ _dolar_cache = {"ts": 0, "val": 0.0}
 def _dolar_ars_vivo() -> float:
     """USD→ARS en vivo (USDC/ARS de criptoya, ask de Ripio ≈ lo que se paga en ads), cache 10 min.
     Config con env DOLAR_ARS: número fijo (ej 1500), 'blue', o 'cripto'/'arq' (default)."""
-    import time as _t
+    import os, time as _t
     c = _dolar_cache
     if c["val"] and (_t.time() - c["ts"] < 600):
         return c["val"]
