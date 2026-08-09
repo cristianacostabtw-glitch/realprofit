@@ -651,13 +651,14 @@ _SOLO_DASH = r"""
         +'<div style=\"margin-top:14px;color:#93a3b8;font-size:12.5px;line-height:1.9\">🕐 '+fechaTxt(o.fecha)+'<br>👤 '+esc(o.cliente)+' <span style=\"color:#5b6b82\">'+esc(o.email)+'</span><br>💳 '+esc(o.medio)+'</div>'
         +'<div style=\"margin-top:14px;background:#0b111b;border:1px solid #1a2636;border-radius:12px;padding:2px 14px 12px\"><div style=\"color:#7a8aa0;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding-top:10px\">Productos · '+(o.items||[]).length+' item'+((o.items||[]).length===1?'':'s')+'</div>'+items+'</div>'
         +'<div style=\"margin-top:14px;background:#0b111b;border:1px solid #1a2636;border-radius:12px;padding:2px 14px 12px\"><div style=\"color:#7a8aa0;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding-top:10px\">Resumen financiero</div>'
-        +fila('Total',fmt(o.total))
-        +(o.descuento?fila('Descuento','-'+fmt(o.descuento),true):'')
+        +fila('Total cobrado',fmt(o.total))
         +(o.fee_mp?fila('Comisión de pago · MercadoPago','-'+fmt(o.fee_mp),true):'')
         +(o.fee_cuotas?fila('Comisión de cuotas ('+o.cuotas+'x)','-'+fmt(o.fee_cuotas),true):'')
         +fila('Fee tienda (1%)','-'+fmt(o.fee_tienda),true)
+        +fila('IIBB (3,5%)','-'+fmt(o.iibb),true)
         +(o.costo_prod?fila('Costo de productos','-'+fmt(o.costo_prod),true):fila('Costo de productos','cargá en Productos'))
-        +fila('Neto',fmt(o.neto),false,true)+'</div>';
+        +fila('Envío'+(o.envio_real?'':' (aprox.)'),'-'+fmt(o.envio),true)
+        +fila('Neto real',fmt(o.neto),false,true)+'</div>';
       ov.innerHTML='<div style=\"width:100%;max-width:440px;max-height:88vh;overflow:auto;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:18px;box-shadow:0 24px 60px rgba(0,0,0,.6)\">'+body+'</div>';
       ov.style.display='flex';
   }
@@ -1108,7 +1109,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-h-perf-cache"})
+    return jsonify({"ok": True, "v": "2026-08-09-i-neto-real-modal"})
 
 
 @app.get("/pf-diag")
@@ -1215,7 +1216,7 @@ def pf_orden():
                          params={"name": "#" + num, "status": "any", "limit": 1,
                                  "fields": "id,order_number,name,created_at,financial_status,total_price,"
                                            "current_total_price,total_discounts,line_items,customer,"
-                                           "contact_email,gateway,payment_gateway_names"}, timeout=25)
+                                           "contact_email,gateway,payment_gateway_names,shipping_lines,shipping_address"}, timeout=25)
         orders = (r.json() or {}).get("orders") or []
         o = orders[0] if orders else None
     except Exception:
@@ -1250,7 +1251,14 @@ def pf_orden():
     fee_cuotas = pago["fee_cuotas"] if pago else 0.0
     inst = pago["inst"] if pago else 1
     tienda = tot * TIENDA_PCT / 100.0
-    neto = pago["net"] if pago else round(tot - fee_mp - fee_cuotas - tienda, 2)
+    iibb = tot * IIBB_PCT / 100.0                       # Ingresos Brutos (3,5%)
+    # Envío: costo REAL de Envialo si el pedido está ahí; si no, promedio domicilio/sucursal.
+    _real_env = _envialo_costos(email).get(num)
+    envio = _real_env if _real_env is not None else _envio_costo(o)
+    # MP ya descuenta sus comisiones en pago["net"]; si no hay pago, lo estimamos.
+    net_mp = pago["net"] if pago else round(tot - fee_mp - fee_cuotas, 2)
+    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto y envío.
+    neto = net_mp - tienda - iibb - costo_prod - envio
     cust = o.get("customer") or {}
     medio = "Mercado Pago" if pago else (", ".join(o.get("payment_gateway_names") or []) or o.get("gateway") or "—")
     return jsonify({"ok": True, "orden": {
@@ -1261,7 +1269,9 @@ def pf_orden():
         "medio": medio, "items": items,
         "total": round(tot, 2), "descuento": round(desc, 2),
         "fee_mp": round(fee_mp, 2), "fee_cuotas": round(fee_cuotas, 2), "cuotas": inst,
-        "fee_tienda": round(tienda, 2), "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
+        "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2),
+        "envio_real": _real_env is not None,
+        "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
 
 
 def _mp_pagos_lista(email, desde, hasta):
