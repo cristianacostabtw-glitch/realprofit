@@ -530,10 +530,11 @@ _SOLO_DASH = r"""
     if(_raw.be_roas!=null) set('Break Even ROAS',(Math.round(_raw.be_roas*100)/100)+'x');
     if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa));
     // Sección COSTOS: llenar las tarjetas que salen en $0 con los valores reales.
-    if(_raw.comision!=null) set('COMISIONES', money(_raw.comision));
-    if(_raw.envio_monto!=null){ set('COSTO ENVÍOS', money(_raw.envio_monto)); set('COSTO ENVIOS', money(_raw.envio_monto)); }
-    // Sacar la tarjeta LOGÍSTICA (no la usamos).
-    ocultarCard('LOGÍSTICA'); ocultarCard('LOGISTICA'); }
+    // OJO: el texto guardado está en minúscula (el CSS lo pone en mayúscula).
+    if(_raw.comision!=null) set('Comisiones', money(_raw.comision));
+    if(_raw.envio_monto!=null) set('Costo envíos', money(_raw.envio_monto));
+    // Sacar la tarjeta Logística (no la usamos).
+    ocultarCard('Logística'); }
   function ocultarCard(label){ var sp=document.querySelectorAll('span');
     for(var i=0;i<sp.length;i++){ if((sp[i].textContent||'').trim()===label){
       var card=sp[i]; for(var k=0;k<9 && card;k++){ card=card.parentElement; if(card && /rounded/.test(card.className||'')) break; }
