@@ -531,33 +531,25 @@ _SOLO_DASH = r"""
     if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa));
     try{ costos4(); }catch(e){} }
   function cardDe(label){ var sp=document.querySelectorAll('span');
-    for(var i=0;i<sp.length;i++){ if((sp[i].textContent||'').trim()===label){
-      var card=sp[i]; for(var k=0;k<9 && card;k++){ card=card.parentElement; if(card && /rounded/.test(card.className||'')) break; }
-      return (card && /rounded/.test(card.className||'')) ? card : null; } }
+    for(var i=0;i<sp.length;i++){ var s=sp[i], cn=s.className||'';
+      // SOLO etiquetas de tarjeta (uppercase + tracking) → evita el sidebar y otros textos.
+      if((s.textContent||'').trim()===label && /uppercase/.test(cn) && /tracking/.test(cn)){
+        var card=s; for(var k=0;k<9 && card;k++){ card=card.parentElement; if(card && /rounded/.test(card.className||'')) break; }
+        return (card && /rounded/.test(card.className||'')) ? card : null; } }
     return null; }
-  function ocultarCard(label){ var c=cardDe(label); if(c && c.style.display!=='none') c.style.display='none'; }
+  function cardByAny(labels){ for(var i=0;i<labels.length;i++){ var c=cardDe(labels[i]); if(c) return c; } return null; }
   function costos4(){ if(!_raw)return;
-    // NO inyecto tarjetas (rompe el layout). Uso las 4 que YA existen y les cambio texto/valor.
+    // SOLO la sección COSTOS: busco cada tarjeta por su etiqueta propia (nunca toca Finanzas).
     var viejo=document.getElementById('rp-costos4'); if(viejo) viejo.remove();
-    var base=cardDe('Costo producto')||cardDe('Productos'); if(!base) return;
-    // Subo niveles hasta el contenedor que realmente tiene las 4 tarjetas (cada card va envuelta).
-    var cont=base.parentElement, cards=[];
-    for(var up=0; up<5 && cont; up++){
-      cards=[];
-      for(var i=0;i<cont.children.length;i++){ var k=cont.children[i];
-        var c=/rounded-2xl/.test(k.className||'')?k:(k.querySelector?k.querySelector('[class*=\"rounded-2xl\"]'):null);
-        if(c){ if(c.style.display==='none') c.style.display=''; cards.push(c); } }
-      if(cards.length>=4) break;
-      cont=cont.parentElement;
-    }
-    if(cards.length<4) return;
-    cards=cards.slice(0,4);
     var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);
-    var C=[['Productos',_raw.costo_prod,'Costo de los productos vendidos'],
-           ['Envíos',_raw.envio_monto,'Lo que pagás de envío'],
-           ['IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)'],
-           ['Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']];
-    for(var j=0;j<4;j++) setCard(cards[j], C[j][0], money(C[j][1]||0), C[j][2]); }
+    var slots=[
+      [['Costo producto','Productos'],'Productos',_raw.costo_prod,'Costo de los productos vendidos'],
+      [['Comisiones','Envíos'],'Envíos',_raw.envio_monto,'Lo que pagás de envío'],
+      [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)'],
+      [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
+    ];
+    for(var s=0;s<slots.length;s++){ var card=cardByAny(slots[s][0]);
+      if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } } }
   function setCard(card,label,val,sub){
     var sps=card.querySelectorAll('span'), lab=null;
     for(var i=0;i<sps.length;i++){ var cn=sps[i].className||''; if(/uppercase/.test(cn)&&/tracking/.test(cn)){ lab=sps[i]; break; } }
