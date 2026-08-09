@@ -528,8 +528,7 @@ _SOLO_DASH = r"""
       if(v && v.textContent!==text) v.textContent=text; } } }
   function paint(){ if(!_raw)return;
     try{ costos4(); }catch(e){}
-    try{ metricas(); }catch(e){}
-    try{ hideFinanzas(); }catch(e){} }
+    try{ metricas(); }catch(e){} }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
   // La grilla es PLANA: headers (Finanzas/Publicidad/Costos) son divs col-span-full y las tarjetas son hermanas.
@@ -554,10 +553,13 @@ _SOLO_DASH = r"""
              ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     for(var j=0;j<cards.length && j<seq.length;j++) setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); }
-  function hideFinanzas(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='';
-    for(var i=0;i<kids.length;i++){ var el=kids[i];
-      if(esHeader(el)) sec=el.textContent||'';
-      var tgt = /Finanzas/.test(sec)?'none':'';
+  // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
+  // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
+  function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
+    for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
+      if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
+      if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
+      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>8)?'none':''; }  // más de 8 (Reembolsos) → fuera
       if(el.style.display!==tgt) el.style.display=tgt; } }
   function cardDe(label){ var sp=document.querySelectorAll('span');
     for(var i=0;i<sp.length;i++){ var s=sp[i], cn=s.className||'';
@@ -587,7 +589,9 @@ _SOLO_DASH = r"""
     for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ v=dvs[d]; break; } }
     if(v && v.textContent!==val) v.textContent=val;
     var ps=card.querySelectorAll('p'); if(ps.length){ var p=ps[ps.length-1]; if(p.textContent!==sub) p.textContent=sub; } }
-  try{ new MutationObserver(function(){ if(_raw) paint(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  function tick(){ try{ estructura(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  try{ new MutationObserver(tick).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  [0,120,300,600,1200,2500].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
 })();
 </script>
 """
