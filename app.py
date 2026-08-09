@@ -679,9 +679,32 @@ _SOLO_DASH = r"""
     document.getElementById('rp-vt-csv').onclick=vtCSV;
     cargarVentas();
   }
-  function tick(){ try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
-  try{ new MutationObserver(tick).observe(document.body,{childList:true,subtree:true}); }catch(e){}
-  [0,120,300,600,1200,2500].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
+  // Layout FIJO: KPI (Ventas/Facturación/Ticket/Ganancia) arriba, después Resumen (Publicidad+Costos)
+  // y Últimas ventas. Escondo gráfico, Recomendación y Riesgos. Uso CSS 'order' (no toca el DOM → no pelea con React).
+  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; if(e.childElementCount===0 && (e.textContent||'').trim()===t) return e; } return null; }
+  function layoutFijo(){
+    var rt=leafTxt('Resumen del período'), ut=leafTxt('Últimas ventas'); if(!rt||!ut) return;
+    var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
+    var cont=ut; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement; if(!cont) return;
+    var kids=cont.children;
+    for(var i=0;i<kids.length;i++){ var el=kids[i], t=el.textContent||'', ord=90, hide=false;
+      if(/Facturaci/.test(t) && /Ganancia/.test(t) && /Ticket/.test(t)) ord=1;              // fila KPI
+      else if(t.indexOf('Resumen del per')>=0) ord=2;                                        // Publicidad + Costos
+      else if(t.indexOf('Últimas ventas')>=0) ord=3;                                         // tabla
+      else if(el.querySelector && el.querySelector('[class*=\"rounded\"]')) hide=true;       // gráfico / Recomendación / Riesgos
+      if(el.style.order!==String(ord)) el.style.order=ord;
+      var d=hide?'none':''; if(el.style.display!==d) el.style.display=d; }
+    if(getComputedStyle(cont).display==='block') cont.style.display='flex', cont.style.flexDirection='column';
+  }
+  // Mientras arrastrás para reordenar ("Mover"), NO re-aplico nada (sino cancelo el drag).
+  var _busy=false, _bt=null;
+  document.addEventListener('pointerdown', function(){ _busy=true; }, true);
+  document.addEventListener('pointerup', function(){ clearTimeout(_bt); _bt=setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, 500); }, true);
+  var _th=null;
+  function tick(){ if(_busy) return; try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 120); }   // throttle: no en cada mutación
+  try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
 })();
 </script>
 """
