@@ -532,22 +532,26 @@ _SOLO_DASH = r"""
     try{ fixFacturacion(); }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
-  function fixFacturacion(){ if(!_raw) return;
-    var real=_raw.tot_facturado||_raw.facturado||0;
-    if(!real && _raw.iibb_monto) real=Math.round(_raw.iibb_monto*100/3.5);   // último recurso: derivar de IIBB (3,5%)
-    if(!real) return;
-    var t=fmt(real);
-    // Busco el label del KPI 'Facturación' VISIBLE (ignoro la pestaña oculta del gráfico killeado, que también
-    // dice 'Facturación'). Debe ser corto, terminar en 'Facturación', estar visible, y su tarjeta tener un monto.
+  // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
+  // gráfico killeado (que también dice 'Facturación'). Es el scan caro (lee offsetParent) → se cachea.
+  function _findFactEl(){
     var all=document.querySelectorAll('span,p,div');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>34 || tx.slice(-11)!=='Facturación') continue;
-      if(e.offsetParent===null) continue;                                   // saltear ocultos (gráfico, etc.)
+      if(e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
       var dvs=card.querySelectorAll('span,div');
       for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
-        if(/^\$\s?-?[\d.,]+$/.test(vt)){ if(dvs[q].textContent!==t) dvs[q].textContent=t; return; } } } } }
+        if(/^\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
+    return null; }
+  var _factEl=null;
+  function fixFacturacion(){ if(!_raw) return;
+    var real=_raw.tot_facturado||_raw.facturado||0;
+    if(!real && _raw.iibb_monto) real=Math.round(_raw.iibb_monto*100/3.5);   // último recurso: derivar de IIBB (3,5%)
+    if(!real) return;
+    if(!_factEl || !_factEl.isConnected) _factEl=_findFactEl();              // scan caro SOLO si hace falta
+    if(_factEl){ var t=fmt(real); if(_factEl.textContent!==t) _factEl.textContent=t; } }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
@@ -737,18 +741,20 @@ _SOLO_DASH = r"""
   document.addEventListener('pointerdown', function(){ _busy=true; }, true);
   document.addEventListener('pointerup', function(){ clearTimeout(_bt); _bt=setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, 500); }, true);
   var _th=null;
-  // Saca el chip "Mover / 👁" de arriba (el layout es fijo, no se reordena → ese control confunde).
-  function sacarMover(){ var all=document.querySelectorAll('button,div,span,a');
+  // Saca el chip "Mover / 👁" de arriba (el layout es fijo, no se reordena → ese control confunde). Una sola vez.
+  var _movDone=false;
+  function sacarMover(){ if(_movDone) return; var all=document.querySelectorAll('button,div,span,a');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx==='Mover'){ var box=e; for(var k=0;k<4&&box;k++){ if(box.parentElement){ var pt=(box.parentElement.textContent||'').replace(/\s+/g,' ').trim(); if(pt.length>14) break; box=box.parentElement; } else break; }
-        if(box&&box.style.display!=='none') box.style.display='none'; } } }
+        if(box&&box.style.display!=='none') box.style.display='none'; _movDone=true; } } }
   // Mata el gráfico "Evolución" (muestra data demo falsa) — INDEPENDIENTE del layoutFijo, por si el pf.html
   // de producción difiere y layoutFijo no llega a esconderlo. Busca la tarjeta que contiene "Evolución".
-  function matarGrafico(){ var t=leafTxt('Evolución'); if(!t) return;
+  var _grafDone=false;
+  function matarGrafico(){ if(_grafDone) return; var t=leafTxt('Evolución'); if(!t) return;
     var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
-    if(c&&/rounded/.test(c.className||'')&&c.style.display!=='none') c.style.display='none'; }
+    if(c&&/rounded/.test(c.className||'')){ if(c.style.display!=='none') c.style.display='none'; _grafDone=true; } }
   function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
-  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 120); }   // throttle: no en cada mutación
+  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
@@ -1102,7 +1108,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-g-fixfact-visible"})
+    return jsonify({"ok": True, "v": "2026-08-09-h-perf-cache"})
 
 
 @app.get("/pf-diag")
