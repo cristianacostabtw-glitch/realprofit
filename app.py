@@ -723,7 +723,12 @@ _SOLO_DASH = r"""
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx==='Mover'){ var box=e; for(var k=0;k<4&&box;k++){ if(box.parentElement){ var pt=(box.parentElement.textContent||'').replace(/\s+/g,' ').trim(); if(pt.length>14) break; box=box.parentElement; } else break; }
         if(box&&box.style.display!=='none') box.style.display='none'; } } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  // Mata el gráfico "Evolución" (muestra data demo falsa) — INDEPENDIENTE del layoutFijo, por si el pf.html
+  // de producción difiere y layoutFijo no llega a esconderlo. Busca la tarjeta que contiene "Evolución".
+  function matarGrafico(){ var t=leafTxt('Evolución'); if(!t) return;
+    var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
+    if(c&&/rounded/.test(c.className||'')&&c.style.display!=='none') c.style.display='none'; }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 120); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -1077,7 +1082,58 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-c-pendientes-modal-mover"})
+    return jsonify({"ok": True, "v": "2026-08-09-d-grafico-diag"})
+
+
+@app.get("/pf-diag")
+def pf_diag():
+    """Diagnóstico (logueado): por qué la facturación puede dar 0. Muestra el desglose de estados
+    de las órdenes y lo que calcula el resumen, para el período elegido (por defecto últimos 7 días)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "motivo": "sin login"})
+    try:
+        dias = max(1, min(90, int(request.args.get("dias") or 7)))
+    except Exception:
+        dias = 7
+    hasta = _hoy()
+    desde = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=dias - 1)).isoformat()
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return jsonify({"ok": True, "shopify_conectado": False,
+                        "nota": "No hay tienda Shopify conectada para este usuario → facturación 0."})
+    try:
+        orders = _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "shopify", "detalle": str(e)[:120]})
+    orders = [o for o in orders if not o.get("cancelled_at")]
+    PAG = ("paid", "partially_paid", "refunded", "partially_refunded")
+    por_estado, fact_pag, fact_total, n_pag = {}, 0.0, 0.0, 0
+    for o in orders:
+        st = (o.get("financial_status") or "sin_estado").lower()
+        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        por_estado[st] = por_estado.get(st, 0) + 1
+        fact_total += tot
+        if st in PAG:
+            fact_pag += tot; n_pag += 1
+    blob = _shopify_resumen(email, desde, hasta) or {}
+    raw = blob.get("raw", {})
+    return jsonify({
+        "ok": True, "shopify_conectado": True, "tienda": tk.get("shop"),
+        "periodo": {"desde": desde, "hasta": hasta, "dias": dias},
+        "ordenes_totales_no_canceladas": len(orders),
+        "ordenes_por_estado": por_estado,
+        "ordenes_PAGADAS": n_pag,
+        "facturacion_TODAS": round(fact_total, 2),
+        "facturacion_SOLO_PAGADAS": round(fact_pag, 2),
+        "resumen_calculado": {
+            "tot_facturado": raw.get("tot_facturado"),
+            "ordenes": raw.get("ordenes"),
+            "ticket": raw.get("ticket"),
+            "ganancia": raw.get("ganancia"),
+        },
+        "explica": "Si 'ordenes_por_estado' tiene casi todo en 'pending' → por eso facturación baja/0 (no cuentan hasta pagarse)."
+    })
 
 
 @app.get("/pf-ventas")
