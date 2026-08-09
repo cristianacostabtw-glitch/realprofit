@@ -594,7 +594,7 @@ _SOLO_DASH = r"""
   function fmt(n){ try{ return '$'+Math.round(n||0).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n||0); } }
   function fechaTxt(f){ try{ var d=new Date(f); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return f||''; } }
   window.cerrarOrden=function(){ var ov=document.getElementById('rp-orden-ov'); if(ov) ov.style.display='none'; };
-  function abrirOrden(num){
+  window.abrirOrden=function(num){
     fetch('/pf-orden?num='+encodeURIComponent(num)).then(function(r){return r.json();}).then(function(j){
       if(!j||!j.ok||!j.orden) return; var o=j.orden;
       var items=(o.items||[]).map(function(it){
@@ -621,12 +621,65 @@ _SOLO_DASH = r"""
       ov.innerHTML='<div style=\"width:100%;max-width:440px;max-height:88vh;overflow:auto;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:18px;box-shadow:0 24px 60px rgba(0,0,0,.6)\">'+body+'</div>';
       ov.style.display='flex';
     }).catch(function(){}); }
-  // Delegación: al tocar una fila de venta (tiene 'Shopify' + '$'), abro su detalle.
-  document.addEventListener('click', function(ev){ var node=ev.target;
-    for(var k=0;k<12 && node;k++){ if(node.children && node.children.length>=4 && node.children.length<=9){
-      var t=(node.textContent||''); if(/Shopify/.test(t) && /\$/.test(t)){ var m=t.match(/(\d{1,7})/); if(m){ abrirOrden(m[1]); return; } } }
-      node=node.parentElement; } }, true);
-  function tick(){ try{ estructura(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  // ===== Tabla "Últimas ventas" propia (la del dashboard es placeholder sin cablear) =====
+  var _vt={dias:7,per:10,page:1,data:[],loading:false};
+  function vtFecha(iso){ try{ var d=new Date(iso); return d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})+', '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
+  function cargarVentas(){ _vt.loading=true; renderVentas();
+    fetch('/pf-ventas?dias='+_vt.dias).then(function(r){return r.json();}).then(function(j){ _vt.data=(j&&j.ventas)||[]; _vt.loading=false; _vt.page=1; renderVentas(); }).catch(function(){ _vt.loading=false; _vt.data=[]; renderVentas(); }); }
+  function renderVentas(){ var tb=document.getElementById('rp-vt-body'); if(!tb) return;
+    var all=_vt.data, tot=all.length, pages=Math.max(1,Math.ceil(tot/_vt.per));
+    if(_vt.page>pages) _vt.page=pages; var ini=(_vt.page-1)*_vt.per, rows=all.slice(ini,ini+_vt.per);
+    var tdb='padding:13px 10px;border-bottom:1px solid #131e2c;font-size:13px';
+    if(_vt.loading) tb.innerHTML='<tr><td colspan=\"7\" style=\"color:#5b6b82;padding:20px 10px\">Cargando…</td></tr>';
+    else if(!rows.length) tb.innerHTML='<tr><td colspan=\"7\" style=\"color:#5b6b82;padding:20px 10px\">Sin ventas en el período</td></tr>';
+    else tb.innerHTML=rows.map(function(v){ var pend=(v.estado||'').toLowerCase().indexOf('pend')>=0;
+      return '<tr style=\"cursor:pointer\" onmouseover=\"this.style.background=&#39;#0f1826&#39;\" onmouseout=\"this.style.background=&#39;&#39;\" onclick=\"abrirOrden(&#39;'+v.num+'&#39;)\">'
+        +'<td style=\"'+tdb+';color:#cbd5e1;font-weight:700\">#'+esc(v.num)+'</td>'
+        +'<td style=\"'+tdb+'\"><span style=\"background:#0d1b30;border:1px solid #1c3350;color:#9cc7f5;font-size:11.5px;font-weight:600;border-radius:16px;padding:3px 9px\">🛍️ '+esc(v.origen)+'</span></td>'
+        +'<td style=\"'+tdb+'\"><span style=\"background:'+(pend?'#241a0e':'#0e2a1c')+';border:1px solid '+(pend?'#4a3a1a':'#17492f')+';color:'+(pend?'#f0b429':'#34d399')+';font-size:11px;font-weight:700;border-radius:14px;padding:2px 9px\">'+esc(v.estado)+'</span></td>'
+        +'<td style=\"'+tdb+';color:#93a3b8\">'+vtFecha(v.fecha)+'</td>'
+        +'<td style=\"'+tdb+';text-align:right\">'+fmt(v.total)+'</td>'
+        +'<td style=\"'+tdb+';text-align:right;color:#34d399;font-weight:700\">'+fmt(v.neto)+'</td>'
+        +'<td style=\"'+tdb+';text-align:right;color:#5aa2f5;font-size:12.5px\">ver ›</td></tr>'; }).join('');
+    var cnt=document.getElementById('rp-vt-cnt'); if(cnt) cnt.textContent= tot? ((ini+1)+'–'+Math.min(ini+_vt.per,tot)+' de '+tot+' órdenes') : '0 órdenes';
+    var pgn=document.getElementById('rp-vt-pgn'); if(pgn) pgn.textContent=_vt.page+' / '+pages;
+    var db=document.querySelectorAll('#rp-vt-dias button'); for(var i=0;i<db.length;i++){ var on=(+db[i].getAttribute('data-d')===_vt.dias); db[i].style.background=on?'#5aa2f5':'transparent'; db[i].style.color=on?'#04121f':'#93a3b8'; }
+    var pb=document.querySelectorAll('#rp-vt-pp button'); for(var j=0;j<pb.length;j++){ var o2=(+pb[j].getAttribute('data-n')===_vt.per); pb[j].style.background=o2?'#5aa2f5':'#0b1220'; pb[j].style.color=o2?'#04121f':'#93a3b8'; pb[j].style.borderColor=o2?'#5aa2f5':'#1e2b3d'; } }
+  function vtCSV(){ var rows=[['N','Origen','Estado','Fecha','Total','Neto']].concat(_vt.data.map(function(v){return [v.num,v.origen,v.estado,v.fecha,v.total,v.neto];}));
+    var csv=rows.map(function(r){return r.join(',');}).join('\n'); var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='ventas.csv'; a.click(); }
+  function tablaVentas(){
+    var head=null, all=document.querySelectorAll('span,h2,h3,div,p');
+    for(var i=0;i<all.length;i++){ var el=all[i]; if(el.childElementCount===0 && (el.textContent||'').trim()==='Últimas ventas'){ head=el; break; } }
+    var mine=document.getElementById('rp-ventas-panel');
+    if(mine){ if(head){ var pp=head; for(var k=0;k<10&&pp;k++){ pp=pp.parentElement; if(pp&&/rounded-2xl|rounded-xl/.test(pp.className||'')){ if(pp.style.display!=='none')pp.style.display='none'; break; } } } return; }
+    if(!head) return;
+    var panel=head; for(var k2=0;k2<10&&panel;k2++){ panel=panel.parentElement; if(panel&&/rounded-2xl|rounded-xl/.test(panel.className||'')) break; }
+    if(!panel||!/rounded/.test(panel.className||'')) return;
+    panel.style.display='none';
+    var m=document.createElement('div'); m.id='rp-ventas-panel'; m.style.cssText='background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:18px';
+    var TH='color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:12px 10px;border-bottom:1px solid #1e2b3d';
+    m.innerHTML='<div style=\"display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px\">'
+      +'<div style=\"display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px;color:#e7edf5\"><span style=\"width:26px;height:26px;border-radius:8px;background:#0d1b30;border:1px solid #1c3350;display:flex;align-items:center;justify-content:center;color:#5aa2f5\">🧾</span>Últimas ventas</div>'
+      +'<div style=\"display:flex;align-items:center;gap:8px;flex-wrap:wrap\"><span id=\"rp-vt-csv\" style=\"color:#93a3b8;font-size:12.5px;cursor:pointer\">⬇ CSV</span>'
+      +'<div id=\"rp-vt-dias\" style=\"display:flex;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden\">'
+      +['7','14','30','60','90'].map(function(d){return '<button data-d=\"'+d+'\" style=\"background:transparent;border:0;color:#93a3b8;padding:7px 12px;font-size:12.5px;font-weight:700;cursor:pointer\">'+d+'d</button>';}).join('')+'</div></div></div>'
+      +'<div style=\"overflow-x:auto\"><table style=\"width:100%;border-collapse:collapse\"><thead><tr>'
+      +'<th style=\"'+TH+';text-align:left\">Nº Venta</th><th style=\"'+TH+';text-align:left\">Origen</th><th style=\"'+TH+';text-align:left\">Estado</th><th style=\"'+TH+';text-align:left\">Fecha</th>'
+      +'<th style=\"'+TH+';text-align:right\">Total</th><th style=\"'+TH+';text-align:right\">Neto</th><th style=\"'+TH+';text-align:right\">Acción</th>'
+      +'</tr></thead><tbody id=\"rp-vt-body\"></tbody></table></div>'
+      +'<div style=\"display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px;color:#93a3b8;font-size:12.5px\"><span id=\"rp-vt-cnt\">—</span>'
+      +'<div style=\"display:flex;gap:16px;align-items:center;flex-wrap:wrap\"><div id=\"rp-vt-pp\" style=\"display:flex;align-items:center;gap:6px\"><span>Por página</span>'
+      +['5','10','25','50'].map(function(n){return '<button data-n=\"'+n+'\" style=\"background:#0b1220;border:1px solid #1e2b3d;color:#93a3b8;border-radius:8px;padding:5px 11px;font-size:12.5px;font-weight:700;cursor:pointer\">'+n+'</button>';}).join('')+'</div>'
+      +'<div style=\"display:flex;align-items:center;gap:8px\"><button id=\"rp-vt-prev\" style=\"background:#0b1220;border:1px solid #1e2b3d;color:#93a3b8;border-radius:8px;padding:5px 11px;cursor:pointer\">‹</button><span id=\"rp-vt-pgn\">1 / 1</span><button id=\"rp-vt-next\" style=\"background:#0b1220;border:1px solid #1e2b3d;color:#93a3b8;border-radius:8px;padding:5px 11px;cursor:pointer\">›</button></div></div></div>';
+    panel.parentElement.insertBefore(m, panel.nextSibling);
+    document.getElementById('rp-vt-dias').addEventListener('click',function(e){ var d=e.target.getAttribute&&e.target.getAttribute('data-d'); if(d){ _vt.dias=+d; cargarVentas(); } });
+    document.getElementById('rp-vt-pp').addEventListener('click',function(e){ var n=e.target.getAttribute&&e.target.getAttribute('data-n'); if(n){ _vt.per=+n; _vt.page=1; renderVentas(); } });
+    document.getElementById('rp-vt-prev').onclick=function(){ if(_vt.page>1){ _vt.page--; renderVentas(); } };
+    document.getElementById('rp-vt-next').onclick=function(){ _vt.page++; renderVentas(); };
+    document.getElementById('rp-vt-csv').onclick=vtCSV;
+    cargarVentas();
+  }
+  function tick(){ try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   try{ new MutationObserver(tick).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,120,300,600,1200,2500].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
 })();
@@ -974,6 +1027,39 @@ def _shop_img(shop, token, product_id):
         pass
     _IMG_CACHE[pid] = url
     return url
+
+
+@app.get("/pf-ventas")
+def pf_ventas():
+    """Órdenes reales de Shopify de los últimos `dias` días para la tabla 'Últimas ventas'.
+    Liviano (sin el fetch pesado de MP): neto exacto se ve en el detalle de cada orden."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "ventas": []})
+    try:
+        dias = max(1, min(90, int(request.args.get("dias") or 7)))
+    except Exception:
+        dias = 7
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return jsonify({"ok": True, "ventas": []})
+    hasta = _hoy()
+    desde = (_dt.date.today() - _dt.timedelta(days=dias - 1)).isoformat()
+    try:
+        orders = _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta)
+    except Exception:
+        return jsonify({"ok": True, "ventas": []})
+    orders = [o for o in orders if not o.get("cancelled_at")]
+    out = []
+    for o in orders:
+        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        out.append({"num": num, "origen": "Shopify",
+                    "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
+                    "fecha": o.get("created_at") or "", "total": round(tot, 2),
+                    "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    return jsonify({"ok": True, "ventas": out[:300]})
 
 
 @app.get("/pf-orden")
