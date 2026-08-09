@@ -532,14 +532,22 @@ _SOLO_DASH = r"""
     try{ fixFacturacion(); }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
-  function fixFacturacion(){ if(!_raw) return; var real=_raw.tot_facturado||_raw.facturado||0; if(!real) return;
-    var lab=leafTxt('Facturación'); if(!lab) return;                     // label del KPI (tiene ícono adelante)
-    var card=lab; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
-    if(!card||!/rounded/.test(card.className||'')) return;
-    var dvs=card.querySelectorAll('span,div'), t=fmt(real);
-    for(var q=0;q<dvs.length;q++){ var cn=dvs[q].className||'';
-      if(/font-bold/.test(cn) && /text-(xl|2xl|3xl)/.test(cn)){        // el número grande de la tarjeta
-        if(dvs[q].textContent!==t) dvs[q].textContent=t; return; } } }
+  function fixFacturacion(){ if(!_raw) return;
+    var real=_raw.tot_facturado||_raw.facturado||0;
+    if(!real && _raw.iibb_monto) real=Math.round(_raw.iibb_monto*100/3.5);   // último recurso: derivar de IIBB (3,5%)
+    if(!real) return;
+    var t=fmt(real);
+    // Busco el label del KPI 'Facturación' VISIBLE (ignoro la pestaña oculta del gráfico killeado, que también
+    // dice 'Facturación'). Debe ser corto, terminar en 'Facturación', estar visible, y su tarjeta tener un monto.
+    var all=document.querySelectorAll('span,p,div');
+    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+      if(tx.length>34 || tx.slice(-11)!=='Facturación') continue;
+      if(e.offsetParent===null) continue;                                   // saltear ocultos (gráfico, etc.)
+      var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
+      if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
+      var dvs=card.querySelectorAll('span,div');
+      for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
+        if(/^\$\s?-?[\d.,]+$/.test(vt)){ if(dvs[q].textContent!==t) dvs[q].textContent=t; return; } } } } }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
@@ -743,6 +751,7 @@ _SOLO_DASH = r"""
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 120); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
+  setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
 })();
 </script>
 """
@@ -1093,7 +1102,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-e-fixfact-pendientes-tabla"})
+    return jsonify({"ok": True, "v": "2026-08-09-g-fixfact-visible"})
 
 
 @app.get("/pf-diag")
