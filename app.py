@@ -589,6 +589,43 @@ _SOLO_DASH = r"""
     for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ v=dvs[d]; break; } }
     if(v && v.textContent!==val) v.textContent=val;
     var ps=card.querySelectorAll('p'); if(ps.length){ var p=ps[ps.length-1]; if(p.textContent!==sub) p.textContent=sub; } }
+  // ===== Modal de detalle de orden (al tocar una fila de "Últimas ventas") =====
+  function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function fmt(n){ try{ return '$'+Math.round(n||0).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n||0); } }
+  function fechaTxt(f){ try{ var d=new Date(f); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return f||''; } }
+  window.cerrarOrden=function(){ var ov=document.getElementById('rp-orden-ov'); if(ov) ov.style.display='none'; };
+  function abrirOrden(num){
+    fetch('/pf-orden?num='+encodeURIComponent(num)).then(function(r){return r.json();}).then(function(j){
+      if(!j||!j.ok||!j.orden) return; var o=j.orden;
+      var items=(o.items||[]).map(function(it){
+        var foto = it.foto ? '<img src=\"'+it.foto+'\" style=\"width:46px;height:46px;border-radius:9px;object-fit:cover;background:#101c2e;border:1px solid #1e2b3d\">' : '<div style=\"width:46px;height:46px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d\"></div>';
+        return '<div style=\"display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #16202e\">'+foto+'<div style=\"flex:1;min-width:0\"><div style=\"color:#e7edf5;font-size:13px;font-weight:600;line-height:1.3\">'+esc(it.nombre)+'</div><div style=\"color:#7a8aa0;font-size:12px;margin-top:2px\">'+fmt(it.precio)+' × '+it.cantidad+'</div></div><div style=\"color:#e7edf5;font-weight:700;font-size:13.5px\">'+fmt(it.precio*it.cantidad)+'</div></div>'; }).join('');
+      function fila(l,v,neg,strong){ return '<div style=\"display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:1px solid #16202e\"><span style=\"color:'+(strong?'#e7edf5':'#93a3b8')+';font-size:13px'+(strong?';font-weight:700':'')+'\">'+l+'</span><span style=\"color:'+(strong?'#34d399':(neg?'#fb7185':'#e7edf5'))+';font-weight:'+(strong?'800':'600')+';font-size:'+(strong?'16px':'13.5px')+'\">'+v+'</span></div>'; }
+      var body='<div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px\">'
+        +'<div style=\"display:flex;align-items:center;gap:11px\"><div style=\"width:38px;height:38px;border-radius:11px;background:#0d1b30;border:1px solid #1c3350;display:flex;align-items:center;justify-content:center;font-size:18px\">🛍️</div>'
+        +'<div><div style=\"color:#f1f5f9;font-weight:800;font-size:15px\">Venta en '+esc(o.origen)+'</div><div style=\"color:#7a8aa0;font-size:12px\">Orden #'+esc(o.num)+'</div></div></div>'
+        +'<div style=\"display:flex;align-items:center;gap:8px\"><span style=\"background:#0e2a1c;border:1px solid #17492f;color:#34d399;font-size:11.5px;font-weight:700;border-radius:20px;padding:3px 11px\">'+esc(o.estado)+'</span>'
+        +'<button onclick=\"cerrarOrden()\" style=\"background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:9px;width:30px;height:30px;cursor:pointer;font-size:14px\">✕</button></div></div>'
+        +'<div style=\"margin-top:14px;color:#93a3b8;font-size:12.5px;line-height:1.9\">🕐 '+fechaTxt(o.fecha)+'<br>👤 '+esc(o.cliente)+' <span style=\"color:#5b6b82\">'+esc(o.email)+'</span><br>💳 '+esc(o.medio)+'</div>'
+        +'<div style=\"margin-top:14px;background:#0b111b;border:1px solid #1a2636;border-radius:12px;padding:2px 14px 12px\"><div style=\"color:#7a8aa0;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding-top:10px\">Productos · '+(o.items||[]).length+' item'+((o.items||[]).length===1?'':'s')+'</div>'+items+'</div>'
+        +'<div style=\"margin-top:14px;background:#0b111b;border:1px solid #1a2636;border-radius:12px;padding:2px 14px 12px\"><div style=\"color:#7a8aa0;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding-top:10px\">Resumen financiero</div>'
+        +fila('Total',fmt(o.total))
+        +(o.descuento?fila('Descuento','-'+fmt(o.descuento),true):'')
+        +(o.fee_mp?fila('Comisión de pago · MercadoPago','-'+fmt(o.fee_mp),true):'')
+        +(o.fee_cuotas?fila('Comisión de cuotas ('+o.cuotas+'x)','-'+fmt(o.fee_cuotas),true):'')
+        +fila('Fee tienda (1%)','-'+fmt(o.fee_tienda),true)
+        +(o.costo_prod?fila('Costo de productos','-'+fmt(o.costo_prod),true):fila('Costo de productos','cargá en Productos'))
+        +fila('Neto',fmt(o.neto),false,true)+'</div>';
+      var ov=document.getElementById('rp-orden-ov');
+      if(!ov){ ov=document.createElement('div'); ov.id='rp-orden-ov'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(3,7,12,.72);display:flex;align-items:center;justify-content:center;padding:20px'; ov.addEventListener('click',function(e){ if(e.target===ov) cerrarOrden(); }); document.body.appendChild(ov); }
+      ov.innerHTML='<div style=\"width:100%;max-width:440px;max-height:88vh;overflow:auto;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:18px;box-shadow:0 24px 60px rgba(0,0,0,.6)\">'+body+'</div>';
+      ov.style.display='flex';
+    }).catch(function(){}); }
+  // Delegación: al tocar una fila de venta (tiene 'Shopify' + '$'), abro su detalle.
+  document.addEventListener('click', function(ev){ var node=ev.target;
+    for(var k=0;k<12 && node;k++){ if(node.children && node.children.length>=4 && node.children.length<=9){
+      var t=(node.textContent||''); if(/Shopify/.test(t) && /\$/.test(t)){ var m=t.match(/(\d{1,7})/); if(m){ abrirOrden(m[1]); return; } } }
+      node=node.parentElement; } }, true);
   function tick(){ try{ estructura(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   try{ new MutationObserver(tick).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,120,300,600,1200,2500].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -914,6 +951,98 @@ def pf_debug_ordenes():
     return jsonify({"ok": True, "shopify": True, "mp_conectado": pagos is not None, "ordenes": out})
 
 
+_IMG_CACHE = {}
+
+
+def _shop_img(shop, token, product_id):
+    """URL de la foto de un producto de Shopify (cacheada). '' si no hay."""
+    pid = str(product_id or "").strip()
+    if not pid:
+        return ""
+    if pid in _IMG_CACHE:
+        return _IMG_CACHE[pid]
+    url = ""
+    try:
+        r = requests.get("https://%s/admin/api/2026-07/products/%s.json" % (shop, pid),
+                         headers={"X-Shopify-Access-Token": token},
+                         params={"fields": "id,image,images"}, timeout=15)
+        if r.status_code == 200:
+            p = (r.json() or {}).get("product") or {}
+            url = ((p.get("image") or {}).get("src")
+                   or ((p.get("images") or [{}])[0] or {}).get("src") or "")
+    except Exception:
+        pass
+    _IMG_CACHE[pid] = url
+    return url
+
+
+@app.get("/pf-orden")
+def pf_orden():
+    """Detalle de UNA orden para el modal 'Últimas ventas': productos (con foto), cliente,
+    medio de pago y desglose financiero real (MP + cuotas + tienda + costo producto + neto)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    num = (request.args.get("num") or "").strip().replace("#", "")
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token") or not num:
+        return jsonify({"ok": False})
+    shop, token = tk.get("shop"), tk.get("access_token")
+    try:
+        r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                         headers={"X-Shopify-Access-Token": token},
+                         params={"name": "#" + num, "status": "any", "limit": 1,
+                                 "fields": "id,order_number,name,created_at,financial_status,total_price,"
+                                           "current_total_price,total_discounts,line_items,customer,"
+                                           "contact_email,gateway,payment_gateway_names"}, timeout=25)
+        orders = (r.json() or {}).get("orders") or []
+        o = orders[0] if orders else None
+    except Exception:
+        o = None
+    if not o:
+        return jsonify({"ok": False, "msg": "no encontrada"})
+    tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+    desc = float(o.get("total_discounts") or 0)
+    costos = (_costos().get(email) or {})
+    items, costo_prod = [], 0.0
+    for li in (o.get("line_items") or []):
+        q = int(li.get("quantity") or 0)
+        pid = str(li.get("product_id") or "")
+        cu = float(costos.get(pid) or 0)
+        costo_prod += cu * q
+        items.append({"nombre": li.get("title") or li.get("name") or "?", "cantidad": q,
+                      "precio": float(li.get("price") or 0), "foto": _shop_img(shop, token, pid)})
+    # MP: matcheo el pago de esta orden por fecha/monto para el desglose real.
+    fecha = str(o.get("created_at") or "")[:10] or _hoy()
+    d0 = fecha; d1 = (_dt.date.fromisoformat(fecha) + _dt.timedelta(days=4)).isoformat() if fecha else _hoy()
+    pagos = _mp_pagos_lista(email, d0, d1) if fecha else None
+    pago = None
+    if pagos:
+        for p in pagos:
+            if p["ref"] in (str(o.get("id")), str(o.get("order_number")), num):
+                pago = p; break
+        if pago is None:
+            for p in pagos:
+                if p["amount"] == round(tot):
+                    pago = p; break
+    fee_mp = pago["fee_mp"] if pago else 0.0
+    fee_cuotas = pago["fee_cuotas"] if pago else 0.0
+    inst = pago["inst"] if pago else 1
+    tienda = tot * TIENDA_PCT / 100.0
+    neto = pago["net"] if pago else round(tot - fee_mp - fee_cuotas - tienda, 2)
+    cust = o.get("customer") or {}
+    medio = "Mercado Pago" if pago else (", ".join(o.get("payment_gateway_names") or []) or o.get("gateway") or "—")
+    return jsonify({"ok": True, "orden": {
+        "num": num, "origen": "Shopify", "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
+        "fecha": o.get("created_at") or "",
+        "cliente": (cust.get("first_name", "") + " " + cust.get("last_name", "")).strip() or (o.get("contact_email") or ""),
+        "email": o.get("contact_email") or cust.get("email") or "",
+        "medio": medio, "items": items,
+        "total": round(tot, 2), "descuento": round(desc, 2),
+        "fee_mp": round(fee_mp, 2), "fee_cuotas": round(fee_cuotas, 2), "cuotas": inst,
+        "fee_tienda": round(tienda, 2), "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
+
+
 def _mp_pagos_lista(email, desde, hasta):
     """Lista de pagos aprobados de MP del usuario: {ref, amount, net, fee}. None si no hay MP.
     Sirve para MATCHEAR cada pago con su pedido de Shopify (comisión exacta por venta, sin inflar)."""
@@ -948,8 +1077,17 @@ def _mp_pagos_lista(email, desde, hasta):
                 net = float(det.get("net_received_amount") or 0)
                 fee = (ta - net) if net else sum(float(f.get("amount") or 0)
                                                  for f in (p.get("fee_details") or []))
+                # desglose para el modal: comisión MP (mercadopago+application) vs cuotas (financing)
+                fd = p.get("fee_details") or []
+                fin = sum(float(f.get("amount") or 0) for f in fd if f.get("type") == "financing_fee")
+                base = sum(float(f.get("amount") or 0) for f in fd if f.get("type") != "financing_fee")
+                if not fd:
+                    base = fee; fin = 0.0
                 out.append({"ref": (p.get("external_reference") or "").strip(),
-                            "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2)})
+                            "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
+                            "inst": int(p.get("installments") or 1),
+                            "fee_mp": round(base, 2), "fee_cuotas": round(fin, 2),
+                            "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
             if offset >= (data.get("paging") or {}).get("total", 0) or not res:
                 break
@@ -1074,6 +1212,62 @@ def _shopify_resumen(email, desde, hasta):
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
             for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
     return {"raw": r, "prod": prod, "ords": []}
+
+
+_ORDS_CACHE = {}
+_ESTADO_TXT = {"paid": "Pagado", "partially_paid": "Parcial", "pending": "Pendiente",
+               "authorized": "Autorizado", "partially_refunded": "Reemb. parcial",
+               "refunded": "Reembolsado", "voided": "Anulado"}
+
+
+def _shopify_ordenes(email, dias=90):
+    """Últimas órdenes REALES de Shopify (últimos `dias` días) para la tabla 'Últimas ventas'.
+    Cada una: {num, origen, estado, fecha, total, neto}. neto = lo real que entró por MP (matcheado)
+    o el total si no matcheó/no es MP. Cache 2 min por usuario."""
+    import time as _t
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return []
+    c = _ORDS_CACHE.get(email)
+    if c and (_t.time() - c[0] < 120):
+        return c[1]
+    hasta = _hoy()
+    desde = (_dt.date.today() - _dt.timedelta(days=dias)).isoformat()
+    try:
+        orders = _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta)
+    except Exception:
+        return []
+    orders = [o for o in orders if not o.get("cancelled_at")]
+    pagos = _mp_pagos_lista(email, desde, hasta)   # para el neto real por pedido
+    by_ref, by_amt = {}, {}
+    for p in (pagos or []):
+        if p["ref"]:
+            by_ref.setdefault(str(p["ref"]), []).append(p)
+        by_amt.setdefault(p["amount"], []).append(p)
+    out = []
+    for o in orders:
+        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        pago = None
+        if pagos is not None:
+            for ref in (str(o.get("id")), str(o.get("order_number")), num):
+                lst = by_ref.get(ref)
+                if lst:
+                    pago = lst.pop(0); break
+            if pago is None:
+                lst = by_amt.get(round(tot))
+                if lst:
+                    pago = lst.pop(0)
+        neto = pago["net"] if pago else tot
+        fs = (o.get("financial_status") or "").lower()
+        out.append({"num": num, "origen": "Shopify",
+                    "estado": _ESTADO_TXT.get(fs, (fs or "—").title()),
+                    "fecha": o.get("created_at") or "",
+                    "total": round(tot, 2), "neto": round(neto, 2)})
+    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    out = out[:200]
+    _ORDS_CACHE[email] = (_t.time(), out)
+    return out
 
 
 # ---------------- Login / Registro ----------------
@@ -1527,6 +1721,11 @@ def pf_periodo():
             r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
             r["tot_ganancia"] = r["ganancia"]
             r["tot_margen"] = r["margen"]
+        # Tabla "Últimas ventas": órdenes reales de los últimos 90 días (para que anden los botones 7d/14d/… y 5/10/25/50).
+        try:
+            blob["ords"] = _shopify_ordenes(email)
+        except Exception:
+            pass
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
