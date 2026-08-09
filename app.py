@@ -528,7 +528,16 @@ _SOLO_DASH = r"""
       if(v && v.textContent!==text) v.textContent=text; } } }
   function paint(){ if(!_raw)return;
     if(_raw.be_roas!=null) set('Break Even ROAS',(Math.round(_raw.be_roas*100)/100)+'x');
-    if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa)); }
+    if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa));
+    // Sección COSTOS: llenar las tarjetas que salen en $0 con los valores reales.
+    if(_raw.comision!=null) set('COMISIONES', money(_raw.comision));
+    if(_raw.envio_monto!=null){ set('COSTO ENVÍOS', money(_raw.envio_monto)); set('COSTO ENVIOS', money(_raw.envio_monto)); }
+    // Sacar la tarjeta LOGÍSTICA (no la usamos).
+    ocultarCard('LOGÍSTICA'); ocultarCard('LOGISTICA'); }
+  function ocultarCard(label){ var sp=document.querySelectorAll('span');
+    for(var i=0;i<sp.length;i++){ if((sp[i].textContent||'').trim()===label){
+      var card=sp[i]; for(var k=0;k<9 && card;k++){ card=card.parentElement; if(card && /rounded/.test(card.className||'')) break; }
+      if(card && card.style.display!=='none') card.style.display='none'; } } }
   try{ new MutationObserver(function(){ if(_raw) paint(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
 })();
 </script>
@@ -786,6 +795,70 @@ def pf_mp_costos():
     if mp is None:
         return jsonify({"ok": True, "conectado": False})
     return jsonify({"ok": True, "conectado": True, **mp})
+
+
+@app.get("/pf-debug-ordenes")
+def pf_debug_ordenes():
+    """Detalle de costos REALES por pedido (últimos N) para verificar el cálculo pedido-por-pedido."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    n = int(request.args.get("n") or 3)
+    desde = request.args.get("desde") or (_dt.date.today() - _dt.timedelta(days=10)).isoformat()
+    hasta = request.args.get("hasta") or _hoy()
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return jsonify({"ok": True, "shopify": False})
+    try:
+        orders = _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta)
+    except Exception:
+        return jsonify({"ok": False, "error": "shopify"})
+    orders = [o for o in orders if not o.get("cancelled_at")]
+    orders.sort(key=lambda o: int(o.get("order_number") or 0), reverse=True)
+    costos = (_costos().get(email) or {})
+    emap = _envialo_costos(email)
+    pagos = _mp_pagos_lista(email, desde, hasta)
+    by_ref, by_amt = {}, {}
+    for p in (pagos or []):
+        if p["ref"]:
+            by_ref.setdefault(str(p["ref"]), []).append(p)
+        by_amt.setdefault(p["amount"], []).append(p)
+    out = []
+    for o in orders[:n]:
+        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
+        cp = sum(float(costos.get(str(li.get("product_id") or "")) or 0) * int(li.get("quantity") or 0)
+                 for li in (o.get("line_items") or []))
+        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        # envío real o promedio
+        env = emap.get(num)
+        env_fuente = "envialo" if env is not None else "promedio"
+        if env is None:
+            env = _envio_costo(o)
+        # match MP
+        pago = None
+        if pagos is not None:
+            for ref in (str(o.get("id")), str(o.get("order_number")), num):
+                lst = by_ref.get(ref)
+                if lst:
+                    pago = lst.pop(0); break
+            if pago is None:
+                lst = by_amt.get(round(tot))
+                if lst:
+                    pago = lst.pop(0)
+        mp_fee = pago["fee"] if pago else 0.0
+        mp_neto = pago["net"] if pago else None
+        iibb = tot * IIBB_PCT / 100.0
+        tienda = tot * TIENDA_PCT / 100.0
+        gan = tot - cp - mp_fee - env - iibb - tienda
+        out.append({"pedido": num, "total": round(tot, 2), "unidades": u,
+                    "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
+                    "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
+                    "mp_matcheo": ("ok" if pago else "SIN MATCH"),
+                    "envio": round(env, 2), "envio_fuente": env_fuente,
+                    "iibb": round(iibb, 2), "tienda": round(tienda, 2),
+                    "ganancia": round(gan, 2)})
+    return jsonify({"ok": True, "shopify": True, "mp_conectado": pagos is not None, "ordenes": out})
 
 
 def _mp_pagos_lista(email, desde, hasta):
