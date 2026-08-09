@@ -600,9 +600,22 @@ _SOLO_DASH = r"""
   function fmt(n){ try{ return '$'+Math.round(n||0).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n||0); } }
   function fechaTxt(f){ try{ var d=new Date(f); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return f||''; } }
   window.cerrarOrden=function(){ var ov=document.getElementById('rp-orden-ov'); if(ov) ov.style.display='none'; };
+  var _ordCache={};   // num -> orden ya traída (reabrir es instantáneo)
+  function _ovBox(){ var ov=document.getElementById('rp-orden-ov');
+    if(!ov){ ov=document.createElement('div'); ov.id='rp-orden-ov'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(3,7,12,.72);display:flex;align-items:center;justify-content:center;padding:20px'; ov.addEventListener('click',function(e){ if(e.target===ov) cerrarOrden(); }); document.body.appendChild(ov); }
+    if(!document.getElementById('rp-spin-css')){ var st=document.createElement('style'); st.id='rp-spin-css'; st.textContent='@keyframes rpspin{to{transform:rotate(360deg)}}'; document.head.appendChild(st); }
+    return ov; }
   window.abrirOrden=function(num){
+    var ov=_ovBox(); ov.setAttribute('data-num',num); ov.style.display='flex';
+    // Abre YA (con spinner) y llena cuando llega la data pesada de Shopify/MP.
+    ov.innerHTML='<div style=\"width:100%;max-width:440px;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:40px 18px;box-shadow:0 24px 60px rgba(0,0,0,.6);text-align:center;color:#93a3b8\"><div style=\"width:30px;height:30px;border:3px solid #1e2b3d;border-top-color:#5aa2f5;border-radius:50%;margin:0 auto 14px;animation:rpspin .7s linear infinite\"></div><div style=\"font-size:13px\">Cargando orden #'+esc(num)+'…</div></div>';
+    if(_ordCache[num]){ _pintarOrden(num,_ordCache[num]); return; }
     fetch('/pf-orden?num='+encodeURIComponent(num)).then(function(r){return r.json();}).then(function(j){
-      if(!j||!j.ok||!j.orden) return; var o=j.orden;
+      if(!j||!j.ok||!j.orden){ var ov2=document.getElementById('rp-orden-ov'); if(ov2&&ov2.getAttribute('data-num')===String(num)) ov2.innerHTML='<div style=\"max-width:420px;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:28px;text-align:center;color:#93a3b8\">No se pudo cargar la orden. <span onclick=\"cerrarOrden()\" style=\"color:#5aa2f5;cursor:pointer\">Cerrar</span></div>'; return; }
+      _ordCache[num]=j.orden; _pintarOrden(num,j.orden);
+    }).catch(function(){ var ov2=document.getElementById('rp-orden-ov'); if(ov2&&ov2.getAttribute('data-num')===String(num)) ov2.innerHTML='<div style=\"max-width:420px;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:28px;text-align:center;color:#93a3b8\">No se pudo cargar la orden. <span onclick=\"cerrarOrden()\" style=\"color:#5aa2f5;cursor:pointer\">Cerrar</span></div>'; }); };
+  function _pintarOrden(num,o){
+      var ov=document.getElementById('rp-orden-ov'); if(!ov||ov.getAttribute('data-num')!==String(num)) return;   // el usuario abrió otra / cerró
       var items=(o.items||[]).map(function(it){
         var foto = it.foto ? '<img src=\"'+it.foto+'\" style=\"width:46px;height:46px;border-radius:9px;object-fit:cover;background:#101c2e;border:1px solid #1e2b3d\">' : '<div style=\"width:46px;height:46px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d\"></div>';
         return '<div style=\"display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #16202e\">'+foto+'<div style=\"flex:1;min-width:0\"><div style=\"color:#e7edf5;font-size:13px;font-weight:600;line-height:1.3\">'+esc(it.nombre)+'</div><div style=\"color:#7a8aa0;font-size:12px;margin-top:2px\">'+fmt(it.precio)+' × '+it.cantidad+'</div></div><div style=\"color:#e7edf5;font-weight:700;font-size:13.5px\">'+fmt(it.precio*it.cantidad)+'</div></div>'; }).join('');
@@ -622,11 +635,9 @@ _SOLO_DASH = r"""
         +fila('Fee tienda (1%)','-'+fmt(o.fee_tienda),true)
         +(o.costo_prod?fila('Costo de productos','-'+fmt(o.costo_prod),true):fila('Costo de productos','cargá en Productos'))
         +fila('Neto',fmt(o.neto),false,true)+'</div>';
-      var ov=document.getElementById('rp-orden-ov');
-      if(!ov){ ov=document.createElement('div'); ov.id='rp-orden-ov'; ov.style.cssText='position:fixed;inset:0;z-index:100000;background:rgba(3,7,12,.72);display:flex;align-items:center;justify-content:center;padding:20px'; ov.addEventListener('click',function(e){ if(e.target===ov) cerrarOrden(); }); document.body.appendChild(ov); }
       ov.innerHTML='<div style=\"width:100%;max-width:440px;max-height:88vh;overflow:auto;background:#0b111b;border:1px solid #1e2b3d;border-radius:18px;padding:18px;box-shadow:0 24px 60px rgba(0,0,0,.6)\">'+body+'</div>';
       ov.style.display='flex';
-    }).catch(function(){}); }
+  }
   // ===== Tabla "Últimas ventas" propia (la del dashboard es placeholder sin cablear) =====
   var _vt={dias:7,per:10,page:1,data:[],loading:false};
   function vtFecha(iso){ try{ var d=new Date(iso); return d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})+', '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
@@ -707,7 +718,12 @@ _SOLO_DASH = r"""
   document.addEventListener('pointerdown', function(){ _busy=true; }, true);
   document.addEventListener('pointerup', function(){ clearTimeout(_bt); _bt=setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, 500); }, true);
   var _th=null;
-  function tick(){ if(_busy) return; try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  // Saca el chip "Mover / 👁" de arriba (el layout es fijo, no se reordena → ese control confunde).
+  function sacarMover(){ var all=document.querySelectorAll('button,div,span,a');
+    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+      if(tx==='Mover'){ var box=e; for(var k=0;k<4&&box;k++){ if(box.parentElement){ var pt=(box.parentElement.textContent||'').replace(/\s+/g,' ').trim(); if(pt.length>14) break; box=box.parentElement; } else break; }
+        if(box&&box.style.display!=='none') box.style.display='none'; } } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 120); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -1058,6 +1074,12 @@ def _shop_img(shop, token, product_id):
     return url
 
 
+@app.get("/pf-version")
+def pf_version():
+    """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
+    return jsonify({"ok": True, "v": "2026-08-09-c-pendientes-modal-mover"})
+
+
 @app.get("/pf-ventas")
 def pf_ventas():
     """Órdenes reales de Shopify de los últimos `dias` días para la tabla 'Últimas ventas'.
@@ -1079,8 +1101,11 @@ def pf_ventas():
     except Exception:
         return jsonify({"ok": True, "ventas": []})
     orders = [o for o in orders if not o.get("cancelled_at")]
+    _PAG = ("paid", "partially_paid", "refunded", "partially_refunded")   # solo ventas ya cobradas
     out = []
     for o in orders:
+        if (o.get("financial_status") or "").lower() not in _PAG:
+            continue
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         out.append({"num": num, "origen": "Shopify",
@@ -1241,8 +1266,14 @@ def _shopify_resumen(email, desde, hasta):
     unidades = ordenes = reemb_cant = envio_real = 0
     prodmap = {}
     ords_list = []
+    # Solo cuentan las órdenes YA COBRADAS. Efectivo/transferencia pendiente, autorizado sin capturar o
+    # 'pending' NO suman (ni facturación, ni órdenes, ni CPA) hasta que se paguen. Al cobrarse pasan a 'paid'
+    # y recién ahí entran. Los reembolsos fueron ventas reales cobradas → siguen contando.
+    PAGADAS = ("paid", "partially_paid", "refunded", "partially_refunded")
     for o in orders:
         if o.get("cancelled_at"):
+            continue
+        if (o.get("financial_status") or "").lower() not in PAGADAS:
             continue
         ordenes += 1
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
