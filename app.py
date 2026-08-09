@@ -527,9 +527,39 @@ _SOLO_DASH = r"""
       var v=box.nextElementSibling; while(v && !(/font-bold/.test(v.className||''))) v=v.nextElementSibling;
       if(v && v.textContent!==text) v.textContent=text; } } }
   function paint(){ if(!_raw)return;
-    if(_raw.be_roas!=null) set('Break Even ROAS',(Math.round(_raw.be_roas*100)/100)+'x');
-    if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa));
-    try{ costos4(); }catch(e){} }
+    try{ costos4(); }catch(e){}
+    try{ metricas(); }catch(e){}
+    try{ hideFinanzas(); }catch(e){} }
+  function num(n){ return (Math.round((n||0)*100)/100); }
+  function setValueOf(card,val){ if(!card)return; var dvs=card.querySelectorAll('div');
+    for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ if(dvs[d].textContent!==val) dvs[d].textContent=val; return; } } }
+  function metricas(){ if(!_raw)return;
+    // Reordeno la fila de métricas: Gasto Ads · Margen · ROAS · Break Even ROAS · CPA · Break Even CPA · Recompras · Facturación Recompra.
+    var ads=money(_raw.publi_ars||0), mg=num(_raw.margen)+'%', ro=num(_raw.roas)+'x', ber=num(_raw.be_roas)+'x',
+        cpa=money(_raw.cpa||0), becpa=money(_raw.be_cpa||0), rec=String(_raw.recompras||0), frec=money(_raw.fact_recompra||0);
+    var inv=cardDe('Inversión Ads');
+    if(inv){ // ESTADO ORIGINAL: agarro las 8 por su etiqueta y las remapeo (una sola vez).
+      var R={a:inv,b:cardDe('ROAS'),c:cardDe('Break Even ROAS'),d:cardDe('CPA'),e:cardDe('Break Even CPA'),
+             f:cardDe('Recompras'),g:cardDe('Facturación Recompra'),h:cardDe('Reembolsos')||cardDe('Reembolsos / Cancel.')||cardDe('Reembolsos / Cancelaciones')};
+      if(R.a) setCard(R.a,'Gasto Ads',ads,'Inversión en anuncios');
+      if(R.b) setCard(R.b,'Margen',mg,'Ganancia ÷ facturación');
+      if(R.c) setCard(R.c,'ROAS',ro,'Recuperás por cada $1 invertido');
+      if(R.d) setCard(R.d,'Break Even ROAS',ber,'Mínimo para no perder');
+      if(R.e) setCard(R.e,'CPA',cpa,'Costo por cada venta');
+      if(R.f) setCard(R.f,'Break Even CPA',becpa,'Tope por venta');
+      if(R.g) setCard(R.g,'Recompras',rec,'Clientes que recompraron');
+      if(R.h) setCard(R.h,'Facturación Recompra',frec,'Ventas de clientes que volvieron');
+    } else { // YA REMAPEADO: solo refresco los valores del período.
+      var U=[['Gasto Ads',ads],['Margen',mg],['ROAS',ro],['Break Even ROAS',ber],['CPA',cpa],['Break Even CPA',becpa],['Recompras',rec],['Facturación Recompra',frec]];
+      for(var u=0;u<U.length;u++) setValueOf(cardDe(U[u][0]), U[u][1]); } }
+  function hideFinanzas(){ var sp=document.querySelectorAll('span'), h=null;
+    for(var i=0;i<sp.length;i++){ var cn=sp[i].className||''; if((sp[i].textContent||'').trim()==='Finanzas' && /uppercase/.test(cn) && /tracking/.test(cn)){ h=sp[i]; break; } }
+    if(!h) return;
+    var sec=h;
+    for(var k=0;k<9 && sec;k++){ sec=sec.parentElement; if(!sec) break;
+      var t=sec.textContent||'';
+      if((sec.querySelector&&sec.querySelector('[class*=\"rounded-2xl\"]')) && t.indexOf('Publicidad')<0){ break; } }  // la sección Finanzas (con sus tarjetas, sin Publicidad)
+    if(sec && sec.querySelector && sec.querySelector('[class*=\"rounded-2xl\"]') && (sec.textContent||'').indexOf('Publicidad')<0 && sec.style.display!=='none') sec.style.display='none'; }
   function cardDe(label){ var sp=document.querySelectorAll('span');
     for(var i=0;i<sp.length;i++){ var s=sp[i], cn=s.className||'';
       // SOLO etiquetas de tarjeta (uppercase + tracking) → evita el sidebar y otros textos.
