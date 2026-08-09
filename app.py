@@ -539,14 +539,19 @@ _SOLO_DASH = r"""
   function costos4(){ if(!_raw)return;
     // NO inyecto tarjetas (rompe el layout). Uso las 4 que YA existen y les cambio texto/valor.
     var viejo=document.getElementById('rp-costos4'); if(viejo) viejo.remove();
-    var base=cardDe('Costo producto')||cardDe('Productos'); if(!base || !base.parentElement) return;
-    var grid=base.parentElement;
-    // Las 4 tarjetas en orden (hijos del grid que son tarjetas 'rounded').
-    var cards=[];
-    for(var i=0;i<grid.children.length && cards.length<4;i++){ var k=grid.children[i];
-      var c=/rounded/.test(k.className||'')?k:(k.querySelector?k.querySelector('[class*=\"rounded-2xl\"]'):null);
-      if(c){ if(c.style.display==='none') c.style.display=''; cards.push(c); } }
+    var base=cardDe('Costo producto')||cardDe('Productos'); if(!base) return;
+    // Subo niveles hasta el contenedor que realmente tiene las 4 tarjetas (cada card va envuelta).
+    var cont=base.parentElement, cards=[];
+    for(var up=0; up<5 && cont; up++){
+      cards=[];
+      for(var i=0;i<cont.children.length;i++){ var k=cont.children[i];
+        var c=/rounded-2xl/.test(k.className||'')?k:(k.querySelector?k.querySelector('[class*=\"rounded-2xl\"]'):null);
+        if(c){ if(c.style.display==='none') c.style.display=''; cards.push(c); } }
+      if(cards.length>=4) break;
+      cont=cont.parentElement;
+    }
     if(cards.length<4) return;
+    cards=cards.slice(0,4);
     var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);
     var C=[['Productos',_raw.costo_prod,'Costo de los productos vendidos'],
            ['Envíos',_raw.envio_monto,'Lo que pagás de envío'],
