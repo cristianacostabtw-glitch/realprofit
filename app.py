@@ -1125,6 +1125,7 @@ def _shopify_resumen(email, desde, hasta):
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
     unidades = ordenes = reemb_cant = envio_real = 0
     prodmap = {}
+    ords_list = []
     for o in orders:
         if o.get("cancelled_at"):
             continue
@@ -1139,8 +1140,8 @@ def _shopify_resumen(email, desde, hasta):
         else:
             envio_monto += _envio_costo(o)
         # MP: matcheo este pedido con su pago real (por referencia; fallback por monto exacto).
+        pago = None
         if mp_conectado:
-            pago = None
             for ref in (str(o.get("id")), str(o.get("order_number")), _num):
                 lst = by_ref.get(ref)
                 if lst:
@@ -1166,6 +1167,12 @@ def _shopify_resumen(email, desde, hasta):
             reemb_cant += 1
             for tx in (rf.get("transactions") or []):
                 reemb_monto += float(tx.get("amount") or 0)
+        # Fila para la tabla "Últimas ventas" (neto = lo real que entró por MP si matcheó, sino el total).
+        ords_list.append({"num": _num, "origen": "Shopify",
+                          "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
+                          "fecha": o.get("created_at") or "",
+                          "total": round(tot, 2),
+                          "neto": round(pago["net"] if pago else tot, 2)})
     # Costos por venta. MercadoPago: comisión REAL matcheada pedido-por-pedido (mp_costo, ya
     # sumado en el loop). Así NO infla con pagos que no son de la tienda. Si no hay MP conectado,
     # cae al % manual. FIJOS: 1% tienda + 3,5% Ingresos Brutos. Envío: real (Envialo) o promedio.
@@ -1211,7 +1218,8 @@ def _shopify_resumen(email, desde, hasta):
     r["tot_gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
             for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
-    return {"raw": r, "prod": prod, "ords": []}
+    ords_list.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    return {"raw": r, "prod": prod, "ords": ords_list}
 
 
 _ORDS_CACHE = {}
@@ -1721,11 +1729,6 @@ def pf_periodo():
             r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
             r["tot_ganancia"] = r["ganancia"]
             r["tot_margen"] = r["margen"]
-        # Tabla "Últimas ventas": órdenes reales de los últimos 90 días (para que anden los botones 7d/14d/… y 5/10/25/50).
-        try:
-            blob["ords"] = _shopify_ordenes(email)
-        except Exception:
-            pass
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
