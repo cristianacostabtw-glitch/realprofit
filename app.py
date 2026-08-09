@@ -528,7 +528,18 @@ _SOLO_DASH = r"""
       if(v && v.textContent!==text) v.textContent=text; } } }
   function paint(){ if(!_raw)return;
     try{ costos4(); }catch(e){}
-    try{ metricas(); }catch(e){} }
+    try{ metricas(); }catch(e){}
+    try{ fixFacturacion(); }catch(e){} }
+  // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
+  // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
+  function fixFacturacion(){ if(!_raw) return; var real=_raw.tot_facturado||_raw.facturado||0; if(!real) return;
+    var lab=leafTxt('Facturación'); if(!lab) return;                     // label del KPI (tiene ícono adelante)
+    var card=lab; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
+    if(!card||!/rounded/.test(card.className||'')) return;
+    var dvs=card.querySelectorAll('span,div'), t=fmt(real);
+    for(var q=0;q<dvs.length;q++){ var cn=dvs[q].className||'';
+      if(/font-bold/.test(cn) && /text-(xl|2xl|3xl)/.test(cn)){        // el número grande de la tarjeta
+        if(dvs[q].textContent!==t) dvs[q].textContent=t; return; } } }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
@@ -639,7 +650,7 @@ _SOLO_DASH = r"""
       ov.style.display='flex';
   }
   // ===== Tabla "Últimas ventas" propia (la del dashboard es placeholder sin cablear) =====
-  var _vt={dias:7,per:10,page:1,data:[],loading:false};
+  var _vt={dias:7,per:5,page:1,data:[],loading:false};
   function vtFecha(iso){ try{ var d=new Date(iso); return d.toLocaleDateString('es-AR',{day:'2-digit',month:'short'})+', '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso||''; } }
   function cargarVentas(){ _vt.loading=true; renderVentas();
     fetch('/pf-ventas?dias='+_vt.dias).then(function(r){return r.json();}).then(function(j){ _vt.data=(j&&j.ventas)||[]; _vt.loading=false; _vt.page=1; renderVentas(); }).catch(function(){ _vt.loading=false; _vt.data=[]; renderVentas(); }); }
@@ -1082,7 +1093,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-d-grafico-diag"})
+    return jsonify({"ok": True, "v": "2026-08-09-e-fixfact-pendientes-tabla"})
 
 
 @app.get("/pf-diag")
@@ -1157,11 +1168,10 @@ def pf_ventas():
     except Exception:
         return jsonify({"ok": True, "ventas": []})
     orders = [o for o in orders if not o.get("cancelled_at")]
-    _PAG = ("paid", "partially_paid", "refunded", "partially_refunded")   # solo ventas ya cobradas
+    # La TABLA muestra TODAS (incluidas efectivo/pendiente, marcadas 'Pendiente'). Ojo: los TOTALES de arriba
+    # (facturación/órdenes/CPA en _shopify_resumen) SÍ excluyen las pendientes hasta que se paguen.
     out = []
     for o in orders:
-        if (o.get("financial_status") or "").lower() not in _PAG:
-            continue
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         out.append({"num": num, "origen": "Shopify",
