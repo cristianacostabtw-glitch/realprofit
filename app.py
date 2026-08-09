@@ -529,16 +529,29 @@ _SOLO_DASH = r"""
   function paint(){ if(!_raw)return;
     if(_raw.be_roas!=null) set('Break Even ROAS',(Math.round(_raw.be_roas*100)/100)+'x');
     if(_raw.be_cpa!=null) set('Break Even CPA',money(_raw.be_cpa));
-    // Sección COSTOS: llenar las tarjetas que salen en $0 con los valores reales.
-    // OJO: el texto guardado está en minúscula (el CSS lo pone en mayúscula).
-    if(_raw.comision!=null) set('Comisiones', money(_raw.comision));
-    if(_raw.envio_monto!=null) set('Costo envíos', money(_raw.envio_monto));
-    // Sacar la tarjeta Logística (no la usamos).
-    ocultarCard('Logística'); }
-  function ocultarCard(label){ var sp=document.querySelectorAll('span');
+    try{ costos4(); }catch(e){} }
+  function cardDe(label){ var sp=document.querySelectorAll('span');
     for(var i=0;i<sp.length;i++){ if((sp[i].textContent||'').trim()===label){
       var card=sp[i]; for(var k=0;k<9 && card;k++){ card=card.parentElement; if(card && /rounded/.test(card.className||'')) break; }
-      if(card && card.style.display!=='none') card.style.display='none'; } } }
+      return (card && /rounded/.test(card.className||'')) ? card : null; } }
+    return null; }
+  function ocultarCard(label){ var c=cardDe(label); if(c && c.style.display!=='none') c.style.display='none'; }
+  function costos4(){ if(!_raw)return;
+    // Rearmo la sección COSTOS con 4 tarjetas: Productos · Envíos · IIBB · Neto por venta.
+    var base=cardDe('Costo producto'); if(!base || !base.parentElement) return;
+    var grid=base.parentElement;
+    ['Costo producto','Comisiones','Costo envíos','Logística'].forEach(ocultarCard);   // oculto las originales
+    var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);        // lo que queda tras MP + 1% tienda
+    var C=[['Productos',_raw.costo_prod,'Costo de los productos vendidos','#f472b6'],
+           ['Envíos',_raw.envio_monto,'Lo que pagás de envío','#f0b429'],
+           ['IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)','#a78bfa'],
+           ['Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda','#34d399']];
+    var sig=C.map(function(x){return Math.round(x[1]||0);}).join('|');
+    var el=document.getElementById('rp-costos4');
+    if(el && el.getAttribute('data-sig')===sig) return;
+    var html=C.map(function(c){ return '<div style=\"flex:1;min-width:150px;background:#0f1826;border:1px solid #1e2b3d;border-radius:16px;padding:16px 18px\"><div style=\"color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;text-align:right\">'+c[0]+'</div><div style=\"color:'+c[3]+';font-weight:800;font-size:22px;margin-top:8px\">'+money(c[1]||0)+'</div><div style=\"color:#64748b;font-size:11.5px;margin-top:6px\">'+c[2]+'</div></div>'; }).join('');
+    if(!el){ el=document.createElement('div'); el.id='rp-costos4'; el.style.cssText='grid-column:1/-1;width:100%;flex-basis:100%;display:flex;gap:10px;flex-wrap:wrap'; grid.appendChild(el); }
+    el.setAttribute('data-sig',sig); el.innerHTML=html; }
   try{ new MutationObserver(function(){ if(_raw) paint(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
 })();
 </script>
