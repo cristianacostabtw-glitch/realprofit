@@ -530,6 +530,7 @@ _SOLO_DASH = r"""
     try{ costos4(); }catch(e){}
     try{ metricas(); }catch(e){} }
   function num(n){ return (Math.round((n||0)*100)/100); }
+  function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
   // La grilla es PLANA: headers (Finanzas/Publicidad/Costos) son divs col-span-full y las tarjetas son hermanas.
   function findGrid(){ var sp=document.querySelectorAll('span');
@@ -560,7 +561,12 @@ _SOLO_DASH = r"""
       if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
       if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
       else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>8)?'none':''; }  // más de 8 (Reembolsos) → fuera
-      if(el.style.display!==tgt) el.style.display=tgt; } }
+      if(el.style.display!==tgt) el.style.display=tgt; }
+    // Barrido: cualquier tarjeta 'Reembolsos / cancel.' que haya quedado suelta → ocultar (no va en el diseño).
+    var sp=document.querySelectorAll('span,div');
+    for(var q=0;q<sp.length;q++){ var tx=(sp[q].textContent||'').replace(/\s+/g,' ').trim();
+      if(tx==='Reembolsos / cancel.'){ var c=sp[q]; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl/.test(c.className||'')) break; }
+        if(c&&/rounded-2xl/.test(c.className||'')&&c.style.display!=='none') c.style.display='none'; } } }
   function cardDe(label){ var sp=document.querySelectorAll('span');
     for(var i=0;i<sp.length;i++){ var s=sp[i], cn=s.className||'';
       // SOLO etiquetas de tarjeta (uppercase + tracking) → evita el sidebar y otros textos.
@@ -648,8 +654,7 @@ _SOLO_DASH = r"""
   function vtCSV(){ var rows=[['N','Origen','Estado','Fecha','Total','Neto']].concat(_vt.data.map(function(v){return [v.num,v.origen,v.estado,v.fecha,v.total,v.neto];}));
     var csv=rows.map(function(r){return r.join(',');}).join('\n'); var a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='ventas.csv'; a.click(); }
   function tablaVentas(){
-    var head=null, all=document.querySelectorAll('span,h2,h3,div,p');
-    for(var i=0;i<all.length;i++){ var el=all[i]; if(el.childElementCount===0 && (el.textContent||'').trim()==='Últimas ventas'){ head=el; break; } }
+    var head=leafTxt('Últimas ventas');
     var mine=document.getElementById('rp-ventas-panel');
     if(mine){ if(head){ var pp=head; for(var k=0;k<10&&pp;k++){ pp=pp.parentElement; if(pp&&/rounded-2xl|rounded-xl/.test(pp.className||'')){ if(pp.style.display!=='none')pp.style.display='none'; break; } } } return; }
     if(!head) return;
@@ -681,7 +686,8 @@ _SOLO_DASH = r"""
   }
   // Layout FIJO: KPI (Ventas/Facturación/Ticket/Ganancia) arriba, después Resumen (Publicidad+Costos)
   // y Últimas ventas. Escondo gráfico, Recomendación y Riesgos. Uso CSS 'order' (no toca el DOM → no pelea con React).
-  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; if(e.childElementCount===0 && (e.textContent||'').trim()===t) return e; } return null; }
+  // Busca el título aunque tenga un ícono adelante (los headers son '<span>icono</span>Texto').
+  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
   function layoutFijo(){
     var rt=leafTxt('Resumen del período'), ut=leafTxt('Últimas ventas'); if(!rt||!ut) return;
     var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
