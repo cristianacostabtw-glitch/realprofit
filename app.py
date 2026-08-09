@@ -537,21 +537,30 @@ _SOLO_DASH = r"""
     return null; }
   function ocultarCard(label){ var c=cardDe(label); if(c && c.style.display!=='none') c.style.display='none'; }
   function costos4(){ if(!_raw)return;
-    // Rearmo la sección COSTOS con 4 tarjetas: Productos · Envíos · IIBB · Neto por venta.
-    var base=cardDe('Costo producto'); if(!base || !base.parentElement) return;
+    // NO inyecto tarjetas (rompe el layout). Uso las 4 que YA existen y les cambio texto/valor.
+    var viejo=document.getElementById('rp-costos4'); if(viejo) viejo.remove();
+    var base=cardDe('Costo producto')||cardDe('Productos'); if(!base || !base.parentElement) return;
     var grid=base.parentElement;
-    ['Costo producto','Comisiones','Costo envíos','Logística'].forEach(ocultarCard);   // oculto las originales
-    var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);        // lo que queda tras MP + 1% tienda
-    var C=[['Productos',_raw.costo_prod,'Costo de los productos vendidos','#f472b6'],
-           ['Envíos',_raw.envio_monto,'Lo que pagás de envío','#f0b429'],
-           ['IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)','#a78bfa'],
-           ['Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda','#34d399']];
-    var sig=C.map(function(x){return Math.round(x[1]||0);}).join('|');
-    var el=document.getElementById('rp-costos4');
-    if(el && el.getAttribute('data-sig')===sig) return;
-    var html=C.map(function(c){ return '<div style=\"flex:1;min-width:150px;background:#0f1826;border:1px solid #1e2b3d;border-radius:16px;padding:16px 18px\"><div style=\"color:#94a3b8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;text-align:right\">'+c[0]+'</div><div style=\"color:'+c[3]+';font-weight:800;font-size:22px;margin-top:8px\">'+money(c[1]||0)+'</div><div style=\"color:#64748b;font-size:11.5px;margin-top:6px\">'+c[2]+'</div></div>'; }).join('');
-    if(!el){ el=document.createElement('div'); el.id='rp-costos4'; el.style.cssText='grid-column:1/-1;width:100%;flex-basis:100%;display:flex;gap:10px;flex-wrap:wrap'; grid.appendChild(el); }
-    el.setAttribute('data-sig',sig); el.innerHTML=html; }
+    // Las 4 tarjetas en orden (hijos del grid que son tarjetas 'rounded').
+    var cards=[];
+    for(var i=0;i<grid.children.length && cards.length<4;i++){ var k=grid.children[i];
+      var c=/rounded/.test(k.className||'')?k:(k.querySelector?k.querySelector('[class*=\"rounded-2xl\"]'):null);
+      if(c){ if(c.style.display==='none') c.style.display=''; cards.push(c); } }
+    if(cards.length<4) return;
+    var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);
+    var C=[['Productos',_raw.costo_prod,'Costo de los productos vendidos'],
+           ['Envíos',_raw.envio_monto,'Lo que pagás de envío'],
+           ['IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)'],
+           ['Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']];
+    for(var j=0;j<4;j++) setCard(cards[j], C[j][0], money(C[j][1]||0), C[j][2]); }
+  function setCard(card,label,val,sub){
+    var sps=card.querySelectorAll('span'), lab=null;
+    for(var i=0;i<sps.length;i++){ var cn=sps[i].className||''; if(/uppercase/.test(cn)&&/tracking/.test(cn)){ lab=sps[i]; break; } }
+    if(lab && lab.textContent!==label) lab.textContent=label;
+    var dvs=card.querySelectorAll('div'), v=null;
+    for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ v=dvs[d]; break; } }
+    if(v && v.textContent!==val) v.textContent=val;
+    var ps=card.querySelectorAll('p'); if(ps.length){ var p=ps[ps.length-1]; if(p.textContent!==sub) p.textContent=sub; } }
   try{ new MutationObserver(function(){ if(_raw) paint(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
 })();
 </script>
