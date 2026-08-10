@@ -714,6 +714,9 @@ _SOLO_DASH = r"""
    fetch('/pf-comisiones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#34d399'; msg.textContent='¡Guardado!'; setTimeout(function(){msg.style.display='none';},1500);} rpComisTotal(); }).catch(function(){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#f87171'; msg.textContent='Error, probá de nuevo';} }); };
  function rpProdWarn(){ var warn=document.getElementById('rp-prod-warn'); if(!warn)return; var n=document.querySelectorAll('#rp-prod-body .rp-sincosto').length;
   warn.innerHTML = n>0 ? '<div style="display:flex;align-items:center;gap:14px;background:#1c1608;border:1px solid #4a3a1a;border-radius:12px;padding:13px 16px"><span style="font-size:18px">&#9888;&#65039;</span><div style="flex:1"><b style="color:#f1f5f9;font-size:13.5px">'+n+' '+(n===1?'producto':'productos')+' sin costo cargado</b><div style="color:#c9a35b;font-size:12.5px;margin-top:2px">Su ganancia se calcula de m&aacute;s. Carg&aacute; el costo para que el margen sea real.</div></div></div>' : ''; }
+ window.rpSaveSku=function(inp,id){ var v=String(inp.value||'').trim();
+  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,sku:v})}).catch(function(){});
+  inp.style.borderColor=v?'#17492f':'#1e2b3d'; };
  window.rpSaveCosto=function(inp,id){ var v=parseFloat(String(inp.value||'').replace(/\./g,'').replace(',','.'))||0;
   fetch('/pf-guardar-costo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,costo:v})}).catch(function(){});
   var row=inp.closest('tr'); var b=row&&row.querySelector('.rp-badge');
@@ -726,12 +729,13 @@ _SOLO_DASH = r"""
    if(!tienda){ chip.innerHTML=''; warn.innerHTML=''; body.innerHTML='<div style="text-align:center;color:#94a3b8;font-size:13.5px;padding:46px 12px;border:1px dashed #24354c;border-radius:12px;margin-top:8px">A&uacute;n no conectaste una tienda.<br><span style="font-size:12.5px;line-height:1.9">Conect&aacute; <b style="color:#cbd5e1">Shopify</b> o <b style="color:#cbd5e1">Tiendanube</b> en Integraciones y ac&aacute; van a aparecer tus productos.</span></div>'; return; }
    chip.innerHTML='<span style="display:inline-flex;align-items:center;gap:9px;background:#0d1826;border:1px solid #29527e;color:#e2e8f0;border-radius:12px;padding:9px 14px;font-weight:600;font-size:13.5px">'+(tienda==='Shopify'?L.shopify:L.tn)+'<span>'+tienda+'</span><span style="background:#152238;border:1px solid #23344d;color:#93c5fd;border-radius:20px;padding:1px 9px;font-size:12px;font-weight:700">'+ps.length+'</span><span style="width:8px;height:8px;border-radius:50%;background:#22c55e"></span></span>';
    if(!ps.length){ warn.innerHTML=''; body.innerHTML='<div style="color:#94a3b8;font-size:13px;padding:24px 4px">Tu tienda no tiene productos cargados todav&iacute;a.</div>'; return; }
-   var h='<table style="width:100%;border-collapse:collapse;margin-top:14px"><thead><tr><th style="text-align:left;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Producto</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Precio de venta</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Costo</th></tr></thead><tbody>';
+   var h='<table style="width:100%;border-collapse:collapse;margin-top:14px"><thead><tr><th style="text-align:left;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Producto</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Precio de venta</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">SKU</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Costo</th></tr></thead><tbody>';
    ps.forEach(function(p){ var img=p.img?'<img src="'+p.img+'" style="width:100%;height:100%;object-fit:cover">':'&#128247;';
     var tiene=p.costo&&Number(p.costo)>0;
     var badge= tiene ? '<span class="rp-badge rp-concosto" style="background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#10003; Cargado</span>' : '<span class="rp-badge rp-sincosto" style="background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#9888;&#65039; Sin costo</span>';
-    h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div>'+(p.sku?'<div style="color:#5b6b82;font-size:11.5px;margin-top:5px">SKU: '+esc(p.sku)+'</div>':'')+'</div></div></td>'
+    h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
     +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><input value="'+(p.sku?esc(p.sku):'')+'" placeholder="SKU" onchange="rpSaveSku(this,\''+p.id+'\')" style="width:120px;background:#0b1220;border:1px solid '+(p.sku?'#17492f':'#1e2b3d')+';color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right"></td>'
     +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><input value="'+(tiene?Number(p.costo).toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpSaveCosto(this,\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right"></td></tr>'; });
    h+='</tbody></table>'; body.innerHTML=h; rpProdWarn();
    var rf=document.getElementById('rp-prod-ref'); if(rf) rf.onclick=rpProdLoad;
@@ -1340,7 +1344,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-j-despachos"})
+    return jsonify({"ok": True, "v": "2026-08-09-k-despachos-sku"})
 
 
 @app.get("/pf-diag")
@@ -2548,6 +2552,7 @@ def pf_productos():
         return jsonify({"ok": True, "tienda": None, "productos": [], "sin_costo": 0})
     shop = tk.get("shop"); token = tk.get("access_token")
     costos = (_costos().get(email) or {})
+    skus_guardados = _skus_map(email)
     productos = []
     try:
         r = requests.get("https://%s/admin/api/2026-07/products.json" % shop,
@@ -2560,7 +2565,7 @@ def pf_productos():
                 productos.append({
                     "id": pid,
                     "nombre": p.get("title") or "",
-                    "sku": v.get("sku") or "",
+                    "sku": skus_guardados.get(str(pid)) or v.get("sku") or "",   # el que cargaste manda; fallback al de Shopify
                     "precio": float(v.get("price") or 0),
                     "img": (p.get("image") or {}).get("src") or "",
                     "costo": costos.get(str(pid)) or 0,
