@@ -202,7 +202,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -226,9 +226,20 @@ _SOLO_DASH = r"""
      pn.parentNode.insertBefore(cc, pn.nextSibling);
     }
    }
+   // Agregar "Despachos" en la barra (debajo de Comisiones).
+   if(!nav.querySelector('#rp-desp-nav')){
+    var cn0=nav.querySelector('#rp-comis-nav')||nav.querySelector('#rp-prod-nav');
+    if(cn0){ var cd=cn0.cloneNode(true); cd.id='rp-desp-nav'; cd.style.display='';
+     var ad=cd.querySelector('a'); if(ad){ ad.setAttribute('href','#'); ad.removeAttribute('aria-current'); ad.classList.remove('bg-white/[0.08]'); ad.classList.remove('text-primary');
+      var nad=ad.cloneNode(true); ad.parentNode.replaceChild(nad,ad); nad.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpDesp(true); }); ad=nad; }
+     var icd=cd.querySelector('.material-symbols-outlined'); if(icd) icd.textContent='local_shipping';
+     var sp4=cd.querySelectorAll('span'); for(var sm=0;sm<sp4.length;sm++){ var s4=sp4[sm]; if(!s4.classList.contains('material-symbols-outlined') && s4.children.length===0 && (s4.textContent||'').trim()){ s4.textContent='Despachos'; } }
+     cn0.parentNode.insertBefore(cd, cn0.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -241,7 +252,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -338,6 +349,102 @@ _SOLO_DASH = r"""
    <div><div style="color:#94a3b8;font-size:12px">Impuestos que sumamos por venta (aparte del neto de MP)</div><b id="rp-c-total" style="color:#34d399;font-size:24px;font-weight:800">0%</b></div>
    <div style="display:flex;gap:12px;align-items:center"><span id="rp-c-msg" style="font-size:12.5px;font-weight:600;display:none"></span><button id="rp-c-go" onclick="rpComisSave()" style="background:#137fec;border:none;color:#fff;border-radius:10px;padding:11px 26px;font-weight:700;font-size:13.5px;cursor:pointer">Guardar</button></div>
   </div>
+ </div>
+</div>
+<div id="rp-desp-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#f1f5f9">
+ <div style="max-width:1240px;margin:0 auto;padding:24px 30px 64px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+   <div style="display:flex;align-items:center;gap:13px">
+    <div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(160deg,#12233b,#0c1626);border:1px solid #1d3350;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:24px">local_shipping</span></div>
+    <div><h1 style="margin:0;font-size:23px;color:#f1f5f9">Despachos</h1><div style="color:#8493a8;font-size:13px;margin-top:4px;max-width:640px;line-height:1.4">Eleg&iacute; los pedidos que vas a despachar, export&aacute; el Excel de Andreani y marc&aacute; los que ya enviaste. Solo aparecen las ventas <b style="color:#cbd5e1">pagadas</b>.</div></div>
+   </div>
+   <button onclick="rpDesp(false)" title="Cerrar" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
+  </div>
+
+  <div id="rp-d-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin:20px 0">
+   <button class="rp-dc rp-on" data-f="empaquetar" onclick="rpDFilt('empaquetar')" style="background:#0e1521;border:1px solid #5a4a1e;border-radius:16px;padding:16px 18px;cursor:pointer;text-align:left;min-height:100px">
+    <div style="display:flex;align-items:center;justify-content:space-between"><span style="width:31px;height:31px;border-radius:9px;background:#241c0b;color:#f0b429;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:17px">inventory_2</span></span><span class="rp-dl" style="color:#f0b429;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">Por empaquetar</span></div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:15px"><span id="rp-d-n-empaquetar" style="font-size:27px;font-weight:800;line-height:1">0</span><span id="rp-d-m-empaquetar" style="color:#5b6b82;font-size:13px;font-weight:600">$0</span></div>
+   </button>
+   <button class="rp-dc" data-f="exportada" onclick="rpDFilt('exportada')" style="background:#0e1521;border:1px solid #1a2333;border-radius:16px;padding:16px 18px;cursor:pointer;text-align:left;min-height:100px">
+    <div style="display:flex;align-items:center;justify-content:space-between"><span style="width:31px;height:31px;border-radius:9px;background:#0a2434;color:#38bdf8;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:17px">task_alt</span></span><span class="rp-dl" style="color:#8493a8;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">Exportadas</span></div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:15px"><span id="rp-d-n-exportada" style="font-size:27px;font-weight:800;line-height:1">0</span><span id="rp-d-m-exportada" style="color:#5b6b82;font-size:13px;font-weight:600">$0</span></div>
+   </button>
+   <button class="rp-dc" data-f="enviada" onclick="rpDFilt('enviada')" style="background:#0e1521;border:1px solid #1a2333;border-radius:16px;padding:16px 18px;cursor:pointer;text-align:left;min-height:100px">
+    <div style="display:flex;align-items:center;justify-content:space-between"><span style="width:31px;height:31px;border-radius:9px;background:#0e2a1c;color:#34d399;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:17px">local_shipping</span></span><span class="rp-dl" style="color:#8493a8;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">Enviadas</span></div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:15px"><span id="rp-d-n-enviada" style="font-size:27px;font-weight:800;line-height:1">0</span><span id="rp-d-m-enviada" style="color:#5b6b82;font-size:13px;font-weight:600">$0</span></div>
+   </button>
+   <button class="rp-dc" data-f="todas" onclick="rpDFilt('todas')" style="background:#0e1521;border:1px solid #1a2333;border-radius:16px;padding:16px 18px;cursor:pointer;text-align:left;min-height:100px">
+    <div style="display:flex;align-items:center;justify-content:space-between"><span style="width:31px;height:31px;border-radius:9px;background:#141d2c;color:#93a3b8;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:17px">receipt_long</span></span><span class="rp-dl" style="color:#8493a8;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">Todas &middot; facturaci&oacute;n</span></div>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:15px"><span id="rp-d-n-todas" style="font-size:27px;font-weight:800;line-height:1">0</span><span id="rp-d-m-todas" style="color:#5b6b82;font-size:13px;font-weight:600">$0</span></div>
+   </button>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:13px">
+   <div id="rp-d-segs" style="display:flex;background:#0b111c;border:1px solid #1a2333;border-radius:11px;padding:3px">
+    <button class="rp-seg rp-son" data-p="todas" onclick="rpDPer('todas')" style="border:0;background:#2563eb;color:#fff;font-size:13px;font-weight:700;padding:7px 15px;border-radius:8px;cursor:pointer">Todas</button>
+    <button class="rp-seg" data-p="hoy" onclick="rpDPer('hoy')" style="border:0;background:transparent;color:#8493a8;font-size:13px;font-weight:700;padding:7px 15px;border-radius:8px;cursor:pointer">Hoy</button>
+    <button class="rp-seg" data-p="ayer" onclick="rpDPer('ayer')" style="border:0;background:transparent;color:#8493a8;font-size:13px;font-weight:700;padding:7px 15px;border-radius:8px;cursor:pointer">Ayer</button>
+    <button class="rp-seg" data-p="7" onclick="rpDPer('7')" style="border:0;background:transparent;color:#8493a8;font-size:13px;font-weight:700;padding:7px 15px;border-radius:8px;cursor:pointer">7 d&iacute;as</button>
+   </div>
+   <div style="display:inline-flex;align-items:center;gap:7px;background:#0b111c;border:1px solid #1a2333;border-radius:10px;padding:6px 11px">
+    <input id="rp-d-desde" type="date" onchange="rpDRango()" style="background:transparent;border:0;color:#c7d2e0;font-size:12.5px;outline:none;color-scheme:dark">
+    <span style="color:#5b6b82;font-size:12px">a</span>
+    <input id="rp-d-hasta" type="date" onchange="rpDRango()" style="background:transparent;border:0;color:#c7d2e0;font-size:12.5px;outline:none;color-scheme:dark">
+   </div>
+   <div style="flex:1;min-width:170px;display:flex;align-items:center;gap:9px;background:#0b111c;border:1px solid #1a2333;border-radius:11px;padding:0 13px"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:18px">search</span><input id="rp-d-q" oninput="rpDRender()" placeholder="Buscar pedido, cliente, localidad&hellip;" style="flex:1;border:0;background:transparent;color:#f1f5f9;padding:10px 0;font-size:13.5px;outline:none"></div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:8px">
+   <label style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="rp-d-all" onclick="rpDAll(this)" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">Todas</label>
+   <button id="rp-d-sync" onclick="rpDLoad()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">sync</span>Sincronizar</button>
+   <button onclick="rpDExcel()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#4c3a8f,#3a2c73);border:1px solid #4a3a86;color:#e5ddff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">download</span>Generar Excel Andreani</button>
+   <button onclick="rpDActSku()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">barcode</span>Actualizar SKUs</button>
+   <button onclick="rpDOpenSku()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#3b3a8f,#2c2b6b);border:1px solid #3a3a86;color:#dcdcff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">qr_code_2</span>Insertar SKU</button>
+   <button onclick="rpDOpenSeg()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#b23a55,#8f2c44);border:1px solid #a23650;color:#ffe0e7;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">local_shipping</span>Enviar seguimiento</button>
+  </div>
+  <div id="rp-d-status" style="color:#34d399;font-size:12.5px;font-weight:600;min-height:18px;margin:2px 2px 10px"></div>
+
+  <div style="background:#0e1521;border:1px solid #1a2333;border-radius:16px;overflow:hidden">
+   <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:760px">
+     <thead><tr>
+      <th style="width:36px;padding:14px 13px;border-bottom:1px solid #1a2333"></th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:left">Pedido</th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:left">Cliente</th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:left">Env&iacute;o</th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:left">Localidad</th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:left">CP</th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:right">U</th>
+      <th style="color:#5b6b82;font-size:10.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:14px 13px;border-bottom:1px solid #1a2333;text-align:right">Total</th>
+     </tr></thead>
+     <tbody id="rp-d-body"></tbody>
+    </table>
+   </div>
+   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:13px 15px;color:#8493a8;font-size:12.5px;border-top:1px solid #1a2333"><span id="rp-d-cnt">&mdash;</span><span style="color:#5b6b82">Solo ventas pagadas &middot; no despachadas.</span></div>
+  </div>
+ </div>
+</div>
+<div id="rp-d-skuov" style="position:fixed;inset:0;z-index:100002;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpDCloseSku()">
+ <div style="width:100%;max-width:560px;background:#0e1521;border:1px solid #1a2333;border-radius:18px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+   <div style="width:40px;height:40px;border-radius:11px;background:#1c1636;border:1px solid #3a2f6b;display:flex;align-items:center;justify-content:center;flex:none"><span class="material-symbols-outlined" style="color:#a78bfa;font-size:20px">qr_code_2</span></div>
+   <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Insertar SKU en r&oacute;tulos</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Sub&iacute; el PDF de etiquetas: detectamos el <b style="color:#cbd5e1">formato de cada una</b> (Andreani domicilio/sucursal o Envialo) e insertamos el SKU en el hueco libre correcto, sin tocar el QR ni el c&oacute;digo de barras.</div></div>
+   <button onclick="rpDCloseSku()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
+  </div>
+  <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:34px 18px;text-align:center;cursor:pointer"><input type="file" accept="application/pdf" style="display:none" onchange="rpDUpSku(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Arrastr&aacute; el PDF de etiquetas o hac&eacute; clic para elegirlo</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">Te devuelve el PDF con los SKU insertados (Zebra o A4)</div></label>
+  <div id="rp-d-skures" style="margin-top:14px"></div>
+ </div>
+</div>
+<div id="rp-d-segov" style="position:fixed;inset:0;z-index:100002;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpDCloseSeg()">
+ <div style="width:100%;max-width:560px;background:#0e1521;border:1px solid #1a2333;border-radius:18px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+   <div style="width:40px;height:40px;border-radius:11px;background:#2a1119;border:1px solid #5a2333;display:flex;align-items:center;justify-content:center;flex:none"><span class="material-symbols-outlined" style="color:#fb7185;font-size:20px">local_shipping</span></div>
+   <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Enviar seguimiento</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Sub&iacute; el PDF de Andreani: leemos el <b style="color:#cbd5e1">N&deg; Interno + seguimiento</b>, te lo mostramos y al enviar le avisamos a tu tienda (Shopify/Tiendanube) &mdash; al cliente le llega el mail con el tracking.</div></div>
+   <button onclick="rpDCloseSeg()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
+  </div>
+  <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:34px 18px;text-align:center;cursor:pointer"><input type="file" accept="application/pdf" style="display:none" onchange="rpDUpSeg(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Arrastr&aacute; el PDF o hac&eacute; clic para elegirlo</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">Leemos cada r&oacute;tulo y cargamos el seguimiento</div></label>
+  <div id="rp-d-segres" style="margin-top:14px"></div>
  </div>
 </div>
 <script>
@@ -453,12 +560,12 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  function rpProdSetActive(on){ try{ var pa=document.querySelector('#rp-prod-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]',!on); da.classList.toggle('text-primary',!on); }
    var pc=document.querySelector('#rp-comis-nav a'); if(pc && on){ pc.classList.remove('bg-white/[0.08]'); pc.classList.remove('text-primary'); } }catch(e){} }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
  function rpComisSetActive(on){ try{ var pa=document.querySelector('#rp-comis-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    var pp=document.querySelector('#rp-prod-nav a');
@@ -469,7 +576,131 @@ _SOLO_DASH = r"""
    if(window._rpMpReal!=null){ t=window._rpMpReal + ti + iibb; }
    else { t=(g('rp-c-mp')+g('rp-c-cuotas'))*(1+iva/100) + ti + iibb; }
    var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
- window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+ window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+
+ // ===================== DESPACHOS =====================
+ var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false;
+ var _DCOL=['#5aa2f5','#34d399','#f0b429','#a78bfa','#fb7185','#38bdf8','#f472b6'];
+ function _dEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+ function _dFmt(n){ try{return '$'+Math.round(n||0).toLocaleString('es-AR');}catch(e){return '$'+Math.round(n||0);} }
+ function _dIni(nm){ var p=(nm||'').trim().split(/\s+/); return ((p[0]||'?')[0]+((p[1]||'')[0]||'')).toUpperCase(); }
+ function _dColor(nm){ var s=0; for(var i=0;i<(nm||'').length;i++) s+=nm.charCodeAt(i); return _DCOL[s%_DCOL.length]; }
+ function _dStat(msg,color){ var s=document.getElementById('rp-d-status'); if(s){ s.textContent=msg||''; s.style.color=color||'#34d399'; } }
+ window.rpDesp=function(open){ var o=document.getElementById('rp-desp-ov'); if(!o)return;
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
+     var nn=document.getElementById('rp-desp-nav'); if(nn){var a=nn.querySelector('a'); if(a)a.classList.add('bg-white/[0.08]');}
+   } else { var nn2=document.getElementById('rp-desp-nav'); if(nn2){var a2=nn2.querySelector('a'); if(a2)a2.classList.remove('bg-white/[0.08]');} }
+   o.style.display=open?'block':'none';
+   if(open && !_dLoaded) rpDLoad(); };
+ window.rpDLoad=function(){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
+   _dStat('Trayendo pedidos de tu tienda…','#38bdf8');
+   var qs=[]; if(_dDesde)qs.push('desde='+_dDesde); if(_dHasta)qs.push('hasta='+_dHasta);
+   fetch('/pf-despachos'+(qs.length?('?'+qs.join('&')):'')).then(function(r){return r.json();}).then(function(j){
+     if(b)b.style.opacity='';
+     if(!j||!j.ok){ _dStat('No se pudo cargar.', '#fb7185'); return; }
+     if(j.shopify===false){ _dRows=[]; _dLoaded=true; rpDRender(); _dStat('Conectá tu tienda (Shopify) en Integraciones para ver los despachos.', '#f0b429'); return; }
+     _dRows=j.rows||[]; _dLoaded=true;
+     var R=j.resumen||{};
+     [['empaquetar',R.empaquetar],['exportada',R.exportada],['enviada',R.enviada],['todas',R.todas]].forEach(function(x){
+       var e1=document.getElementById('rp-d-n-'+x[0]), e2=document.getElementById('rp-d-m-'+x[0]);
+       if(e1)e1.textContent=(x[1]&&x[1].n)||0; if(e2)e2.textContent=_dFmt((x[1]&&x[1].monto)||0);
+     });
+     rpDRender(); _dStat('');
+   }).catch(function(){ if(b)b.style.opacity=''; _dStat('Error de conexión.', '#fb7185'); }); };
+ window.rpDVisibles=function(){ var q=((document.getElementById('rp-d-q')||{}).value||'').toLowerCase().trim();
+   var base=_dFilt==='todas'?_dRows:_dRows.filter(function(r){return r.estado===_dFilt;});
+   if(!q) return base;
+   return base.filter(function(r){ return (r.num+' '+r.nombre+' '+r.localidad+' '+r.cp).toLowerCase().indexOf(q)>=0; }); };
+ window.rpDRender=function(){ var rows=rpDVisibles(), tb=document.getElementById('rp-d-body'); if(!tb)return;
+   var td='padding:13px;border-bottom:1px solid #141c2a;font-size:13px';
+   if(!rows.length){ tb.innerHTML='<tr><td colspan="8" style="padding:40px 14px;text-align:center;color:#5b6b82;font-size:13.5px">No hay pedidos en este estado.</td></tr>'; }
+   else tb.innerHTML=rows.map(function(r){
+     var env = r.tipo==='sucursal'
+       ? '<span style="background:#0e1d33;border:1px solid #1e3a5f;color:#8fbdf5;font-size:11.5px;font-weight:700;border-radius:16px;padding:3px 10px">🏤 Sucursal</span>'
+       : '<span style="background:#0e2a1c;border:1px solid #17492f;color:#34d399;font-size:11.5px;font-weight:700;border-radius:16px;padding:3px 10px">🏠 Domicilio</span>';
+     var est = r.estado==='exportada' ? ' <span style="background:#0a2434;border:1px solid #155066;color:#38bdf8;font-size:11px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">exportada</span>'
+             : r.estado==='enviada' ? ' <span style="background:#1c1636;border:1px solid #3a2f6b;color:#a78bfa;font-size:11px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">enviada</span>' : '';
+     var w = r.incompleta ? ' <span title="Dirección incompleta" style="color:#fb7185;font-size:12px;cursor:help">⚠</span>' : '';
+     return '<tr onmouseover="this.style.background=&#39;#0d1622&#39;" onmouseout="this.style.background=&#39;&#39;">'
+       +'<td style="'+td+';width:36px"><input type="checkbox" class="rp-d-chk" value="'+_dEsc(r.num)+'" onclick="rpDCnt()" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer"></td>'
+       +'<td style="'+td+';color:#cbd5e1;font-weight:700">#'+_dEsc(r.num)+w+'</td>'
+       +'<td style="'+td+'"><span style="display:inline-flex;align-items:center;gap:9px"><span style="width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#fff;background:'+_dColor(r.nombre)+'">'+_dEsc(_dIni(r.nombre))+'</span>'+_dEsc(r.nombre)+'</span></td>'
+       +'<td style="'+td+'">'+env+est+'</td>'
+       +'<td style="'+td+';color:#8493a8">'+_dEsc(r.localidad)+'</td>'
+       +'<td style="'+td+';color:#8493a8">'+_dEsc(r.cp)+'</td>'
+       +'<td style="'+td+';text-align:right">'+r.unidades+'</td>'
+       +'<td style="'+td+';text-align:right;font-weight:700">'+_dFmt(r.total)+'</td></tr>';
+   }).join('');
+   var sa=document.getElementById('rp-d-all'); if(sa)sa.checked=false; rpDCnt(); };
+ window.rpDFilt=function(f){ _dFilt=f;
+   var cs=document.querySelectorAll('#rp-d-cards .rp-dc');
+   for(var i=0;i<cs.length;i++){ var on=cs[i].getAttribute('data-f')===f; cs[i].style.borderColor=on?'#5a4a1e':'#1a2333'; cs[i].style.background=on?'linear-gradient(165deg,rgba(240,180,41,.07),transparent 60%)':'#0e1521'; var lb=cs[i].querySelector('.rp-dl'); if(lb)lb.style.color=on?'#f0b429':'#8493a8'; }
+   rpDRender(); };   // los botones son los mismos en las 4 vistas
+ window.rpDPer=function(p){ var ss=document.querySelectorAll('#rp-d-segs .rp-seg');
+   for(var i=0;i<ss.length;i++){ var on=ss[i].getAttribute('data-p')===p; ss[i].style.background=on?'#2563eb':'transparent'; ss[i].style.color=on?'#fff':'#8493a8'; }
+   var di=document.getElementById('rp-d-desde'), ha=document.getElementById('rp-d-hasta'); if(di)di.value=''; if(ha)ha.value='';
+   var now=new Date(); var off=now.getTimezoneOffset(); // usar fecha local AR aprox
+   function iso(d){ return d.toISOString().slice(0,10); }
+   if(p==='todas'){ _dDesde=null; _dHasta=null; }
+   else if(p==='hoy'){ _dDesde=iso(now); _dHasta=iso(now); }
+   else if(p==='ayer'){ var y=new Date(now.getTime()-86400000); _dDesde=iso(y); _dHasta=iso(y); }
+   else if(p==='7'){ var w=new Date(now.getTime()-6*86400000); _dDesde=iso(w); _dHasta=iso(now); }
+   rpDLoad(); };
+ window.rpDRango=function(){ var di=document.getElementById('rp-d-desde').value, ha=document.getElementById('rp-d-hasta').value;
+   if(!di&&!ha) return; _dDesde=di||ha; _dHasta=ha||di;
+   var ss=document.querySelectorAll('#rp-d-segs .rp-seg'); for(var i=0;i<ss.length;i++){ ss[i].style.background='transparent'; ss[i].style.color='#8493a8'; }
+   rpDLoad(); };
+ window.rpDSel=function(){ return [].slice.call(document.querySelectorAll('.rp-d-chk:checked')).map(function(c){return c.value;}); };
+ window.rpDCnt=function(){ var n=rpDSel().length, tot=rpDVisibles().length; var e=document.getElementById('rp-d-cnt'); if(e)e.textContent=n?(n+' de '+tot+' seleccionada'+(n>1?'s':'')):(tot+' pedido'+(tot!==1?'s':'')); };
+ window.rpDAll=function(c){ document.querySelectorAll('.rp-d-chk').forEach(function(x){x.checked=c.checked;}); rpDCnt(); };
+ window.rpDMarcar=function(accion){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá al menos un pedido.', '#fb7185'); return; }
+   _dStat('Guardando…','#38bdf8');
+   fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,accion:accion})})
+    .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ _dLoaded=false; rpDLoad(); _dStat('✓ '+sel.length+' pedido(s) → '+(accion==='exportada'?'Exportadas':'Enviadas')+'.'); } else _dStat('No se pudo guardar.', '#fb7185'); })
+    .catch(function(){ _dStat('Error de conexión.', '#fb7185'); }); };
+ window.rpDExcel=function(){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá los pedidos para el Excel.', '#fb7185'); return; }
+   _dStat('⏳ Generando Excel Andreani…','#a78bfa');
+   fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel})})
+    .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';}); return r.blob(); })
+    .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Andreani.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+      // al exportar, los pasa a "Exportadas"
+      fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,accion:'exportada'})}).then(function(){ _dLoaded=false; rpDLoad(); });
+      _dStat('✅ Excel descargado ('+sel.length+' pedidos) → Exportadas. Subílo a Andreani.'); })
+    .catch(function(e){ _dStat('No se pudo generar el Excel'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
+ window.rpDActSku=function(){ _dStat('↻ Actualizando SKUs desde tu tienda…','#38bdf8');
+   fetch('/pf-despachos-sku-sync',{method:'POST'}).then(function(r){return r.json();}).then(function(j){ _dStat(j&&j.ok?('✓ '+(j.n||0)+' SKUs actualizados desde tu tienda.'):'No se pudo actualizar.'); }).catch(function(){ _dStat('Actualización de SKUs: pendiente de conectar.', '#f0b429'); }); };
+ // ---- Modal Insertar SKU ----
+ window.rpDOpenSku=function(){ var m=document.getElementById('rp-d-skuov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-skures'); if(r)r.innerHTML=''; } };
+ window.rpDCloseSku=function(){ var m=document.getElementById('rp-d-skuov'); if(m)m.style.display='none'; };
+ window.rpDUpSku=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-skures');
+   res.innerHTML='<div style="color:#a78bfa;font-size:12.5px">⏳ Detectando formato de cada etiqueta e insertando SKU…</div>';
+   var fd=new FormData(); fd.append('pdf',f);
+   fetch('/pf-despachos-sku',{method:'POST',body:fd}).then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';}); return r.blob(); })
+    .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='etiquetas-con-sku.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+      res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">✅ SKU insertado en cada etiqueta — PDF descargado.</div>'; })
+    .catch(function(e){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
+ // ---- Modal Enviar seguimiento ----
+ window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; } };
+ window.rpDCloseSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m)m.style.display='none'; };
+ var _dSeg=[];
+ window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
+   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento)…</div>';
+   var fd=new FormData(); fd.append('pdf',f);
+   fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
+     _dSeg=j.pedidos;
+     var filas=_dSeg.map(function(o){ return '<tr><td style="padding:9px 8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td><td style="padding:9px 8px;border-top:1px solid #141c2a">'+_dEsc(o.nombre||'')+'</td><td style="padding:9px 8px;border-top:1px solid #141c2a;color:#8493a8;font-family:ui-monospace,monospace;font-size:12px">'+_dEsc(o.track||'')+'</td></tr>'; }).join('');
+     res.innerHTML='<div style="background:#0b111c;border:1px solid #1a2333;border-radius:12px;overflow:hidden"><div style="padding:11px 14px;color:#e7edf5;font-size:13px;font-weight:700;border-bottom:1px solid #1a2333">✅ '+_dSeg.length+' pedidos leídos</div>'
+       +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr><th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Pedido</th><th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Cliente</th><th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Seguimiento</th></tr></thead><tbody>'+filas+'</tbody></table></div>'
+       +'<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid #1a2333"><span style="color:#5b6b82;font-size:11.5px">Al enviar, tu tienda le manda el mail con el tracking al cliente.</span><button onclick="rpDEnviarSeg()" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(160deg,#b23a55,#8f2c44);border:1px solid #a23650;color:#ffe0e7;border-radius:10px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer">Enviar '+_dSeg.length+' seguimientos</button></div></div>';
+   }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
+ window.rpDEnviarSeg=function(){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
+   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Enviando seguimientos y avisando a tu tienda…</div>';
+   fetch('/pf-despachos-seg-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:_dSeg})}).then(function(r){return r.json();}).then(function(j){
+     if(j&&j.ok){ res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">📲 '+(j.enviados||0)+' seguimientos enviados — la tienda le avisó por mail a cada cliente.</div>'; _dLoaded=false; rpDLoad(); setTimeout(rpDCloseSeg,1600); }
+     else res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>';
+   }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error de conexión.</div>'; }); };
  function rpComisLoad(){ fetch('/pf-comisiones').then(function(r){return r.json();}).then(function(j){ var c=(j&&j.comis)||{};
     var set=function(id,v){var el=document.getElementById(id); if(el)el.value=(!v||v===0)?'':v;};
     // 1% tienda y 3,5% Ingresos Brutos: FIJOS y no editables (pedido del usuario).
@@ -1109,7 +1340,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-i-neto-real-modal"})
+    return jsonify({"ok": True, "v": "2026-08-09-j-despachos"})
 
 
 @app.get("/pf-diag")
@@ -1272,6 +1503,320 @@ def pf_orden():
         "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2),
         "envio_real": _real_env is not None,
         "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
+
+
+# ==================== DESPACHOS (Andreani + Shopify/TiendaNube) ====================
+DESP_STATE = DATA_DIR / "despachos_estado.json"   # {email: {order_num: "enviar"}} — marcados "por enviar"
+_SUC_KEYS = ("sucursal", "pickup", "pick up", "pick-up", "retiro", "punto", "agenc", "hop")
+
+
+def _desp_state(email) -> dict:
+    try:
+        return (_json.loads(DESP_STATE.read_text(encoding="utf-8"))).get(email, {})
+    except Exception:
+        return {}
+
+
+def _desp_save(email, st) -> None:
+    try:
+        d = _json.loads(DESP_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    d[email] = st
+    DESP_STATE.parent.mkdir(parents=True, exist_ok=True)
+    DESP_STATE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+SKUS_FILE = DATA_DIR / "prod_skus.json"   # {email: {product_id: "SKU"}}
+
+
+def _skus_map(email) -> dict:
+    try:
+        return (_json.loads(SKUS_FILE.read_text(encoding="utf-8"))).get(email, {})
+    except Exception:
+        return {}
+
+
+def _skus_save(email, m) -> None:
+    try:
+        d = _json.loads(SKUS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    d[email] = m
+    SKUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SKUS_FILE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+@app.post("/pf-sku-set")
+def pf_sku_set():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    pid = str(data.get("pid") or "").strip()
+    sku = str(data.get("sku") or "").strip()
+    if not pid:
+        return jsonify({"ok": False})
+    m = _skus_map(email)
+    if sku:
+        m[pid] = sku
+    else:
+        m.pop(pid, None)
+    _skus_save(email, m)
+    return jsonify({"ok": True})
+
+
+def _es_sucursal_ship(o) -> bool:
+    sl = o.get("shipping_lines") or []
+    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in sl).lower()
+    return any(k in txt for k in _SUC_KEYS)
+
+
+def _dni_de(o) -> str:
+    for na in (o.get("note_attributes") or []):
+        n = (na.get("name") or "").lower()
+        if any(k in n for k in ("dni", "documento", "cuil", "cuit")):
+            v = "".join(ch for ch in str(na.get("value") or "") if ch.isdigit())
+            if v:
+                return v
+    sa = o.get("shipping_address") or {}
+    comp = "".join(ch for ch in str(sa.get("company") or "") if ch.isdigit())
+    return comp
+
+
+def _despachos_orders(email, desde=None, hasta=None):
+    """Órdenes de Shopify PAGADAS y NO despachadas (para despachar por Andreani).
+    Solo entran las PAGADAS (si no está paga, no aparece). Filtra por fecha si se pasa desde/hasta."""
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return None
+    shop, token = tk.get("shop"), tk.get("access_token")
+    params = {"status": "open", "financial_status": "paid",
+              "fulfillment_status": "unshipped", "limit": 250,
+              "fields": "id,order_number,name,total_price,current_total_price,"
+                        "financial_status,fulfillment_status,cancelled_at,line_items,"
+                        "created_at,shipping_lines,shipping_address,customer,contact_email,"
+                        "note_attributes"}
+    if desde:
+        params["created_at_min"] = desde + "T00:00:00-03:00"
+    if hasta:
+        params["created_at_max"] = hasta + "T23:59:59-03:00"
+    try:
+        r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                         headers={"X-Shopify-Access-Token": token},
+                         params=params, timeout=40)
+        orders = (r.json() or {}).get("orders") or []
+    except Exception:
+        return []
+    st = _desp_state(email)
+    out = []
+    for o in orders:
+        if o.get("cancelled_at"):
+            continue
+        if (o.get("financial_status") or "").lower() != "paid":   # doble seguro: solo pagadas
+            continue
+        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        sa = o.get("shipping_address") or {}
+        cust = o.get("customer") or {}
+        nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip())
+                  or o.get("contact_email") or "—")
+        suc = _es_sucursal_ship(o)
+        unidades = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
+        localidad = sa.get("city") or ""
+        cp = sa.get("zip") or ""
+        prov = sa.get("province") or ""
+        tel = sa.get("phone") or (cust.get("phone") or "")
+        # Domicilio incompleto (sucursal no necesita dirección de casa).
+        incompleta = (not suc) and (not sa.get("address1") or not cp or not tel)
+        estado = st.get(num) or "empaquetar"   # exportada / enviada / (default) empaquetar
+        out.append({
+            "num": num, "nombre": nombre.strip(), "tipo": "sucursal" if suc else "domicilio",
+            "localidad": localidad, "cp": cp, "provincia": prov, "unidades": unidades,
+            "total": round(float(o.get("total_price") or o.get("current_total_price") or 0), 2),
+            "tel": tel, "dni": _dni_de(o), "fecha": o.get("created_at") or "",
+            "email": o.get("contact_email") or (cust.get("email") or ""),
+            "suc_nombre": " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip(),
+            "calle": sa.get("address1") or "", "extra": sa.get("address2") or "",
+            "incompleta": incompleta, "estado": estado,
+        })
+    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    return out
+
+
+@app.get("/pf-despachos")
+def pf_despachos_list():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "rows": []})
+    desde = request.args.get("desde") or None
+    hasta = request.args.get("hasta") or None
+    rows = _despachos_orders(email, desde, hasta)
+    if rows is None:
+        return jsonify({"ok": True, "shopify": False, "rows": []})
+
+    def _suma(lst):
+        return round(sum(r["total"] for r in lst), 2)
+    grp = {e: [r for r in rows if r["estado"] == e] for e in ("empaquetar", "exportada", "enviada")}
+    return jsonify({"ok": True, "shopify": True, "rows": rows,
+                    "resumen": {
+                        "empaquetar": {"n": len(grp["empaquetar"]), "monto": _suma(grp["empaquetar"])},
+                        "exportada": {"n": len(grp["exportada"]), "monto": _suma(grp["exportada"])},
+                        "enviada": {"n": len(grp["enviada"]), "monto": _suma(grp["enviada"])},
+                        "todas": {"n": len(rows), "monto": _suma(rows)}}})
+
+
+@app.post("/pf-despachos-marcar")
+def pf_despachos_marcar():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    nums = [str(n) for n in (data.get("nums") or [])]
+    accion = (data.get("accion") or "exportada").strip()   # exportada / enviada / empaquetar
+    st = _desp_state(email)
+    for n in nums:
+        if accion == "empaquetar":
+            st.pop(n, None)
+        else:
+            st[n] = accion
+    _desp_save(email, st)
+    return jsonify({"ok": True, "n": len(nums), "accion": accion})
+
+
+ANDREANI_TPL = RAIZ / "EnvioMasivoExcelPaquetes.xlsx"
+
+
+def _split_nombre(nm):
+    p = (nm or "").strip().split()
+    if len(p) <= 1:
+        return (nm or ""), ""
+    return " ".join(p[:-1]), p[-1]
+
+
+def _calle_num(dir_):
+    import re
+    d = (dir_ or "").strip()
+    m = re.search(r"(\d+)\s*$", d)
+    if m:
+        return (d[:m.start()].strip().rstrip(",") or d), m.group(1)
+    m2 = re.search(r"\d+", d)
+    if m2:
+        return (d.replace(m2.group(0), "").strip() or d), m2.group(0)
+    return d, ""
+
+
+@app.post("/pf-despachos-excel")
+def pf_despachos_excel():
+    """Genera el Excel de carga masiva de Andreani (2 hojas: A domicilio / A sucursal)
+    con los pedidos seleccionados, mapeando los campos de Shopify a la plantilla."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    data = request.get_json(silent=True) or {}
+    nums = set(str(n) for n in (data.get("nums") or []))
+    if not nums:
+        return jsonify({"ok": False, "msg": "sin pedidos"}), 400
+    rows = _despachos_orders(email) or []
+    sel = [r for r in rows if r["num"] in nums]
+    if not sel:
+        return jsonify({"ok": False, "msg": "no encontré esos pedidos"}), 404
+    tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+    if not tpl.exists():
+        return jsonify({"ok": False, "msg": "falta la plantilla EnvioMasivoExcelPaquetes.xlsx en el servidor"}), 500
+    try:
+        import openpyxl
+    except Exception:
+        return jsonify({"ok": False, "msg": "falta openpyxl en el servidor"}), 500
+    try:
+        wb = openpyxl.load_workbook(tpl)
+        ws_dom = wb["A domicilio"]
+        ws_suc = wb["A sucursal"]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude abrir la plantilla: %s" % e}), 500
+    # Mínimos Andreani (jul-2026): SUMA de lados (alto+ancho+prof) >= 35 cm y peso >= 1 kg.
+    # 15+12+10 = 37 cm (cumple con margen). Peso FIJO 1000 g (1 kg) para TODOS los paquetes:
+    # no escala con las unidades a propósito (si escalara, Andreani cobra más por peso declarado).
+    ALTO, ANCHO, PROF = 15, 12, 10
+    PESO = 1000
+    r_dom = r_suc = 3
+    for r in sel:
+        nom, ape = _split_nombre(r["nombre"])
+        valor = int(round(r["total"]))
+        peso = PESO
+        if r["tipo"] == "sucursal":
+            vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, r.get("dni") or "",
+                    r.get("email") or "", r.get("cp") or "", r.get("tel") or "", r.get("suc_nombre") or ""]
+            for c, v in enumerate(vals, start=1):
+                ws_suc.cell(r_suc, c, v)
+            r_suc += 1
+        else:
+            calle, numero = _calle_num(r.get("calle"))
+            vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, r.get("dni") or "",
+                    r.get("email") or "", r.get("cp") or "", r.get("tel") or "", calle, numero,
+                    r.get("extra") or "", "", r.get("provincia") or "", ""]
+            for c, v in enumerate(vals, start=1):
+                ws_dom.cell(r_dom, c, v)
+            r_dom += 1
+    import io
+    buf = io.BytesIO()
+    wb.save(buf)
+    wb.close()
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="Andreani.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.post("/pf-despachos-sku-sync")
+def pf_despachos_sku_sync():
+    """Trae los SKU de los productos de la tienda a la sección Productos."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    n = 0
+    try:
+        tk = _shop_tokens().get(email)
+        if tk and tk.get("access_token"):
+            r = requests.get("https://%s/admin/api/2026-07/products.json" % tk.get("shop"),
+                             headers={"X-Shopify-Access-Token": tk.get("access_token")},
+                             params={"limit": 250, "fields": "id,variants"}, timeout=30)
+            skus = _skus_map(email)
+            for p in ((r.json() or {}).get("products") or []):
+                for v in (p.get("variants") or []):
+                    sk = (v.get("sku") or "").strip()
+                    if sk:
+                        skus[str(p.get("id"))] = sk
+                        n += 1
+                        break
+            _skus_save(email, skus)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "n": n})
+
+
+@app.post("/pf-despachos-sku")
+def pf_despachos_sku():
+    """Estampa el SKU en cada etiqueta del PDF (detecta formato Andreani/Envialo).
+    Pendiente de calibrar con un PDF real → por ahora informa."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": False, "msg": "el estampado de SKU se está calibrando con un rótulo real de Andreani"}), 501
+
+
+@app.post("/pf-despachos-seg-leer")
+def pf_despachos_seg_leer():
+    """Lee el PDF de Andreani → N° Interno + seguimiento de cada pedido.
+    Pendiente de calibrar con un PDF real → por ahora informa."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": False, "msg": "la lectura del PDF se está calibrando con un rótulo real de Andreani"})
+
+
+@app.post("/pf-despachos-seg-enviar")
+def pf_despachos_seg_enviar():
+    """Carga el tracking en la tienda (Shopify/TN) y notifica al cliente por mail."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": False, "msg": "el envío de seguimiento se conecta en el próximo paso"})
 
 
 def _mp_pagos_lista(email, desde, hasta):
