@@ -15,7 +15,7 @@ import urllib.parse as _url
 from pathlib import Path
 
 import requests
-from flask import Flask, Response, jsonify, redirect, request, session
+from flask import Flask, Response, jsonify, redirect, request, session, send_file
 
 import os as _os
 
@@ -714,9 +714,13 @@ _SOLO_DASH = r"""
    fetch('/pf-comisiones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#34d399'; msg.textContent='¡Guardado!'; setTimeout(function(){msg.style.display='none';},1500);} rpComisTotal(); }).catch(function(){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#f87171'; msg.textContent='Error, probá de nuevo';} }); };
  function rpProdWarn(){ var warn=document.getElementById('rp-prod-warn'); if(!warn)return; var n=document.querySelectorAll('#rp-prod-body .rp-sincosto').length;
   warn.innerHTML = n>0 ? '<div style="display:flex;align-items:center;gap:14px;background:#1c1608;border:1px solid #4a3a1a;border-radius:12px;padding:13px 16px"><span style="font-size:18px">&#9888;&#65039;</span><div style="flex:1"><b style="color:#f1f5f9;font-size:13.5px">'+n+' '+(n===1?'producto':'productos')+' sin costo cargado</b><div style="color:#c9a35b;font-size:12.5px;margin-top:2px">Su ganancia se calcula de m&aacute;s. Carg&aacute; el costo para que el margen sea real.</div></div></div>' : ''; }
- window.rpSaveSku=function(inp,id){ var v=String(inp.value||'').trim();
-  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,sku:v})}).catch(function(){});
-  inp.style.borderColor=v?'#17492f':'#1e2b3d'; };
+ window.rpSkuSave=function(id){
+  var t=(document.getElementById('rp-sku-t-'+id)||{}).value||'xn';
+  var bi=document.getElementById('rp-sku-b-'+id); var b=bi?(bi.value||'').trim():'';
+  if(bi){ bi.disabled=(t==='spray'); bi.style.opacity=(t==='spray')?'.4':'1'; bi.placeholder=(t==='fijo'?'código fijo':'nombre (ej: pote)'); }
+  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,tipo:t,base:b})})
+   .then(function(r){return r.json();}).then(function(j){ var ej=document.getElementById('rp-sku-ej-'+id);
+     if(ej&&j&&j.ejemplos){ ej.textContent='1→'+(j.ejemplos['1']||'—')+' · 2→'+(j.ejemplos['2']||'—')+' · 3→'+(j.ejemplos['3']||'—'); ej.style.color='#5b6b82'; } }).catch(function(){}); };
  window.rpSaveCosto=function(inp,id){ var v=parseFloat(String(inp.value||'').replace(/\./g,'').replace(',','.'))||0;
   fetch('/pf-guardar-costo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,costo:v})}).catch(function(){});
   var row=inp.closest('tr'); var b=row&&row.querySelector('.rp-badge');
@@ -735,7 +739,17 @@ _SOLO_DASH = r"""
     var badge= tiene ? '<span class="rp-badge rp-concosto" style="background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#10003; Cargado</span>' : '<span class="rp-badge rp-sincosto" style="background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#9888;&#65039; Sin costo</span>';
     h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
     +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><input value="'+(p.sku?esc(p.sku):'')+'" placeholder="SKU" onchange="rpSaveSku(this,\''+p.id+'\')" style="width:120px;background:#0b1220;border:1px solid '+(p.sku?'#17492f':'#1e2b3d')+';color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right"></td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">'
+     +'<div style="display:flex;gap:6px;align-items:center">'
+      +'<select id="rp-sku-t-'+p.id+'" onchange="rpSkuSave(\''+p.id+'\')" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:8px 8px;font-size:12.5px;cursor:pointer">'
+       +'<option value="xn"'+(p.sku_tipo==='xn'?' selected':'')+'>xN cantidad</option>'
+       +'<option value="spray"'+(p.sku_tipo==='spray'?' selected':'')+'>Spray 30/60</option>'
+       +'<option value="fijo"'+(p.sku_tipo==='fijo'?' selected':'')+'>Fijo</option>'
+      +'</select>'
+      +'<input id="rp-sku-b-'+p.id+'" value="'+esc(p.sku_base||'')+'" '+(p.sku_tipo==='spray'?'disabled':'')+' placeholder="'+(p.sku_tipo==='fijo'?'código fijo':'nombre (ej: pote)')+'" onchange="rpSkuSave(\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right'+(p.sku_tipo==='spray'?';opacity:.4':'')+'">'
+     +'</div>'
+     +'<span id="rp-sku-ej-'+p.id+'" style="color:#5b6b82;font-size:11px">ej: 2→'+esc(p.sku_ej||'')+'</span>'
+    +'</div></td>'
     +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><input value="'+(tiene?Number(p.costo).toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpSaveCosto(this,\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right"></td></tr>'; });
    h+='</tbody></table>'; body.innerHTML=h; rpProdWarn();
    var rf=document.getElementById('rp-prod-ref'); if(rf) rf.onclick=rpProdLoad;
@@ -761,9 +775,18 @@ _SOLO_DASH = r"""
     for(var i=0;i<all.length;i++){ if((all[i].textContent||'').trim()===label){ var box=all[i].parentElement; if(!box)continue;
       var v=box.nextElementSibling; while(v && !(/font-bold/.test(v.className||''))) v=v.nextElementSibling;
       if(v && v.textContent!==text) v.textContent=text; } } }
+  // Chip de canal ACTIVO (Todas / Shopify / MercadoLibre). El activo lleva la clase text-primary/bg-primary.
+  function _canalActivo(){ var bs=document.querySelectorAll('button');
+    for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\s+/g,' ').trim();
+      if((t==='Todas'||t==='Shopify'||t==='MercadoLibre') && /text-primary|bg-primary/.test(bs[i].className||'')) return t; }
+    return 'Todas'; }
+  function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
   function paint(){ if(!_raw)return;
+    // MercadoLibre no tiene ventas (todo es Shopify) → paso datos en CERO para no pintar los de Shopify.
+    var meli=(_canalActivo()==='MercadoLibre'); var save=_raw; if(meli) _raw=_ceroRaw();
     try{ costos4(); }catch(e){}
     try{ metricas(); }catch(e){}
+    _raw=save;
     try{ fixFacturacion(); }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
@@ -782,6 +805,7 @@ _SOLO_DASH = r"""
     return null; }
   var _factEl=null;
   function fixFacturacion(){ if(!_raw) return;
+    if(_canalActivo()==='MercadoLibre') return;   // canal sin ventas → dejar el $0 nativo, no forzar
     var real=_raw.tot_facturado||_raw.facturado||0;
     if(!real && _raw.iibb_monto) real=Math.round(_raw.iibb_monto*100/3.5);   // último recurso: derivar de IIBB (3,5%)
     if(!real) return;
@@ -994,6 +1018,11 @@ _SOLO_DASH = r"""
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
+  // Al tocar un chip de canal (Todas/Shopify/MercadoLibre) React re-renderiza → re-aplico mis parches.
+  document.addEventListener('click', function(e){ var el=e.target;
+    for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
+      if(t==='Todas'||t==='Shopify'||t==='MercadoLibre'){ _factEl=null; [120,400,800,1400,2200].forEach(function(ms){ setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, ms); }); break; }
+      el=el.parentElement; } }, true);
 })();
 </script>
 """
@@ -1344,7 +1373,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-k-despachos-sku"})
+    return jsonify({"ok": True, "v": "2026-08-09-m-sku3"})
 
 
 @app.get("/pf-diag")
@@ -1531,7 +1560,7 @@ def _desp_save(email, st) -> None:
     DESP_STATE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-SKUS_FILE = DATA_DIR / "prod_skus.json"   # {email: {product_id: "SKU"}}
+SKUS_FILE = DATA_DIR / "prod_skus.json"   # {email: {product_id: {"tipo": "xn|spray|fijo", "base": "..."}}}
 
 
 def _skus_map(email) -> dict:
@@ -1551,6 +1580,40 @@ def _skus_save(email, m) -> None:
     SKUS_FILE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def _sku_cfg(v) -> dict:
+    """Normaliza el valor guardado (string viejo o dict) → {'tipo','base'}."""
+    if isinstance(v, dict):
+        return {"tipo": (v.get("tipo") or "xn"), "base": (v.get("base") or "")}
+    if isinstance(v, str) and v.strip():
+        return {"tipo": "fijo", "base": v.strip()}
+    return {"tipo": "xn", "base": ""}
+
+
+def _sku_vp(u: int) -> str:
+    """SKU VisionPure: cada 2 sprays → 1 de 60ML, el que sobra → 1 de 30ML. Ej: 3 → '1 60ML + 1 30ML'."""
+    if u <= 0:
+        return ""
+    d60, d30 = u // 2, u % 2
+    p = []
+    if d60:
+        p.append("%d 60ML" % d60)
+    if d30:
+        p.append("%d 30ML" % d30)
+    return " + ".join(p)
+
+
+def _sku_calc(cfg, u: int) -> str:
+    """SKU de la orden según el tipo de producto y la cantidad comprada `u`."""
+    c = _sku_cfg(cfg)
+    t, b = c["tipo"], (c["base"] or "").strip()
+    if t == "spray":
+        return _sku_vp(u)
+    if t == "fijo":
+        return b
+    # 'xn' (por defecto): xN + nombre  → 'x2 pote'
+    return (("x%d %s" % (u, b)).strip()) if b else ("x%d" % u)
+
+
 @app.post("/pf-sku-set")
 def pf_sku_set():
     email = _user_actual()
@@ -1558,16 +1621,19 @@ def pf_sku_set():
         return jsonify({"ok": False})
     data = request.get_json(silent=True) or {}
     pid = str(data.get("pid") or "").strip()
-    sku = str(data.get("sku") or "").strip()
     if not pid:
         return jsonify({"ok": False})
+    tipo = (data.get("tipo") or "xn").strip()
+    if tipo not in ("xn", "spray", "fijo"):
+        tipo = "xn"
+    base = str(data.get("base") or "").strip()
     m = _skus_map(email)
-    if sku:
-        m[pid] = sku
+    if tipo == "spray" or base:            # spray no necesita base; los otros sí para guardar
+        m[pid] = {"tipo": tipo, "base": base}
     else:
-        m.pop(pid, None)
+        m.pop(pid, None)                   # sin base y no-spray → limpiar
     _skus_save(email, m)
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "ejemplos": {str(n): _sku_calc(m.get(pid), n) for n in (1, 2, 3)}})
 
 
 def _es_sucursal_ship(o) -> bool:
@@ -2562,10 +2628,18 @@ def pf_productos():
             for p in r.json().get("products", []):
                 v = (p.get("variants") or [{}])[0]
                 pid = p.get("id")
+                guardado = skus_guardados.get(str(pid))
+                if guardado:
+                    cfg = _sku_cfg(guardado)                       # tipo + base que cargó el usuario
+                elif v.get("sku"):
+                    cfg = {"tipo": "fijo", "base": v.get("sku")}   # fallback: el SKU fijo de Shopify
+                else:
+                    cfg = {"tipo": "xn", "base": ""}               # default: por cantidad
                 productos.append({
                     "id": pid,
                     "nombre": p.get("title") or "",
-                    "sku": skus_guardados.get(str(pid)) or v.get("sku") or "",   # el que cargaste manda; fallback al de Shopify
+                    "sku_tipo": cfg["tipo"], "sku_base": cfg["base"],
+                    "sku_ej": _sku_calc(cfg, 2),                    # ejemplo con 2 unidades para mostrar
                     "precio": float(v.get("price") or 0),
                     "img": (p.get("image") or {}).get("src") or "",
                     "costo": costos.get(str(pid)) or 0,
