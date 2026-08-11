@@ -1978,7 +1978,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-11-mov2-fix-abrir"})
+    return jsonify({"ok": True, "v": "2026-08-11-mov3-cero"})
 
 
 @app.get("/pf-diag")
@@ -2365,19 +2365,10 @@ def _fact_save(email, st) -> None:
 
 
 # ===================== MOVIMIENTOS & SOCIOS =====================
-MOV_STATE = DATA_DIR / "movimientos.json"   # {email: {"rows": [...], "seq": int}}
+MOV_STATE = DATA_DIR / "movimientos.json"   # {email: {"rows": [...], "seq": int, "_sv": int}}
 
-_MOV_SEED = [
-    {"d": "10/08", "clase": "egreso", "cat": "Ads Meta", "desc": "CBO Madre — renovación 11/8", "socio": "marca", "monto": 311513},
-    {"d": "09/08", "clase": "ingreso", "cat": "Ventas", "desc": "Cobros TiendaNube", "socio": "marca", "monto": 650000},
-    {"d": "08/08", "clase": "aporte", "cat": "Aporte", "desc": "Capital para stock", "socio": "cristian", "monto": 480000},
-    {"d": "08/08", "clase": "egreso", "cat": "Stock", "desc": "700×60ml + 400×30ml", "socio": "marca", "monto": 480000},
-    {"d": "07/08", "clase": "aporte", "cat": "Aporte", "desc": "Editor de videos (6 creativos)", "socio": "socio", "monto": 120000},
-    {"d": "07/08", "clase": "egreso", "cat": "Diseño", "desc": "Editor de videos (6 creativos)", "socio": "marca", "monto": 120000},
-    {"d": "06/08", "clase": "egreso", "cat": "Envíos", "desc": "Andreani — despachos", "socio": "marca", "monto": 92000},
-    {"d": "05/08", "clase": "aporte", "cat": "Aporte", "desc": "Capital inicial", "socio": "cristian", "monto": 300000},
-    {"d": "04/08", "clase": "devolucion", "cat": "Devolución", "desc": "Retiro parcial de aporte", "socio": "cristian", "monto": 200000},
-]
+_MOV_SEED = []            # arranca TODO en 0 (el usuario carga lo real)
+MOV_SEED_VERSION = 2      # subir este número resetea los datos sembrados viejos una sola vez
 
 
 def _mov_all() -> dict:
@@ -2395,13 +2386,14 @@ def _mov_write(d) -> None:
 def _mov_get(email) -> dict:
     d = _mov_all()
     cur = d.get(email)
-    if not cur:
+    # sin datos, o versión de seed vieja → (re)sembrar. Con _MOV_SEED vacío queda en 0.
+    if not cur or cur.get("_sv") != MOV_SEED_VERSION:
         rows, seq = [], 0
         for m in _MOV_SEED:
             seq += 1
             r = dict(m); r["id"] = seq
             rows.append(r)
-        cur = {"rows": rows, "seq": seq}
+        cur = {"rows": rows, "seq": seq, "_sv": MOV_SEED_VERSION}
         d[email] = cur
         _mov_write(d)
     return cur
