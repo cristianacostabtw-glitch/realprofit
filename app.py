@@ -1185,7 +1185,7 @@ _SOLO_DASH = r"""
  function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
  function _fEmit(){ var v=(document.getElementById('rpf-emit')||{}).value||''; if(!v)return ''; var p=v.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
  window.rpFact=function(open){ var o=document.getElementById('rp-fact-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-fact-nav');
    } else { _rpNavActive(null); }
@@ -1978,7 +1978,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-11-mov3-cero"})
+    return jsonify({"ok": True, "v": "2026-08-11-mov4-fact-cierra-mov"})
 
 
 @app.get("/pf-diag")
