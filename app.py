@@ -769,16 +769,14 @@ _SOLO_DASH = r"""
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
- function rpProdSetActive(on){ try{ var pa=document.querySelector('#rp-prod-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
+ function _rpNavActive(id){ try{
+   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
-   if(da){ da.classList.toggle('bg-white/[0.08]',!on); da.classList.toggle('text-primary',!on); }
-   var pc=document.querySelector('#rp-comis-nav a'); if(pc && on){ pc.classList.remove('bg-white/[0.08]'); pc.classList.remove('text-primary'); } }catch(e){} }
+   if(da){ da.classList.toggle('bg-white/[0.08]', !id); da.classList.toggle('text-primary', !id); }
+ }catch(e){} }
+ function rpProdSetActive(on){ _rpNavActive(on?'rp-prod-nav':null); }
  window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
- function rpComisSetActive(on){ try{ var pa=document.querySelector('#rp-comis-nav a'); if(pa){ pa.classList.toggle('bg-white/[0.08]',!!on); pa.classList.toggle('text-primary',!!on); }
-   var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
-   var pp=document.querySelector('#rp-prod-nav a');
-   if(on){ if(da){ da.classList.remove('bg-white/[0.08]'); da.classList.remove('text-primary'); } if(pp){ pp.classList.remove('bg-white/[0.08]'); pp.classList.remove('text-primary'); } }
-   else { if(da){ da.classList.add('bg-white/[0.08]'); da.classList.add('text-primary'); } } }catch(e){} }
+ function rpComisSetActive(on){ _rpNavActive(on?'rp-comis-nav':null); }
  function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
    var ti=g('rp-c-tienda'), iva=g('rp-c-iva'), iibb=g('rp-c-iibb'), t;
    if(window._rpMpReal!=null){ t=window._rpMpReal + ti + iibb; }
@@ -797,8 +795,8 @@ _SOLO_DASH = r"""
  window.rpDesp=function(open){ var o=document.getElementById('rp-desp-ov'); if(!o)return;
    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
-     var nn=document.getElementById('rp-desp-nav'); if(nn){var a=nn.querySelector('a'); if(a)a.classList.add('bg-white/[0.08]');}
-   } else { var nn2=document.getElementById('rp-desp-nav'); if(nn2){var a2=nn2.querySelector('a'); if(a2)a2.classList.remove('bg-white/[0.08]');} }
+     _rpNavActive('rp-desp-nav');
+   } else { _rpNavActive(null); }
    o.style.display=open?'block':'none';
    if(open && !_dLoaded) rpDLoad(); };
  window.rpDLoad=function(){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
@@ -916,9 +914,8 @@ _SOLO_DASH = r"""
  window.rpFact=function(open){ var o=document.getElementById('rp-fact-ov'); if(!o)return;
    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
-     var nd=document.getElementById('rp-desp-nav'); if(nd){var ad=nd.querySelector('a'); if(ad)ad.classList.remove('bg-white/[0.08]');}
-     var nn=document.getElementById('rp-fact-nav'); if(nn){var a=nn.querySelector('a'); if(a)a.classList.add('bg-white/[0.08]');}
-   } else { var nn2=document.getElementById('rp-fact-nav'); if(nn2){var a2=nn2.querySelector('a'); if(a2)a2.classList.remove('bg-white/[0.08]');} }
+     _rpNavActive('rp-fact-nav');
+   } else { _rpNavActive(null); }
    o.style.display=open?'block':'none';
    if(open){ var _lk0=document.getElementById('rpf-lock'); if(_lk0)_lk0.style.display='flex';  /* BLOQUEADO en configuración: candado al instante */
      var e=document.getElementById('rpf-emit'); if(e&&!e.value){ var t=new Date(); e.value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); } rpFLoad(); } };
@@ -1708,7 +1705,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-10-r-fix-barra"})
+    return jsonify({"ok": True, "v": "2026-08-10-s-fix-selector"})
 
 
 @app.get("/pf-diag")
