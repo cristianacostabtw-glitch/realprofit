@@ -202,7 +202,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -248,9 +248,20 @@ _SOLO_DASH = r"""
      dn0.parentNode.insertBefore(cff, dn0.nextSibling);
     }
    }
+   // Agregar "Movimientos" en la barra (debajo de Facturación).
+   if(!nav.querySelector('#rp-mov-nav')){
+    var fn0=nav.querySelector('#rp-fact-nav')||nav.querySelector('#rp-desp-nav')||nav.querySelector('#rp-comis-nav');
+    if(fn0){ var cmv=fn0.cloneNode(true); cmv.id='rp-mov-nav'; cmv.style.display='';
+     var amv=cmv.querySelector('a'); if(amv){ amv.setAttribute('href','#'); amv.removeAttribute('aria-current'); amv.classList.remove('bg-white/[0.08]'); amv.classList.remove('text-primary');
+      var namv=amv.cloneNode(true); amv.parentNode.replaceChild(namv,amv); namv.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpMov(true); }); amv=namv; }
+     var icmv=cmv.querySelector('.material-symbols-outlined'); if(icmv) icmv.textContent='swap_vert';
+     var spmv=cmv.querySelectorAll('span'); for(var sv=0;sv<spmv.length;sv++){ var s7=spmv[sv]; if(!s7.classList.contains('material-symbols-outlined') && s7.children.length===0 && (s7.textContent||'').trim()){ s7.textContent='Movimientos'; } }
+     fn0.parentNode.insertBefore(cmv, fn0.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -263,7 +274,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -655,6 +666,267 @@ _SOLO_DASH = r"""
   </div>
  </div>
 </div>
+<div id="rp-mov-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#090b14;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#e8edf4">
+ <style>
+  #rp-mov-ov .mv-wrap{max-width:1360px;margin:0 auto;padding:24px 34px 60px}
+  #rp-mov-ov .mv-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
+  #rp-mov-ov .mv-head{display:flex;align-items:flex-start;gap:13px}
+  #rp-mov-ov .mv-hico{width:44px;height:44px;border-radius:12px;background:linear-gradient(160deg,#12233b,#0c1626);border:1px solid #1d3350;display:flex;align-items:center;justify-content:center;flex:none}
+  #rp-mov-ov .mv-hico svg{width:22px;height:22px;color:#5aa2f5}
+  #rp-mov-ov h1{margin:0;font-size:24px;font-weight:800;letter-spacing:-.3px;color:#f4f7fb}
+  #rp-mov-ov .mv-head p{margin:5px 0 0;color:#8b97a8;font-size:13px;max-width:660px;line-height:1.45}
+  #rp-mov-ov .mv-chips{display:flex;gap:10px;flex:none}
+  #rp-mov-ov .mv-chip{display:inline-flex;align-items:center;gap:7px;background:#0e1626;border:1px solid #1c2637;color:#c7d2e0;border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+  #rp-mov-ov .mv-x{flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer}
+  #rp-mov-ov .mv-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:6px 0 22px}
+  #rp-mov-ov .kcard{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:17px 19px;position:relative;overflow:hidden}
+  #rp-mov-ov .kcard::before{content:"";position:absolute;top:-40px;right:-30px;width:120px;height:120px;border-radius:50%;opacity:.13;filter:blur(24px)}
+  #rp-mov-ov .kcard.i::before{background:#34d399}#rp-mov-ov .kcard.e::before{background:#f87171}#rp-mov-ov .kcard.c::before{background:#5aa2f5}#rp-mov-ov .kcard.a::before{background:#a78bfa}
+  #rp-mov-ov .kt{display:flex;align-items:center;justify-content:space-between;position:relative}
+  #rp-mov-ov .kico{width:31px;height:31px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+  #rp-mov-ov .kico svg{width:17px;height:17px}
+  #rp-mov-ov .kcard.i .kico{background:rgba(52,211,153,.13);color:#34d399}#rp-mov-ov .kcard.e .kico{background:rgba(248,113,113,.13);color:#f87171}#rp-mov-ov .kcard.c .kico{background:rgba(90,162,245,.13);color:#5aa2f5}#rp-mov-ov .kcard.a .kico{background:rgba(167,139,250,.13);color:#a78bfa}
+  #rp-mov-ov .klabel{font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#8b97a8}
+  #rp-mov-ov .knum{font-size:26px;font-weight:800;letter-spacing:-.5px;line-height:1;margin-top:14px;font-variant-numeric:tabular-nums;position:relative}
+  #rp-mov-ov .kcard.i .knum{color:#34d399}#rp-mov-ov .kcard.e .knum{color:#f87171}#rp-mov-ov .kcard.c .knum{color:#f4f7fb}#rp-mov-ov .kcard.a .knum{color:#a78bfa}
+  #rp-mov-ov .ksub{font-size:12px;color:#5b6678;margin-top:6px;position:relative}
+  #rp-mov-ov .mv-sec{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#7d8ba0;margin:8px 2px 12px;display:flex;align-items:center;gap:9px}
+  #rp-mov-ov .mv-sec .bar{height:1px;background:#1a2436;flex:1}
+  #rp-mov-ov .socios{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px}
+  #rp-mov-ov .socio{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:18px 20px}
+  #rp-mov-ov .socio .top{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+  #rp-mov-ov .socio .av{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#0a1322}
+  #rp-mov-ov .socio .nm{font-size:15px;font-weight:700;color:#f4f7fb}#rp-mov-ov .socio .rol{font-size:11.5px;color:#5b6678}
+  #rp-mov-ov .socio .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  #rp-mov-ov .socio .box{background:#0a1322;border:1px solid #17233a;border-radius:11px;padding:10px 12px}
+  #rp-mov-ov .socio .box .l{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5b6678}
+  #rp-mov-ov .socio .box .v{font-size:17px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+  #rp-mov-ov .socio .saldo{margin-top:12px;background:rgba(52,211,153,.09);border:1px solid #1f5a3d;border-radius:11px;padding:11px 13px;display:flex;align-items:center;justify-content:space-between}
+  #rp-mov-ov .socio .saldo .l{font-size:12px;color:#9be8c6;font-weight:600}#rp-mov-ov .socio .saldo .v{font-size:19px;font-weight:800;color:#34d399;font-variant-numeric:tabular-nums}
+  #rp-mov-ov .resumen{background:#0b111e;border:1px solid #18212f;border-radius:16px;padding:15px 20px;display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:22px}
+  #rp-mov-ov .resumen .r{display:flex;flex-direction:column;gap:2px}
+  #rp-mov-ov .resumen .r .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#5b6678}
+  #rp-mov-ov .resumen .r .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+  #rp-mov-ov .resumen .sepv{width:1px;align-self:stretch;background:#1a2436}
+  #rp-mov-ov .resumen .note{margin-left:auto;color:#8b97a8;font-size:12.5px;max-width:320px;line-height:1.4}
+  #rp-mov-ov .row2{display:grid;grid-template-columns:1.7fr 1fr;gap:14px;margin-bottom:22px}
+  #rp-mov-ov .panel{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:18px 20px}
+  #rp-mov-ov .panel .ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  #rp-mov-ov .panel .ph b{font-size:14.5px;font-weight:700;color:#f4f7fb}#rp-mov-ov .panel .ph .sub{font-size:12px;color:#5b6678}
+  #rp-mov-ov .panel .big{font-size:24px;font-weight:800;color:#f4f7fb;font-variant-numeric:tabular-nums}
+  #rp-mov-ov .panel .up{font-size:12.5px;font-weight:700}
+  #rp-mov-ov .xlab{display:flex;justify-content:space-between;color:#5b6678;font-size:10.5px;margin-top:6px}
+  #rp-mov-ov .gastos .g{display:flex;align-items:center;gap:11px;margin-bottom:14px}#rp-mov-ov .gastos .g:last-child{margin-bottom:0}
+  #rp-mov-ov .gastos .gi{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;font-size:13px}
+  #rp-mov-ov .gastos .gm{flex:1;min-width:0}
+  #rp-mov-ov .gastos .gt{display:flex;justify-content:space-between;font-size:12.5px}
+  #rp-mov-ov .gastos .gt .n{color:#c7d2e0;font-weight:600}#rp-mov-ov .gastos .gt .v{color:#f4f7fb;font-weight:800;font-variant-numeric:tabular-nums}
+  #rp-mov-ov .gastos .gb{height:6px;border-radius:20px;background:#182234;margin-top:6px;overflow:hidden}#rp-mov-ov .gastos .gb i{display:block;height:100%;border-radius:20px}
+  #rp-mov-ov .bar-f{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:16px}
+  #rp-mov-ov .mpill{background:#0d1524;border:1px solid #1a2436;color:#9aa6b6;border-radius:20px;padding:8px 15px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  #rp-mov-ov .mpill.on{background:rgba(19,127,236,.14);border-color:#1e4f8a;color:#bcd7f7}
+  #rp-mov-ov .mbtn{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid #137fec;background:#137fec;color:#fff}
+  #rp-mov-ov .mbtn svg{width:16px;height:16px}
+  #rp-mov-ov .tcard{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;overflow:hidden}
+  #rp-mov-ov .scroll{overflow-x:auto}
+  #rp-mov-ov table{width:100%;border-collapse:collapse;font-size:13px;min-width:840px}
+  #rp-mov-ov thead th{text-align:left;color:#5b6678;font-size:10.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;padding:14px 16px;border-bottom:1px solid #1b2536}
+  #rp-mov-ov tbody td{padding:13px 16px;border-bottom:1px solid #141d2e;color:#e8edf4}
+  #rp-mov-ov tbody tr:last-child td{border-bottom:none}#rp-mov-ov tbody tr:hover{background:rgba(255,255,255,.02)}
+  #rp-mov-ov .num{font-variant-numeric:tabular-nums}
+  #rp-mov-ov .tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px}
+  #rp-mov-ov .t-in{background:rgba(52,211,153,.12);color:#34d399;border:1px solid #1f5a3d}#rp-mov-ov .t-eg{background:rgba(248,113,113,.1);color:#f87171;border:1px solid #5a2a2a}
+  #rp-mov-ov .cat{color:#b8c6da;font-size:12.5px}
+  #rp-mov-ov .fue{display:inline-flex;align-items:center;gap:7px}
+  #rp-mov-ov .fdot{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#0a1322}
+  #rp-mov-ov .afuera{font-size:10px;font-weight:700;margin-left:5px}
+  #rp-mov-ov .del{opacity:0;color:#fb7185;cursor:pointer;font-weight:800;padding:2px 7px;border-radius:6px}
+  #rp-mov-ov tr:hover .del{opacity:1}#rp-mov-ov .del:hover{background:rgba(251,113,133,.12)}
+  #rp-mov-ov .foot{padding:12px 16px;color:#8b97a8;font-size:12.5px;border-top:1px solid #1b2536}
+  #rp-mov-ov .mv-modal{position:fixed;inset:0;z-index:120;background:rgba(4,8,14,.74);display:none;align-items:center;justify-content:center;padding:20px}
+  #rp-mov-ov .mv-modal .box{width:100%;max-width:520px;background:#0c1420;border:1px solid #1b2536;border-radius:18px;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+  #rp-mov-ov .lk-lb{font-size:11px;font-weight:700;color:#8b97a8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block}
+  #rp-mov-ov .lk-in{background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:10px;padding:11px 13px;font-size:13.5px;font-family:inherit;outline:none;width:100%;color-scheme:dark}
+  #rp-mov-ov .lk-in::placeholder{color:#5b6678}
+  #rp-mov-ov .seg{display:flex;gap:7px;flex-wrap:wrap}
+  #rp-mov-ov .seg .s{flex:1;min-width:calc(50% - 4px);text-align:center;background:#0d1524;border:1px solid #1a2436;color:#aeb8c6;border-radius:10px;padding:10px;font-size:12.5px;font-weight:700;cursor:pointer}
+  #rp-mov-ov .seg .s.on{background:rgba(19,127,236,.14);border-color:#2b6fd0;color:#bcd7f7}
+  @media(max-width:900px){#rp-mov-ov .mv-kpis{grid-template-columns:1fr 1fr}#rp-mov-ov .row2{grid-template-columns:1fr}#rp-mov-ov .mv-wrap{padding:16px 14px}}
+ </style>
+ <div class="mv-wrap">
+  <div class="mv-top">
+   <div class="mv-head">
+    <div class="mv-hico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h18M3 12h18M3 17h18"/></svg></div>
+    <div><h1>Movimientos</h1><p>Ingresos, egresos y <b style="color:#cbd5e1">aportes de socios</b>. Separ&aacute; la <b style="color:#cbd5e1">reinversi&oacute;n de la marca</b> de la <b style="color:#cbd5e1">plata que pusieron de afuera</b> &mdash; para dividir y devolver todo bien cuando se recupere.</p></div>
+   </div>
+   <div class="mv-chips">
+    <span class="mv-chip">🇦🇷 ARS</span>
+    <button class="mv-x" onclick="rpMov(false)" title="Cerrar">&#10005;</button>
+   </div>
+  </div>
+  <div class="mv-kpis">
+   <div class="kcard i"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></span><span class="klabel">Ingresos</span></div><div class="knum" id="mv-k-ing">$0</div><div class="ksub">cobros + aportes del mes</div></div>
+   <div class="kcard e"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14m0 0 6-6m-6 6-6-6"/></svg></span><span class="klabel">Egresos</span></div><div class="knum" id="mv-k-egr">$0</div><div class="ksub">ads &middot; stock &middot; env&iacute;os &middot; dise&ntilde;o</div></div>
+   <div class="kcard c"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg></span><span class="klabel">Caja</span></div><div class="knum" id="mv-k-caja">$0</div><div class="ksub">saldo actual</div></div>
+   <div class="kcard a"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span><span class="klabel">A devolver a socios</span></div><div class="knum" id="mv-k-dev">$0</div><div class="ksub">aportes de afuera sin recuperar</div></div>
+  </div>
+  <div class="mv-sec"><span>Socios</span><span class="bar"></span></div>
+  <div class="socios" id="mv-socios"></div>
+  <div class="resumen">
+   <div class="r"><span class="l">Total aportado de afuera</span><span class="v" id="mv-r-ap" style="color:#e8edf4">$0</span></div>
+   <div class="sepv"></div>
+   <div class="r"><span class="l">Ya recuperado</span><span class="v" id="mv-r-rec" style="color:#34d399">$0</span></div>
+   <div class="sepv"></div>
+   <div class="r"><span class="l">Falta devolver</span><span class="v" id="mv-r-fal" style="color:#fbbf24">$0</span></div>
+   <div class="note">Cuando entre ganancia, se usa primero para <b style="color:#cbd5e1">devolver los aportes de afuera</b>. Reci&eacute;n ah&iacute; se reparte 50/50.</div>
+  </div>
+  <div class="row2">
+   <div class="panel">
+    <div class="ph"><b>Flujo de caja</b><span class="sub">Este mes</span></div>
+    <div class="big" id="mv-fc-big">$0</div><div class="up" id="mv-fc-up"></div>
+    <svg viewBox="0 0 420 120" preserveAspectRatio="none" style="width:100%;height:110px;margin-top:8px;display:block">
+     <defs><linearGradient id="mvCajaG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a9bf0" stop-opacity=".34"/><stop offset="1" stop-color="#4a9bf0" stop-opacity="0"/></linearGradient></defs>
+     <path id="mv-fc-area" fill="url(#mvCajaG)"></path>
+     <polyline id="mv-fc-line" fill="none" stroke="#4a9bf0" stroke-width="2.6" vector-effect="non-scaling-stroke"></polyline>
+     <circle id="mv-fc-dot" r="4.5" fill="#4a9bf0"></circle>
+    </svg>
+    <div class="xlab"><span>1</span><span>8</span><span>15</span><span>22</span><span>31</span></div>
+   </div>
+   <div class="panel gastos"><div class="ph"><b>Gastos por categor&iacute;a</b><span class="sub" id="mv-g-tot">$0</span></div><div id="mv-gastos" style="margin-top:12px"></div></div>
+  </div>
+  <div class="bar-f" id="mv-pills">
+   <span class="mpill on" data-f="todos" onclick="rpMovF('todos')">Todos</span>
+   <span class="mpill" data-f="ingreso" onclick="rpMovF('ingreso')"><span style="color:#34d399">&#9679;</span> Ingresos</span>
+   <span class="mpill" data-f="egreso" onclick="rpMovF('egreso')"><span style="color:#f87171">&#9679;</span> Egresos</span>
+   <span class="mpill" data-f="afuera" onclick="rpMovF('afuera')"><span style="color:#fbbf24">&#9679;</span> Aportes de afuera</span>
+   <span class="mbtn" style="margin-left:auto" onclick="rpMovOpen()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Agregar movimiento</span>
+  </div>
+  <div class="tcard"><div class="scroll">
+   <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categor&iacute;a</th><th>Descripci&oacute;n</th><th>Fuente / Socio</th><th style="text-align:right">Monto</th><th></th></tr></thead><tbody id="mv-body"></tbody></table>
+  </div><div class="foot" id="mv-cnt">&mdash;</div></div>
+ </div>
+ <div class="mv-modal" id="mv-modal" onclick="if(event.target===this)rpMovClose()">
+  <div class="box">
+   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div style="width:40px;height:40px;border-radius:11px;background:rgba(19,127,236,.13);color:#4aa8ff;display:flex;align-items:center;justify-content:center;flex:none"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></div><div style="flex:1"><div style="font-size:17px;font-weight:800;color:#f4f7fb">Agregar movimiento</div><div style="color:#8b97a8;font-size:12.5px">Se guarda y recalcula caja, socios y gastos.</div></div><button onclick="rpMovClose()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button></div>
+   <span class="lk-lb">Tipo de movimiento</span>
+   <div class="seg" id="mv-mtipo" style="margin-bottom:14px">
+    <div class="s on" data-t="ingreso" onclick="rpMovT(this)">&uarr; Ingreso (venta)</div>
+    <div class="s" data-t="egreso" onclick="rpMovT(this)">&darr; Gasto de la marca</div>
+    <div class="s" data-t="aporte" onclick="rpMovT(this)">+ Aporte de socio</div>
+    <div class="s" data-t="devolucion" onclick="rpMovT(this)">&#8629; Devoluci&oacute;n a socio</div>
+   </div>
+   <div id="mv-msocio-wrap" style="display:none;margin-bottom:12px"><span class="lk-lb">Socio</span>
+    <div class="seg" id="mv-msocio"><div class="s on" data-s="cristian" onclick="rpMovS(this)">Cristian</div><div class="s" data-s="socio" onclick="rpMovS(this)">Socio</div></div></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+    <div><span class="lk-lb">Monto ($)</span><input id="mv-m-monto" class="lk-in" inputmode="numeric" placeholder="50000"></div>
+    <div><span class="lk-lb">Fecha</span><input id="mv-m-fecha" class="lk-in" type="date"></div>
+   </div>
+   <div style="margin-bottom:12px"><span class="lk-lb">Categor&iacute;a</span><input id="mv-m-cat" class="lk-in" placeholder="Ads, Stock, Env&iacute;os, Dise&ntilde;o…"></div>
+   <div><span class="lk-lb">Descripci&oacute;n</span><input id="mv-m-desc" class="lk-in" placeholder="Detalle del movimiento"></div>
+   <div id="mv-m-err" style="display:none;color:#fb7185;font-size:12.5px;margin-top:10px"></div>
+   <button class="mbtn" style="width:100%;justify-content:center;margin-top:16px;padding:12px" onclick="rpMovSave(this)">Guardar movimiento</button>
+  </div>
+ </div>
+</div>
+<script>
+(function(){
+  var SOC={cristian:{nm:'Cristian',rol:'Socio · 50%',c:'#93c5fd'},socio:{nm:'Socio',rol:'Socio · 50%',c:'#c4b5fd'},marca:{nm:'Marca',c:'#6ee7b7'}};
+  var CATC={'Ads':'#5aa2f5','Ads Meta':'#5aa2f5','Stock':'#fbbf24','Mercadería':'#fbbf24','Envíos':'#38bdf8','Diseño':'#a78bfa','Ventas':'#34d399','Aporte':'#93c5fd','Devolución':'#f472b6'};
+  var MOV=[], filtro='todos', mtipo='ingreso', msocio='cristian', _loaded=false;
+  function fmt(n){return '$'+Math.round(n||0).toLocaleString('es-AR');}
+  function esIn(m){return m.clase==='ingreso'||m.clase==='aporte';}
+  function esEg(m){return m.clase==='egreso'||m.clase==='devolucion';}
+  function esAfuera(m){return m.clase==='aporte'||m.clase==='devolucion';}
+  function fueTag(m){ if(m.socio==='marca') return m.clase==='egreso'?'<span class="afuera" style="color:#8b97a8">reinversión</span>':''; return m.clase==='aporte'?'<span class="afuera" style="color:#fbbf24">de afuera</span>':'<span class="afuera" style="color:#34d399">recupero</span>'; }
+  function esc(s){return (''+s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function $(id){return document.getElementById(id);}
+  window.rpMovF=function(f){ filtro=f; var ps=document.querySelectorAll('#mv-pills .mpill'); for(var i=0;i<ps.length;i++){ ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f); } rpMovRender(); };
+  function filtered(){ return MOV.filter(function(m){ if(filtro==='todos')return true; if(filtro==='afuera')return esAfuera(m); if(filtro==='ingreso')return esIn(m); if(filtro==='egreso')return esEg(m); return true; }); }
+  window.rpMov=function(open){ var o=$('rp-mov-ov'); if(!o)return;
+    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
+      var _lk=$('rpf-lock'); if(_lk)_lk.style.display='none';
+      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=$('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
+      _rpNavActive('rp-mov-nav');
+    } else { _rpNavActive(null); }
+    o.style.display=open?'block':'none';
+    if(open && !_loaded) rpMovLoad(); };
+  window.rpMovLoad=function(){ fetch('/pf-movimientos').then(function(r){return r.json();}).then(function(j){
+      MOV=(j&&j.ok&&j.rows)?j.rows:[]; _loaded=true; rpMovRender();
+    }).catch(function(){ MOV=[]; _loaded=true; rpMovRender(); }); };
+  window.rpMovRender=function(){
+    var ing=0,egr=0; MOV.forEach(function(m){ if(esIn(m))ing+=m.monto; else egr+=m.monto; });
+    var caja=ing-egr;
+    var ap={cristian:0,socio:0}, rec={cristian:0,socio:0};
+    MOV.forEach(function(m){ if(m.clase==='aporte')ap[m.socio]=(ap[m.socio]||0)+m.monto; if(m.clase==='devolucion')rec[m.socio]=(rec[m.socio]||0)+m.monto; });
+    var sal={cristian:ap.cristian-rec.cristian, socio:ap.socio-rec.socio};
+    var totAp=ap.cristian+ap.socio, totRec=rec.cristian+rec.socio, dev=Math.max(0,sal.cristian)+Math.max(0,sal.socio);
+    $('mv-k-ing').textContent=fmt(ing); $('mv-k-egr').textContent=fmt(egr); $('mv-k-caja').textContent=fmt(caja); $('mv-k-dev').textContent=fmt(dev);
+    $('mv-r-ap').textContent=fmt(totAp); $('mv-r-rec').textContent=fmt(totRec); $('mv-r-fal').textContent=fmt(dev);
+    $('mv-fc-big').textContent=fmt(caja);
+    var upel=$('mv-fc-up'); upel.textContent=(caja>=0?'▲ ':'▼ ')+fmt(Math.abs(caja))+' de saldo'; upel.style.color=caja>=0?'#34d399':'#f87171';
+    var reinv=0; MOV.forEach(function(m){ if(m.socio==='marca'&&m.clase==='egreso')reinv+=m.monto; });
+    var soc=$('mv-socios'); var h='';
+    ['cristian','socio'].forEach(function(k){ var s=SOC[k];
+      h+='<div class="socio"><div class="top"><span class="av" style="background:'+s.c+'">'+s.nm[0]+'</span><div><div class="nm">'+s.nm+'</div><div class="rol">'+s.rol+'</div></div></div>'
+        +'<div class="grid"><div class="box"><div class="l">Aportó de afuera</div><div class="v" style="color:#e8edf4">'+fmt(ap[k])+'</div></div><div class="box"><div class="l">Recuperó</div><div class="v" style="color:#8b97a8">'+fmt(rec[k])+'</div></div></div>'
+        +'<div class="saldo"><span class="l">Saldo a favor (a devolver)</span><span class="v">'+fmt(sal[k])+'</span></div></div>';
+    });
+    h+='<div class="socio"><div class="top"><span class="av" style="background:'+SOC.marca.c+'">M</span><div><div class="nm">Marca</div><div class="rol">Caja / reinversión con ganancia</div></div></div>'
+      +'<div class="grid"><div class="box"><div class="l">Reinvertido</div><div class="v" style="color:#e8edf4">'+fmt(reinv)+'</div></div><div class="box"><div class="l">Caja disponible</div><div class="v" style="color:#34d399">'+fmt(caja)+'</div></div></div>'
+      +'<div class="saldo" style="background:rgba(90,162,245,.08);border-color:#1e4f8a"><span class="l" style="color:#9dc3f5">Es de la marca — no se devuelve</span><span class="v" style="color:#5aa2f5">—</span></div></div>';
+    soc.innerHTML=h;
+    var gc={}; MOV.forEach(function(m){ if(esEg(m)){ gc[m.cat]=(gc[m.cat]||0)+m.monto; } });
+    var arr=Object.keys(gc).map(function(k){return {c:k,v:gc[k]};}).sort(function(a,b){return b.v-a.v;}); var mx=arr.length?arr[0].v:1;
+    $('mv-g-tot').textContent=fmt(egr);
+    $('mv-gastos').innerHTML=arr.slice(0,6).map(function(g){ var col=CATC[g.c]||'#8b97a8';
+      return '<div class="g"><span class="gi" style="background:'+col+'22;color:'+col+'">'+(g.c[0]||'·')+'</span><div class="gm"><div class="gt"><span class="n">'+esc(g.c)+'</span><span class="v">'+fmt(g.v)+'</span></div><div class="gb"><i style="width:'+Math.max(6,Math.round(g.v/mx*100))+'%;background:'+col+'"></i></div></div></div>';
+    }).join('')||'<div style="color:#5b6678;font-size:12.5px">Sin gastos aún.</div>';
+    var ord=MOV.slice().sort(function(a,b){return (a.d||'').localeCompare(b.d||'');}); var run=0, pts=[];
+    ord.forEach(function(m){ run+= esIn(m)?m.monto:-m.monto; pts.push(run); });
+    if(pts.length<2)pts=[0,caja];
+    var mn=Math.min.apply(null,pts.concat([0])), mx2=Math.max.apply(null,pts), rng=(mx2-mn)||1;
+    var W=420,H=110, step=W/(pts.length-1);
+    var xy=pts.map(function(p,i){ return [Math.round(i*step), Math.round(H-8-(p-mn)/rng*(H-20))]; });
+    $('mv-fc-line').setAttribute('points',xy.map(function(a){return a[0]+','+a[1];}).join(' '));
+    $('mv-fc-area').setAttribute('d','M'+xy.map(function(a){return a[0]+','+a[1];}).join(' L')+' L'+W+','+H+' L0,'+H+' Z');
+    var last=xy[xy.length-1]; var dot=$('mv-fc-dot'); dot.setAttribute('cx',last[0]); dot.setAttribute('cy',last[1]);
+    var data=filtered().slice().reverse();
+    $('mv-body').innerHTML=data.map(function(m){
+      var esI=esIn(m); var av=SOC[m.socio]||SOC.marca;
+      return '<tr><td class="num">'+esc(m.d)+'</td><td><span class="tag '+(esI?'t-in':'t-eg')+'">'+(esI?'↑ Ingreso':'↓ Egreso')+'</span></td>'
+        +'<td class="cat">'+esc(m.cat)+'</td><td>'+esc(m.desc)+'</td>'
+        +'<td><span class="fue"><span class="fdot" style="background:'+av.c+'">'+av.nm[0]+'</span>'+av.nm+' '+fueTag(m)+'</span></td>'
+        +'<td class="num" style="text-align:right;font-weight:700;color:'+(esI?'#34d399':'#f87171')+'">'+(esI?'+':'−')+fmt(m.monto)+'</td>'
+        +'<td style="text-align:right"><span class="del" onclick="rpMovDel('+m.id+')">✕</span></td></tr>';
+    }).join('')||'<tr><td colspan="7" style="padding:36px;text-align:center;color:#5b6678">No hay movimientos en este filtro.</td></tr>';
+    $('mv-cnt').textContent=data.length+' movimiento'+(data.length!==1?'s':'')+' · caja '+fmt(caja);
+  };
+  window.rpMovDel=function(id){ if(!confirm('¿Borrar este movimiento?'))return;
+    fetch('/pf-movimientos-del',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+     .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ MOV=MOV.filter(function(m){return m.id!==id;}); rpMovRender(); } }); };
+  window.rpMovT=function(el){ mtipo=el.getAttribute('data-t'); var ss=document.querySelectorAll('#mv-mtipo .s'); for(var i=0;i<ss.length;i++)ss[i].classList.toggle('on',ss[i]===el); $('mv-msocio-wrap').style.display=(mtipo==='aporte'||mtipo==='devolucion')?'block':'none'; };
+  window.rpMovS=function(el){ msocio=el.getAttribute('data-s'); var ss=document.querySelectorAll('#mv-msocio .s'); for(var i=0;i<ss.length;i++)ss[i].classList.toggle('on',ss[i]===el); };
+  window.rpMovOpen=function(){ var m=$('mv-modal'); m.style.display='flex'; var f=$('mv-m-fecha'); if(!f.value){var t=new Date();f.value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');} var e=$('mv-m-err'); if(e)e.style.display='none'; };
+  window.rpMovClose=function(){ $('mv-modal').style.display='none'; };
+  window.rpMovSave=function(btn){
+    var monto=parseFloat((($('mv-m-monto').value||'').replace(/[^\d.]/g,'')))||0;
+    var err=$('mv-m-err');
+    if(monto<=0){ $('mv-m-monto').style.borderColor='#fb7185'; if(err){err.textContent='Poné un monto válido.';err.style.display='block';} return; }
+    $('mv-m-monto').style.borderColor='';
+    var f=$('mv-m-fecha').value||''; var dd=f?(f.slice(8,10)+'/'+f.slice(5,7)):'—';
+    var cat=($('mv-m-cat').value||'').trim() || (mtipo==='ingreso'?'Ventas':mtipo==='aporte'?'Aporte':mtipo==='devolucion'?'Devolución':'Gasto');
+    var soc=(mtipo==='aporte'||mtipo==='devolucion')?msocio:'marca';
+    var mv={d:dd, clase:mtipo, cat:cat, desc:($('mv-m-desc').value||'').trim()||cat, socio:soc, monto:monto};
+    if(btn){btn.disabled=true;btn.style.opacity='.6';}
+    fetch('/pf-movimientos-add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mv)})
+     .then(function(r){return r.json();}).then(function(j){
+       if(btn){btn.disabled=false;btn.style.opacity='';}
+       if(j&&j.ok){ mv.id=j.id; MOV.push(mv); $('mv-m-monto').value=''; $('mv-m-cat').value=''; $('mv-m-desc').value=''; rpMovClose(); rpMovRender(); }
+       else if(err){ err.textContent='No se pudo guardar.'; err.style.display='block'; }
+     }).catch(function(){ if(btn){btn.disabled=false;btn.style.opacity='';} if(err){err.textContent='Error de conexión.';err.style.display='block';} });
+  };
+})();
+</script>
 <script>
 (function(){
   var L={envialo:`<svg width="22" height="22" viewBox="0 0 24 24" fill="#ff6b35"><path d="M3 4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1a1 1 0 0 0 1-1v-4a1 1 0 0 0-.29-.71l-3-3A1 1 0 0 0 18 8h-2V5a1 1 0 0 0-1-1H3zm13 6h1.59L20 12.41V13h-4v-3zM7 16.5A1.5 1.5 0 1 1 5.5 15 1.5 1.5 0 0 1 7 16.5zm10 0A1.5 1.5 0 1 1 15.5 15a1.5 1.5 0 0 1 1.5 1.5z"/></svg>`,mp:`<svg width="21" height="21" viewBox="0 0 24 24" fill="#00b1ea"><path d="M11.115 16.479a.93.927 0 0 1-.939-.886c-.002-.042-.006-.155-.103-.155-.04 0-.074.023-.113.059-.112.103-.254.206-.46.206a.816.814 0 0 1-.305-.066c-.535-.214-.542-.578-.521-.725.006-.038.007-.08-.02-.11l-.032-.03h-.034c-.027 0-.055.012-.093.039a.788.786 0 0 1-.454.16.7.699 0 0 1-.253-.05c-.708-.27-.65-.928-.617-1.126.005-.041-.005-.072-.03-.092l-.05-.04-.047.043a.728.726 0 0 1-.505.203.73.728 0 0 1-.732-.725c0-.4.328-.722.732-.722.364 0 .675.27.721.63l.026.195.11-.165c.01-.018.307-.46.852-.46.102 0 .21.016.316.05.434.13.508.52.519.68.008.094.075.1.09.1.037 0 .064-.024.083-.045a.746.744 0 0 1 .54-.225c.128 0 .263.03.402.09.69.293.379 1.158.374 1.167-.058.144-.061.207-.005.244l.027.013h.02c.03 0 .07-.014.134-.035.093-.032.235-.08.367-.08a.944.942 0 0 1 .94.93.936.934 0 0 1-.94.928zm7.302-4.171c-1.138-.98-3.768-3.24-4.481-3.77-.406-.302-.685-.462-.928-.533a1.559 1.554 0 0 0-.456-.07c-.182 0-.376.032-.58.095-.46.145-.918.505-1.362.854l-.023.018c-.414.324-.84.66-1.164.73a1.986 1.98 0 0 1-.43.049c-.362 0-.687-.104-.81-.258-.02-.025-.007-.066.04-.125l.008-.008 1-1.067c.783-.774 1.525-1.506 3.23-1.545h.085c1.062 0 2.12.469 2.24.524a7.03 7.03 0 0 0 3.056.724c1.076 0 2.188-.263 3.354-.795a9.135 9.11 0 0 0-.405-.317c-1.025.44-2.003.66-2.946.66-.962 0-1.925-.229-2.858-.68-.05-.022-1.22-.567-2.44-.57-.032 0-.065 0-.096.002-1.434.033-2.24.536-2.782.976-.528.013-.982.138-1.388.25-.361.1-.673.186-.979.185-.125 0-.35-.01-.37-.012-.35-.01-2.115-.437-3.518-.962-.143.1-.28.203-.415.31 1.466.593 3.25 1.053 3.812 1.089.157.01.323.027.491.027.372 0 .744-.103 1.104-.203.213-.059.446-.123.692-.17l-.196.194-1.017 1.087c-.08.08-.254.294-.14.557a.705.703 0 0 0 .268.292c.243.162.677.27 1.08.271.152 0 .297-.015.43-.044.427-.095.874-.448 1.349-.82.377-.296.913-.672 1.323-.782a1.494 1.49 0 0 1 .37-.05.611.61 0 0 1 .095.005c.27.034.533.125 1.003.472.835.62 4.531 3.815 4.566 3.846.002.002.238.203.22.537-.007.186-.11.352-.294.466a.902.9 0 0 1-.484.15.804.802 0 0 1-.428-.124c-.014-.01-1.28-1.157-1.746-1.543-.074-.06-.146-.115-.22-.115a.122.122 0 0 0-.096.045c-.073.09.01.212.105.294l1.48 1.47c.002 0 .184.17.204.395.012.244-.106.447-.35.606a.957.955 0 0 1-.526.171.766.764 0 0 1-.42-.127l-.214-.206a21.035 20.978 0 0 0-1.08-1.009c-.072-.058-.148-.112-.221-.112a.127.127 0 0 0-.094.038c-.033.037-.056.103.028.212a.698.696 0 0 0 .075.083l1.078 1.198c.01.01.222.26.024.511l-.038.048a1.18 1.178 0 0 1-.1.096c-.184.15-.43.164-.527.164a.8.798 0 0 1-.147-.012c-.106-.018-.178-.048-.212-.089l-.013-.013c-.06-.06-.602-.609-1.054-.98-.059-.05-.133-.11-.21-.11a.128.128 0 0 0-.096.042c-.09.096.044.24.1.293l.92 1.003a.204.204 0 0 1-.033.062c-.033.044-.144.155-.479.196a.91.907 0 0 1-.122.007c-.345 0-.712-.164-.902-.264a1.343 1.34 0 0 0 .13-.576 1.368 1.365 0 0 0-1.42-1.357c.024-.342-.025-.99-.697-1.274a1.455 1.452 0 0 0-.575-.125c-.146 0-.287.025-.42.075a1.153 1.15 0 0 0-.671-.564 1.52 1.515 0 0 0-.494-.085c-.28 0-.537.08-.767.242a1.168 1.165 0 0 0-.903-.43 1.173 1.17 0 0 0-.82.335c-.287-.217-1.425-.93-4.467-1.613a17.39 17.344 0 0 1-.692-.189 4.822 4.82 0 0 0-.077.494l.67.157c3.108.682 4.136 1.391 4.309 1.525a1.145 1.142 0 0 0-.09.442 1.16 1.158 0 0 0 1.378 1.132c.096.467.406.821.879 1.003a1.165 1.162 0 0 0 .415.08c.09 0 .179-.012.266-.034.086.22.282.493.722.668a1.233 1.23 0 0 0 .457.094c.122 0 .241-.022.355-.063a1.373 1.37 0 0 0 1.269.841c.37.002.726-.147.985-.41.221.121.688.341 1.163.341.06 0 .118-.002.175-.01.47-.059.689-.24.789-.382a.571.57 0 0 0 .048-.078c.11.032.234.058.373.058.255 0 .501-.086.75-.265.244-.174.418-.424.444-.637v-.01c.083.017.167.026.251.026.265 0 .527-.082.773-.242.48-.31.562-.715.554-.98a1.28 1.279 0 0 0 .978-.194 1.04 1.04 0 0 0 .502-.808 1.088 1.085 0 0 0-.16-.653c.804-.342 2.636-1.003 4.795-1.483a4.734 4.721 0 0 0-.067-.492 27.742 27.667 0 0 0-5.049 1.62zm5.123-.763c0 4.027-5.166 7.293-11.537 7.293-6.372 0-11.538-3.266-11.538-7.293 0-4.028 5.165-7.293 11.539-7.293 6.371 0 11.537 3.265 11.537 7.293zm.46.004c0-4.272-5.374-7.755-12-7.755S.002 7.277.002 11.55L0 12.004c0 4.533 4.695 8.203 11.999 8.203 7.347 0 12-3.67 12-8.204z"/></svg>`,meli:`<svg width="21" height="21" viewBox="0 0 24 24" fill="#ffe600"><path d="M11.115 16.479a.93.927 0 0 1-.939-.886c-.002-.042-.006-.155-.103-.155-.04 0-.074.023-.113.059-.112.103-.254.206-.46.206a.816.814 0 0 1-.305-.066c-.535-.214-.542-.578-.521-.725.006-.038.007-.08-.02-.11l-.032-.03h-.034c-.027 0-.055.012-.093.039a.788.786 0 0 1-.454.16.7.699 0 0 1-.253-.05c-.708-.27-.65-.928-.617-1.126.005-.041-.005-.072-.03-.092l-.05-.04-.047.043a.728.726 0 0 1-.505.203.73.728 0 0 1-.732-.725c0-.4.328-.722.732-.722.364 0 .675.27.721.63l.026.195.11-.165c.01-.018.307-.46.852-.46.102 0 .21.016.316.05.434.13.508.52.519.68.008.094.075.1.09.1.037 0 .064-.024.083-.045a.746.744 0 0 1 .54-.225c.128 0 .263.03.402.09.69.293.379 1.158.374 1.167-.058.144-.061.207-.005.244l.027.013h.02c.03 0 .07-.014.134-.035.093-.032.235-.08.367-.08a.944.942 0 0 1 .94.93.936.934 0 0 1-.94.928zm7.302-4.171c-1.138-.98-3.768-3.24-4.481-3.77-.406-.302-.685-.462-.928-.533a1.559 1.554 0 0 0-.456-.07c-.182 0-.376.032-.58.095-.46.145-.918.505-1.362.854l-.023.018c-.414.324-.84.66-1.164.73a1.986 1.98 0 0 1-.43.049c-.362 0-.687-.104-.81-.258-.02-.025-.007-.066.04-.125l.008-.008 1-1.067c.783-.774 1.525-1.506 3.23-1.545h.085c1.062 0 2.12.469 2.24.524a7.03 7.03 0 0 0 3.056.724c1.076 0 2.188-.263 3.354-.795a9.135 9.11 0 0 0-.405-.317c-1.025.44-2.003.66-2.946.66-.962 0-1.925-.229-2.858-.68-.05-.022-1.22-.567-2.44-.57-.032 0-.065 0-.096.002-1.434.033-2.24.536-2.782.976-.528.013-.982.138-1.388.25-.361.1-.673.186-.979.185-.125 0-.35-.01-.37-.012-.35-.01-2.115-.437-3.518-.962-.143.1-.28.203-.415.31 1.466.593 3.25 1.053 3.812 1.089.157.01.323.027.491.027.372 0 .744-.103 1.104-.203.213-.059.446-.123.692-.17l-.196.194-1.017 1.087c-.08.08-.254.294-.14.557a.705.703 0 0 0 .268.292c.243.162.677.27 1.08.271.152 0 .297-.015.43-.044.427-.095.874-.448 1.349-.82.377-.296.913-.672 1.323-.782a1.494 1.49 0 0 1 .37-.05.611.61 0 0 1 .095.005c.27.034.533.125 1.003.472.835.62 4.531 3.815 4.566 3.846.002.002.238.203.22.537-.007.186-.11.352-.294.466a.902.9 0 0 1-.484.15.804.802 0 0 1-.428-.124c-.014-.01-1.28-1.157-1.746-1.543-.074-.06-.146-.115-.22-.115a.122.122 0 0 0-.096.045c-.073.09.01.212.105.294l1.48 1.47c.002 0 .184.17.204.395.012.244-.106.447-.35.606a.957.955 0 0 1-.526.171.766.764 0 0 1-.42-.127l-.214-.206a21.035 20.978 0 0 0-1.08-1.009c-.072-.058-.148-.112-.221-.112a.127.127 0 0 0-.094.038c-.033.037-.056.103.028.212a.698.696 0 0 0 .075.083l1.078 1.198c.01.01.222.26.024.511l-.038.048a1.18 1.178 0 0 1-.1.096c-.184.15-.43.164-.527.164a.8.798 0 0 1-.147-.012c-.106-.018-.178-.048-.212-.089l-.013-.013c-.06-.06-.602-.609-1.054-.98-.059-.05-.133-.11-.21-.11a.128.128 0 0 0-.096.042c-.09.096.044.24.1.293l.92 1.003a.204.204 0 0 1-.033.062c-.033.044-.144.155-.479.196a.91.907 0 0 1-.122.007c-.345 0-.712-.164-.902-.264a1.343 1.34 0 0 0 .13-.576 1.368 1.365 0 0 0-1.42-1.357c.024-.342-.025-.99-.697-1.274a1.455 1.452 0 0 0-.575-.125c-.146 0-.287.025-.42.075a1.153 1.15 0 0 0-.671-.564 1.52 1.515 0 0 0-.494-.085c-.28 0-.537.08-.767.242a1.168 1.165 0 0 0-.903-.43 1.173 1.17 0 0 0-.82.335c-.287-.217-1.425-.93-4.467-1.613a17.39 17.344 0 0 1-.692-.189 4.822 4.82 0 0 0-.077.494l.67.157c3.108.682 4.136 1.391 4.309 1.525a1.145 1.142 0 0 0-.09.442 1.16 1.158 0 0 0 1.378 1.132c.096.467.406.821.879 1.003a1.165 1.162 0 0 0 .415.08c.09 0 .179-.012.266-.034.086.22.282.493.722.668a1.233 1.23 0 0 0 .457.094c.122 0 .241-.022.355-.063a1.373 1.37 0 0 0 1.269.841c.37.002.726-.147.985-.41.221.121.688.341 1.163.341.06 0 .118-.002.175-.01.47-.059.689-.24.789-.382a.571.57 0 0 0 .048-.078c.11.032.234.058.373.058.255 0 .501-.086.75-.265.244-.174.418-.424.444-.637v-.01c.083.017.167.026.251.026.265 0 .527-.082.773-.242.48-.31.562-.715.554-.98a1.28 1.279 0 0 0 .978-.194 1.04 1.04 0 0 0 .502-.808 1.088 1.085 0 0 0-.16-.653c.804-.342 2.636-1.003 4.795-1.483a4.734 4.721 0 0 0-.067-.492 27.742 27.667 0 0 0-5.049 1.62zm5.123-.763c0 4.027-5.166 7.293-11.537 7.293-6.372 0-11.538-3.266-11.538-7.293 0-4.028 5.165-7.293 11.539-7.293 6.371 0 11.537 3.265 11.537 7.293zm.46.004c0-4.272-5.374-7.755-12-7.755S.002 7.277.002 11.55L0 12.004c0 4.533 4.695 8.203 11.999 8.203 7.347 0 12-3.67 12-8.204z"/></svg>`,tn:`<svg width="21" height="21" viewBox="0 0 24 24" fill="#2d6cdf"><path d="M6.5 20q-2.28 0-3.89-1.57Q1 16.85 1 14.58q0-1.95 1.17-3.48Q3.35 9.57 5.25 9.15q.63-2.3 2.5-3.72Q9.63 4 12 4q2.93 0 4.96 2.04Q19 8.07 19 11q1.73.2 2.86 1.5Q23 13.78 23 15.5q0 1.87-1.31 3.19Q20.37 20 18.5 20z"/></svg>`,shopify:`<svg width="22" height="22" width="256px" height="292px" viewBox="0 0 256 292" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"> <g> <path d="M223.773626,57.3402078 C223.572932,55.8793405 222.29409,55.0718963 221.236945,54.9832175 C220.182133,54.8945386 197.853734,53.2399781 197.853734,53.2399781 C197.853734,53.2399781 182.346604,37.8448639 180.64537,36.1412966 C178.941803,34.4377293 175.616346,34.9558004 174.325836,35.336186 C174.134476,35.3921937 170.937371,36.3793293 165.646977,38.0152206 C160.466266,23.1101737 151.325344,9.41162582 135.241802,9.41162582 C134.798408,9.41162582 134.341011,9.43029505 133.883615,9.45596525 C129.309654,3.40713457 123.643542,0.779440373 118.74987,0.779440373 C81.285392,0.779440373 63.3862673,47.6135387 57.7738299,71.414474 C43.2164974,75.9254268 32.8737437,79.1318671 31.5528956,79.5472575 C23.4271131,82.0956074 23.1704111,82.3523094 22.1039313,90.0090275 C21.2988208,95.8058236 0.0369009009,260.235071 0.0369009009,260.235071 L165.714653,291.277334 L255.485648,271.856667 C255.485648,271.856667 223.971987,58.8010751 223.773626,57.3402078 L223.773626,57.3402078 Z M156.48972,40.8482763 C152.328815,42.1364532 147.598499,43.5996542 142.471461,45.1865388 C142.476129,44.1994032 142.480796,43.2262696 142.480796,42.1644571 C142.480796,32.8998514 141.194953,25.4414939 139.132003,19.5280151 C147.418807,20.5688247 152.937899,29.9967861 156.48972,40.8482763 L156.48972,40.8482763 Z M128.852258,21.3646006 C131.155574,27.1380602 132.65378,35.4225312 132.65378,46.6030666 C132.65378,47.1748118 132.649112,47.6975503 132.644445,48.2272897 C123.52686,51.0510108 113.620499,54.1174319 103.690802,57.1931876 C109.265901,35.6768995 119.716003,25.2851391 128.852258,21.3646006 L128.852258,21.3646006 Z M117.720729,10.8281537 C119.337951,10.8281537 120.966841,11.3765623 122.525722,12.4500431 C110.519073,18.099819 97.6489725,32.3304399 92.2138928,60.7473424 C84.2701352,63.2070135 76.506069,65.6106769 69.3277499,67.834649 C75.6939575,46.1596724 90.8113669,10.8281537 117.720729,10.8281537 L117.720729,10.8281537 Z" fill="#95BF46"></path> <path d="M221.236945,54.9832175 C220.182133,54.8945386 197.853734,53.2399781 197.853734,53.2399781 C197.853734,53.2399781 182.346604,37.8448639 180.64537,36.1412966 C180.008283,35.5065427 179.149498,35.1821649 178.251042,35.0421456 L165.723988,291.275001 L255.485648,271.856667 C255.485648,271.856667 223.971987,58.8010751 223.773626,57.3402078 C223.572932,55.8793405 222.29409,55.0718963 221.236945,54.9832175" fill="#5E8E3E"></path> <path d="M135.241802,104.585029 L124.173282,137.510551 C124.173282,137.510551 114.474617,132.334507 102.586984,132.334507 C85.1592573,132.334507 84.2818035,143.272342 84.2818035,146.028387 C84.2818035,161.066452 123.48252,166.828244 123.48252,202.052414 C123.48252,229.764553 105.90544,247.610004 82.2048516,247.610004 C53.7646126,247.610004 39.2212821,229.90924 39.2212821,229.90924 L46.8359944,204.750118 C46.8359944,204.750118 61.7853808,217.585214 74.4011133,217.585214 C82.6435785,217.585214 85.9970391,211.095323 85.9970391,206.353338 C85.9970391,186.736644 53.8369559,185.861524 53.8369559,153.629098 C53.8369559,126.500372 73.3089633,100.246767 112.614694,100.246767 C127.760108,100.246767 135.241802,104.585029 135.241802,104.585029" fill="#FFFFFF"></path> </g> </svg>`,meta:`<svg width="22" height="22" width="256px" height="171px" viewBox="0 0 256 171" version="1.1" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid"> <title>Meta</title> <defs> <linearGradient x1="13.8784354%" y1="55.9337491%" x2="89.143574%" y2="58.6936324%" id="linearGradient-1"> <stop stop-color="#0064E1" offset="0%"></stop> <stop stop-color="#0064E1" offset="40%"></stop> <stop stop-color="#0073EE" offset="83%"></stop> <stop stop-color="#0082FB" offset="100%"></stop> </linearGradient> <linearGradient x1="54.3150272%" y1="82.782443%" x2="54.3150272%" y2="39.3067715%" id="linearGradient-2"> <stop stop-color="#0082FB" offset="0%"></stop> <stop stop-color="#0064E0" offset="100%"></stop> </linearGradient> </defs> <g> <path d="M27.6511337,112.135763 C27.6511337,121.910697 29.7966337,129.415496 32.6009181,133.955766 C36.2776464,139.902629 41.7615802,142.422034 47.3523439,142.422034 C54.5633607,142.422034 61.1601057,140.632633 73.8728613,123.050216 C84.0573098,108.957574 96.0578662,89.1762415 104.132425,76.775073 L117.806649,55.7651968 C127.305606,41.1740159 138.300181,24.9536792 150.906107,13.9591042 C161.197385,4.98539435 172.29879,0 183.471415,0 C202.228961,0 220.096258,10.8699402 233.770483,31.2566421 C248.735568,53.5840868 256,81.7070524 256,110.72917 C256,127.982195 252.599249,140.659341 246.81263,150.674642 C241.221867,160.360551 230.325219,170.037557 211.994992,170.037557 L211.994992,142.422034 C227.690082,142.422034 231.607178,128 231.607178,111.494784 C231.607178,87.9744053 226.123244,61.8723049 214.042565,43.2215885 C205.469467,29.9924885 194.35916,21.9090277 182.136041,21.9090277 C168.915844,21.9090277 158.277368,31.8798164 146.321324,49.6580887 C139.964946,59.1036305 133.439421,70.61455 126.112672,83.6032828 L118.047016,97.8917791 C101.844485,126.620114 97.7404368,133.163444 89.639171,143.962164 C75.4396995,162.871053 63.3145083,170.037557 47.3523439,170.037557 C28.4167478,170.037557 16.4428989,161.838364 9.02712477,149.481708 C2.97343163,139.412992 0,126.201697 0,111.147587 L27.6511337,112.135763 Z" fill="#0081FB"></path> <path d="M21.8021978,33.2062874 C34.4793434,13.665322 52.7739602,0 73.7571289,0 C85.9090277,0 97.9897065,3.59660593 110.604535,13.8967868 C124.403394,25.1584365 139.110307,43.702323 157.458339,74.2645709 L164.037279,85.2324384 C179.919321,111.690638 188.955348,125.302546 194.243427,131.721241 C201.04493,139.964946 205.807762,142.422034 211.994992,142.422034 C227.690082,142.422034 231.607178,128 231.607178,111.494784 L256,110.72917 C256,127.982195 252.599249,140.659341 246.81263,150.674642 C241.221867,160.360551 230.325219,170.037557 211.994992,170.037557 C200.599805,170.037557 190.504382,167.562665 179.340659,157.03102 C170.758659,148.947559 160.725553,134.587843 153.007094,121.679232 L130.047573,83.3273056 C118.527751,64.0801224 107.960495,49.7293087 101.844485,43.230491 C95.2655446,36.2420364 86.8081792,27.802476 73.3120045,27.802476 C62.3886493,27.802476 53.1122548,35.4675198 45.3492836,47.192099 L21.8021978,33.2062874 Z" fill="url(#linearGradient-1)"></path> <path d="M73.3120045,27.802476 C62.3886493,27.802476 53.1122548,35.4675198 45.3492836,47.192099 C34.3725136,63.7596328 27.6511337,88.4373348 27.6511337,112.135763 C27.6511337,121.910697 29.7966337,129.415496 32.6009181,133.955766 L9.02712477,149.481708 C2.97343163,139.412992 0,126.201697 0,111.147587 C0,83.7724301 7.51370149,55.2399499 21.8021978,33.2062874 C34.4793434,13.665322 52.7739602,0 73.7571289,0 L73.3120045,27.802476 Z" fill="url(#linearGradient-2)"></path> </g> </svg>`,gads:`<svg width="22" height="22" width="256px" height="230px" viewBox="0 0 256 230" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"> <g> <path d="M5.888,166.405103 L90.88,20.9 C101.676138,27.2558621 156.115862,57.3844138 164.908138,63.1135172 L79.9161379,208.627448 C70.6206897,220.906621 -5.888,185.040138 5.888,166.396276 L5.888,166.405103 Z" fill="#FBBC04"></path> <path d="M250.084224,166.401789 L165.092224,20.9055131 C153.210293,1.13172 127.619121,-6.05393517 106.600638,5.62496138 C85.582155,17.3038579 79.182155,42.4624786 91.0640861,63.1190303 L176.056086,208.632961 C187.938017,228.397927 213.52919,235.583582 234.547672,223.904686 C254.648086,212.225789 261.966155,186.175582 250.084224,166.419444 L250.084224,166.401789 Z" fill="#4285F4"></path> <ellipse fill="#34A853" cx="42.6637241" cy="187.924414" rx="42.6637241" ry="41.6044138"></ellipse> </g> </svg>`,tiktok:`<svg width="22" height="22" width="256px" height="290px" viewBox="0 0 256 290" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"> <title>TikTok</title> <g> <path d="M189.720224,104.421475 C208.398189,117.766281 231.279538,125.618095 255.992548,125.618095 L255.992548,78.0872726 C251.315611,78.0882654 246.650588,77.6008156 242.074913,76.6318726 L242.074913,114.045382 C217.363889,114.045382 194.485518,106.193568 175.80259,92.8497541 L175.80259,189.846306 C175.80259,238.368905 136.447224,277.701437 87.902784,277.701437 C69.7897057,277.701437 52.9543216,272.228299 38.9691786,262.841664 C54.9309256,279.153859 77.1908018,289.273158 101.81744,289.273158 C150.364858,289.273158 189.72221,249.940626 189.72221,201.416041 L189.72221,104.421475 L189.720224,104.421475 Z M206.889179,56.4687254 C197.343701,46.0456391 191.076347,32.5757434 189.720224,17.6842019 L189.720224,11.5707278 L176.531282,11.5707278 C179.851103,30.497877 191.174632,46.6681056 206.889179,56.4687254 L206.889179,56.4687254 Z M69.6735517,225.606854 C64.3403943,218.617757 61.4583846,210.068027 61.4712906,201.277053 C61.4712906,179.084685 79.472186,161.090739 101.680438,161.090739 C105.819294,161.089747 109.933331,161.723134 113.877603,162.974023 L113.877603,114.380938 C109.268175,113.749536 104.616057,113.481488 99.9659254,113.579773 L99.9659254,151.402303 C96.0186741,150.151413 91.9026521,149.516041 87.7628035,149.520012 C65.5545513,149.520012 47.5546487,167.511972 47.5546487,189.707318 C47.5546487,205.401018 56.552118,218.98806 69.6735517,225.606854 Z" fill="#FF004F"></path> <path d="M175.80259,92.8487613 C194.485518,106.192575 217.363889,114.044389 242.074913,114.044389 L242.074913,76.6308799 C228.281375,73.6942679 216.070311,66.4897401 206.889179,56.4687254 C191.173639,46.6671128 179.851103,30.4968842 176.531282,11.5707278 L141.8876,11.5707278 L141.8876,201.414056 C141.809172,223.545865 123.839052,241.466346 101.678453,241.466346 C88.6195635,241.466346 77.0180599,235.24466 69.6705734,225.606854 C56.5501325,218.98806 47.5526631,205.400025 47.5526631,189.708311 C47.5526631,167.51495 65.5525657,149.521004 87.760818,149.521004 C92.0158278,149.521004 96.1169583,150.183182 99.9639399,151.403295 L99.9639399,113.580765 C52.272289,114.565593 13.9166419,153.513923 13.9166419,201.415048 C13.9166419,225.326893 23.4680767,247.004014 38.9701714,262.842657 C52.9553144,272.228299 69.7906985,277.70243 87.9037768,277.70243 C136.449209,277.70243 175.803582,238.367912 175.803582,189.846306 L175.803582,92.8487613 L175.80259,92.8487613 Z" fill="#000000"></path> <path d="M242.074913,76.6308799 L242.074913,66.5145593 C229.636505,66.5334219 217.442318,63.0517795 206.889179,56.4677326 C216.231139,66.6902795 228.532545,73.7389425 242.074913,76.6308799 Z M176.531282,11.5707278 C176.214589,9.76190185 175.971361,7.9411627 175.80259,6.11347418 L175.80259,0 L127.968973,0 L127.968973,189.845313 C127.89253,211.974144 109.923403,229.894625 87.760818,229.894625 C81.2542071,229.894625 75.1109499,228.350869 69.6705734,225.607847 C77.0180599,235.24466 88.6195635,241.465353 101.678453,241.465353 C123.837066,241.465353 141.810164,223.546857 141.8876,201.415048 L141.8876,11.5707278 L176.531282,11.5707278 Z M99.9659254,113.580765 L99.9659254,102.811203 C95.9690357,102.265179 91.9393845,101.991175 87.9047695,101.99315 C39.3553659,101.99315 0,141.326686 0,189.845313 C0,220.263769 15.4673478,247.071522 38.9711641,262.840672 C23.4690694,247.003021 13.9176347,225.324907 13.9176347,201.414056 C13.9176347,153.513923 52.272289,114.565593 99.9659254,113.580765 Z" fill="#00F2EA"></path> </g> </svg>`};
@@ -768,21 +1040,21 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  function _rpNavActive(id){ try{
-   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
+   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]', !id); da.classList.toggle('text-primary', !id); }
  }catch(e){} }
  function rpProdSetActive(on){ _rpNavActive(on?'rp-prod-nav':null); }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
  function rpComisSetActive(on){ _rpNavActive(on?'rp-comis-nav':null); }
  function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
    var ti=g('rp-c-tienda'), iva=g('rp-c-iva'), iibb=g('rp-c-iibb'), t;
    if(window._rpMpReal!=null){ t=window._rpMpReal + ti + iibb; }
    else { t=(g('rp-c-mp')+g('rp-c-cuotas'))*(1+iva/100) + ti + iibb; }
    var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
- window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+ window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
 
  // ===================== DESPACHOS =====================
  var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false;
@@ -793,7 +1065,8 @@ _SOLO_DASH = r"""
  function _dColor(nm){ var s=0; for(var i=0;i<(nm||'').length;i++) s+=nm.charCodeAt(i); return _DCOL[s%_DCOL.length]; }
  function _dStat(msg,color){ var s=document.getElementById('rp-d-status'); if(s){ s.textContent=msg||''; s.style.color=color||'#34d399'; } }
  window.rpDesp=function(open){ var o=document.getElementById('rp-desp-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none';
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-desp-nav');
    } else { _rpNavActive(null); }
@@ -1705,7 +1978,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-10-s-fix-selector"})
+    return jsonify({"ok": True, "v": "2026-08-11-movimientos"})
 
 
 @app.get("/pf-diag")
@@ -2089,6 +2362,113 @@ def _fact_save(email, st) -> None:
     d[email] = st
     FACT_STATE.parent.mkdir(parents=True, exist_ok=True)
     FACT_STATE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+# ===================== MOVIMIENTOS & SOCIOS =====================
+MOV_STATE = DATA_DIR / "movimientos.json"   # {email: {"rows": [...], "seq": int}}
+
+_MOV_SEED = [
+    {"d": "10/08", "clase": "egreso", "cat": "Ads Meta", "desc": "CBO Madre — renovación 11/8", "socio": "marca", "monto": 311513},
+    {"d": "09/08", "clase": "ingreso", "cat": "Ventas", "desc": "Cobros TiendaNube", "socio": "marca", "monto": 650000},
+    {"d": "08/08", "clase": "aporte", "cat": "Aporte", "desc": "Capital para stock", "socio": "cristian", "monto": 480000},
+    {"d": "08/08", "clase": "egreso", "cat": "Stock", "desc": "700×60ml + 400×30ml", "socio": "marca", "monto": 480000},
+    {"d": "07/08", "clase": "aporte", "cat": "Aporte", "desc": "Editor de videos (6 creativos)", "socio": "socio", "monto": 120000},
+    {"d": "07/08", "clase": "egreso", "cat": "Diseño", "desc": "Editor de videos (6 creativos)", "socio": "marca", "monto": 120000},
+    {"d": "06/08", "clase": "egreso", "cat": "Envíos", "desc": "Andreani — despachos", "socio": "marca", "monto": 92000},
+    {"d": "05/08", "clase": "aporte", "cat": "Aporte", "desc": "Capital inicial", "socio": "cristian", "monto": 300000},
+    {"d": "04/08", "clase": "devolucion", "cat": "Devolución", "desc": "Retiro parcial de aporte", "socio": "cristian", "monto": 200000},
+]
+
+
+def _mov_all() -> dict:
+    try:
+        return _json.loads(MOV_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _mov_write(d) -> None:
+    MOV_STATE.parent.mkdir(parents=True, exist_ok=True)
+    MOV_STATE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _mov_get(email) -> dict:
+    d = _mov_all()
+    cur = d.get(email)
+    if not cur:
+        rows, seq = [], 0
+        for m in _MOV_SEED:
+            seq += 1
+            r = dict(m); r["id"] = seq
+            rows.append(r)
+        cur = {"rows": rows, "seq": seq}
+        d[email] = cur
+        _mov_write(d)
+    return cur
+
+
+def _mov_save(email, cur) -> None:
+    d = _mov_all()
+    d[email] = cur
+    _mov_write(d)
+
+
+@app.get("/pf-movimientos")
+def pf_movimientos():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "rows": []})
+    cur = _mov_get(email)
+    return jsonify({"ok": True, "rows": cur.get("rows", [])})
+
+
+@app.post("/pf-movimientos-add")
+def pf_movimientos_add():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    clase = str(data.get("clase", "")).strip()
+    if clase not in ("ingreso", "egreso", "aporte", "devolucion"):
+        return jsonify({"ok": False, "msg": "tipo inválido"})
+    try:
+        monto = round(float(data.get("monto") or 0))
+    except Exception:
+        monto = 0
+    if monto <= 0:
+        return jsonify({"ok": False, "msg": "monto inválido"})
+    socio = str(data.get("socio", "marca")).strip() or "marca"
+    if socio not in ("marca", "cristian", "socio"):
+        socio = "marca"
+    cur = _mov_get(email)
+    seq = int(cur.get("seq", 0)) + 1
+    row = {"id": seq,
+           "d": str(data.get("d", "") or "—")[:10],
+           "clase": clase,
+           "cat": str(data.get("cat", "") or "Gasto")[:40],
+           "desc": str(data.get("desc", "") or "")[:120],
+           "socio": socio,
+           "monto": monto}
+    cur.setdefault("rows", []).append(row)
+    cur["seq"] = seq
+    _mov_save(email, cur)
+    return jsonify({"ok": True, "id": seq})
+
+
+@app.post("/pf-movimientos-del")
+def pf_movimientos_del():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    try:
+        mid = int(data.get("id"))
+    except Exception:
+        return jsonify({"ok": False})
+    cur = _mov_get(email)
+    cur["rows"] = [r for r in cur.get("rows", []) if int(r.get("id", 0)) != mid]
+    _mov_save(email, cur)
+    return jsonify({"ok": True})
 
 
 def _facturacion_orders(email, desde=None, hasta=None):
