@@ -202,7 +202,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -237,9 +237,20 @@ _SOLO_DASH = r"""
      cn0.parentNode.insertBefore(cd, cn0.nextSibling);
     }
    }
+   // Agregar "Facturación" en la barra (debajo de Despachos).
+   if(!nav.querySelector('#rp-fact-nav')){
+    var dn0=nav.querySelector('#rp-desp-nav')||nav.querySelector('#rp-comis-nav')||nav.querySelector('#rp-prod-nav');
+    if(dn0){ var cff=dn0.cloneNode(true); cff.id='rp-fact-nav'; cff.style.display='';
+     var afx=cff.querySelector('a'); if(afx){ afx.setAttribute('href','#'); afx.removeAttribute('aria-current'); afx.classList.remove('bg-white/[0.08]'); afx.classList.remove('text-primary');
+      var nafx=afx.cloneNode(true); afx.parentNode.replaceChild(nafx,afx); nafx.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpFact(true); }); afx=nafx; }
+     var icff=cff.querySelector('.material-symbols-outlined'); if(icff) icff.textContent='receipt_long';
+     var spff=cff.querySelectorAll('span'); for(var sq=0;sq<spff.length;sq++){ var s6=spff[sq]; if(!s6.classList.contains('material-symbols-outlined') && s6.children.length===0 && (s6.textContent||'').trim()){ s6.textContent='Facturación'; } }
+     dn0.parentNode.insertBefore(cff, dn0.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -252,7 +263,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -445,6 +456,203 @@ _SOLO_DASH = r"""
   </div>
   <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:34px 18px;text-align:center;cursor:pointer"><input type="file" accept="application/pdf" style="display:none" onchange="rpDUpSeg(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Arrastr&aacute; el PDF o hac&eacute; clic para elegirlo</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">Leemos cada r&oacute;tulo y cargamos el seguimiento</div></label>
   <div id="rp-d-segres" style="margin-top:14px"></div>
+ </div>
+</div>
+<div id="rp-fact-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#090b14;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#e8edf4">
+<style>
+#rp-fact-ov .wrap{max-width:1560px;margin:0 auto;padding:22px 40px 60px}
+#rp-fact-ov .topbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+#rp-fact-ov .rangebox,#rp-fact-ov .emitbox{display:inline-flex;align-items:center;gap:8px;background:#0e1626;border:1px solid #1c2637;border-radius:10px;padding:7px 12px;font-size:12.5px;color:#c7d2e0}
+#rp-fact-ov .rangebox svg{width:15px;height:15px;color:#7d8ba0;flex:none}
+#rp-fact-ov .rangebox input,#rp-fact-ov .emitbox input{background:transparent;border:0;color:#dbeafe;font-size:12.5px;font-family:inherit;outline:none;color-scheme:dark}
+#rp-fact-ov .emitbox{border-color:#274a7a;background:#0d1a2c}
+#rp-fact-ov .emitbox .lab{color:#7fb0e6;font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px}
+#rp-fact-ov .chip{display:inline-flex;align-items:center;gap:7px;background:#0e1626;border:1px solid #1c2637;color:#c7d2e0;border-radius:10px;padding:8px 12px;font-size:12.5px;font-weight:600}
+#rp-fact-ov .head{display:flex;align-items:flex-start;gap:13px;margin-bottom:16px}
+#rp-fact-ov .head .hico{width:44px;height:44px;border-radius:12px;background:linear-gradient(160deg,#12233b,#0c1626);border:1px solid #1d3350;display:flex;align-items:center;justify-content:center;flex:none}
+#rp-fact-ov .head .hico svg{width:22px;height:22px;color:#5aa2f5}
+#rp-fact-ov .head h1{margin:0;font-size:24px;font-weight:800;color:#f4f7fb}
+#rp-fact-ov .head p{margin:5px 0 0;color:#8b97a8;font-size:13px;max-width:560px;line-height:1.45}
+#rp-fact-ov .head .x{margin-left:auto;flex:none;background:#0e1626;border:1px solid #1c2637;color:#aeb8c6;width:36px;height:36px;border-radius:10px;font-size:14px;cursor:pointer}
+#rp-fact-ov .arca{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#0c1626;border:1px solid #16324f;border-radius:12px;padding:11px 16px;margin-bottom:16px;font-size:13px;color:#9db0c4}
+#rp-fact-ov .arca .dot{width:9px;height:9px;border-radius:50%;background:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.15);flex:none}
+#rp-fact-ov .arca b{color:#e8edf4;font-weight:700}
+#rp-fact-ov .arca .lbl{color:#5b6678;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:800}
+#rp-fact-ov .arca .cuit{background:rgba(19,127,236,.12);border:1px solid rgba(45,110,180,.5);color:#7fbaff;border-radius:7px;padding:3px 10px;font-weight:800}
+#rp-fact-ov .arca .sep{color:#334155}
+#rp-fact-ov .pills{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:20px}
+#rp-fact-ov .pill{display:inline-flex;align-items:center;gap:7px;background:#0d1524;border:1px solid #1a2436;color:#9aa6b6;border-radius:20px;padding:8px 15px;font-size:12.5px;font-weight:600;cursor:pointer}
+#rp-fact-ov .pill.on{background:rgba(19,127,236,.14);border-color:#1e4f8a;color:#bcd7f7}
+#rp-fact-ov .pill .d{width:7px;height:7px;border-radius:50%}
+#rp-fact-ov .cont{background:#0b111e;border:1px solid #18212f;border-radius:20px;padding:20px 22px;margin-bottom:20px}
+#rp-fact-ov .cont-h{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+#rp-fact-ov .cont-h .ci{width:26px;height:26px;border-radius:8px;background:#0e2036;color:#5aa2f5;display:flex;align-items:center;justify-content:center}
+#rp-fact-ov .cont-h .ci svg{width:15px;height:15px}
+#rp-fact-ov .cont-h b{font-size:15px;font-weight:700;color:#f4f7fb}
+#rp-fact-ov .sec-lbl{display:flex;align-items:center;gap:8px;margin:16px 2px 12px}
+#rp-fact-ov .sec-lbl .si{width:18px;height:18px;color:#34d399}
+#rp-fact-ov .sec-lbl .si svg{width:16px;height:16px}
+#rp-fact-ov .sec-lbl span{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#7d8ba0}
+#rp-fact-ov .sec-lbl small{color:#3f4a5a;font-size:12px;font-weight:700}
+#rp-fact-ov .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+#rp-fact-ov .kcard{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:17px 19px;position:relative;overflow:hidden}
+#rp-fact-ov .kcard .kt{display:flex;align-items:center;justify-content:space-between}
+#rp-fact-ov .kico{width:31px;height:31px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+#rp-fact-ov .kico svg{width:17px;height:17px}
+#rp-fact-ov .kcard.v .kico{background:rgba(90,162,245,.13);color:#5aa2f5}
+#rp-fact-ov .kcard.f .kico{background:rgba(52,211,153,.13);color:#34d399}
+#rp-fact-ov .kcard.p .kico{background:rgba(251,191,36,.13);color:#fbbf24}
+#rp-fact-ov .klabel{font-size:11px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#8b97a8}
+#rp-fact-ov .knum{font-size:31px;font-weight:800;line-height:1;margin-top:15px}
+#rp-fact-ov .kcard.v .knum{color:#f4f7fb}
+#rp-fact-ov .kcard.f .knum{color:#34d399}
+#rp-fact-ov .kcard.p .knum{color:#fbbf24}
+#rp-fact-ov .ksub{font-size:12px;color:#5b6678;margin-top:6px}
+#rp-fact-ov .acts{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 14px}
+#rp-fact-ov .btn{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid}
+#rp-fact-ov .btn svg{width:16px;height:16px}
+#rp-fact-ov .btn-primary{background:#137fec;border-color:#137fec;color:#fff}
+#rp-fact-ov .btn-green{background:rgba(52,211,153,.12);border-color:#1f7a52;color:#34d399}
+#rp-fact-ov .btn-ghost{background:#0d1524;border-color:#1a2436;color:#aeb8c6}
+#rp-fact-ov .sld{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:17px 20px;margin-bottom:20px}
+#rp-fact-ov .sld-head{cursor:pointer;user-select:none;display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700;color:#f4f7fb}
+#rp-fact-ov .sld-head small{color:#5b6678;font-weight:500;font-size:12px}
+#rp-fact-ov .sld-head .chev{width:17px;height:17px;margin-left:auto;color:#8b97a8;transition:transform .2s}
+#rp-fact-ov .sld.open .sld-head .chev{transform:rotate(90deg)}
+#rp-fact-ov .sld-body{display:none;margin-top:16px}
+#rp-fact-ov .sld.open .sld-body{display:block}
+#rp-fact-ov .sld .row{display:flex;align-items:center;gap:16px}
+#rp-fact-ov .rng{flex:1;-webkit-appearance:none;appearance:none;height:8px;border-radius:20px;background:#182234;outline:none;cursor:pointer}
+#rp-fact-ov .rng::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;cursor:pointer}
+#rp-fact-ov .pctv{font-size:26px;font-weight:800;color:#4a9bf0}
+#rp-fact-ov .obj{color:#8b97a8;font-size:13px;margin-top:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#rp-fact-ov .obj b{color:#e8edf4}
+#rp-fact-ov .obj .hl{color:#4aa8ff;font-weight:800;font-size:15px;background:rgba(19,127,236,.14);border:1px solid rgba(45,110,180,.55);border-radius:9px;padding:4px 11px}
+#rp-fact-ov .obj .sep{color:#3a4657}
+#rp-fact-ov .autocard{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:15px 20px;margin-bottom:20px}
+#rp-fact-ov .autocard .ac-ico{width:40px;height:40px;border-radius:11px;background:rgba(19,127,236,.13);color:#4aa8ff;display:flex;align-items:center;justify-content:center;flex:none}
+#rp-fact-ov .autocard .ac-ico svg{width:22px;height:22px}
+#rp-fact-ov .autocard .ac-txt{flex:1;min-width:220px}
+#rp-fact-ov .autocard .ac-txt b{color:#e8edf4;font-size:14px;font-weight:700}
+#rp-fact-ov .autocard .ac-txt .st{color:#8b97a8;font-size:12.5px;margin-top:3px;line-height:1.4}
+#rp-fact-ov .ac-sel{background:#0d1524;border:1px solid #1a2436;color:#c7d2e0;border-radius:9px;padding:8px 11px;font-size:12.5px;cursor:pointer;color-scheme:dark;font-family:inherit}
+#rp-fact-ov .switch{position:relative;display:inline-block;width:48px;height:27px;flex:none}
+#rp-fact-ov .switch input{opacity:0;width:0;height:0}
+#rp-fact-ov .switch .slider{position:absolute;inset:0;background:#243149;border-radius:20px;transition:.2s;cursor:pointer}
+#rp-fact-ov .switch .slider:before{content:"";position:absolute;height:21px;width:21px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+#rp-fact-ov .switch input:checked+.slider{background:#137fec}
+#rp-fact-ov .switch input:checked+.slider:before{transform:translateX(21px)}
+#rp-fact-ov .tcard{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;overflow:hidden}
+#rp-fact-ov table{width:100%;border-collapse:collapse;font-size:13px;min-width:820px}
+#rp-fact-ov thead th{text-align:left;color:#5b6678;font-size:10.5px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;padding:14px 16px;border-bottom:1px solid #1b2536}
+#rp-fact-ov tbody td{padding:13px 16px;border-bottom:1px solid #141d2e;color:#e8edf4}
+#rp-fact-ov tbody tr:last-child td{border-bottom:none}
+#rp-fact-ov .chk{width:15px;height:15px;border-radius:4px;border:1.6px solid #33507a;background:#0a1322;display:inline-block;vertical-align:middle;cursor:pointer}
+#rp-fact-ov .chk.on{background:#137fec;border-color:#137fec;position:relative}
+#rp-fact-ov .chk.on:after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+#rp-fact-ov .cust{display:flex;align-items:center;gap:10px}
+#rp-fact-ov .av2{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+#rp-fact-ov .medio{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#b8c6da}
+#rp-fact-ov .midot{width:7px;height:7px;border-radius:50%}
+#rp-fact-ov .comp{color:#5aa2f5;font-size:12.5px}
+#rp-fact-ov .est{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px}
+#rp-fact-ov .e-ok{background:rgba(52,211,153,.12);color:#34d399;border:1px solid #1f5a3d}
+#rp-fact-ov .e-pd{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid #5a4410}
+#rp-fact-ov .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:13px 16px;color:#8b97a8;font-size:12.5px;border-bottom:1px solid #1b2536}
+#rp-fact-ov .pager{display:flex;align-items:center;justify-content:center;gap:6px;padding:16px;flex-wrap:wrap}
+#rp-fact-ov .pbtn{min-width:34px;height:34px;padding:0 11px;border-radius:9px;background:#0d1524;border:1px solid #1a2436;color:#aeb8c6;font-size:13px;font-weight:700;cursor:pointer}
+#rp-fact-ov .pbtn.on{background:#137fec;border-color:#137fec;color:#fff}
+#rp-fact-ov .pbtn:disabled{opacity:.35;cursor:default}
+#rp-fact-ov .pager .info{color:#5b6678;font-size:12px;margin:0 8px}
+#rp-fact-ov .lk-in{background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:10px;padding:11px 13px;font-size:13.5px;font-family:inherit;outline:none;width:100%}
+#rp-fact-ov .lk-in::placeholder{color:#5b6678}
+#rp-fact-ov .lk-lb{font-size:11px;font-weight:700;color:#8b97a8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;display:block}
+#rp-fact-ov .lk-step{display:flex;gap:11px;align-items:flex-start;margin-bottom:11px}
+#rp-fact-ov .lk-step .n{width:22px;height:22px;border-radius:50%;background:rgba(19,127,236,.15);color:#4aa8ff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px}
+#rp-fact-ov .lk-step div{color:#c7d2e0;font-size:13px;line-height:1.45}
+#rp-fact-ov .lk-step b{color:#e8edf4}
+</style>
+ <div id="rpf-lock" style="position:fixed;top:0;left:72px;right:0;bottom:0;z-index:30;background:#090b14;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px">
+  <div style="width:86px;height:86px;border-radius:24px;background:linear-gradient(160deg,#12233b,#0c1626);border:1px solid #1d3350;display:flex;align-items:center;justify-content:center;margin-bottom:22px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#5aa2f5" stroke-width="1.6"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.4"/></svg></div>
+  <h2 style="margin:0;font-size:22px;font-weight:800;color:#f4f7fb">Facturaci&oacute;n en configuraci&oacute;n</h2>
+  <p style="margin:10px 0 0;color:#8b97a8;font-size:14px;max-width:440px;line-height:1.5">Estamos terminando de conectar <b style="color:#cbd5e1">ARCA</b> para que puedas emitir tus facturas. Esta secci&oacute;n va a estar disponible <b style="color:#cbd5e1">muy pronto</b>.</p>
+  <div style="margin-top:22px;display:inline-flex;align-items:center;gap:9px;background:rgba(251,191,36,.12);border:1px solid #5a4410;color:#fbd67e;border-radius:20px;padding:10px 18px;font-size:13.5px;font-weight:700"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4l-6 6 2.7 2.7 6-6a4 4 0 0 0 5.4-5.4l-2.3 2.3-2.7-.7-.7-2.7z"/></svg>Disponible en breve &middot; en configuraci&oacute;n</div>
+ </div>
+ <div id="rpf-linkmodal" style="position:fixed;inset:0;z-index:40;background:rgba(4,8,14,.74);display:none;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)rpFCloseLink()">
+  <div style="width:100%;max-width:560px;background:#0c1420;border:1px solid #1b2536;border-radius:18px;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.6);max-height:90vh;overflow:auto">
+   <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+    <div style="width:40px;height:40px;border-radius:11px;background:rgba(19,127,236,.13);color:#4aa8ff;display:flex;align-items:center;justify-content:center;flex:none"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div>
+    <div style="flex:1"><div style="font-size:17px;font-weight:800;color:#f4f7fb">Vincular ARCA</div><div style="color:#8b97a8;font-size:12.5px">Conect&aacute; tu facturaci&oacute;n electr&oacute;nica para empezar a emitir.</div></div>
+    <button onclick="rpFCloseLink()" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
+   </div>
+   <div style="display:flex;gap:8px;margin:16px 0 14px">
+    <button id="rpf-m-serv" class="btn btn-primary" style="flex:1;justify-content:center" onclick="rpFSetMetodo('servicio')">Servicio (token)</button>
+    <button id="rpf-m-cert" class="btn btn-ghost" style="flex:1;justify-content:center" onclick="rpFSetMetodo('cert')">Certificado AFIP</button>
+   </div>
+   <div id="rpf-steps" style="background:#0a1322;border:1px solid #17233a;border-radius:12px;padding:15px 16px;margin-bottom:15px"></div>
+   <div style="display:grid;gap:12px">
+    <div><span class="lk-lb">CUIT (11 d&iacute;gitos)</span><input id="rpf-in-cuit" class="lk-in" inputmode="numeric" placeholder="20402615483"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+     <div><span class="lk-lb">Punto de venta</span><input id="rpf-in-pv" class="lk-in" inputmode="numeric" placeholder="5"></div>
+     <div><span class="lk-lb">Raz&oacute;n social</span><input id="rpf-in-nombre" class="lk-in" placeholder="Tu nombre / empresa"></div>
+    </div>
+    <div><span class="lk-lb" id="rpf-tk-lb">Token del servicio</span><input id="rpf-in-token" class="lk-in" placeholder="Peg&aacute; tu API token"></div>
+   </div>
+   <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:16px;padding:12px" onclick="rpFVincular()">Vincular y desbloquear</button>
+   <div id="rpf-link-status" style="min-height:16px;margin-top:10px;font-size:12.5px;font-weight:600;color:#fb7185;text-align:center"></div>
+  </div>
+ </div>
+ <div class="wrap">
+  <div class="topbar">
+   <div class="rangebox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><input id="rpf-desde" type="date" onchange="rpFRango()"><span style="color:#5b6678">&rarr;</span><input id="rpf-hasta" type="date" onchange="rpFRango()"></div>
+   <div class="emitbox"><span class="lab">Fecha de emisi&oacute;n</span><input id="rpf-emit" type="date"></div>
+   <span class="chip">&#127462;&#127479; ARS</span>
+  </div>
+  <div class="head">
+   <div class="hico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15l-2.2-1.4L13.6 21 12 19.6 10.4 21 8.2 19.6 6 21Z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></div>
+   <div><h1>Facturaci&oacute;n</h1><p>Factur&aacute; contra ARCA y export&aacute; el informe para el contador, sin salir de RealProfit.</p></div>
+   <button class="x" onclick="rpFact(false)">&#10005;</button>
+  </div>
+  <div class="arca" id="rpf-arca"><span class="dot"></span><span>Conectado a ARCA</span></div>
+  <div class="pills">
+   <span class="pill on" data-f="todas" onclick="rpFFilt('todas')"><span class="d" style="background:#137fec"></span>Todas</span>
+   <span class="pill" data-f="facturadas" onclick="rpFFilt('facturadas')"><span class="d" style="background:#34d399"></span>Facturadas</span>
+   <span class="pill" data-f="pendientes" onclick="rpFFilt('pendientes')"><span class="d" style="background:#fbbf24"></span>No facturadas</span>
+  </div>
+  <div class="cont">
+   <div class="cont-h"><span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg></span><b>Resumen del per&iacute;odo</b></div>
+   <div class="sec-lbl"><span class="si"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l3 3v15H6Z"/><path d="M9 9h6M9 13h6"/></svg></span><span>Facturaci&oacute;n</span><small>3</small></div>
+   <div class="kpis">
+    <div class="kcard v"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-3-3-4 4"/></svg></span><span class="klabel">Ventas</span></div><div class="knum" id="rpf-k-ventas">0</div><div class="ksub">ventas pagadas del per&iacute;odo</div></div>
+    <div class="kcard f"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg></span><span class="klabel">Facturadas</span></div><div class="knum" id="rpf-k-fact">0</div><div class="ksub" id="rpf-ks-fact">emitidas</div></div>
+    <div class="kcard p"><div class="kt"><span class="kico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><span class="klabel">Pendientes</span></div><div class="knum" id="rpf-k-pend">0</div><div class="ksub">sin facturar</div></div>
+   </div>
+  </div>
+  <div class="acts">
+   <span class="btn btn-ghost" onclick="rpFSelectAll()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></svg>Seleccionar todas</span>
+   <span class="btn btn-ghost" onclick="rpFDeselect()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9l6 6M15 9l-6 6"/></svg>Deseleccionar</span>
+   <span class="btn btn-green" onclick="rpFInforme()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v3h16v-3"/></svg>Exportar informe (contador)</span>
+   <span class="btn btn-primary" onclick="rpFFacturarSel()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l3 3v15H6Z"/><path d="M9 9h6M9 13h6"/></svg>Facturar seleccionadas</span>
+  </div>
+  <div id="rpf-status" style="min-height:18px;margin:0 2px 12px;font-size:12.5px;font-weight:600;color:#34d399"></div>
+  <div class="sld" id="rpf-sld">
+   <div class="sld-head" onclick="rpFToggleSld()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#137fec" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>Facturar un % de las ventas<small>&mdash; herramienta aparte: factura por porcentaje, no toca lo seleccionado</small><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m9 6 6 6-6 6"/></svg></div>
+   <div class="sld-body">
+    <div class="row"><input id="rpf-pct" class="rng" type="range" min="0" max="100" step="10" value="0" oninput="rpFPctInput()"><div class="pctv" id="rpf-pctv">0%</div><span class="btn btn-primary" style="padding:9px 15px" onclick="rpFFacturarPct()">Facturar este %</span></div>
+    <div class="obj" id="rpf-pctobj"></div>
+   </div>
+  </div>
+  <div class="autocard">
+   <div class="ac-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg></div>
+   <div class="ac-txt"><b>Facturaci&oacute;n autom&aacute;tica</b><div class="st" id="rpf-autostate">Desactivada. Las ventas nuevas quedan <b style="color:#cbd5e1">pendientes</b> hasta que la actives.</div></div>
+   <select id="rpf-autodelay" class="ac-sel" onchange="if(document.getElementById('rpf-autotoggle').checked)rpFAuto(document.getElementById('rpf-autotoggle'))"><option value="5">a los 5 min</option><option value="10" selected>a los 10 min</option><option value="15">a los 15 min</option><option value="30">a los 30 min</option></select>
+   <label class="switch"><input type="checkbox" id="rpf-autotoggle" onchange="rpFAuto(this)"><span class="slider"></span></label>
+  </div>
+  <div class="tcard">
+   <div class="foot"><label style="display:inline-flex;align-items:center;gap:8px;color:#c7d2e0;font-size:12.5px;font-weight:700;cursor:pointer"><input type="checkbox" id="rpf-chkall" onchange="rpFToggleAll(this)" style="width:15px;height:15px;accent-color:#137fec;cursor:pointer">Seleccionar la p&aacute;gina</label><span id="rpf-cnt" style="color:#8b97a8">&mdash;</span></div>
+   <div style="overflow-x:auto"><table><thead><tr><th style="width:36px"></th><th>Fecha</th><th>Pedido</th><th>Cliente</th><th>Medio</th><th>Comprobante</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead><tbody id="rpf-body"></tbody></table></div>
+   <div class="pager" id="rpf-pager"></div>
+  </div>
  </div>
 </div>
 <script>
@@ -701,6 +909,133 @@ _SOLO_DASH = r"""
      if(j&&j.ok){ res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">📲 '+(j.enviados||0)+' seguimientos enviados — la tienda le avisó por mail a cada cliente.</div>'; _dLoaded=false; rpDLoad(); setTimeout(rpDCloseSeg,1600); }
      else res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>';
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error de conexión.</div>'; }); };
+ // ===================== FACTURACIÓN =====================
+ var _fRows=[], _fFilter='todas', _fPage=1, _fSel={}, _fPer=50, _fAutoOn=false;
+ function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
+ function _fEmit(){ var v=(document.getElementById('rpf-emit')||{}).value||''; if(!v)return ''; var p=v.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+ window.rpFact=function(open){ var o=document.getElementById('rp-fact-ov'); if(!o)return;
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
+     var nd=document.getElementById('rp-desp-nav'); if(nd){var ad=nd.querySelector('a'); if(ad)ad.classList.remove('bg-white/[0.08]');}
+     var nn=document.getElementById('rp-fact-nav'); if(nn){var a=nn.querySelector('a'); if(a)a.classList.add('bg-white/[0.08]');}
+   } else { var nn2=document.getElementById('rp-fact-nav'); if(nn2){var a2=nn2.querySelector('a'); if(a2)a2.classList.remove('bg-white/[0.08]');} }
+   o.style.display=open?'block':'none';
+   if(open){ var _lk0=document.getElementById('rpf-lock'); if(_lk0)_lk0.style.display='flex';  /* BLOQUEADO en configuración: candado al instante */
+     var e=document.getElementById('rpf-emit'); if(e&&!e.value){ var t=new Date(); e.value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); } rpFLoad(); } };
+ window.rpFLoad=function(){ _fStat('Trayendo ventas de tu tienda…','#38bdf8');
+   var d=(document.getElementById('rpf-desde')||{}).value, h=(document.getElementById('rpf-hasta')||{}).value, qs=[];
+   if(d)qs.push('desde='+d); if(h)qs.push('hasta='+h);
+   fetch('/pf-facturacion'+(qs.length?('?'+qs.join('&')):'')).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ _fStat('No se pudo cargar.', '#fb7185'); return; }
+     var _lka=j.arca||{}; window._fArca=_lka; var _lk=document.getElementById('rpf-lock'); if(_lk)_lk.style.display='flex';  /* BLOQUEADO: en configuración hasta conectar ARCA */
+     if(j.shopify===false){ _fRows=[]; rpFRender(); if(_lka.vinculado)_fStat('Conectá tu tienda en Integraciones para ver las ventas.', '#f0b429'); return; }
+     _fRows=j.rows||[];
+     var a=j.arca||{}, ab=document.getElementById('rpf-arca');
+     if(ab) ab.innerHTML='<span class="dot"></span><span>Conectado a ARCA</span><span class="sep">·</span><span class="lbl">Facturás como</span><b>'+_dEsc(a.nombre||'—')+'</b>'+(a.cuit?('<span class="cuit">CUIT '+_dEsc(a.cuit)+'</span>'):'<span class="cuit" style="color:#7d8ba0;background:#141d2e;border-color:#26324a">CUIT sin configurar</span>')+'<span class="sep">·</span><span>'+_dEsc(a.tipo||'Factura C')+'</span><span class="sep">·</span><span>Punto de Venta '+_dEsc(a.pv||'5')+'</span>';
+     var au=j.auto||{}; _fAutoOn=!!au.on; var t=document.getElementById('rpf-autotoggle'); if(t)t.checked=_fAutoOn; var dl=document.getElementById('rpf-autodelay'); if(dl&&au.delay)dl.value=String(au.delay); _fAutoState();
+     rpFRender(); _fStat(''); }).catch(function(){ _fStat('Error de conexión.', '#fb7185'); }); };
+ function _fFiltered(){ return _fFilter==='todas'?_fRows:(_fFilter==='facturadas'?_fRows.filter(function(o){return o.facturada;}):_fRows.filter(function(o){return !o.facturada;})); }
+ window.rpFRender=function(){
+   var data=_fFiltered(), pages=Math.max(1,Math.ceil(data.length/_fPer)); if(_fPage>pages)_fPage=pages;
+   var start=(_fPage-1)*_fPer, rows=data.slice(start,start+_fPer), tb=document.getElementById('rpf-body'); if(!tb)return;
+   tb.innerHTML=rows.map(function(o){
+     var on=!!_fSel[o.num];
+     var est=o.facturada?'<span class="est e-ok">✓ Emitida</span>':'<span class="est e-pd">Pendiente</span>';
+     var mc=o.medio==='Tarjeta'?'#34d399':(o.medio==='Transferencia'?'#fbbf24':'#38bdf8');
+     var comp=o.comprobante?('<span class="comp">'+_dEsc(o.comprobante)+'</span>'+(o.emit?('<div style="color:#5b6678;font-size:10.5px;margin-top:2px">emisión '+_dEsc(o.emit)+'</div>'):'')):'<span style="color:#5b6b82">—</span>';
+     return '<tr>'
+       +'<td><span class="chk '+(on?'on':'')+'" onclick="rpFToggle(&#39;'+_dEsc(o.num)+'&#39;)"></span></td>'
+       +'<td>'+_dEsc(o.fecha_dmy||(o.fecha||'').slice(0,10))+'</td>'
+       +'<td style="color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td>'
+       +'<td><div class="cust"><span class="av2" style="background:'+_dColor(o.nombre)+'">'+_dEsc(_dIni(o.nombre))+'</span>'+_dEsc(o.nombre)+'</div></td>'
+       +'<td><span class="medio"><span class="midot" style="background:'+mc+'"></span>'+_dEsc(o.medio||'—')+'</span></td>'
+       +'<td>'+comp+'</td>'
+       +'<td style="text-align:right;font-weight:700">'+_dFmt(o.total)+'</td>'
+       +'<td>'+est+'</td></tr>';
+   }).join('')||'<tr><td colspan="8" style="padding:40px;text-align:center;color:#5b6b82">No hay ventas en este período/filtro.</td></tr>';
+   var fac=_fRows.filter(function(o){return o.facturada;}), fm=fac.reduce(function(a,o){return a+o.total;},0);
+   var setT=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
+   setT('rpf-k-ventas',_fRows.length); setT('rpf-k-fact',fac.length); setT('rpf-k-pend',_fRows.length-fac.length); setT('rpf-ks-fact','emitidas · '+_dFmt(fm));
+   var nsel=Object.keys(_fSel).length;
+   setT('rpf-cnt',data.length+' venta'+(data.length!==1?'s':'')+(nsel?(' · '+nsel+' seleccionada'+(nsel>1?'s':'')):''));
+   var ca=document.getElementById('rpf-chkall'); if(ca)ca.checked=rows.length>0&&rows.every(function(o){return _fSel[o.num];});
+   _fPager(pages,data.length,start,rows.length); rpFPctInput();
+ };
+ function _fPager(pages,total,start,shown){ var p=document.getElementById('rpf-pager'); if(!p)return; var h='';
+   h+='<button class="pbtn" '+(_fPage<=1?'disabled':'')+' onclick="rpFGoto('+(_fPage-1)+')">‹ Anterior</button>';
+   var lo=Math.max(1,_fPage-2),hi=Math.min(pages,_fPage+2);
+   if(lo>1){h+='<button class="pbtn" onclick="rpFGoto(1)">1</button>';if(lo>2)h+='<span class="info">…</span>';}
+   for(var i=lo;i<=hi;i++)h+='<button class="pbtn '+(i===_fPage?'on':'')+'" onclick="rpFGoto('+i+')">'+i+'</button>';
+   if(hi<pages){if(hi<pages-1)h+='<span class="info">…</span>';h+='<button class="pbtn" onclick="rpFGoto('+pages+')">'+pages+'</button>';}
+   h+='<button class="pbtn" '+(_fPage>=pages?'disabled':'')+' onclick="rpFGoto('+(_fPage+1)+')">Siguiente ›</button>';
+   h+='<span class="info">'+(total?(start+1):0)+'–'+(start+shown)+' de '+total+'</span>'; p.innerHTML=h; }
+ window.rpFGoto=function(n){ _fPage=n; rpFRender(); var o=document.getElementById('rp-fact-ov'); if(o)o.scrollTop=0; };
+ window.rpFToggle=function(id){ id=String(id); if(_fSel[id])delete _fSel[id]; else _fSel[id]=1; rpFRender(); };
+ window.rpFToggleAll=function(c){ _fFiltered().slice((_fPage-1)*_fPer,(_fPage-1)*_fPer+_fPer).forEach(function(o){if(c.checked)_fSel[o.num]=1;else delete _fSel[o.num];}); rpFRender(); };
+ window.rpFSelectAll=function(){ _fFiltered().forEach(function(o){_fSel[o.num]=1;}); rpFRender(); _fStat('✓ '+Object.keys(_fSel).length+' ventas seleccionadas.'); };
+ window.rpFDeselect=function(){ _fSel={}; rpFRender(); _fStat('Selección limpia.'); };
+ window.rpFFilt=function(f){ _fFilter=f; _fPage=1; var ps=document.querySelectorAll('#rp-fact-ov .pill'); for(var i=0;i<ps.length;i++){ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f);} rpFRender(); };
+ window.rpFRango=function(){ _fPage=1; rpFLoad(); };
+ window.rpFToggleSld=function(){ var s=document.getElementById('rpf-sld'); if(s)s.classList.toggle('open'); rpFPctInput(); };
+ window.rpFPctInput=function(){ var el=document.getElementById('rpf-pct'); if(!el)return; var v=+el.value;
+   var pv=document.getElementById('rpf-pctv'); if(pv)pv.textContent=v+'%';
+   el.style.background='linear-gradient(90deg,#137fec '+v+'%,#182234 '+v+'%)';
+   var per=_fRows, target=Math.round(v/100*per.length), yf=per.filter(function(o){return o.facturada;}).length, need=Math.max(0,target-yf);
+   var pend=per.filter(function(o){return !o.facturada;}).sort(function(a,b){return (a.prio||2)-(b.prio||2);}).slice(0,need);
+   var monto=pend.reduce(function(a,o){return a+o.total;},0), ob=document.getElementById('rpf-pctobj');
+   if(ob)ob.innerHTML=need>0?('<span>Al <b>'+v+'%</b> facturarías</span><span class="hl">'+need+' ventas</span><span class="sep">·</span><span class="hl">'+_dFmt(monto)+'</span>'):('<span>Al <b>'+v+'%</b> ya está todo facturado —</span><span class="hl">0 ventas</span><span class="sep">·</span><span class="hl">$0</span>'); };
+ function _fMarcar(nums,accion,cb){ fetch('/pf-facturacion-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:nums,accion:accion,emit:_fEmit()})}).then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){cb&&cb(j);} else _fStat('No se pudo guardar.','#fb7185'); }).catch(function(){ _fStat('Error de conexión.','#fb7185'); }); }
+ window.rpFFacturarSel=function(){ var ids=Object.keys(_fSel); if(!ids.length){ _fStat('Tildá las ventas que querés facturar.','#fb7185'); return; } _fStat('Facturando…','#38bdf8'); _fMarcar(ids,'facturada',function(){ _fSel={}; rpFLoad(); _fStat('🧾 '+ids.length+' factura(s) emitida(s) con fecha de emisión '+(_fEmit()||'hoy')+'.'); }); };
+ window.rpFFacturarPct=function(){ var v=+(document.getElementById('rpf-pct')||{}).value; if(!v){ _fStat('Elegí un % con la barra.','#fb7185'); return; }
+   var per=_fRows, target=Math.round(v/100*per.length), yf=per.filter(function(o){return o.facturada;}).length, need=target-yf;
+   if(need<=0){ _fStat('Ya facturaste el '+v+'% o más de este período.','#fbbf24'); return; }
+   var pend=per.filter(function(o){return !o.facturada;}).sort(function(a,b){return (a.prio||2)-(b.prio||2);}).slice(0,need).map(function(o){return o.num;});
+   _fStat('Facturando '+v+'%…','#38bdf8'); _fMarcar(pend,'facturada',function(){ rpFLoad(); _fStat('🧾 Facturado el '+v+'% — '+pend.length+' factura(s) nuevas.'); }); };
+ window.rpFInforme=function(){ _fStat('⏳ Generando informe del contador…','#34d399');
+   var d=(document.getElementById('rpf-desde')||{}).value, h=(document.getElementById('rpf-hasta')||{}).value;
+   fetch('/pf-facturacion-informe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({desde:d,hasta:h})})
+    .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';}); return r.blob(); })
+    .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Informe-Facturacion.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u); _fStat('✅ Informe descargado.'); })
+    .catch(function(e){ _fStat('No se pudo generar'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
+ function _fAutoState(){ var m=(document.getElementById('rpf-autodelay')||{}).value||'10', el=document.getElementById('rpf-autostate'); if(!el)return;
+   el.innerHTML=_fAutoOn?('<span style="color:#34d399;font-weight:800">● ACTIVADA</span> — cada venta nueva se factura sola <b>a los '+m+' min</b>. Solo las que entran desde que la activaste.'):'Desactivada. Las ventas nuevas quedan <b style="color:#cbd5e1">pendientes</b> hasta que la actives.'; }
+ window.rpFAuto=function(el){ _fAutoOn=el.checked;
+   fetch('/pf-facturacion-auto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:_fAutoOn,delay:+(document.getElementById('rpf-autodelay')||{}).value||10,emit:_fEmit()})})
+    .then(function(r){return r.json();}).then(function(){ _fAutoState(); _fStat(_fAutoOn?'🤖 Facturación automática activada.':'Facturación automática desactivada.'); })
+    .catch(function(){ _fStat('No se pudo guardar.','#fb7185'); }); };
+ // ---- Vincular ARCA (candado) ----
+ var _fMetodo='servicio';
+ window.rpFSetMetodo=function(m){ _fMetodo=m;
+   var s=document.getElementById('rpf-m-serv'), c=document.getElementById('rpf-m-cert');
+   if(s){s.className='btn '+(m==='servicio'?'btn-primary':'btn-ghost');} if(c){c.className='btn '+(m==='cert'?'btn-primary':'btn-ghost');}
+   var steps=document.getElementById('rpf-steps'), tk=document.getElementById('rpf-tk-lb'), inp=document.getElementById('rpf-in-token');
+   if(m==='servicio'){
+     if(tk)tk.textContent='Token del servicio'; if(inp)inp.placeholder='Pegá tu API token';
+     steps.innerHTML='<div class="lk-step"><span class="n">1</span><div>Creá tu cuenta en <a href="https://www.tusfacturas.app" target="_blank" rel="noopener" style="color:#4aa8ff;font-weight:700">TusFacturas.app</a> o <a href="https://www.facturante.com" target="_blank" rel="noopener" style="color:#4aa8ff;font-weight:700">Facturante</a>.</div></div>'
+       +'<div class="lk-step"><span class="n">2</span><div>En el panel, generá tu <b>API token</b> y copialo.</div></div>'
+       +'<div class="lk-step"><span class="n">3</span><div>Pegá abajo tu <b>CUIT</b>, <b>punto de venta</b> y el <b>token</b>. Listo, sin manejar certificados.</div></div>';
+   } else {
+     if(tk)tk.textContent='Certificado (.crt / .pem)'; if(inp)inp.placeholder='Pegá el contenido del certificado';
+     steps.innerHTML='<div class="lk-step"><span class="n">1</span><div>Entrá a <a href="https://www.afip.gob.ar" target="_blank" rel="noopener" style="color:#4aa8ff;font-weight:700">AFIP</a> con tu Clave Fiscal → <b>Administración de Certificados Digitales</b> y generá un certificado.</div></div>'
+       +'<div class="lk-step"><span class="n">2</span><div>Asociale el web service <b>Facturación Electrónica (wsfe)</b>.</div></div>'
+       +'<div class="lk-step"><span class="n">3</span><div>Configurá tu <b>Punto de Venta</b> como factura electrónica.</div></div>'
+       +'<div class="lk-step"><span class="n">4</span><div>Pegá abajo el <b>certificado</b> + tu CUIT y punto de venta. <b style="color:#fbbf24">Nunca compartas tu Clave Fiscal</b>, solo el certificado.</div></div>';
+   } };
+ window.rpFOpenLink=function(){ var m=document.getElementById('rpf-linkmodal'); if(!m)return; m.style.display='flex';
+   var a=window._fArca||{}; var g=function(id,v){var e=document.getElementById(id); if(e&&v)e.value=v;};
+   g('rpf-in-cuit',(a.cuit||'').replace(/\D/g,'')); g('rpf-in-pv',a.pv||''); g('rpf-in-nombre',a.nombre||'');
+   document.getElementById('rpf-link-status').textContent=''; rpFSetMetodo(_fMetodo); };
+ window.rpFCloseLink=function(){ var m=document.getElementById('rpf-linkmodal'); if(m)m.style.display='none'; };
+ window.rpFVincular=function(){ var st=document.getElementById('rpf-link-status');
+   var cuit=(document.getElementById('rpf-in-cuit')||{}).value||'', pv=(document.getElementById('rpf-in-pv')||{}).value||'';
+   var nombre=(document.getElementById('rpf-in-nombre')||{}).value||'', token=(document.getElementById('rpf-in-token')||{}).value||'';
+   if(cuit.replace(/\D/g,'').length!==11){ st.style.color='#fb7185'; st.textContent='El CUIT debe tener 11 dígitos.'; return; }
+   st.style.color='#38bdf8'; st.textContent='Verificando conexión…';
+   fetch('/pf-facturacion-arca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuit:cuit,pv:pv,nombre:nombre,token:token,metodo:_fMetodo})})
+    .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ st.style.color='#34d399'; st.textContent='✓ ARCA vinculado. Desbloqueando…';
+      setTimeout(function(){ rpFCloseLink(); var lk=document.getElementById('rpf-lock'); if(lk)lk.style.display='none'; rpFLoad(); },700); }
+      else { st.style.color='#fb7185'; st.textContent=(j&&j.msg)||'No se pudo vincular.'; } })
+    .catch(function(){ st.style.color='#fb7185'; st.textContent='Error de conexión.'; }); };
  function rpComisLoad(){ fetch('/pf-comisiones').then(function(r){return r.json();}).then(function(j){ var c=(j&&j.comis)||{};
     var set=function(id,v){var el=document.getElementById(id); if(el)el.value=(!v||v===0)?'':v;};
     // 1% tienda y 3,5% Ingresos Brutos: FIJOS y no editables (pedido del usuario).
@@ -1373,7 +1708,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-09-m-sku3"})
+    return jsonify({"ok": True, "v": "2026-08-10-q-fact-enconfig"})
 
 
 @app.get("/pf-diag")
@@ -1733,6 +2068,298 @@ def pf_despachos_list():
                         "exportada": {"n": len(grp["exportada"]), "monto": _suma(grp["exportada"])},
                         "enviada": {"n": len(grp["enviada"]), "monto": _suma(grp["enviada"])},
                         "todas": {"n": len(rows), "monto": _suma(rows)}}})
+
+
+# ============================ FACTURACIÓN ============================
+# RealProfit no emite en ARCA (eso vive en METAFY con el certificado AFIP).
+# Acá listamos las VENTAS pagadas de la tienda y llevamos el control de cuáles
+# están facturadas (marcado manual), con KPIs y export para el contador.
+FACT_STATE = DATA_DIR / "factura_estado.json"   # {email: {order_num: {"comp": "", "fecha": ""}}}
+
+
+def _fact_state(email) -> dict:
+    try:
+        return (_json.loads(FACT_STATE.read_text(encoding="utf-8"))).get(email, {})
+    except Exception:
+        return {}
+
+
+def _fact_save(email, st) -> None:
+    try:
+        d = _json.loads(FACT_STATE.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    d[email] = st
+    FACT_STATE.parent.mkdir(parents=True, exist_ok=True)
+    FACT_STATE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _facturacion_orders(email, desde=None, hasta=None):
+    """VENTAS pagadas de la tienda (todas, despachadas o no) para facturar/controlar.
+    Devuelve None si la tienda no está conectada."""
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return None
+    shop, token = tk.get("shop"), tk.get("access_token")
+    params = {"status": "any", "financial_status": "paid", "limit": 250,
+              "fields": "id,order_number,name,total_price,current_total_price,"
+                        "financial_status,cancelled_at,line_items,created_at,"
+                        "customer,contact_email,billing_address,shipping_address,"
+                        "gateway,payment_gateway_names"}
+    if desde:
+        params["created_at_min"] = desde + "T00:00:00-03:00"
+    if hasta:
+        params["created_at_max"] = hasta + "T23:59:59-03:00"
+    try:
+        r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                         headers={"X-Shopify-Access-Token": token},
+                         params=params, timeout=40)
+        orders = (r.json() or {}).get("orders") or []
+    except Exception:
+        return []
+    st = _fact_state(email)
+    out = []
+    for o in orders:
+        if o.get("cancelled_at"):
+            continue
+        if (o.get("financial_status") or "").lower() != "paid":
+            continue
+        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        ba = o.get("billing_address") or o.get("shipping_address") or {}
+        cust = o.get("customer") or {}
+        nombre = (ba.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip())
+                  or o.get("contact_email") or "—")
+        names = o.get("payment_gateway_names") or []
+        gw = (names[0] if names else (o.get("gateway") or "")).lower()
+        if "mercado" in gw:
+            medio, prio = "MercadoPago", 2
+        elif any(k in gw for k in ("transfer", "bank", "manual", "efect", "cash", "deposit")):
+            medio, prio = "Transferencia", 3
+        elif any(k in gw for k in ("card", "credit", "debit", "shopify_payments", "stripe", "tarjeta")):
+            medio, prio = "Tarjeta", 1
+        else:
+            medio, prio = ((names[0] if names else "Otro") or "Otro").title(), 2
+        fch = (o.get("created_at") or "")[:10]
+        fdmy = ("%s/%s/%s" % (fch[8:10], fch[5:7], fch[0:4])) if len(fch) == 10 else ""
+        fac = st.get(num) if isinstance(st.get(num), dict) else None
+        out.append({
+            "num": num, "nombre": nombre.strip(),
+            "dni": _dni_de(o), "fecha": o.get("created_at") or "", "fecha_dmy": fdmy,
+            "total": round(float(o.get("total_price") or o.get("current_total_price") or 0), 2),
+            "email": o.get("contact_email") or (cust.get("email") or ""),
+            "localidad": ba.get("city") or "", "cp": ba.get("zip") or "",
+            "provincia": ba.get("province") or "",
+            "dir_fiscal": ((ba.get("address1") or "") + " " + (ba.get("address2") or "")).strip(),
+            "medio": medio, "prio": prio,
+            "facturada": bool(fac), "comprobante": (fac or {}).get("comp", ""),
+            "emit": (fac or {}).get("emit", ""), "fecha_fact": (fac or {}).get("fecha", ""),
+        })
+    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    return out
+
+
+@app.get("/pf-facturacion")
+def pf_facturacion_list():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "rows": []})
+    desde = request.args.get("desde") or None
+    hasta = request.args.get("hasta") or None
+    _ac0 = _arca_get(email)
+    rows = _facturacion_orders(email, desde, hasta)
+    if rows is None:
+        return jsonify({"ok": True, "shopify": False, "rows": [],
+                        "arca": {"nombre": _ac0.get("nombre", ""), "cuit": _ac0.get("cuit", ""),
+                                 "pv": _ac0.get("pv", "5"), "vinculado": bool(_ac0.get("cuit"))}})
+    # --- Facturación automática: marca las ventas nuevas que ya cumplieron el retraso ---
+    auto = _auto_cfg(email)
+    if auto.get("on") and auto.get("since"):
+        try:
+            since = _dt.datetime.fromisoformat(auto["since"])
+            ahora = _dt.datetime.now(since.tzinfo) if since.tzinfo else _dt.datetime.now()
+            delay = _dt.timedelta(minutes=int(auto.get("delay", 10)))
+            nuevas = []
+            for r in rows:
+                if r["facturada"]:
+                    continue
+                try:
+                    cr = _dt.datetime.fromisoformat((r.get("fecha") or "").replace("Z", "+00:00"))
+                    cr_n = cr.replace(tzinfo=None)
+                except Exception:
+                    continue
+                if cr_n > since.replace(tzinfo=None) and (ahora.replace(tzinfo=None) - cr_n) >= delay:
+                    nuevas.append(r["num"])
+            if nuevas:
+                _marcar_facturadas(email, nuevas, auto.get("emit", ""))
+                rows = _facturacion_orders(email, desde, hasta) or rows
+        except Exception:
+            pass
+    fact = [r for r in rows if r["facturada"]]
+    pend = [r for r in rows if not r["facturada"]]
+    tk = _shop_tokens().get(email) or {}
+    shopnm = (tk.get("shop") or "").split(".")[0]
+    ac = _arca_get(email)
+
+    def _suma(lst):
+        return round(sum(r["total"] for r in lst), 2)
+    return jsonify({"ok": True, "shopify": True, "rows": rows,
+                    "arca": {"nombre": ac.get("nombre") or shopnm or email,
+                             "cuit": ac.get("cuit", ""), "pv": ac.get("pv", "5"),
+                             "tipo": ac.get("tipo", "Factura C · Monotributo"),
+                             "metodo": ac.get("metodo", ""),
+                             "vinculado": bool(ac.get("cuit"))},
+                    "auto": {"on": bool(auto.get("on")), "delay": int(auto.get("delay", 10))},
+                    "resumen": {
+                        "ventas": {"n": len(rows), "monto": _suma(rows)},
+                        "facturadas": {"n": len(fact), "monto": _suma(fact)},
+                        "pendientes": {"n": len(pend), "monto": _suma(pend)}}})
+
+
+def _marcar_facturadas(email, nums, emit=""):
+    """Marca ventas como facturadas asignando comprobante (uso interno / auto)."""
+    st = _fact_state(email)
+    try:
+        seq = int(st.get("_seq", 0))
+    except Exception:
+        seq = 0
+    for n in [str(x) for x in nums]:
+        prev = st.get(n) if isinstance(st.get(n), dict) else {}
+        comp = prev.get("comp")
+        if not comp:
+            seq += 1
+            comp = "00005-%08d" % seq
+        st[n] = {"comp": comp, "emit": emit or prev.get("emit", ""), "fecha": prev.get("fecha", "")}
+    st["_seq"] = seq
+    _fact_save(email, st)
+
+
+@app.post("/pf-facturacion-marcar")
+def pf_facturacion_marcar():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    nums = [str(n) for n in (data.get("nums") or [])]
+    accion = data.get("accion", "facturada")   # facturada / pendiente
+    emit = (data.get("emit") or "").strip()     # fecha de emisión elegida (dd/mm/aaaa)
+    st = _fact_state(email)
+    try:
+        seq = int(st.get("_seq", 0))
+    except Exception:
+        seq = 0
+    for n in nums:
+        if accion == "pendiente":
+            st.pop(n, None)
+        else:
+            prev = st.get(n) if isinstance(st.get(n), dict) else {}
+            comp = prev.get("comp")
+            if not comp:
+                seq += 1
+                comp = "00005-%08d" % seq
+            st[n] = {"comp": comp, "emit": emit or prev.get("emit", ""),
+                     "fecha": prev.get("fecha", "")}
+    st["_seq"] = seq
+    _fact_save(email, st)
+    return jsonify({"ok": True, "n": len(nums)})
+
+
+# --- Facturación automática (flag on/off por usuario) ---
+AUTO_FACT = DATA_DIR / "auto_fact.json"   # {email: {"on": bool, "delay": 10, "since": iso}}
+
+
+def _auto_cfg(email) -> dict:
+    try:
+        return (_json.loads(AUTO_FACT.read_text(encoding="utf-8"))).get(email, {}) or {}
+    except Exception:
+        return {}
+
+
+@app.post("/pf-facturacion-auto")
+def pf_facturacion_auto():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    try:
+        d = _json.loads(AUTO_FACT.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    cur = d.get(email, {}) or {}
+    on = bool(data.get("on"))
+    d[email] = {"on": on, "delay": int(data.get("delay", 10)),
+                "emit": (data.get("emit") or "").strip(),
+                "since": _dt.datetime.now().isoformat() if on and not cur.get("on") else cur.get("since", "")}
+    AUTO_FACT.parent.mkdir(parents=True, exist_ok=True)
+    AUTO_FACT.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return jsonify({"ok": True, "auto": d[email]})
+
+
+# --- Vinculación ARCA (config por usuario) ---
+ARCA_CFG = DATA_DIR / "arca_config.json"   # {email: {cuit, pv, nombre, tipo, metodo, token}}
+
+
+def _arca_get(email) -> dict:
+    try:
+        return (_json.loads(ARCA_CFG.read_text(encoding="utf-8"))).get(email, {}) or {}
+    except Exception:
+        return {}
+
+
+@app.post("/pf-facturacion-arca")
+def pf_facturacion_arca():
+    """Vincula ARCA: guarda CUIT + Punto de Venta + método (token de servicio o certificado)."""
+    import re
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    data = request.get_json(silent=True) or {}
+    cuit = re.sub(r"\D", "", str(data.get("cuit") or ""))
+    pv = re.sub(r"\D", "", str(data.get("pv") or "")) or "5"
+    if len(cuit) != 11:
+        return jsonify({"ok": False, "msg": "El CUIT debe tener 11 dígitos."})
+    try:
+        d = _json.loads(ARCA_CFG.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    cuit_fmt = "%s-%s-%s" % (cuit[:2], cuit[2:10], cuit[10:])
+    d[email] = {"cuit": cuit_fmt, "pv": pv,
+                "nombre": (data.get("nombre") or "").strip(),
+                "tipo": (data.get("tipo") or "Factura C · Monotributo").strip(),
+                "metodo": (data.get("metodo") or "").strip(),
+                "token": (data.get("token") or "").strip()}
+    ARCA_CFG.parent.mkdir(parents=True, exist_ok=True)
+    ARCA_CFG.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return jsonify({"ok": True, "arca": {k: v for k, v in d[email].items() if k != "token"}})
+
+
+@app.post("/pf-facturacion-informe")
+def pf_facturacion_informe():
+    """Exporta un .xlsx de las ventas FACTURADAS del período para el contador."""
+    import openpyxl
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 400
+    data = request.get_json(silent=True) or {}
+    desde = data.get("desde") or None
+    hasta = data.get("hasta") or None
+    rows = _facturacion_orders(email, desde, hasta) or []
+    fact = [r for r in rows if r["facturada"]]
+    if not fact:
+        return jsonify({"ok": False, "msg": "No hay ventas marcadas como facturadas en ese período."}), 400
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Facturación"
+    ws.append(["Fecha emisión", "Fecha venta", "Pedido", "Cliente", "CUIT/DNI", "Medio",
+               "Localidad", "Provincia", "CP", "Dirección", "Email", "Comprobante", "Total"])
+    for r in sorted(fact, key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0):
+        ws.append([r.get("emit", "") or (r.get("fecha") or "")[:10], r.get("fecha_dmy", "") or (r.get("fecha") or "")[:10],
+                   r["num"], r["nombre"], r.get("dni", ""), r.get("medio", ""),
+                   r.get("localidad", ""), r.get("provincia", ""), r.get("cp", ""),
+                   r.get("dir_fiscal", ""), r.get("email", ""), r.get("comprobante", ""),
+                   r["total"]])
+    out = DATA_DIR / ("Informe-Facturacion-%s.xlsx" % _dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    wb.save(str(out))
+    return send_file(str(out), as_attachment=True, download_name=out.name)
 
 
 @app.post("/pf-despachos-marcar")
