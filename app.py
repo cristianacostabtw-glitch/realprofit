@@ -2006,7 +2006,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-tn-sync-dash"})
+    return jsonify({"ok": True, "v": "2026-08-12-sku-rotulos"})
 
 
 @app.get("/pf-diag")
@@ -3201,13 +3201,168 @@ def pf_despachos_sku_sync():
     return jsonify({"ok": True, "n": n})
 
 
+_SKU_EBOOK = ("guia", "guía", "cuidado ocular", "ebook", "e-book", "plan 90", "plan de 90")
+
+
+def _sku_es_ebook(nombre):
+    n = str(nombre or "").lower()
+    return any(k in n for k in _SKU_EBOOK)
+
+
+def _sku_despacho(u):
+    """(60ml, 30ml) según el despacho real de VisionPure: cada 2 → 60ml, resto → 30ml."""
+    return u // 2, u % 2
+
+
+def _sku_texto(sprays):
+    """SKU: 1→'1 30ML' · 2→'1 60ML' · 3→'1 60ML + 1 30ML'. Solo sprays (ebook no cuenta)."""
+    if sprays <= 0:
+        return ""
+    d60, d30 = _sku_despacho(sprays)
+    partes = []
+    if d60:
+        partes.append("%d 60ML" % d60)
+    if d30:
+        partes.append("%d 30ML" % d30)
+    return " + ".join(partes)
+
+
+def _sku_nint(texto):
+    m = _re_and.search(r'N[°ºo]?\s*Interno\s*:\s*#?\s*(\d+)', texto)
+    return m.group(1) if m else ""
+
+
+def _sku_id(texto):
+    m = _re_and.search(r'(?:N[°ºo]?\s*Interno|Id)\s*:\s*#?\s*(\d+)', texto, _re_and.I)
+    return m.group(1) if m else ""
+
+
+def _sku_pedido(texto, nuevo):
+    return _sku_nint(texto) if nuevo else _sku_id(texto)
+
+
+def _sku_estampar_nuevo(pg, sku):
+    """Andreani ORIGINAL (carga masiva): SKU a la izquierda del 'Bulto 1 / 1', caja negra, texto blanco."""
+    import fitz
+    anc = pg.search_for("1 / 1") or pg.search_for("Bulto")
+    if anc:
+        r = anc[0]; xr = r.x0 - 6.0; y = r.y1 - 3.0
+    else:
+        xr, y = 157.0, 107.0
+    fs = 9.5
+    w = fitz.get_text_length(sku, fontname="hebo", fontsize=fs)
+    x0 = xr - w; cap = fs * 0.70; pad_x, pad_y = 3.0, 2.0
+    caja = fitz.Rect(x0 - pad_x, y - cap - pad_y, xr + pad_x, y + pad_y)
+    pg.draw_rect(caja, fill=(0, 0, 0), color=(0, 0, 0), width=0)
+    pg.insert_text(fitz.Point(x0, y), sku, fontsize=fs, fontname="hebo", color=(1, 1, 1))
+
+
+def _sku_estampar_ecom(pg, sku, texto):
+    """Formato 'ENCOMIENDA ECOMMERCE': caja negra en el hueco según domicilio/sucursal."""
+    import fitz
+    anc = (pg.search_for("ID: #") or pg.search_for("Id: #") or pg.search_for("ID:") or pg.search_for("Id:"))
+    r = anc[0] if anc else None
+    es_suc = bool(r and r.y0 < 90)
+    fs = 11.0
+    w = fitz.get_text_length(sku, fontname="hebo", fontsize=fs)
+    if es_suc:
+        x0 = 8.0; y = (r.y1 + 30.0) if r else 113.0
+    else:
+        x0 = 95.0; y = (r.y0 - 4.0) if r else 98.0
+    pad_x, pad_y, cap = 4.0, 3.0, fs * 0.72
+    caja = fitz.Rect(x0 - pad_x, y - cap - pad_y, x0 + w + pad_x, y + pad_y)
+    pg.draw_rect(caja, fill=(0, 0, 0), color=(0, 0, 0), width=0)
+    pg.insert_text(fitz.Point(x0, y), sku, fontsize=fs, fontname="hebo", color=(1, 1, 1))
+
+
+def _sku_estampar_std(pg, sku):
+    """Etiqueta estándar (284×425): recuadro amarillo con el SKU, anclado al 'Id:', lado izquierdo."""
+    import fitz
+    id_rects = pg.search_for("Id:")
+    if id_rects:
+        r = id_rects[0]; y1 = r.y0 - 1.5; x0, x1 = 4.0, 186.0
+    else:
+        x0, x1, y1 = 4.0, 186.0, 100.0
+    y0 = y1 - 16.5
+    pg.draw_rect(fitz.Rect(x0, y0, x1, y1), color=(0.85, 0.45, 0), fill=(1, 0.9, 0.45), width=1.2)
+    pg.insert_text(fitz.Point(x0 + 6, y1 - 4.5), "SKU:  " + sku, fontsize=9, fontname="hebo", color=(0.55, 0.05, 0.05))
+
+
+def _sku_unidades_map(email):
+    """{nº pedido → sprays (sin ebook)} de los pedidos pagados recientes de Tiendanube.
+    RÁPIDO: 1-2 llamadas (páginas de 200), sin consultar pedido por pedido."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("store_id"):
+        return {}
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    mapa = {}
+    for page in (1, 2):
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page, "sort": "-id",
+                "payment_status": "paid", "fields": "number,products"}, timeout=30)
+            d = r.json() if r.content else []
+        except Exception:
+            d = []
+        if not isinstance(d, list) or not d:
+            break
+        for o in d:
+            u = 0
+            for p in (o.get("products") or []):
+                nm = p.get("name")
+                if isinstance(nm, dict):
+                    nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
+                if not _sku_es_ebook(nm):
+                    u += int(p.get("quantity") or 0)
+            mapa[str(o.get("number"))] = u
+        if len(d) < 200:
+            break
+    return mapa
+
+
 @app.post("/pf-despachos-sku")
 def pf_despachos_sku():
-    """Estampa el SKU en cada etiqueta del PDF (detecta formato Andreani/Envialo).
-    Pendiente de calibrar con un PDF real → por ahora informa."""
-    if not _user_actual():
+    """Estampa el SKU (qué empaquetar) en cada etiqueta del PDF, según el formato:
+    Andreani original (Bulto), ENCOMIENDA ECOMMERCE o estándar. Sin tocar el QR ni el código.
+    Unidades REALES por pedido desde Tiendanube en 1 sola lectura → rápido."""
+    email = _user_actual()
+    if not email:
         return jsonify({"ok": False}), 401
-    return jsonify({"ok": False, "msg": "el estampado de SKU se está calibrando con un rótulo real de Andreani"}), 501
+    f = request.files.get("pdf") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "subí el PDF de etiquetas"}), 400
+    try:
+        import fitz
+    except Exception:
+        return jsonify({"ok": False, "msg": "falta PyMuPDF en el servidor (esperá el redeploy)"}), 500
+    try:
+        doc = fitz.open(stream=f.read(), filetype="pdf")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude abrir el PDF: %s" % e}), 400
+    mapa = _sku_unidades_map(email)
+    estampadas = 0
+    for pg in doc:
+        texto = pg.get_text()
+        nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
+        ped = _sku_pedido(texto, nuevo)
+        sprays = mapa.get(str(ped), 0) if ped else 0
+        sku = _sku_texto(sprays)
+        if not sku:
+            continue
+        if nuevo:
+            _sku_estampar_nuevo(pg, sku)
+        elif "ENCOMIENDA" in texto:
+            _sku_estampar_ecom(pg, sku, texto)
+        else:
+            _sku_estampar_std(pg, sku)
+        estampadas += 1
+    import io
+    buf = io.BytesIO()
+    doc.save(buf, garbage=3, deflate=True)
+    doc.close()
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="etiquetas-con-sku.pdf",
+                     mimetype="application/pdf")
 
 
 @app.post("/pf-despachos-seg-leer")
