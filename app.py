@@ -185,7 +185,7 @@ def _user_actual():
 _SOLO_DASH = r"""
 <style>
  aside > a[aria-label="Ir al Dashboard"]{display:none!important}
- .rp-pill{position:fixed;left:0;z-index:99998;display:flex;align-items:center;justify-content:center;height:46px;box-sizing:border-box;cursor:pointer;text-decoration:none;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
+ .rp-pill{position:fixed;left:0;z-index:100002;display:flex;align-items:center;justify-content:center;height:46px;box-sizing:border-box;cursor:pointer;text-decoration:none;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
  .rp-pill.rp-open{justify-content:flex-start;padding-left:16px}
  .rp-pill .rp-ic{width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:9px;background:rgba(255,255,255,.06)}
  .rp-pill .rp-lbl{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transition:max-width .25s ease,opacity .2s ease,margin .25s ease;font-size:13px;font-weight:600;line-height:1.25}
@@ -947,14 +947,15 @@ _SOLO_DASH = r"""
   var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
   var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv);
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='meta'){ b='<a href="/conectar-meta" onclick="window.location.assign(\'/conectar-meta\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
+    else if(p.key==='tn'){ b='<a href="#" onclick="rpTnToggle();return false;" style="'+bs+'">&#9889; '+(window._rpTnOpen?'Cerrar':'Conectar')+'</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
@@ -966,6 +967,7 @@ _SOLO_DASH = r"""
    if(p.key==='shopify' && window._rpShopOpen && !shopOn) panel=rpShopPanel();
    else if(p.key==='meta' && metaOn) panel=rpMetaPanel();
    else if(p.key==='envialo' && window._rpEnvOpen && !window._rpEnv) panel=rpEnvPanel();
+   else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
@@ -986,7 +988,8 @@ _SOLO_DASH = r"""
   fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meta/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeta=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
-  fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
+  fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/tiendanube/estado').then(function(r){return r.json();}).then(function(j){ window._rpTn=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
  function rpShopPanel(){ var CB='https://www.realprofitapp.com/shopify/callback'; return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
@@ -1030,6 +1033,27 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok){ window._rpEnv=true; window._rpEnvOpen=false; show('¡Vinculado!',true); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); } else { go.disabled=false; go.textContent='Vincular'; show((j&&j.error)||'No se pudo vincular.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Vincular'; show('Error de conexión. Probá de nuevo.',false); }); };
+ window.rpTnToggle=function(){ window._rpTnOpen=!window._rpTnOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
+ function rpTnPanel(){ return ''
+  +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">Conect&aacute; tu Tiendanube</div>'
+  +'<a href="/conectar-tiendanube" onclick="window.location.assign(\'/conectar-tiendanube\');return false;" style="display:block;text-align:center;background:#137fec;color:#fff;border-radius:8px;padding:11px;font-weight:700;font-size:13px;text-decoration:none;margin-top:10px">&#9889; Conectar con un clic (autorizar tu tienda)</a>'
+  +'<div style="text-align:center;color:#5b6b82;font-size:11px;margin:12px 0 2px">&mdash; o peg&aacute; el token (para VisionPure) &mdash;</div>'
+  +'<input id="rp-tn-store" placeholder="Store ID (ej: 762180)" style="width:100%;margin-top:9px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box">'
+  +'<input id="rp-tn-token" placeholder="Access Token" style="width:100%;margin-top:8px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box;font-family:ui-monospace,monospace">'
+  +'<div id="rp-tn-msg" style="margin-top:12px;font-size:12.5px;display:none;font-weight:600"></div>'
+  +'<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">'
+  +'<button onclick="rpTnToggle()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:9px 15px;font-weight:600;font-size:12.5px;cursor:pointer">Cancelar</button>'
+  +'<button id="rp-tn-go" onclick="rpTnGo()" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:9px 20px;font-weight:700;font-size:12.5px;cursor:pointer">Conectar</button>'
+  +'</div></div>'; }
+ window.rpTnGo=function(){ var s=(document.getElementById('rp-tn-store').value||'').trim(); var t=(document.getElementById('rp-tn-token').value||'').trim(); var msg=document.getElementById('rp-tn-msg'); var go=document.getElementById('rp-tn-go');
+  function show(txt,ok){ msg.style.display='block'; msg.style.color=ok?'#34d399':'#f87171'; msg.textContent=txt; }
+  if(!s||!t){ show('Pegá el Store ID y el token.',false); return; }
+  go.disabled=true; go.textContent='Conectando...';
+  fetch('/tiendanube/guardar-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({store_id:s,token:t})})
+   .then(function(r){return r.json();})
+   .then(function(j){ if(j&&j.ok){ window._rpTn=true; window._rpTnOpen=false; show('¡Conectado!',true); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.msg)||'No se pudo conectar.',false); } })
+   .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
  window.rpCopy=function(id,btn){ var t=document.getElementById(id); if(!t)return; var v=(t.value!==undefined&&t.value!=='')?t.value:t.textContent; try{ if(t.select)t.select(); document.execCommand('copy'); }catch(e){} try{ navigator.clipboard.writeText(v); }catch(e){} if(btn){ var o=btn.textContent; btn.textContent='¡Copiado!'; setTimeout(function(){ btn.textContent=o; },1200); } };
  window.rpShopGo=function(){ var d=document.getElementById('rp-shop-dom').value.trim(); var cid=document.getElementById('rp-shop-cid').value.trim(); var sec=document.getElementById('rp-shop-secret').value.trim(); var msg=document.getElementById('rp-shop-msg'); var go=document.getElementById('rp-shop-go');
   function show(txt,ok){ msg.style.display='block'; msg.style.color=ok?'#34d399':'#f87171'; msg.textContent=txt; }
@@ -1978,7 +2002,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-11-andreani-resolver"})
+    return jsonify({"ok": True, "v": "2026-08-12-tn-conectar-2opciones"})
 
 
 @app.get("/pf-diag")
@@ -2260,6 +2284,128 @@ def _dni_de(o) -> str:
 
 
 def _despachos_orders(email, desde=None, hasta=None):
+    """TODOS los pedidos a despachar del usuario: Shopify + Tiendanube juntos, ya
+    mapeados a la MISMA forma (para que pasen por el MISMO resolver Andreani, intacto)."""
+    out = []
+    sh = _despachos_orders_shopify(email, desde, hasta)
+    tn = _tiendanube_orders(email, desde, hasta)
+    if sh is None and tn is None:
+        return None                      # ninguna tienda conectada
+    if sh:
+        out.extend(sh)
+    if tn:
+        out.extend(tn)
+    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    return out
+
+
+def _tn_shipping(o):
+    """El envío real de un pedido de Tiendanube (tipo/opción/punto de retiro)."""
+    fs = o.get("fulfillments") or []
+    if fs and isinstance(fs, list) and isinstance(fs[0], dict):
+        return fs[0].get("shipping") or {}
+    return {}
+
+
+def _tn_suc_nombre(sh):
+    """String de la sucursal/HOP que eligió el cliente en Tiendanube. Se arma con la
+    opción de envío + los datos del punto de retiro, para que el resolver Andreani lo
+    matchee IGUAL que el título de Shopify (no cambia la lógica de sucursales)."""
+    partes = [(sh.get("option") or {}).get("name") or ""]
+    pd = sh.get("pickup_details") or {}
+    for k in ("name", "address", "street", "number", "locality", "city", "zipcode"):
+        v = pd.get(k)
+        if v:
+            partes.append(str(v))
+    return " ".join(p for p in partes if p).strip()
+
+
+def _tn_tel(o):
+    """Primer teléfono usable del cliente de Tiendanube."""
+    sa = o.get("shipping_address") or {}
+    cust = o.get("customer") or {}
+    for p in (sa.get("phone"), o.get("contact_phone"), o.get("billing_phone"), cust.get("phone")):
+        p = (p or "").strip()
+        if p and not p.lower().startswith("no inform") and _re_and.sub(r"\D", "", p):
+            return p
+    return ""
+
+
+def _tiendanube_orders(email, desde=None, hasta=None):
+    """Pedidos de Tiendanube PAGADOS y NO despachados (por empaquetar + por enviar),
+    mapeados a la MISMA forma que _despachos_orders_shopify. Devuelve None si el usuario
+    no tiene Tiendanube conectada."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return None
+    store, token = tk.get("store_id"), tk.get("access_token")
+    if not store:
+        return None
+    hdr = _tn_headers(token)
+    st = _desp_state(email)
+    out, vistos = [], set()
+    filtros = [{"payment_status": "paid", "shipping_status": "unpacked"},     # por empaquetar
+               {"payment_status": "paid", "shipping_status": "unfulfilled"}]  # packed → por enviar
+    for filt in filtros:
+        page = 1
+        while page <= 20:
+            params = {"per_page": 200, "page": page, **filt}
+            if desde:
+                params["created_at_min"] = desde + "T00:00:00-03:00"
+            if hasta:
+                params["created_at_max"] = hasta + "T23:59:59-03:00"
+            try:
+                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr,
+                                 params=params, timeout=40)
+                lote = r.json() if r.content else []
+            except Exception:
+                lote = []
+            if not isinstance(lote, list) or not lote:
+                break
+            for o in lote:
+                num = str(o.get("number") or "")
+                if not num or num in vistos:
+                    continue
+                vistos.add(num)
+                if o.get("cancelled_at"):
+                    continue
+                if (o.get("payment_status") or "") != "paid":
+                    continue
+                unidades = sum(int(p.get("quantity") or 0) for p in (o.get("products") or []))
+                if unidades == 0:                       # ebook-only → no se despacha
+                    continue
+                sh = _tn_shipping(o)
+                es_suc = sh.get("type") == "pickup"
+                sa = o.get("shipping_address") or {}
+                cust = o.get("customer") or {}
+                nombre = (sa.get("name") or o.get("contact_name") or cust.get("name") or "—")
+                calle = (str(sa.get("address") or "").strip() + " " + str(sa.get("number") or "").strip()).strip()
+                floor = str(sa.get("floor") or "").strip()
+                localidad = (sa.get("locality") or sa.get("city") or "").strip()
+                cp = str(sa.get("zipcode") or "").strip()
+                prov = (sa.get("province") or "").strip()
+                tel = _tn_tel(o)
+                dni = str(o.get("contact_identification") or cust.get("identification") or "").strip()
+                incompleta = (not es_suc) and (not calle or not cp or not tel)
+                estado = st.get(num) or "empaquetar"
+                out.append({
+                    "num": num, "nombre": (nombre or "").strip(),
+                    "tipo": "sucursal" if es_suc else "domicilio",
+                    "localidad": localidad, "cp": cp, "provincia": prov, "unidades": unidades,
+                    "total": round(float(o.get("total") or 0), 2),
+                    "tel": tel, "dni": dni, "fecha": o.get("created_at") or o.get("completed_at") or "",
+                    "email": o.get("contact_email") or (cust.get("email") or ""),
+                    "suc_nombre": _tn_suc_nombre(sh), "calle": calle, "extra": floor,
+                    "incompleta": incompleta, "estado": estado,
+                })
+            if len(lote) < 200:
+                break
+            page += 1
+    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    return out
+
+
+def _despachos_orders_shopify(email, desde=None, hasta=None):
     """Órdenes de Shopify PAGADAS y NO despachadas (para despachar por Andreani).
     Solo entran las PAGADAS (si no está paga, no aparece). Filtra por fecha si se pasa desde/hasta."""
     tk = _shop_tokens().get(email)
@@ -4056,6 +4202,124 @@ def shopify_estado():
     conectado = bool(email and email in d)
     shop = (d.get(email) or {}).get("shop", "") if conectado else ""
     return jsonify({"ok": True, "conectado": conectado, "shop": shop})
+
+
+# ---------------- Tiendanube (OAuth un-clic, igual que Shopify) ----------------
+TIENDANUBE_SECRETS = RAIZ / "tiendanube_secrets.json"     # App ID + Client Secret (dueño de la app)
+TIENDANUBE_TOKENS = DATA_DIR / "tiendanube_tokens.json"   # {email: {access_token, store_id}}
+TN_API = "https://api.tiendanube.com/v1"
+TN_UA = "RealProfit (soporte@realprofitapp.com)"
+
+
+def _tn_cfg() -> dict:
+    import os
+    try:
+        c = _json.loads(TIENDANUBE_SECRETS.read_text(encoding="utf-8"))
+    except Exception:
+        c = {}
+    return {"app_id": os.getenv("TIENDANUBE_APP_ID") or c.get("app_id", ""),
+            "client_secret": os.getenv("TIENDANUBE_CLIENT_SECRET") or c.get("client_secret", "")}
+
+
+def _tn_tokens() -> dict:
+    try:
+        return _json.loads(TIENDANUBE_TOKENS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _tn_save_token(email, data) -> None:
+    d = _tn_tokens()
+    d[str(email)] = data
+    TIENDANUBE_TOKENS.parent.mkdir(parents=True, exist_ok=True)
+    TIENDANUBE_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _tn_headers(token) -> dict:
+    return {"Authentication": "bearer " + str(token), "User-Agent": TN_UA}
+
+
+@app.get("/conectar-tiendanube")
+@limiter.limit("30 per hour")
+def conectar_tiendanube():
+    """Manda al usuario a autorizar SU tienda Tiendanube (OAuth con la app de RealProfit)."""
+    if not _user_actual():
+        return redirect("/")
+    cfg = _tn_cfg()
+    if not cfg["app_id"]:
+        return ("Falta configurar el App ID de Tiendanube (variables en Render).", 400)
+    return redirect("https://www.tiendanube.com/apps/%s/authorize" % cfg["app_id"], code=302)
+
+
+@app.get("/tiendanube/callback")
+@limiter.limit("30 per hour")
+def tiendanube_callback():
+    """Tiendanube vuelve acá con 'code'. Lo cambiamos por el access_token + store_id."""
+    cfg = _tn_cfg()
+    code = request.args.get("code")
+    if not code:
+        return ("RealProfit — punto de conexión con Tiendanube. "
+                "Volvé a la app y usá el botón «Conectar».", 200)
+    try:
+        r = requests.post("https://www.tiendanube.com/apps/authorize/token", json={
+            "client_id": cfg["app_id"], "client_secret": cfg["client_secret"],
+            "grant_type": "authorization_code", "code": code}, timeout=30)
+        tok = r.json() if r.content else {}
+    except Exception:
+        return ("No pudimos conectar con Tiendanube en este momento. Probá de nuevo.", 502)
+    if not tok.get("access_token") or not tok.get("user_id"):
+        return ("Tiendanube no autorizó la conexión. Reintentá.", 400)
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    _tn_save_token(email, {"access_token": tok["access_token"], "store_id": str(tok["user_id"])})
+    return redirect("/?integ=1", code=302)
+
+
+@app.get("/tiendanube/estado")
+def tiendanube_estado():
+    """¿ESTE usuario tiene su Tiendanube conectada?"""
+    email = _user_actual()
+    d = _tn_tokens()
+    conectado = bool(email and email in d)
+    store = (d.get(email) or {}).get("store_id", "") if conectado else ""
+    return jsonify({"ok": True, "conectado": conectado, "store": store})
+
+
+@app.get("/desconectar-tiendanube")
+def desconectar_tiendanube():
+    email = _user_actual()
+    if email:
+        d = _tn_tokens()
+        if email in d:
+            d.pop(email, None)
+            TIENDANUBE_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return redirect("/?integ=1", code=302)
+
+
+@app.post("/tiendanube/guardar-token")
+@limiter.limit("40 per hour")
+def tiendanube_guardar_token():
+    """Conecta Tiendanube pegando Store ID + Access Token (sin OAuth). Verifica antes de guardar."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    data = request.get_json(silent=True) or {}
+    store = "".join(ch for ch in str(data.get("store_id") or "") if ch.isdigit())
+    token = str(data.get("token") or "").strip()
+    if not store or not token:
+        return jsonify({"ok": False, "msg": "Pegá el Store ID y el token."})
+    try:
+        r = requests.get("%s/%s/orders" % (TN_API, store),
+                         headers=_tn_headers(token), params={"per_page": 1}, timeout=20)
+        if r.status_code in (401, 403):
+            return jsonify({"ok": False, "msg": "Token o Store ID inválido (Tiendanube lo rechazó)."})
+        if r.status_code >= 400:
+            return jsonify({"ok": False, "msg": "Tiendanube respondió %s. Revisá los datos." % r.status_code})
+    except Exception:
+        return jsonify({"ok": False, "msg": "No pude verificar contra Tiendanube ahora. Probá de nuevo."})
+    _tn_save_token(email, {"access_token": token, "store_id": store})
+    return jsonify({"ok": True})
 
 
 @app.post("/shopify/guardar-token")
