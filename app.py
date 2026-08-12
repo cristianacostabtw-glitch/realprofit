@@ -1978,7 +1978,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-11-mov4-fact-cierra-mov"})
+    return jsonify({"ok": True, "v": "2026-08-11-andreani-resolver"})
 
 
 @app.get("/pf-diag")
@@ -2771,10 +2771,132 @@ def _calle_num(dir_):
     return d, ""
 
 
+# ===== Resolvedor Andreani: sucursal exacta + Prov/Loc/CP oficial (sin login, endpoints públicos) =====
+import re as _re_and
+import unicodedata as _ud_and
+
+_AND_CFG = {"cpidx": None, "sucs": None}
+
+
+def _and_norm(s):
+    s = _ud_and.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    return _re_and.sub(r"[^A-Z0-9 ]", " ", s.upper())
+
+
+def _and_normP(s):
+    s = _ud_and.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    return _re_and.sub(r"\s+", " ", s.strip().upper())
+
+
+def _and_toks(s):
+    return [w for w in _and_norm(s).split() if w]
+
+
+def _and_cp4(x):
+    m = _re_and.search(r"(\d{4})", str(x or ""))
+    return m.group(1) if m else ""
+
+
+def _and_split_tel(p):
+    d = _re_and.sub(r"\D", "", str(p or ""))
+    d = _re_and.sub(r"^0", "", d)
+    d = _re_and.sub(r"^549?", "", d)
+    if d.startswith("11"):
+        return "11", d[2:]
+    return d[:3], d[3:]
+
+
+def _and_cfg(wb):
+    if _AND_CFG["cpidx"] is None:
+        cpidx, sucs = {}, []
+        try:
+            for row in wb["Configuracion"].iter_rows(min_row=2, values_only=True):
+                if row and row[0]:
+                    sucs.append(str(row[0]).strip())
+                if row and len(row) > 4 and row[4]:
+                    v = str(row[4]).strip()
+                    cpidx.setdefault(_re_and.sub(r"\D", "", v.split("/")[-1]), []).append(v)
+        except Exception:
+            pass
+        _AND_CFG["cpidx"], _AND_CFG["sucs"] = cpidx, sucs
+    return _AND_CFG["cpidx"], _AND_CFG["sucs"]
+
+
+def _and_pcl(cp, prov, cpidx):
+    cands = cpidx.get(_and_cp4(cp), [])
+    if not cands:
+        return None
+    pn = _and_normP(prov)
+    mism = [c for c in cands if pn and (pn in _and_normP(c) or _and_normP(c.split("/")[0]) in pn)]
+    pool = sorted(mism or cands, key=lambda c: len(c.split("/")[1]) if len(c.split("/")) > 2 else 99)
+    return pool[0]
+
+
+def _and_mid(zeny):
+    m = _re_and.search(r"[-–]\s*(.*?)\s*\((.*)\)\s*$", str(zeny))
+    return (m.group(1) if m else _re_and.sub(r".*?[-–]\s*", "", str(zeny))).strip()
+
+
+def _and_suc_excel(zeny, sucs):
+    es_hop = "HOP" in str(zeny).upper()
+    q = set(_and_toks(_and_mid(zeny)))
+    qn = {w for w in q if w.isdigit()}
+    qw = {w for w in q if not w.isdigit() and len(w) >= 4}
+    best, bs, bnum, bword = None, -1, False, False
+    for o in sucs:
+        if es_hop != _and_norm(o).startswith("PUNTO ANDREANI HOP"):
+            continue
+        ts = set(_and_toks(o))
+        nums = {w for w in ts if w.isdigit()}
+        sc = sum(len(w) for w in (q & ts))
+        numok = bool(qn and nums and qn & nums)
+        if numok:
+            sc += 25
+        if sc > bs:
+            bs, best, bnum, bword = sc, o, numok, bool(qw & {w for w in ts if len(w) >= 4})
+    conf = (bnum and bword) if es_hop else (bs >= 4)
+    return best, conf
+
+
+def _and_suc_live(zeny, cp):
+    """HOP exacto con los endpoints PÚBLICOS de Andreani (autosuggest + byCoordenadas). Sin login."""
+    hd = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.andreani.com/buscar-sucursal"}
+    es_hop = "HOP" in str(zeny).upper()
+    addr = _and_mid(zeny)
+    qn = {w for w in _and_toks(addr) if w.isdigit()}
+    qw = {w for w in _and_toks(addr) if not w.isdigit() and len(w) >= 4}
+    if not qn:
+        return None
+    for q in [f"{addr}, {cp}", addr]:
+        try:
+            js = requests.get("https://www.andreani.com/api/autosuggest",
+                              params={"q": q, "limit": 6}, headers=hd, timeout=12).json()
+        except Exception:
+            continue
+        for it in (js.get("items") or []):
+            pos = it.get("position") or {}
+            if not pos:
+                continue
+            try:
+                pts = requests.get("https://www.andreani.com/api/sucursales/byCoordenadas",
+                                   params={"lat": pos["lat"], "lng": pos["lng"]}, headers=hd, timeout=12).json()
+            except Exception:
+                continue
+            for p in (pts if isinstance(pts, list) else []):
+                nom = p.get("descripcion", "")
+                if es_hop and "hop" not in nom.lower():
+                    continue
+                nt = set(_and_toks(nom))
+                if (qn & {w for w in nt if w.isdigit()}) and (qw & {w for w in nt if len(w) >= 4}):
+                    return nom
+    return None
+
+
 @app.post("/pf-despachos-excel")
 def pf_despachos_excel():
     """Genera el Excel de carga masiva de Andreani (2 hojas: A domicilio / A sucursal)
-    con los pedidos seleccionados, mapeando los campos de Shopify a la plantilla."""
+    con los pedidos seleccionados, mapeando los campos de Shopify a la plantilla.
+    Resuelve la sucursal al nombre OFICIAL de Andreani y arregla DNI/teléfono/Prov-Loc-CP."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
@@ -2804,22 +2926,52 @@ def pf_despachos_excel():
     # no escala con las unidades a propósito (si escalara, Andreani cobra más por peso declarado).
     ALTO, ANCHO, PROF = 15, 12, 10
     PESO = 1000
+    cpidx, sucs = _and_cfg(wb)   # lista oficial de la propia plantilla (sucursales + Prov/Loc/CP)
     r_dom = r_suc = 3
     for r in sel:
         nom, ape = _split_nombre(r["nombre"])
         valor = int(round(r["total"]))
         peso = PESO
+        dni = str(r.get("dni") or "").strip() or "00000000"   # Andreani exige DNI
+        tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
+        email = r.get("email") or ""
         if r["tipo"] == "sucursal":
-            vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, r.get("dni") or "",
-                    r.get("email") or "", r.get("cp") or "", r.get("tel") or "", r.get("suc_nombre") or ""]
+            # resolver al nombre OFICIAL de Andreani: primero la lista de la plantilla,
+            # si no matchea (HOP nuevo), byCoordenadas en vivo (público). Nunca a otra provincia.
+            suc_raw = r.get("suc_nombre") or ""
+            of, conf = _and_suc_excel(suc_raw, sucs)
+            if not conf:
+                try:
+                    live = _and_suc_live(suc_raw, r.get("cp") or "")
+                except Exception:
+                    live = None
+                if live:
+                    of = live
+            vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
+                    email, tel_cod, tel_num, of or suc_raw]
             for c, v in enumerate(vals, start=1):
                 ws_suc.cell(r_suc, c, v)
             r_suc += 1
         else:
             calle, numero = _calle_num(r.get("calle"))
-            vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, r.get("dni") or "",
-                    r.get("email") or "", r.get("cp") or "", r.get("tel") or "", calle, numero,
-                    r.get("extra") or "", "", r.get("provincia") or "", ""]
+            extra = r.get("extra") or ""
+            depto = ""
+            if not str(numero).strip() and extra:
+                # RealProfit a veces mete el número (o la dirección) en 'extra' → recuperarlo
+                m = _re_and.search(r"\b(\d{1,6})\b", str(extra))
+                if m:
+                    numero = m.group(1)
+                    if len(str(calle).strip()) <= 3:
+                        pre = _re_and.sub(r"^(calle|av\.?|avenida)\s+", "",
+                                          str(extra)[:m.start()].strip(), flags=_re_and.I).strip()
+                        if pre:
+                            calle = pre
+                    extra = ""
+            else:
+                depto, extra = extra, ""
+            pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
+            vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
+                    email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
             for c, v in enumerate(vals, start=1):
                 ws_dom.cell(r_dom, c, v)
             r_dom += 1
