@@ -2006,7 +2006,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-fix-logout3"})
+    return jsonify({"ok": True, "v": "2026-08-12-tn-sync-dash"})
 
 
 @app.get("/pf-diag")
@@ -2060,9 +2060,48 @@ def pf_diag():
     })
 
 
+_TN_ESTADO = {"paid": "Pagado", "pending": "Pendiente", "authorized": "Pendiente",
+              "in_process": "Pendiente", "voided": "Anulado", "refunded": "Reembolsado",
+              "partially_paid": "Pendiente", "abandoned": "—"}
+
+
+def _tn_ventas(email, desde, hasta):
+    """Ventas de Tiendanube (mismo formato que las filas de Shopify en pf-ventas)."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("store_id"):
+        return None
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    out, vistos, page = [], set(), 1
+    while page <= 20:
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page,
+                "created_at_min": desde + "T00:00:00-03:00",
+                "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
+            lote = r.json() if r.content else []
+        except Exception:
+            lote = []
+        if not isinstance(lote, list) or not lote:
+            break
+        for o in lote:
+            num = str(o.get("number") or "")
+            if not num or num in vistos or o.get("cancelled_at"):
+                continue
+            vistos.add(num)
+            tot = float(o.get("total") or 0)
+            out.append({"num": num, "origen": "Tiendanube",
+                        "estado": _TN_ESTADO.get((o.get("payment_status") or "").lower(), "—"),
+                        "fecha": o.get("created_at") or "", "total": round(tot, 2),
+                        "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+        if len(lote) < 200:
+            break
+        page += 1
+    return out
+
+
 @app.get("/pf-ventas")
 def pf_ventas():
-    """Órdenes reales de Shopify de los últimos `dias` días para la tabla 'Últimas ventas'.
+    """Órdenes reales (Shopify + Tiendanube) de los últimos `dias` días para 'Últimas ventas'.
     Liviano (sin el fetch pesado de MP): neto exacto se ve en el detalle de cada orden."""
     email = _user_actual()
     if not email:
@@ -2071,27 +2110,28 @@ def pf_ventas():
         dias = max(1, min(90, int(request.args.get("dias") or 7)))
     except Exception:
         dias = 7
-    tk = _shop_tokens().get(email)
-    if not tk or not tk.get("access_token"):
-        return jsonify({"ok": True, "ventas": []})
     hasta = _hoy()
     desde = (_dt.date.today() - _dt.timedelta(days=dias - 1)).isoformat()
-    try:
-        orders = _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta)
-    except Exception:
-        return jsonify({"ok": True, "ventas": []})
-    orders = [o for o in orders if not o.get("cancelled_at")]
-    # La TABLA muestra TODAS (incluidas efectivo/pendiente, marcadas 'Pendiente'). Ojo: los TOTALES de arriba
-    # (facturación/órdenes/CPA en _shopify_resumen) SÍ excluyen las pendientes hasta que se paguen.
     out = []
-    for o in orders:
-        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
-        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-        out.append({"num": num, "origen": "Shopify",
-                    "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
-                    "fecha": o.get("created_at") or "", "total": round(tot, 2),
-                    "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
-    out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    tk = _shop_tokens().get(email)
+    if tk and tk.get("access_token"):
+        try:
+            orders = _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta)
+            for o in orders:
+                if o.get("cancelled_at"):
+                    continue
+                tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+                num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+                out.append({"num": num, "origen": "Shopify",
+                            "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
+                            "fecha": o.get("created_at") or "", "total": round(tot, 2),
+                            "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+        except Exception:
+            pass
+    tn = _tn_ventas(email, desde, hasta)
+    if tn:
+        out.extend(tn)
+    out.sort(key=lambda x: x.get("fecha") or "", reverse=True)
     return jsonify({"ok": True, "ventas": out[:300]})
 
 
@@ -3372,6 +3412,127 @@ def _shopify_resumen(email, desde, hasta):
     return {"raw": r, "prod": prod, "ords": ords_list}
 
 
+def _tn_resumen(email, desde, hasta):
+    """Mismo 'raw'/prod/ords que _shopify_resumen pero con los pedidos de Tiendanube."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("store_id"):
+        return None
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    orders, vistos, page = [], set(), 1
+    while page <= 20:
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page,
+                "created_at_min": desde + "T00:00:00-03:00",
+                "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
+            lote = r.json() if r.content else []
+        except Exception:
+            lote = []
+        if not isinstance(lote, list) or not lote:
+            break
+        for o in lote:
+            n = str(o.get("number") or "")
+            if n and n not in vistos and not o.get("cancelled_at"):
+                vistos.add(n); orders.append(o)
+        if len(lote) < 200:
+            break
+        page += 1
+    costos = (_costos().get(email) or {})
+    pagos = _mp_pagos_lista(email, desde, hasta)
+    by_amt = {}
+    for p in (pagos or []):
+        by_amt.setdefault(p["amount"], []).append(p)
+    mp_conectado = pagos is not None
+    r = resumen_vacio()
+    r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
+    r["desde"] = desde; r["hasta"] = hasta
+    r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
+    fact = cobr = costo_prod = envio_monto = mp_costo = 0.0
+    unidades = ordenes = mp_match = 0
+    prodmap, ords_list = {}, []
+    for o in orders:
+        if (o.get("payment_status") or "").lower() != "paid":
+            continue
+        ordenes += 1
+        tot = float(o.get("total") or 0)
+        fact += tot; cobr += tot
+        envio_monto += ENVIO_SUCURSAL if _tn_shipping(o).get("type") == "pickup" else ENVIO_DOMICILIO
+        if mp_conectado:
+            lst = by_amt.get(round(tot))
+            if lst:
+                pago = lst.pop(0); mp_costo += pago["fee"]; mp_match += 1
+        for p in (o.get("products") or []):
+            q = int(p.get("quantity") or 0); unidades += q
+            c = costos.get("tn:%s" % p.get("product_id"))
+            if c:
+                costo_prod += float(c) * q
+            nm = p.get("name") or "?"
+            if isinstance(nm, dict):
+                nm = nm.get("es") or next(iter(nm.values()), "?")
+            prodmap[nm] = prodmap.get(nm, 0) + q
+        ords_list.append({"num": str(o.get("number") or ""), "origen": "Tiendanube",
+                          "estado": "Pagado", "fecha": o.get("created_at") or "",
+                          "total": round(tot, 2), "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+    iibb_monto = fact * IIBB_PCT / 100.0
+    tienda_monto = fact * TIENDA_PCT / 100.0
+    if not mp_conectado:
+        cu = _comis_user(email)
+        mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
+    comision_monto = mp_costo + iibb_monto + tienda_monto
+    ganancia = fact - costo_prod - comision_monto - envio_monto
+    r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
+    r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
+    r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
+    _pre = fact - costo_prod - comision_monto - envio_monto
+    r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
+    r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
+    r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
+    r["unidades"] = unidades
+    r["facturado"] = r["tot_facturado"] = round(fact, 2)
+    r["cobrado"] = round(cobr, 2)
+    r["costo_prod"] = r["tot_costo"] = round(costo_prod, 2)
+    r["comision"] = round(comision_monto, 2)
+    r["ganancia"] = r["tot_ganancia"] = round(ganancia, 2)
+    r["margen"] = r["tot_margen"] = round(ganancia / fact * 100, 2) if fact else 0.0
+    r["ticket"] = r["tot_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
+    r["gan_por_venta"] = r["tot_gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    r["reemb_cantidad"] = 0; r["reemb_monto"] = 0.0
+    prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
+            for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
+    ords_list.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+    return {"raw": r, "prod": prod, "ords": ords_list}
+
+
+def _combinar_resumen(a, b):
+    """Suma dos blobs de resumen (Shopify + Tiendanube) y recalcula los ratios."""
+    if not a:
+        return b
+    if not b:
+        return a
+    ra, rb = a["raw"], b["raw"]
+    r = resumen_vacio()
+    r["fecha"] = ra.get("fecha"); r["desde"] = ra.get("desde"); r["hasta"] = ra.get("hasta")
+    r["actualizado"] = ra.get("actualizado")
+    SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
+           "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
+           "comision", "ganancia", "reemb_cantidad", "reemb_monto",
+           "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo"]
+    for k in SUM:
+        r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
+    fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
+    r["margen"] = r["tot_margen"] = round(gan / fact * 100, 2) if fact else 0.0
+    r["ticket"] = r["tot_aov"] = round(fact / ordn, 2) if ordn else 0.0
+    r["gan_por_venta"] = r["tot_gan_por_venta"] = round(gan / ordn, 2) if ordn else 0.0
+    _pre = fact - r["costo_prod"] - r["comision"] - r["envio_monto"]
+    r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
+    r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordn, 2) if ordn else 0.0
+    prod = (a.get("prod") or []) + (b.get("prod") or [])
+    prod.sort(key=lambda x: -x.get("unidades", 0))
+    ords = (a.get("ords") or []) + (b.get("ords") or [])
+    ords.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+    return {"raw": r, "prod": prod[:10], "ords": ords}
+
+
 _ORDS_CACHE = {}
 _ESTADO_TXT = {"paid": "Pagado", "partially_paid": "Parcial", "pending": "Pendiente",
                "authorized": "Autorizado", "partially_refunded": "Reemb. parcial",
@@ -3863,6 +4024,9 @@ def pf_periodo():
         blob = None
         if email in _shop_tokens():
             blob = _shopify_resumen(email, desde, hasta)
+        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
+        if tn_blob:
+            blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
             blob = _blob_vacio()
         # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
@@ -3906,19 +4070,62 @@ def _guardar_costo(email, pid, costo) -> None:
     PROD_COSTOS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def _tn_productos(email):
+    """Productos de Tiendanube en el mismo formato que pf-productos (id 'tn:<id>')."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("store_id"):
+        return []
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    costos = (_costos().get(email) or {})
+    prods, page = [], 1
+    while page <= 10:
+        try:
+            r = requests.get("%s/%s/products" % (TN_API, store), headers=hdr,
+                             params={"per_page": 200, "page": page}, timeout=30)
+            lote = r.json() if r.content else []
+        except Exception:
+            lote = []
+        if not isinstance(lote, list) or not lote:
+            break
+        for p in lote:
+            nombre = p.get("name")
+            if isinstance(nombre, dict):
+                nombre = nombre.get("es") or next(iter(nombre.values()), "") if nombre else ""
+            v = (p.get("variants") or [{}])[0]
+            imgs = p.get("images") or []
+            pid = "tn:%s" % p.get("id")
+            prods.append({
+                "id": pid, "nombre": nombre or "",
+                "sku_tipo": "fijo", "sku_base": v.get("sku") or "",
+                "sku_ej": v.get("sku") or "",
+                "precio": float(v.get("price") or 0),
+                "img": (imgs[0].get("src") if imgs else "") or "",
+                "costo": costos.get(pid) or 0,
+            })
+        if len(lote) < 200:
+            break
+        page += 1
+    return prods
+
+
 @app.get("/pf-productos")
 def pf_productos():
-    """Productos de la tienda conectada (por ahora Shopify). Sin tienda → lista vacía."""
+    """Productos de las tiendas conectadas (Shopify + Tiendanube). Sin tienda → lista vacía."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": True, "tienda": None, "productos": [], "sin_costo": 0})
     tk = _shop_tokens().get(email)
-    if not tk or not tk.get("access_token"):
+    prod_tn = _tn_productos(email)
+    if (not tk or not tk.get("access_token")) and not prod_tn:
         return jsonify({"ok": True, "tienda": None, "productos": [], "sin_costo": 0})
+    if (not tk or not tk.get("access_token")):
+        # solo Tiendanube conectada
+        sin = sum(1 for x in prod_tn if not x.get("costo"))
+        return jsonify({"ok": True, "tienda": "Tiendanube", "productos": prod_tn, "sin_costo": sin})
     shop = tk.get("shop"); token = tk.get("access_token")
     costos = (_costos().get(email) or {})
     skus_guardados = _skus_map(email)
-    productos = []
+    productos = list(prod_tn)
     try:
         r = requests.get("https://%s/admin/api/2026-07/products.json" % shop,
                          headers={"X-Shopify-Access-Token": token},
@@ -3946,7 +4153,8 @@ def pf_productos():
     except Exception:
         pass
     sin = sum(1 for x in productos if not x.get("costo"))
-    return jsonify({"ok": True, "tienda": "Shopify", "shop": shop, "productos": productos, "sin_costo": sin})
+    tienda = "Shopify + Tiendanube" if prod_tn else "Shopify"
+    return jsonify({"ok": True, "tienda": tienda, "shop": shop, "productos": productos, "sin_costo": sin})
 
 
 @app.post("/pf-guardar-costo")
@@ -4034,7 +4242,32 @@ def pf_despachos():
 
 @app.get("/pf-ventas-nuevas")
 def pf_ventas_nuevas():
-    return jsonify({"ok": True, "ventas": []})
+    """Últimas ventas del Dashboard (Shopify + Tiendanube) del rango pedido."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": True, "ventas": []})
+    desde = request.args.get("desde") or (_dt.date.today() - _dt.timedelta(days=6)).isoformat()
+    hasta = request.args.get("hasta") or _hoy()
+    out = []
+    tk = _shop_tokens().get(email)
+    if tk and tk.get("access_token"):
+        try:
+            for o in _shopify_orders(tk.get("shop"), tk.get("access_token"), desde, hasta):
+                if o.get("cancelled_at"):
+                    continue
+                tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+                num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+                out.append({"num": num, "origen": "Shopify",
+                            "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
+                            "fecha": o.get("created_at") or "", "total": round(tot, 2),
+                            "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+        except Exception:
+            pass
+    tn = _tn_ventas(email, desde, hasta)
+    if tn:
+        out.extend(tn)
+    out.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+    return jsonify({"ok": True, "ventas": out[:300]})
 
 
 @app.get("/pf-opciones")
