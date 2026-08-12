@@ -186,6 +186,13 @@ def _user_actual():
 _SOLO_DASH = r"""
 <style>
  aside > a[aria-label="Ir al Dashboard"]{display:none!important}
+ /* barra: achicar el padding de cada item (recuadro azul mas ajustado + menos espacio) */
+ aside nav a{padding-left:6px!important;padding-right:6px!important;padding-top:8px!important;padding-bottom:8px!important}
+ aside nav a>span:first-child,aside nav a>div:first-child{padding-left:0!important;padding-right:0!important}
+ aside nav li,aside nav>div{margin-top:1px!important;margin-bottom:1px!important}
+ /* contenedor de la barra: menos padding a los lados y arriba/abajo */
+ aside{padding-left:8px!important;padding-right:8px!important}
+ aside nav{padding-left:0!important;padding-right:0!important;gap:2px!important}
  .rp-pill{position:fixed;left:0;z-index:100002;display:flex;align-items:center;justify-content:center;height:46px;box-sizing:border-box;cursor:pointer;text-decoration:none;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
  .rp-pill.rp-open{justify-content:flex-start;padding-left:16px}
  .rp-pill .rp-ic{width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:9px;background:rgba(255,255,255,.06)}
@@ -260,14 +267,14 @@ _SOLO_DASH = r"""
      fn0.parentNode.insertBefore(cmv, fn0.nextSibling);
     }
    }
-   // Agregar "Subidor ADS" en la barra (debajo de Movimientos).
+   // Agregar "Subir ADS" en la barra (debajo de Movimientos).
    if(!nav.querySelector('#rp-ads-nav')){
     var mn0=nav.querySelector('#rp-mov-nav')||nav.querySelector('#rp-fact-nav')||nav.querySelector('#rp-desp-nav');
     if(mn0){ var cad=mn0.cloneNode(true); cad.id='rp-ads-nav'; cad.style.display='';
      var aad=cad.querySelector('a'); if(aad){ aad.setAttribute('href','#'); aad.removeAttribute('aria-current'); aad.classList.remove('bg-white/[0.08]'); aad.classList.remove('text-primary');
       var naad=aad.cloneNode(true); aad.parentNode.replaceChild(naad,aad); naad.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpAds(true); }); aad=naad; }
      var icad=cad.querySelector('.material-symbols-outlined'); if(icad) icad.textContent='rocket_launch';
-     var spad=cad.querySelectorAll('span'); for(var sw=0;sw<spad.length;sw++){ var s8=spad[sw]; if(!s8.classList.contains('material-symbols-outlined') && s8.children.length===0 && (s8.textContent||'').trim()){ s8.textContent='Subidor ADS'; } }
+     var spad=cad.querySelectorAll('span'); for(var sw=0;sw<spad.length;sw++){ var s8=spad[sw]; if(!s8.classList.contains('material-symbols-outlined') && s8.children.length===0 && (s8.textContent||'').trim()){ s8.textContent='Subir ADS'; } }
      mn0.parentNode.insertBefore(cad, mn0.nextSibling);
     }
    }
@@ -859,7 +866,7 @@ _SOLO_DASH = r"""
   window.rpMovF=function(f){ filtro=f; var ps=document.querySelectorAll('#mv-pills .mpill'); for(var i=0;i<ps.length;i++){ ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f); } rpMovRender(); };
   function filtered(){ return MOV.filter(function(m){ if(filtro==='todos')return true; if(filtro==='afuera')return esAfuera(m); if(filtro==='ingreso')return esIn(m); if(filtro==='egreso')return esEg(m); return true; }); }
   window.rpMov=function(open){ var o=$('rp-mov-ov'); if(!o)return;
-    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
+    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-ads-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
       var _lk=$('rpf-lock'); if(_lk)_lk.style.display='none';
       try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=$('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
       _rpNavActive('rp-mov-nav');
@@ -1080,21 +1087,21 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  window._rpNavActive=function(id){ try{
-   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
+   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-ads-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]', !id); da.classList.toggle('text-primary', !id); }
  }catch(e){} }
  function rpProdSetActive(on){ _rpNavActive(on?'rp-prod-nav':null); }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
  function rpComisSetActive(on){ _rpNavActive(on?'rp-comis-nav':null); }
  function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
    var ti=g('rp-c-tienda'), iva=g('rp-c-iva'), iibb=g('rp-c-iibb'), t;
    if(window._rpMpReal!=null){ t=window._rpMpReal + ti + iibb; }
    else { t=(g('rp-c-mp')+g('rp-c-cuotas'))*(1+iva/100) + ti + iibb; }
    var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
- window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+ window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
 
  // ===================== DESPACHOS =====================
  var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false;
@@ -1105,8 +1112,8 @@ _SOLO_DASH = r"""
  function _dColor(nm){ var s=0; for(var i=0;i<(nm||'').length;i++) s+=nm.charCodeAt(i); return _DCOL[s%_DCOL.length]; }
  function _dStat(msg,color){ var s=document.getElementById('rp-d-status'); if(s){ s.textContent=msg||''; s.style.color=color||'#34d399'; } }
  window.rpDesp=function(open){ var o=document.getElementById('rp-desp-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
-     var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none';
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none';
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-desp-nav');
    } else { _rpNavActive(null); }
@@ -1245,7 +1252,7 @@ _SOLO_DASH = r"""
  function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
  function _fEmit(){ var v=(document.getElementById('rpf-emit')||{}).value||''; if(!v)return ''; var p=v.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
  window.rpFact=function(open){ var o=document.getElementById('rp-fact-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-fact-nav');
    } else { _rpNavActive(null); }
@@ -1729,9 +1736,15 @@ _SOLO_DASH = r"""
 <div class="aw">
  <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px">
   <div style="width:46px;height:46px;border-radius:13px;background:rgba(124,58,237,.15);border:1px solid #3b2a6b;display:flex;align-items:center;justify-content:center;color:#c4b5fd"><span class="material-symbols-outlined">rocket_launch</span></div>
-  <div style="flex:1"><h1 style="margin:0;font-size:26px;color:#f4f7fb">Subidor ADS</h1>
+  <div style="flex:1"><h1 style="margin:0;font-size:26px;color:#f4f7fb">Subir ADS</h1>
    <p style="margin:5px 0 0;color:#8b97a8;font-size:13px">Peg&aacute; el Drive, eleg&iacute; la config y lanz&aacute; la campa&ntilde;a con 1 click.</p></div>
   <button onclick="rpAds(false)" style="background:#111c2b;border:1px solid #1b2536;color:#cbd5e1;border-radius:10px;width:38px;height:38px;font-size:17px;cursor:pointer">&#10005;</button>
+ </div>
+ <div style="display:flex;align-items:center;gap:13px;background:linear-gradient(90deg,rgba(251,191,36,.09),rgba(19,127,236,.05));border:1px solid #4a3a1a;border-radius:14px;padding:13px 17px;margin-bottom:18px">
+  <span style="font-size:20px;flex:none">&#128273;</span>
+  <div style="flex:1;font-size:12.5px;color:#cbd5e1;line-height:1.5">Para que pueda leer tus videos, <b style="color:#f4f7fb">compart&iacute; la carpeta de Drive</b> con esta cuenta (permiso <b style="color:#f4f7fb">Lector</b>):<br>
+   <span style="color:#fbbf24;font-weight:700;font-family:ui-monospace,monospace;font-size:12px">bot-finanzas-sheets@bot-finanzas-499200.iam.gserviceaccount.com</span></div>
+  <button onclick="navigator.clipboard.writeText('bot-finanzas-sheets@bot-finanzas-499200.iam.gserviceaccount.com');var b=this;b.innerHTML='&#10003; copiado';setTimeout(function(){b.innerHTML='Copiar mail';},1500)" style="flex:none;background:#241a10;border:1px solid #4a3a1a;color:#fbbf24;border-radius:9px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">Copiar mail</button>
  </div>
  <div class="agrid" style="display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start">
   <div>
@@ -1808,7 +1821,7 @@ _SOLO_DASH = r"""
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
   if(open){['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov'].forEach(function(id){var x=document.getElementById(id);if(x)x.style.display='none';});var _l=document.getElementById('rpf-lock');if(_l)_l.style.display='none';}
-  o.style.display=open?'block':'none';if(open)rpaInit();};
+  o.style.display=open?'block':'none';try{window._rpNavActive(open?'rp-ads-nav':null);}catch(e){}if(open)rpaInit();};
  var _inited=false;
  function rpaInit(){ var d=new Date();d.setDate(d.getDate()+1);$('rpa-fecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
   $('rpa-fecha').addEventListener('change',rpaCalc);$('rpa-hora').addEventListener('change',rpaCalc);
@@ -2220,7 +2233,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-subidor-ads"})
+    return jsonify({"ok": True, "v": "2026-08-12-barra-padding2"})
 
 
 @app.get("/pf-diag")
