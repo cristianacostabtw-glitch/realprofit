@@ -2233,7 +2233,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-barra-angosta"})
+    return jsonify({"ok": True, "v": "2026-08-12-sku-ordenado"})
 
 
 @app.get("/pf-diag")
@@ -3657,6 +3657,7 @@ def _sku_run(job, data, email):
         st["total"] = total
         estampadas = conflicto = sin_pedido = 0
         detalle = []
+        orden = []   # (clave, indice de pagina) -> reordenar por SKU al final (x1, x2, x3...)
         for i, pg in enumerate(doc):
             st["done"] = i
             st["msg"] = "Analizando etiqueta %d de %d…" % (i + 1, total)
@@ -3667,16 +3668,18 @@ def _sku_run(job, data, email):
             if not ent:
                 sin_pedido += 1
                 detalle.append({"pedido": ped or "?", "sku": ""})
-                continue
+                orden.append(((999999, 0, ""), i)); continue
             # Verificación por NOMBRE: si el nº matchea pero el destinatario no → no estampo.
             if not _sku_nombre_coincide(_sku_label_nombre(texto), ent.get("nom", "")):
                 conflicto += 1
                 detalle.append({"pedido": ped or "?", "sku": "", "conflicto": True})
-                continue
-            sku = _sku_de_items(ent.get("items") or [], skus)
+                orden.append(((999998, 0, ""), i)); continue
+            items = ent.get("items") or []
+            unidades = sum(int(it[1] or 0) for it in items)
+            sku = _sku_de_items(items, skus)
             detalle.append({"pedido": ped or "?", "sku": sku})
             if not sku:
-                continue
+                orden.append(((999997, 0, ""), i)); continue
             if nuevo:
                 _sku_estampar_nuevo(pg, sku)
             elif "ENCOMIENDA" in texto:
@@ -3684,10 +3687,16 @@ def _sku_run(job, data, email):
             else:
                 _sku_estampar_std(pg, sku)
             estampadas += 1
-        st["msg"] = "Armando la hoja 'PARA EMPAQUETAR'…"
-        _sku_hoja_empaquetar(doc, detalle)
+            orden.append(((unidades, len(sku), sku), i))   # menor a mayor: por unidades, luego SKU
+        st["msg"] = "Ordenando etiquetas y armando 'PARA EMPAQUETAR'…"
+        orden.sort(key=lambda x: x[0])                      # x1, x2, x3... y agrupa mismos SKU
+        nuevo_doc = fitz.open()
+        for _clave, idx in orden:
+            nuevo_doc.insert_pdf(doc, from_page=idx, to_page=idx)
+        _sku_hoja_empaquetar(nuevo_doc, detalle)
         buf = io.BytesIO()
-        doc.save(buf, garbage=3, deflate=True)
+        nuevo_doc.save(buf, garbage=3, deflate=True)
+        nuevo_doc.close()
         doc.close()
         st["pdf"] = buf.getvalue()
         st["done"] = total
