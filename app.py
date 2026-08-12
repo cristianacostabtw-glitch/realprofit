@@ -2006,7 +2006,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-sku-shopify-empaq"})
+    return jsonify({"ok": True, "v": "2026-08-12-sku-verif-nombre"})
 
 
 @app.get("/pf-diag")
@@ -3288,10 +3288,37 @@ def _sku_estampar_std(pg, sku):
     pg.insert_text(fitz.Point(x0 + 6, y1 - 4.5), "SKU:  " + sku, fontsize=9, fontname="hebo", color=(0.55, 0.05, 0.05))
 
 
+def _sku_norm(s):
+    """Normaliza para comparar nombres: sin acentos, mayúsculas, solo letras/números."""
+    s = _ud_and.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    s = _re_and.sub(r"[^A-Za-z0-9 ]", " ", s).upper()
+    return _re_and.sub(r"\s+", " ", s).strip()
+
+
+def _sku_tokens(nombre):
+    """Tokens 'fuertes' de un nombre (>=3 letras) para comparar destinatario ↔ pedido."""
+    return {t for t in _sku_norm(nombre).split() if len(t) >= 3 and not t.isdigit()}
+
+
+def _sku_nombre_coincide(label_nom, pedido_nom):
+    """True si el destinatario de la etiqueta y el del pedido comparten nombre/apellido.
+    Si en alguno falta el dato, no bloquea (True)."""
+    a, b = _sku_tokens(label_nom), _sku_tokens(pedido_nom)
+    if not a or not b:
+        return True
+    return bool(a & b)
+
+
+def _sku_label_nombre(texto):
+    """Nombre del destinatario que figura en la etiqueta (para verificar el match)."""
+    m = _re_and.search(r"Destinatario\s*:\s*(.+)", texto, _re_and.I)
+    return m.group(1).strip() if m else ""
+
+
 def _sku_unidades_map(email):
-    """{nº pedido → sprays (sin ebook)} de los pedidos recientes de las tiendas conectadas
-    (Shopify + Tiendanube). RÁPIDO: 1 lectura por tienda, sin consultar pedido por pedido.
-    Así funciona sea la etiqueta de Shopify (nº 1001…) o de Tiendanube (nº 2xxx)."""
+    """{nº pedido → {'u': sprays, 'nom': destinatario}} de los pedidos recientes de las tiendas
+    conectadas (Shopify + Tiendanube). RÁPIDO: 1 lectura por tienda. Guarda el NOMBRE para
+    verificar que la etiqueta corresponde a ese pedido (no solo por número)."""
     mapa = {}
     # --- Tiendanube ---
     tk = _tn_tokens().get(email)
@@ -3300,8 +3327,8 @@ def _sku_unidades_map(email):
         for page in (1, 2):
             try:
                 r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                    "per_page": 200, "page": page, "sort": "-id",
-                    "payment_status": "paid", "fields": "number,products"}, timeout=30)
+                    "per_page": 200, "page": page, "sort": "-id", "payment_status": "paid",
+                    "fields": "number,products,contact_name,shipping_address"}, timeout=30)
                 d = r.json() if r.content else []
             except Exception:
                 d = []
@@ -3315,7 +3342,8 @@ def _sku_unidades_map(email):
                         nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
                     if not _sku_es_ebook(nm):
                         u += int(p.get("quantity") or 0)
-                mapa[str(o.get("number"))] = u
+                nom = ((o.get("shipping_address") or {}).get("name") or o.get("contact_name") or "")
+                mapa[str(o.get("number"))] = {"u": u, "nom": nom}
             if len(d) < 200:
                 break
     # --- Shopify (nº de pedido 1001…) ---
@@ -3332,7 +3360,10 @@ def _sku_unidades_map(email):
                 for li in (o.get("line_items") or []):
                     if not _sku_es_ebook(li.get("title") or li.get("name")):
                         u += int(li.get("quantity") or 0)
-                mapa[num] = u
+                sa = o.get("shipping_address") or {}
+                cu = o.get("customer") or {}
+                nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
+                mapa[num] = {"u": u, "nom": nom}
         except Exception:
             pass
     return mapa
@@ -3399,12 +3430,21 @@ def pf_despachos_sku():
         return jsonify({"ok": False, "msg": "no pude abrir el PDF: %s" % e}), 400
     mapa = _sku_unidades_map(email)
     estampadas = 0
+    conflicto = 0            # etiquetas donde el nº coincide pero el NOMBRE no → no se estampa (evita confundir)
     detalle = []
     for pg in doc:
         texto = pg.get_text()
         nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
         ped = _sku_pedido(texto, nuevo)
-        sprays = mapa.get(str(ped), 0) if ped else 0
+        ent = mapa.get(str(ped)) if ped else None
+        sprays = ent.get("u", 0) if ent else 0
+        # VERIFICACIÓN: el destinatario de la etiqueta tiene que coincidir con el del pedido.
+        # Si el nº matchea pero el NOMBRE no → algo está cruzado (tienda equivocada / nº reusado):
+        # NO estampo, para no poner el SKU de otro pedido (ej. mandar 1 cuando eran 2).
+        if ent and not _sku_nombre_coincide(_sku_label_nombre(texto), ent.get("nom", "")):
+            conflicto += 1
+            detalle.append({"pedido": ped or "?", "unidades": 0, "sku": "", "conflicto": True})
+            continue
         sku = _sku_texto(sprays)
         detalle.append({"pedido": ped or "?", "unidades": sprays, "sku": sku})
         if not sku:
