@@ -186,13 +186,13 @@ def _user_actual():
 _SOLO_DASH = r"""
 <style>
  aside > a[aria-label="Ir al Dashboard"]{display:none!important}
- /* barra: achicar el padding de cada item (recuadro azul mas ajustado + menos espacio) */
- aside nav a{padding-left:6px!important;padding-right:6px!important;padding-top:8px!important;padding-bottom:8px!important}
- aside nav a>span:first-child,aside nav a>div:first-child{padding-left:0!important;padding-right:0!important}
- aside nav li,aside nav>div{margin-top:1px!important;margin-bottom:1px!important}
- /* contenedor de la barra: menos padding a los lados y arriba/abajo */
- aside{padding-left:8px!important;padding-right:8px!important}
- aside nav{padding-left:0!important;padding-right:0!important;gap:2px!important}
+ /* barra lateral MAS ANGOSTA (colapsada) + hover-expand un poco menos, sin romper nada */
+ @media(min-width:768px){
+  aside[class*="group/sidebar"]{width:62px!important;padding-left:6px!important;padding-right:6px!important}
+  aside[class*="group/sidebar"]:hover{width:206px!important}
+ }
+ aside nav{gap:2px!important}
+ aside nav a{padding-top:8px!important;padding-bottom:8px!important}
  .rp-pill{position:fixed;left:0;z-index:100002;display:flex;align-items:center;justify-content:center;height:46px;box-sizing:border-box;cursor:pointer;text-decoration:none;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
  .rp-pill.rp-open{justify-content:flex-start;padding-left:16px}
  .rp-pill .rp-ic{width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;border-radius:9px;background:rgba(255,255,255,.06)}
@@ -2233,7 +2233,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-barra-padding2"})
+    return jsonify({"ok": True, "v": "2026-08-12-barra-angosta"})
 
 
 @app.get("/pf-diag")
