@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as _dt
 import json as _json
 import secrets as _secrets
+import threading
 import urllib.parse as _url
 from pathlib import Path
 
@@ -202,7 +203,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -259,9 +260,20 @@ _SOLO_DASH = r"""
      fn0.parentNode.insertBefore(cmv, fn0.nextSibling);
     }
    }
+   // Agregar "Subidor ADS" en la barra (debajo de Movimientos).
+   if(!nav.querySelector('#rp-ads-nav')){
+    var mn0=nav.querySelector('#rp-mov-nav')||nav.querySelector('#rp-fact-nav')||nav.querySelector('#rp-desp-nav');
+    if(mn0){ var cad=mn0.cloneNode(true); cad.id='rp-ads-nav'; cad.style.display='';
+     var aad=cad.querySelector('a'); if(aad){ aad.setAttribute('href','#'); aad.removeAttribute('aria-current'); aad.classList.remove('bg-white/[0.08]'); aad.classList.remove('text-primary');
+      var naad=aad.cloneNode(true); aad.parentNode.replaceChild(naad,aad); naad.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpAds(true); }); aad=naad; }
+     var icad=cad.querySelector('.material-symbols-outlined'); if(icad) icad.textContent='rocket_launch';
+     var spad=cad.querySelectorAll('span'); for(var sw=0;sw<spad.length;sw++){ var s8=spad[sw]; if(!s8.classList.contains('material-symbols-outlined') && s8.children.length===0 && (s8.textContent||'').trim()){ s8.textContent='Subidor ADS'; } }
+     mn0.parentNode.insertBefore(cad, mn0.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpAds(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -278,7 +290,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -1180,13 +1192,33 @@ _SOLO_DASH = r"""
  // ---- Modal Insertar SKU ----
  window.rpDOpenSku=function(){ var m=document.getElementById('rp-d-skuov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-skures'); if(r)r.innerHTML=''; } };
  window.rpDCloseSku=function(){ var m=document.getElementById('rp-d-skuov'); if(m)m.style.display='none'; };
+ function rpDBarra(pct,msg){ return '<div style="font-size:12.5px;color:#c9b8ff;font-weight:600;margin-bottom:8px">'+msg+'</div>'
+    +'<div style="height:12px;background:#0b1220;border:1px solid #2b2350;border-radius:20px;overflow:hidden">'
+    +'<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#7c3aed,#a78bfa);border-radius:20px;transition:width .3s ease"></div></div>'
+    +'<div style="font-size:11px;color:#7a6ca8;margin-top:5px;text-align:right">'+pct+'%</div>'; }
  window.rpDUpSku=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-skures');
-   res.innerHTML='<div style="color:#a78bfa;font-size:12.5px">⏳ Detectando formato de cada etiqueta e insertando SKU…</div>';
+   res.innerHTML=rpDBarra(2,'⏳ Subiendo el PDF…');
    var fd=new FormData(); fd.append('pdf',f);
-   fetch('/pf-despachos-sku',{method:'POST',body:fd}).then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';}); return r.blob(); })
-    .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='etiquetas-con-sku.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
-      res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">✅ SKU insertado en cada etiqueta — PDF descargado.</div>'; })
-    .catch(function(e){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
+   fetch('/pf-despachos-sku',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ throw (j&&j.msg)||'error'; }
+     var job=j.job;
+     var poll=setInterval(function(){
+       fetch('/pf-despachos-sku-progreso?job='+job).then(function(r){return r.json();}).then(function(p){
+         if(!p||!p.ok){ return; }
+         if(p.error){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar: '+p.error+'</div>'; return; }
+         var pct=p.total?Math.round(p.done/p.total*100):5; if(pct<2)pct=2; if(!p.listo&&pct>98)pct=98;
+         res.innerHTML=rpDBarra(pct,p.msg||'Procesando…');
+         if(p.listo){ clearInterval(poll);
+           var s=p.stats||{};
+           fetch('/pf-despachos-sku-descargar?job='+job).then(function(r){return r.blob();}).then(function(b){
+             var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='etiquetas-con-sku.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+             var extra=''; if(s.conflicto)extra+=' · ⚠️ '+s.conflicto+' sin estampar (nombre no coincide)'; if(s.sin_pedido)extra+=' · '+s.sin_pedido+' sin pedido en la tienda';
+             res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">✅ '+(s.estampadas||0)+' de '+(s.total||0)+' etiquetas con SKU — PDF descargado.'+extra+'</div>';
+           });
+         }
+       }).catch(function(){});
+     },400);
+   }).catch(function(e){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
  // ---- Modal Enviar seguimiento ----
  window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; } };
  window.rpDCloseSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m)m.style.display='none'; };
@@ -1658,6 +1690,188 @@ _SOLO_DASH = r"""
       el=el.parentElement; } }, true);
 })();
 </script>
+
+<div id="rp-ads-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#e8edf4">
+<style>
+ #rp-ads-ov .aw{max-width:1180px;margin:0 auto;padding:26px 30px 70px}
+ #rp-ads-ov .lb{font-size:11px;font-weight:700;color:#8b97a8;text-transform:uppercase;letter-spacing:.5px;margin:0 0 7px;display:block}
+ #rp-ads-ov .in{background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:10px;padding:11px 13px;font-size:13.5px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;color-scheme:dark}
+ #rp-ads-ov textarea.in{resize:vertical;min-height:90px;line-height:1.5}
+ #rp-ads-ov .card{background:linear-gradient(165deg,#101a2c,#0b1220);border:1px solid #1b2536;border-radius:16px;padding:18px 20px;margin-bottom:16px}
+ #rp-ads-ov .ch{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+ #rp-ads-ov .cn{width:24px;height:24px;border-radius:7px;background:#0d1524;border:1px solid #2b3a52;color:#9fb4d0;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+ #rp-ads-ov .ct{font-size:14.5px;font-weight:800;color:#f4f7fb}
+ #rp-ads-ov .cs{font-size:12px;color:#5b6678;margin-left:auto}
+ #rp-ads-ov .row{display:flex;gap:12px}#rp-ads-ov .row>*{flex:1}
+ #rp-ads-ov .seg{display:flex;gap:7px}
+ #rp-ads-ov .seg .s{flex:1;text-align:center;background:#0d1524;border:1px solid #1a2436;color:#aeb8c6;border-radius:10px;padding:11px;font-size:13px;font-weight:700;cursor:pointer}
+ #rp-ads-ov .seg .s.on{background:rgba(19,127,236,.14);border-color:#2b6fd0;color:#bcd7f7}
+ #rp-ads-ov .seg .s small{display:block;font-size:10px;font-weight:600;color:#5b6678;margin-top:2px}
+ #rp-ads-ov .hint{font-size:11.5px;color:#5b6678;margin-top:8px;line-height:1.4}
+ #rp-ads-ov .step{display:flex;align-items:center;background:#0a1322;border:1px solid #22324a;border-radius:10px;overflow:hidden;width:fit-content}
+ #rp-ads-ov .step .b{width:40px;height:42px;border:none;background:transparent;color:#9aa6b6;font-size:20px;font-weight:800;cursor:pointer}
+ #rp-ads-ov .step b{min-width:44px;text-align:center;font-size:16px;font-weight:800}
+ #rp-ads-ov .vitem{display:flex;align-items:center;gap:10px;background:#0a1322;border:1px solid #17233a;border-radius:9px;padding:8px 11px;font-size:12.5px;margin-top:6px}
+ #rp-ads-ov .vitem .vi{width:20px;height:20px;border-radius:6px;background:rgba(52,211,153,.14);border:1px solid #1f5a3d;color:#34d399;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+ #rp-ads-ov .res{position:sticky;top:20px;background:linear-gradient(165deg,#141033,#0d0b22);border:1px solid #2b2350;border-radius:18px;padding:20px}
+ #rp-ads-ov .rl{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #241d47;font-size:13px}
+ #rp-ads-ov .rl .k{color:#9a8fc5}#rp-ads-ov .rl .v{color:#f1ecff;font-weight:800;text-align:right}
+ #rp-ads-ov .go{width:100%;margin-top:15px;border:none;border-radius:12px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;background:linear-gradient(90deg,#7c3aed,#a78bfa);color:#fff}
+ #rp-ads-ov .ptrack{height:12px;background:#0b0a1a;border:1px solid #2b2350;border-radius:20px;overflow:hidden;margin-top:14px}
+ #rp-ads-ov .ptrack i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7c3aed,#a78bfa);border-radius:20px;transition:width .4s}
+ #rp-ads-ov .sw{display:inline-flex;align-items:center;gap:10px;cursor:pointer}
+ #rp-ads-ov .tk{width:44px;height:25px;border-radius:20px;background:#1a2436;border:1px solid #2b3a52;position:relative;flex:none}
+ #rp-ads-ov .tk.on{background:rgba(52,211,153,.3);border-color:#1f5a3d}
+ #rp-ads-ov .tk i{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#8b97a8;transition:.2s}
+ #rp-ads-ov .tk.on i{left:21px;background:#34d399}
+ @media(max-width:900px){#rp-ads-ov .agrid{grid-template-columns:1fr !important}}
+</style>
+<div class="aw">
+ <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px">
+  <div style="width:46px;height:46px;border-radius:13px;background:rgba(124,58,237,.15);border:1px solid #3b2a6b;display:flex;align-items:center;justify-content:center;color:#c4b5fd"><span class="material-symbols-outlined">rocket_launch</span></div>
+  <div style="flex:1"><h1 style="margin:0;font-size:26px;color:#f4f7fb">Subidor ADS</h1>
+   <p style="margin:5px 0 0;color:#8b97a8;font-size:13px">Peg&aacute; el Drive, eleg&iacute; la config y lanz&aacute; la campa&ntilde;a con 1 click.</p></div>
+  <button onclick="rpAds(false)" style="background:#111c2b;border:1px solid #1b2536;color:#cbd5e1;border-radius:10px;width:38px;height:38px;font-size:17px;cursor:pointer">&#10005;</button>
+ </div>
+ <div class="agrid" style="display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start">
+  <div>
+   <div class="card">
+    <div class="ch"><div class="cn">1</div><div class="ct">Cuenta e identidad</div></div>
+    <div style="background:rgba(19,127,236,.1);border:1px solid #1e4f8a;border-radius:10px;padding:10px 13px;font-size:13px;font-weight:700;color:#bcd7f7;margin-bottom:12px">CP1 &mdash; NoxaLab &middot; CUENTA 1</div>
+    <div class="row"><div><span class="lb">P&aacute;gina</span><select class="in" id="rpa-page"></select></div>
+     <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
+    <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select></div>
+   </div>
+   <div class="card">
+    <div class="ch"><div class="cn">2</div><div class="ct">Creativos</div><div class="cs" id="rpa-vc">peg&aacute; el link y busc&aacute;</div></div>
+    <span class="lb">Link de carpeta de Google Drive</span>
+    <div style="display:flex;gap:9px"><input class="in" id="rpa-drive" style="flex:1" placeholder="https://drive.google.com/drive/folders/…" oninput="rpaReset()">
+     <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar videos</button></div>
+    <div id="rpa-vids"></div>
+   </div>
+   <div class="card">
+    <div class="ch"><div class="cn">3</div><div class="ct">Campa&ntilde;a</div></div>
+    <div class="seg" style="margin-bottom:14px"><div class="s on" id="rpa-cn" onclick="rpaCmp('nueva')">Campa&ntilde;a nueva</div><div class="s" id="rpa-ce" onclick="rpaCmp('exist')">Usar una existente</div></div>
+    <div id="rpa-boxn">
+     <div class="row"><div><span class="lb">&Aacute;ngulo (nombre)</span><input class="in" id="rpa-ang" value="UGC RENOVACION" oninput="rpaCalc()"></div>
+      <div><span class="lb">Presupuesto diario</span><input class="in" id="rpa-presup" value="35" oninput="rpaCalc()"></div></div>
+     <span class="lb" style="margin-top:13px">Presupuesto a nivel</span>
+     <div class="seg"><div class="s on" id="rpa-tc" onclick="rpaTipo('cbo')">CBO<small>en la campa&ntilde;a</small></div><div class="s" id="rpa-ta" onclick="rpaTipo('abo')">ABO<small>por conjunto</small></div></div>
+    </div>
+    <div id="rpa-boxe" style="display:none">
+     <span class="lb">Eleg&iacute; la campa&ntilde;a <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(solo activas)</span></span>
+     <select class="in" id="rpa-cmp" onchange="rpaCmpChange()"></select>
+    </div>
+   </div>
+   <div class="card">
+    <div class="ch"><div class="cn">4</div><div class="ct">Conjuntos y anuncios</div><div class="cs" id="rpa-cjctx"></div></div>
+    <div id="rpa-cjmodo" class="seg" style="margin-bottom:14px;display:none">
+     <div class="s on" id="rpa-cjdup" onclick="rpaCj('dup')">Agregar conjunto<small>misma config + tus videos</small></div>
+     <div class="s" id="rpa-cjusar" onclick="rpaCj('usar')">A&ntilde;adir al mismo<small>suma los ads a uno</small></div></div>
+    <div id="rpa-cjlista" style="display:none;margin-bottom:13px"><span class="lb" id="rpa-cjlb">Copiar la config de</span><select class="in" id="rpa-cjsel"></select></div>
+    <div id="rpa-cjnom" style="margin-bottom:13px"><span class="lb">Nombre del conjunto</span><input class="in" id="rpa-cjnombre" value="CONJUNTO 1" oninput="rpaCalc()"></div>
+    <div id="rpa-cjcant" class="row" style="align-items:flex-end">
+     <div><span class="lb" id="rpa-cantlb">Cantidad de conjuntos</span><div class="step"><button class="b" onclick="rpaConj(-1)">&ndash;</button><b id="rpa-nconj">1</b><button class="b" onclick="rpaConj(1)">+</button></div></div>
+     <div><span class="lb">Ads por conjunto</span><div style="background:#0a1322;border:1px solid #22324a;border-radius:10px;padding:11px 13px;font-size:13.5px;color:#8fb3e0;font-weight:700">= tus <span id="rpa-adsx">0</span> videos</div></div></div>
+    <div class="hint" id="rpa-cjhint">Cada conjunto lleva 1 anuncio por video.</div>
+   </div>
+   <div class="card">
+    <div class="ch"><div class="cn">5</div><div class="ct">Anuncio</div><div class="cs">t&iacute;tulo &middot; copy &middot; destino</div></div>
+    <div class="row"><div><span class="lb">T&iacute;tulo</span><input class="in" id="rpa-titulo" placeholder="Titular del anuncio"></div>
+     <div><span class="lb">Subt&iacute;tulo</span><input class="in" id="rpa-sub" placeholder="descripci&oacute;n (opcional)"></div></div>
+    <span class="lb" style="margin-top:13px">Copy</span><textarea class="in" id="rpa-copy"></textarea>
+    <span class="lb" style="margin-top:13px">URL de destino</span><input class="in" id="rpa-url"></div>
+   <div class="card">
+    <div class="ch"><div class="cn">6</div><div class="ct">Estado y programaci&oacute;n</div></div>
+    <label class="sw" onclick="rpaEstado()"><span class="tk on" id="rpa-tk"><i></i></span><span id="rpa-estlb" style="font-size:13.5px;font-weight:700">Programada (se activa sola el d&iacute;a/hora)</span></label>
+    <div id="rpa-progbox" class="row" style="margin-top:15px"><div><span class="lb">D&iacute;a de salida</span><input class="in" type="date" id="rpa-fecha"></div><div><span class="lb">Horario</span><input class="in" type="time" id="rpa-hora" value="05:00"></div></div>
+   </div>
+  </div>
+  <div><div class="res">
+   <h3 style="margin:0 0 4px;font-size:15px;color:#e9e2ff">Resumen</h3><div style="font-size:12px;color:#8a7fb5;margin-bottom:14px">Lo que se va a crear</div>
+   <div class="rl"><span class="k">Campa&ntilde;a</span><span class="v" id="rpa-rcmp">&mdash;</span></div>
+   <div class="rl"><span class="k">Tipo</span><span class="v" id="rpa-rtipo">CBO $35</span></div>
+   <div class="rl"><span class="k">Conjuntos</span><span class="v" id="rpa-rconj">1</span></div>
+   <div class="rl"><span class="k">Videos</span><span class="v" id="rpa-rvids">0</span></div>
+   <div class="rl"><span class="k">Estado</span><span class="v" id="rpa-rest">Programada</span></div>
+   <div style="text-align:center;margin:13px 0 2px;padding:13px;background:rgba(124,58,237,.1);border:1px solid #3b2a6b;border-radius:12px"><div style="font-size:31px;font-weight:800;color:#c4b5fd;line-height:1" id="rpa-rads">0</div><div style="font-size:11px;color:#8a7fb5;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:3px">anuncios en total</div></div>
+   <button class="go" id="rpa-go" onclick="rpaLanzar()">&#128640; Lanzar campa&ntilde;a</button>
+   <div id="rpa-prog" style="display:none"><div class="ptrack"><i id="rpa-bar"></i></div><div id="rpa-msg" style="font-size:12px;color:#c4b5fd;font-weight:600;margin-top:8px;text-align:center"></div></div>
+  </div></div>
+ </div>
+</div>
+</div>
+<script>
+(function(){
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[];
+ function $(id){return document.getElementById(id);}
+ function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
+ window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
+  if(open){['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov'].forEach(function(id){var x=document.getElementById(id);if(x)x.style.display='none';});var _l=document.getElementById('rpf-lock');if(_l)_l.style.display='none';}
+  o.style.display=open?'block':'none';if(open)rpaInit();};
+ var _inited=false;
+ function rpaInit(){ var d=new Date();d.setDate(d.getDate()+1);$('rpa-fecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+  $('rpa-fecha').addEventListener('change',rpaCalc);$('rpa-hora').addEventListener('change',rpaCalc);
+  fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){if(j&&j.cuentas&&j.cuentas[0]){$('rpa-copy').value=j.cuentas[0].copy||'';}});
+  fetch('/pf-ads-identidad?cuenta=cp1').then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
+   $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
+   $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
+   $('rpa-pixel').innerHTML=opt(j.pixels.map(function(p){return {v:p.id,t:p.name};}));
+   if(j.def){if(j.def.page)$('rpa-page').value=j.def.page;if(j.def.pixel)$('rpa-pixel').value=j.def.pixel;$('rpa-ig').value=j.def.ig||'';}});
+  fetch('/pf-ads-campanas?cuenta=cp1').then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
+   $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
+  rpaCalc();}
+ window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');rpaCalc();};
+ window.rpaCmp=function(m){CMP=m;$('rpa-cn').classList.toggle('on',m=='nueva');$('rpa-ce').classList.toggle('on',m=='exist');
+  $('rpa-boxn').style.display=m=='nueva'?'block':'none';$('rpa-boxe').style.display=m=='exist'?'block':'none';
+  $('rpa-cjmodo').style.display=m=='exist'?'flex':'none';$('rpa-cjctx').textContent=m=='exist'?'en la campaña elegida':'';
+  rpaCj(m=='exist'?'dup':'nuevo');if(m=='exist')rpaCmpChange();rpaCalc();};
+ window.rpaCmpChange=function(){var cid=$('rpa-cmp').value;if(!cid)return;$('rpa-cjsel').innerHTML='<option>cargando…</option>';
+  fetch('/pf-ads-conjuntos?campaign_id='+cid).then(function(r){return r.json();}).then(function(j){CJS=(j&&j.conjuntos)||[];
+   $('rpa-cjsel').innerHTML=opt(CJS.map(function(c){return {v:c.id,t:c.name+' · '+c.n_ads+' ads'};}));rpaCalc();});};
+ window.rpaCj=function(m){CJ=m;var d=$('rpa-cjdup'),u=$('rpa-cjusar');if(d)d.classList.toggle('on',m=='dup');if(u)u.classList.toggle('on',m=='usar');
+  $('rpa-cjlista').style.display=(m=='dup'||m=='usar')?'block':'none';$('rpa-cjcant').style.display=(m=='usar')?'none':'flex';$('rpa-cjnom').style.display=(m=='usar')?'none':'block';
+  $('rpa-cjlb').textContent=m=='usar'?'Conjunto al que sumar los ads':'Copiar la config de';
+  $('rpa-cjhint').innerHTML=(m=='usar')?'Los anuncios se agregan al conjunto elegido (no crea uno nuevo).':(m=='dup')?'Agrega un conjunto con la misma config del elegido + tus videos.':'Cada conjunto lleva 1 anuncio por video.';
+  if(m=='usar')NCONJ=1;rpaCalc();};
+ window.rpaConj=function(d){NCONJ=Math.max(1,Math.min(20,NCONJ+d));$('rpa-nconj').textContent=NCONJ;rpaCalc();};
+ window.rpaEstado=function(){EST=EST=='activa'?'pausada':'activa';$('rpa-tk').classList.toggle('on',EST=='activa');
+  $('rpa-estlb').textContent=EST=='activa'?'Programada (se activa sola el día/hora)':'Pausada (para revisar antes)';
+  $('rpa-progbox').style.display=EST=='activa'?'flex':'none';rpaCalc();};
+ window.rpaReset=function(){$('rpa-vids').innerHTML='';VIDS=0;$('rpa-vc').textContent='pegá el link y buscá';rpaCalc();};
+ window.rpaBuscar=function(){var b=$('rpa-btnb');b.textContent='Buscando…';b.disabled=true;
+  fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:$('rpa-drive').value})}).then(function(r){return r.json();}).then(function(j){
+   b.textContent='Buscar videos';b.disabled=false;
+   if(!j||!j.ok){$('rpa-vids').innerHTML='<div style="color:#fb7185;font-size:12.5px;margin-top:10px">'+((j&&j.msg)||'no pude leer el Drive')+'</div>';VIDS=0;rpaCalc();return;}
+   VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' videos';
+   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class="vitem"><div class="vi">✓</div><div style="flex:1;color:#e2e8f0;font-weight:600">'+v.name+'</div><div style="color:#5b6678;font-size:11px">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style="color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px">✅ '+VIDS+' videos ubicados en orden.</div>';rpaCalc();
+  }).catch(function(){b.textContent='Buscar videos';b.disabled=false;});};
+ function schedTxt(){var f=$('rpa-fecha').value,h=$('rpa-hora').value||'05:00';if(!f)return h;var p=f.split('-');return p[2]+'/'+p[1]+' '+h;}
+ window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
+  var cmpName=CMP=='nueva'?(( new Date().getDate())+'-'+(new Date().getMonth()+1)+' '+ang):((CMPS.find(function(c){return c.id==$('rpa-cmp').value;})||{}).name||'(existente)');
+  $('rpa-rcmp').textContent=cmpName;
+  $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO':'ABO')+' $'+p);
+  $('rpa-rconj').textContent=(CMP=='exist'&&CJ=='usar')?'usar 1':NCONJ;
+  $('rpa-rvids').textContent=VIDS;$('rpa-adsx').textContent=VIDS;
+  $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
+  $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(VIDS*NCONJ);};
+ window.rpaLanzar=function(){ if(VIDS<1){alert('Primero buscá los videos del Drive.');return;}
+  var body={cuenta:'cp1',drive:$('rpa-drive').value,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
+   modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,presupuesto:$('rpa-presup').value,
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,
+   titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
+   estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
+  var go=$('rpa-go');go.disabled=true;go.textContent='Lanzando…';var pr=$('rpa-prog'),bar=$('rpa-bar'),msg=$('rpa-msg');pr.style.display='block';
+  fetch('/pf-ads-lanzar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){msg.style.color='#fb7185';msg.textContent=(j&&j.msg)||'error';go.disabled=false;go.textContent='🚀 Lanzar campaña';return;}
+   var job=j.job;var poll=setInterval(function(){fetch('/pf-ads-progreso?job='+job).then(function(r){return r.json();}).then(function(p){
+    if(!p||!p.ok)return; if(p.error){clearInterval(poll);msg.style.color='#fb7185';msg.textContent='Error: '+p.error;go.disabled=false;go.textContent='🚀 Lanzar campaña';return;}
+    var pct=p.total?Math.round(p.done/p.total*100):5;if(pct<3)pct=3;if(!p.listo&&pct>97)pct=97;bar.style.width=pct+'%';msg.textContent=p.msg||'Procesando…';
+    if(p.listo){clearInterval(poll);bar.style.width='100%';msg.style.color='#34d399';go.disabled=false;go.textContent='🚀 Lanzar otra';}
+   });},900);
+  }).catch(function(){msg.style.color='#fb7185';msg.textContent='error de conexión';go.disabled=false;go.textContent='🚀 Lanzar campaña';});};
+})();
+</script>
 """
 
 
@@ -2006,7 +2220,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-sku-verif-nombre"})
+    return jsonify({"ok": True, "v": "2026-08-12-subidor-ads"})
 
 
 @app.get("/pf-diag")
@@ -3201,29 +3415,23 @@ def pf_despachos_sku_sync():
     return jsonify({"ok": True, "n": n})
 
 
-_SKU_EBOOK = ("guia", "guía", "cuidado ocular", "ebook", "e-book", "plan 90", "plan de 90")
+_SKU_JOBS = {}      # {job_id: {done,total,msg,listo,error,pdf,email,stats}} — progreso del estampado
 
 
-def _sku_es_ebook(nombre):
-    n = str(nombre or "").lower()
-    return any(k in n for k in _SKU_EBOOK)
-
-
-def _sku_despacho(u):
-    """(60ml, 30ml) según el despacho real de VisionPure: cada 2 → 60ml, resto → 30ml."""
-    return u // 2, u % 2
-
-
-def _sku_texto(sprays):
-    """SKU: 1→'1 30ML' · 2→'1 60ML' · 3→'1 60ML + 1 30ML'. Solo sprays (ebook no cuenta)."""
-    if sprays <= 0:
-        return ""
-    d60, d30 = _sku_despacho(sprays)
+def _sku_de_items(items, skus):
+    """SKU a estampar = qué empaquetar, según la config de Productos del usuario (tipo
+    spray/fijo/xN por CADA producto). NO hardcodea VisionPure: usa lo que el usuario cargó.
+    items: [(sku_key, cantidad, nombre_producto)]."""
     partes = []
-    if d60:
-        partes.append("%d 60ML" % d60)
-    if d30:
-        partes.append("%d 30ML" % d30)
+    for key, qty, pname in items:
+        if not qty or qty <= 0:
+            continue
+        cfg = skus.get(str(key))
+        if cfg is None:
+            cfg = {"tipo": "xn", "base": (pname or "").strip()}   # sin configurar → 'xN nombre'
+        s = _sku_calc(cfg, qty)
+        if s:
+            partes.append(s)
     return " + ".join(partes)
 
 
@@ -3315,12 +3523,12 @@ def _sku_label_nombre(texto):
     return m.group(1).strip() if m else ""
 
 
-def _sku_unidades_map(email):
-    """{nº pedido → {'u': sprays, 'nom': destinatario}} de los pedidos recientes de las tiendas
-    conectadas (Shopify + Tiendanube). RÁPIDO: 1 lectura por tienda. Guarda el NOMBRE para
-    verificar que la etiqueta corresponde a ese pedido (no solo por número)."""
+def _sku_pedidos_map(email):
+    """{nº pedido → {'nom': destinatario, 'items': [(sku_key, cantidad, nombre_prod)]}} de las
+    tiendas conectadas (Shopify + Tiendanube). Trae los PRODUCTOS de cada pedido para calcular
+    el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO."""
     mapa = {}
-    # --- Tiendanube ---
+    # --- Tiendanube (sku_key = 'tn:<product_id>', igual que en Productos) ---
     tk = _tn_tokens().get(email)
     if tk and tk.get("access_token") and tk.get("store_id"):
         store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
@@ -3335,18 +3543,17 @@ def _sku_unidades_map(email):
             if not isinstance(d, list) or not d:
                 break
             for o in d:
-                u = 0
+                items = []
                 for p in (o.get("products") or []):
                     nm = p.get("name")
                     if isinstance(nm, dict):
                         nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
-                    if not _sku_es_ebook(nm):
-                        u += int(p.get("quantity") or 0)
+                    items.append(("tn:%s" % p.get("product_id"), int(p.get("quantity") or 0), nm or ""))
                 nom = ((o.get("shipping_address") or {}).get("name") or o.get("contact_name") or "")
-                mapa[str(o.get("number"))] = {"u": u, "nom": nom}
+                mapa[str(o.get("number"))] = {"nom": nom, "items": items}
             if len(d) < 200:
                 break
-    # --- Shopify (nº de pedido 1001…) ---
+    # --- Shopify (sku_key = '<product_id>') ---
     tks = _shop_tokens().get(email)
     if tks and tks.get("access_token"):
         hasta = _hoy()
@@ -3356,64 +3563,54 @@ def _sku_unidades_map(email):
                 num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
                 if not num:
                     continue
-                u = 0
+                items = []
                 for li in (o.get("line_items") or []):
-                    if not _sku_es_ebook(li.get("title") or li.get("name")):
-                        u += int(li.get("quantity") or 0)
+                    items.append((str(li.get("product_id") or ""), int(li.get("quantity") or 0),
+                                  li.get("title") or li.get("name") or ""))
                 sa = o.get("shipping_address") or {}
                 cu = o.get("customer") or {}
                 nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
-                mapa[num] = {"u": u, "nom": nom}
+                mapa[num] = {"nom": nom, "items": items}
         except Exception:
             pass
     return mapa
 
 
 def _sku_hoja_empaquetar(doc, detalle):
-    """Agrega una hoja final A4 'PARA EMPAQUETAR' con la lista de bolsas + totales 60/30ml."""
+    """Hoja final A4 'PARA EMPAQUETAR': cuántas bolsas de cada SKU (genérico, sin hardcodear
+    ningún producto). Cuenta cuántas etiquetas comparten el mismo SKU."""
     import fitz
     from collections import Counter
     paquetes = Counter(d["sku"] for d in detalle if d.get("sku"))
-    total_30 = total_60 = 0
-    for d in detalle:
-        u = d.get("unidades") or 0
-        if u > 0:
-            d60, d30 = _sku_despacho(u)
-            total_60 += d60
-            total_30 += d30
     if not paquetes:
         return
-    def palabra(sku):
-        return sku.replace("60ML", "SPRAY 60ML").replace("30ML", "SPRAY 30ML")
     NEG, BLA = (0, 0, 0), (1, 1, 1)
     pg = doc.new_page(width=595, height=842)
     pg.insert_text((50, 92), "PARA EMPAQUETAR", fontname="hebo", fontsize=30, color=NEG)
     pg.draw_line((50, 112), (545, 112), color=NEG, width=1.2)
     y = 175
+    total_bolsas = 0
     for k, v in sorted(paquetes.items(), key=lambda x: (-x[1], x[0])):
+        total_bolsas += v
         etq = "%dX %s" % (v, "BOLSA" if v == 1 else "BOLSAS")
-        fs = 21
+        fs = 20
         w = fitz.get_text_length(etq, fontname="hebo", fontsize=fs)
         pg.draw_rect(fitz.Rect(50, y - 17, 50 + w + 12, y + 6), color=None, fill=NEG)
         pg.insert_text((56, y), etq, fontname="hebo", fontsize=fs, color=BLA)
-        pg.insert_text((50 + w + 24, y), "DE %s" % palabra(k), fontname="hebo", fontsize=fs, color=NEG)
-        y += 54
-        if y > 760:
+        pg.insert_text((50 + w + 24, y), "DE %s" % k, fontname="hebo", fontsize=fs, color=NEG)
+        y += 50
+        if y > 770:
             pg = doc.new_page(width=595, height=842); y = 90
-    y += 12
+    y += 10
     pg.draw_line((50, y), (545, y), color=NEG, width=1.2)
-    y += 42
-    if total_60:
-        pg.insert_text((55, y), "TOTAL 60ML:   %d" % total_60, fontname="hebo", fontsize=18, color=NEG)
-        y += 34
-    pg.insert_text((55, y), "TOTAL 30ML:   %d" % total_30, fontname="hebo", fontsize=18, color=NEG)
+    y += 40
+    pg.insert_text((55, y), "TOTAL BOLSAS:   %d" % total_bolsas, fontname="hebo", fontsize=18, color=NEG)
 
 
 @app.post("/pf-despachos-sku")
 def pf_despachos_sku():
-    """Estampa el SKU (qué empaquetar) en cada etiqueta del PDF, según el formato:
-    Andreani original (Bulto), ENCOMIENDA ECOMMERCE o estándar. Sin tocar el QR ni el código.
-    Unidades REALES por pedido desde Tiendanube en 1 sola lectura → rápido."""
+    """Arranca el estampado en background (para mostrar barra de progreso) y devuelve un job id.
+    El front consulta /pf-despachos-sku-progreso y baja el PDF con /pf-despachos-sku-descargar."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
@@ -3421,50 +3618,99 @@ def pf_despachos_sku():
     if not f:
         return jsonify({"ok": False, "msg": "subí el PDF de etiquetas"}), 400
     try:
-        import fitz
+        import fitz  # noqa: F401
     except Exception:
         return jsonify({"ok": False, "msg": "falta PyMuPDF en el servidor (esperá el redeploy)"}), 500
+    data = f.read()
+    import uuid
+    job = uuid.uuid4().hex[:12]
+    _SKU_JOBS[job] = {"done": 0, "total": 0, "msg": "Leyendo el PDF…", "listo": False,
+                      "error": None, "pdf": None, "email": email, "stats": {}}
+    threading.Thread(target=_sku_run, args=(job, data, email), daemon=True).start()
+    return jsonify({"ok": True, "job": job})
+
+
+def _sku_run(job, data, email):
+    """Procesa el PDF en background, actualizando el progreso del job."""
+    st = _SKU_JOBS.get(job)
     try:
-        doc = fitz.open(stream=f.read(), filetype="pdf")
+        import fitz
+        import io
+        st["msg"] = "Sincronizando pedidos de tu tienda…"
+        skus = _skus_map(email)                 # config de SKU por producto (lo que cargó el usuario)
+        mapa = _sku_pedidos_map(email)          # {nº → nombre + productos} de Shopify + Tiendanube
+        doc = fitz.open(stream=data, filetype="pdf")
+        total = len(doc)
+        st["total"] = total
+        estampadas = conflicto = sin_pedido = 0
+        detalle = []
+        for i, pg in enumerate(doc):
+            st["done"] = i
+            st["msg"] = "Analizando etiqueta %d de %d…" % (i + 1, total)
+            texto = pg.get_text()
+            nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
+            ped = _sku_pedido(texto, nuevo)
+            ent = mapa.get(str(ped)) if ped else None
+            if not ent:
+                sin_pedido += 1
+                detalle.append({"pedido": ped or "?", "sku": ""})
+                continue
+            # Verificación por NOMBRE: si el nº matchea pero el destinatario no → no estampo.
+            if not _sku_nombre_coincide(_sku_label_nombre(texto), ent.get("nom", "")):
+                conflicto += 1
+                detalle.append({"pedido": ped or "?", "sku": "", "conflicto": True})
+                continue
+            sku = _sku_de_items(ent.get("items") or [], skus)
+            detalle.append({"pedido": ped or "?", "sku": sku})
+            if not sku:
+                continue
+            if nuevo:
+                _sku_estampar_nuevo(pg, sku)
+            elif "ENCOMIENDA" in texto:
+                _sku_estampar_ecom(pg, sku, texto)
+            else:
+                _sku_estampar_std(pg, sku)
+            estampadas += 1
+        st["msg"] = "Armando la hoja 'PARA EMPAQUETAR'…"
+        _sku_hoja_empaquetar(doc, detalle)
+        buf = io.BytesIO()
+        doc.save(buf, garbage=3, deflate=True)
+        doc.close()
+        st["pdf"] = buf.getvalue()
+        st["done"] = total
+        st["stats"] = {"total": total, "estampadas": estampadas,
+                       "conflicto": conflicto, "sin_pedido": sin_pedido}
+        st["msg"] = "¡Listo! %d de %d etiquetas con SKU." % (estampadas, total)
+        st["listo"] = True
     except Exception as e:
-        return jsonify({"ok": False, "msg": "no pude abrir el PDF: %s" % e}), 400
-    mapa = _sku_unidades_map(email)
-    estampadas = 0
-    conflicto = 0            # etiquetas donde el nº coincide pero el NOMBRE no → no se estampa (evita confundir)
-    detalle = []
-    for pg in doc:
-        texto = pg.get_text()
-        nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
-        ped = _sku_pedido(texto, nuevo)
-        ent = mapa.get(str(ped)) if ped else None
-        sprays = ent.get("u", 0) if ent else 0
-        # VERIFICACIÓN: el destinatario de la etiqueta tiene que coincidir con el del pedido.
-        # Si el nº matchea pero el NOMBRE no → algo está cruzado (tienda equivocada / nº reusado):
-        # NO estampo, para no poner el SKU de otro pedido (ej. mandar 1 cuando eran 2).
-        if ent and not _sku_nombre_coincide(_sku_label_nombre(texto), ent.get("nom", "")):
-            conflicto += 1
-            detalle.append({"pedido": ped or "?", "unidades": 0, "sku": "", "conflicto": True})
-            continue
-        sku = _sku_texto(sprays)
-        detalle.append({"pedido": ped or "?", "unidades": sprays, "sku": sku})
-        if not sku:
-            continue
-        if nuevo:
-            _sku_estampar_nuevo(pg, sku)
-        elif "ENCOMIENDA" in texto:
-            _sku_estampar_ecom(pg, sku, texto)
-        else:
-            _sku_estampar_std(pg, sku)
-        estampadas += 1
-    # Hoja final "PARA EMPAQUETAR" (siempre): lista de bolsas + totales 60/30ml.
-    _sku_hoja_empaquetar(doc, detalle)
+        st["error"] = str(e)
+        st["listo"] = True
+
+
+@app.get("/pf-despachos-sku-progreso")
+def pf_despachos_sku_progreso():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    st = _SKU_JOBS.get((request.args.get("job") or "").strip())
+    if not st:
+        return jsonify({"ok": False, "msg": "job no encontrado"}), 404
+    return jsonify({"ok": True, "done": st["done"], "total": st["total"], "msg": st["msg"],
+                    "listo": st["listo"], "error": st["error"], "stats": st.get("stats") or {}})
+
+
+@app.get("/pf-despachos-sku-descargar")
+def pf_despachos_sku_descargar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    job = (request.args.get("job") or "").strip()
+    st = _SKU_JOBS.get(job)
+    if not st or not st.get("pdf"):
+        return jsonify({"ok": False, "msg": "todavía no está listo"}), 404
     import io
-    buf = io.BytesIO()
-    doc.save(buf, garbage=3, deflate=True)
-    doc.close()
-    buf.seek(0)
-    return send_file(buf, as_attachment=True, download_name="etiquetas-con-sku.pdf",
-                     mimetype="application/pdf")
+    pdf = st["pdf"]
+    _SKU_JOBS.pop(job, None)          # libero memoria una vez descargado
+    return send_file(io.BytesIO(pdf), as_attachment=True,
+                     download_name="etiquetas-con-sku.pdf", mimetype="application/pdf")
 
 
 @app.post("/pf-despachos-seg-leer")
@@ -4226,6 +4472,451 @@ def desconectar_meta():
         d.pop(email, None)
         META_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
     return redirect("/?integ=1")
+
+
+# ==================== SUBIR CREATIVOS (Meta Ads) ====================
+_ADS_API = "https://graph.facebook.com/v23.0"
+_ADS_JOBS = {}
+
+# Cuentas configuradas (CP1/NoxaLab). Extensible a más cuentas.
+_ADS_CUENTAS = {
+    "cp1": {
+        "nombre": "CP1 — NoxaLab", "ad_account": "1913715339273327",
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "",  # ig="" = page-backed
+        "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
+        "titulo": "NoxaLab", "presupuesto": 35,
+        "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
+                 "Si venís buscando:\n\n"
+                 "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
+                 "\U0001f4aa Sentirte más fuerte y seguro de vos mismo\n"
+                 "❤️ Apoyar una mejor circulación y vitalidad masculina\n\n"
+                 "...no sos el único.\n\n"
+                 "Miles de hombres ya están sumando NoxaLab a su rutina diaria.\n"
+                 "Solo 1 scoop al día, disuelto en agua.\n"
+                 "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
+}
+
+
+def _ads_token():
+    return _os.getenv("META_TOKEN") or ""
+
+
+def _ads_call(method, path, data=None, files=None, params=None):
+    p = dict(params or {}); p["access_token"] = _ads_token()
+    r = requests.request(method, "%s/%s" % (_ADS_API, path), data=data, files=files, params=p, timeout=120)
+    j = r.json() if r.content else {}
+    if r.status_code >= 400:
+        e = j.get("error", {})
+        raise RuntimeError(e.get("error_user_msg") or e.get("message") or ("HTTP %d" % r.status_code))
+    return j
+
+
+def _ads_crear(acct, obj, payload):
+    return _ads_call("POST", "act_%s/%s" % (acct, obj),
+                     data={k: (_json.dumps(v) if isinstance(v, (dict, list)) else v)
+                           for k, v in payload.items()})["id"]
+
+
+def _ads_subir_video(acct, ruta):
+    """Sube un video a /advideos. Grandes (>40MB) por partes (resumable)."""
+    size = _os.path.getsize(ruta)
+    base = "act_%s/advideos" % acct
+    if size <= 40 * 1024 * 1024:
+        with open(ruta, "rb") as f:
+            return _ads_call("POST", base, files={"source": f})["id"]
+    ini = _ads_call("POST", base, data={"upload_phase": "start", "file_size": size})
+    sess, vid = ini["upload_session_id"], ini["video_id"]
+    so, eo = int(ini["start_offset"]), int(ini["end_offset"])
+    with open(ruta, "rb") as f:
+        while so < eo:
+            f.seek(so); chunk = f.read(eo - so)
+            res = _ads_call("POST", base,
+                            data={"upload_phase": "transfer", "upload_session_id": sess, "start_offset": so},
+                            files={"video_file_chunk": ("chunk", chunk)})
+            so, eo = int(res["start_offset"]), int(res["end_offset"])
+    _ads_call("POST", base, data={"upload_phase": "finish", "upload_session_id": sess})
+    return vid
+
+
+def _ads_video_ready(vid):
+    import time as _t
+    for _ in range(75):
+        st = _ads_call("GET", str(vid), params={"fields": "status"}).get("status", {}).get("video_status")
+        if st == "ready":
+            return True
+        if st == "error":
+            return False
+        _t.sleep(4)
+    return True
+
+
+def _ads_thumb(vid):
+    import time as _t
+    for _ in range(15):
+        d = _ads_call("GET", "%s/thumbnails" % vid, params={"fields": "uri,is_preferred"}).get("data", [])
+        if d:
+            return ([t for t in d if t.get("is_preferred")] or d)[0]["uri"]
+        _t.sleep(3)
+    try:
+        return _ads_call("GET", str(vid), params={"fields": "picture"}).get("picture")
+    except Exception:
+        return None
+
+
+def _ads_start_5am():
+    now = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
+    d = now.date() if now.hour < 5 else (now + _dt.timedelta(days=1)).date()
+    return "%sT05:00:00-03:00" % d.isoformat()
+
+
+def _ads_sched(params):
+    """start_time desde el día/hora que eligió el usuario; si no, 5am por defecto."""
+    f = (params.get("fecha") or "").strip()
+    h = (params.get("hora") or "05:00").strip()
+    if f:
+        if len(h) != 5:
+            h = "05:00"
+        return "%sT%s:00-03:00" % (f, h)
+    return _ads_start_5am()
+
+
+def _ads_camp_payload(nombre, cbo, presup, status):
+    p = {"name": nombre, "objective": "OUTCOME_SALES", "special_ad_categories": [],
+         "buying_type": "AUCTION", "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "status": status}
+    if cbo:
+        p["daily_budget"] = int(presup) * 100
+    return p
+
+
+def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=None):
+    p = {"name": nombre, "campaign_id": campaign_id, "billing_event": "IMPRESSIONS",
+         "optimization_goal": "OFFSITE_CONVERSIONS",
+         "promoted_object": {"pixel_id": pixel, "custom_event_type": "PURCHASE"},
+         "attribution_spec": [{"event_type": "CLICK_THROUGH", "window_days": 7},
+                              {"event_type": "VIEW_THROUGH", "window_days": 1}],
+         "targeting": {"geo_locations": {"countries": ["AR"]},
+                       "targeting_automation": {"advantage_audience": 1}},
+         "status": status}
+    if not cbo:
+        p["daily_budget"] = int(presup) * 100        # ABO: presupuesto por conjunto
+    if status == "ACTIVE":
+        p["start_time"] = start or _ads_start_5am()
+    return p
+
+
+def _ads_creative_payload(nombre, video_id, thumb, cfg, ad):
+    """ad: {copy, titulo, subtitulo, url} (lo que cargó el usuario; cae a los defaults de la cuenta)."""
+    url = (ad.get("url") or "").strip() or cfg["landing"]
+    vd = {"video_id": video_id, "message": ad.get("copy") or cfg["copy"],
+          "call_to_action": {"type": "SHOP_NOW", "value": {"link": url}},
+          "title": (ad.get("titulo") or cfg.get("titulo") or "")}
+    if (ad.get("subtitulo") or "").strip():
+        vd["link_description"] = ad["subtitulo"].strip()
+    if thumb:
+        vd["image_url"] = thumb
+    oss = {"page_id": cfg["page"], "video_data": vd}
+    if cfg.get("ig"):
+        oss["instagram_user_id"] = cfg["ig"]
+    return {"name": nombre, "object_story_spec": oss,
+            "degrees_of_freedom_spec": {"creative_features_spec": {"site_extensions": {"enroll_status": "OPT_OUT"}}}}
+
+
+def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None):
+    """Crea un conjunto NUEVO copiando la config de src_id (segmentación/optimización/pixel/atribución),
+    vacío. No copia los ads viejos. Filtra placeholders que Meta rechaza (UNDEFINED/NONE)."""
+    F = ("name,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,"
+         "destination_type,optimization_sub_event,pacing_type,daily_budget")
+    s = _ads_call("GET", str(src_id), params={"fields": F})
+    p = {"name": nombre or (s.get("name", "CONJUNTO") + " copia"), "campaign_id": campaign_id,
+         "billing_event": s.get("billing_event") or "IMPRESSIONS",
+         "optimization_goal": s.get("optimization_goal") or "OFFSITE_CONVERSIONS",
+         "targeting": s.get("targeting") or {"geo_locations": {"countries": ["AR"]},
+                                             "targeting_automation": {"advantage_audience": 1}},
+         "status": status}
+    if s.get("promoted_object"):
+        p["promoted_object"] = s["promoted_object"]
+    elif pixel:
+        p["promoted_object"] = {"pixel_id": pixel, "custom_event_type": "PURCHASE"}
+    if s.get("attribution_spec"):
+        p["attribution_spec"] = s["attribution_spec"]
+    if s.get("destination_type") and s["destination_type"] != "UNDEFINED":
+        p["destination_type"] = s["destination_type"]
+    if s.get("optimization_sub_event") not in (None, "", "NONE"):
+        p["optimization_sub_event"] = s["optimization_sub_event"]
+    if s.get("pacing_type"):
+        p["pacing_type"] = s["pacing_type"]
+    if s.get("daily_budget"):
+        p["daily_budget"] = s["daily_budget"]        # ABO: copia el presupuesto del conjunto
+    if status == "ACTIVE":
+        p["start_time"] = start or _ads_start_5am()
+    return _ads_crear(acct, "adsets", p)
+
+
+def _ads_google_creds():
+    from google.oauth2 import service_account
+    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    raw = _os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if raw:
+        return service_account.Credentials.from_service_account_info(_json.loads(raw), scopes=scopes)
+    fp = _os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE") or str(RAIZ / "service-account.json")
+    return service_account.Credentials.from_service_account_file(fp, scopes=scopes)
+
+
+def _ads_drive_fid(link):
+    m = _re_and.search(r"/folders/([A-Za-z0-9_-]+)", link or "")
+    if m:
+        return m.group(1)
+    m = _re_and.search(r"[?&]id=([A-Za-z0-9_-]+)", link or "")
+    return m.group(1) if m else (link or "").strip()
+
+
+def _ads_drive_listar(link):
+    """Lista los videos de la carpeta (sin bajarlos) para el botón 'Buscar videos'."""
+    from googleapiclient.discovery import build
+    svc = build("drive", "v3", credentials=_ads_google_creds())
+    fid = _ads_drive_fid(link)
+    q = "'%s' in parents and trashed=false" % fid
+    files = svc.files().list(q=q, fields="files(id,name,mimeType,size)", supportsAllDrives=True,
+                             includeItemsFromAllDrives=True, pageSize=100).execute().get("files", [])
+    vids = [f for f in files if "video" in (f.get("mimeType") or "")
+            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v"))]
+    vids.sort(key=lambda f: f.get("name", ""))
+    return [{"name": f.get("name", ""),
+             "mb": round(int(f.get("size") or 0) / 1048576) if f.get("size") else 0} for f in vids]
+
+
+def _ads_drive_bajar(link, dest_dir):
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaIoBaseDownload
+    svc = build("drive", "v3", credentials=_ads_google_creds())
+    fid = _ads_drive_fid(link)
+    q = "'%s' in parents and trashed=false" % fid
+    files = svc.files().list(q=q, fields="files(id,name,mimeType)", supportsAllDrives=True,
+                             includeItemsFromAllDrives=True, pageSize=100).execute().get("files", [])
+    vids = [f for f in files if "video" in (f.get("mimeType") or "")
+            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v"))]
+    vids.sort(key=lambda f: f.get("name", ""))
+    out = []
+    for f in vids:
+        p = _os.path.join(dest_dir, f["name"])
+        req = svc.files().get_media(fileId=f["id"])
+        with open(p, "wb") as fh:
+            dl = MediaIoBaseDownload(fh, req, chunksize=1024 * 1024 * 8)
+            done = False
+            while not done:
+                _, done = dl.next_chunk()
+        out.append(p)
+    return out
+
+
+def _ads_run(job, params):
+    """Baja de Drive → sube videos → crea campaña + N conjuntos + ads. Con progreso."""
+    st = _ADS_JOBS.get(job)
+    import tempfile, shutil
+    tmp = tempfile.mkdtemp(prefix="ads_")
+    try:
+        cfg = dict(_ADS_CUENTAS.get(params.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"])
+        if (params.get("page") or "").strip():
+            cfg["page"] = params["page"].strip()
+        if (params.get("pixel") or "").strip():
+            cfg["pixel"] = params["pixel"].strip()
+        if "ig" in params:
+            cfg["ig"] = (params.get("ig") or "").strip()
+        acct, pixel = cfg["ad_account"], cfg["pixel"]
+        cbo = (params.get("tipo") or "cbo") != "abo"
+        presup = int(params.get("presupuesto") or cfg["presupuesto"])
+        n_conj = max(1, min(20, int(params.get("conjuntos") or 1)))
+        estado = "ACTIVE" if params.get("estado") == "activa" else "PAUSED"
+        angulo = (params.get("angulo") or "VARIOS").strip()
+        ad = {"copy": (params.get("copy") or "").strip(), "titulo": (params.get("titulo") or "").strip(),
+              "subtitulo": (params.get("subtitulo") or "").strip(), "url": (params.get("url") or "").strip()}
+        modo_conj = params.get("modo_conjunto") or "nuevo"   # nuevo | dup | usar
+        src = params.get("adset_src_id")
+        start = _ads_sched(params)                            # día/hora de salida
+
+        st["msg"] = "Bajando videos de Drive…"
+        rutas = _ads_drive_bajar(params.get("drive", ""), tmp)
+        if not rutas:
+            raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
+        st["total"] = len(rutas) * 2 + 1 + n_conj
+
+        # subir + procesar videos
+        listos = []
+        for i, r in enumerate(rutas):
+            st["done"] = i; st["msg"] = "Subiendo video %d de %d…" % (i + 1, len(rutas))
+            listos.append(_ads_subir_video(acct, r))
+        medios = []
+        for i, vid in enumerate(listos):
+            st["done"] = len(rutas) + i; st["msg"] = "Procesando video %d de %d…" % (i + 1, len(rutas))
+            _ads_video_ready(vid)
+            medios.append((vid, _ads_thumb(vid)))
+
+        # campaña
+        st["done"] = len(rutas) * 2; st["msg"] = "Creando campaña…"
+        now = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
+        fecha = "%d-%d" % (now.day, now.month)
+        if params.get("modo_campana") == "existente" and params.get("campaign_id"):
+            campaign_id = params["campaign_id"]
+        else:
+            campaign_id = _ads_crear(acct, "campaigns",
+                                     _ads_camp_payload("%s %s" % (fecha, angulo), cbo, presup, estado))
+
+        # determinar los CONJUNTOS destino
+        base = (params.get("conjunto_nombre") or "CONJUNTO").strip() or "CONJUNTO"
+        adsets = []
+        if modo_conj == "usar" and src:
+            adsets = [src]                                   # añadir los ads a un conjunto existente
+            n_conj = 1
+        else:
+            for c in range(n_conj):
+                st["done"] = len(rutas) * 2 + 1 + c
+                st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj)
+                nombre_conj = base if n_conj == 1 else ("%s %d" % (base, c + 1))
+                if modo_conj == "dup" and src:              # copia la config de un conjunto existente
+                    adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start))
+                else:                                        # conjunto nuevo estándar
+                    adsets.append(_ads_crear(acct, "adsets",
+                                             _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado, start)))
+
+        # ads en cada conjunto (1 por video)
+        creados = 0
+        for adset_id in adsets:
+            for i, (vid, thumb) in enumerate(medios, start=1):
+                cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), vid, thumb, cfg, ad))
+                _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
+                                         "creative": {"creative_id": cid}, "status": estado})
+                creados += 1
+        st["done"] = st["total"]
+        st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
+                       "tipo": "CBO" if cbo else "ABO",
+                       "estado": "Programada 5 AM" if estado == "ACTIVE" else "Pausada"}
+        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s) (%s)." % (creados, n_conj, st["stats"]["estado"])
+        st["listo"] = True
+    except Exception as e:
+        st["error"] = str(e); st["listo"] = True
+    finally:
+        try:
+            shutil.rmtree(tmp, ignore_errors=True)
+        except Exception:
+            pass
+
+
+@app.get("/pf-ads-cuentas")
+def pf_ads_cuentas():
+    if not _user_actual():
+        return jsonify({"ok": False, "cuentas": []})
+    cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"]}
+          for k, v in _ADS_CUENTAS.items()]
+    return jsonify({"ok": True, "cuentas": cs, "token": bool(_ads_token())})
+
+
+@app.get("/pf-ads-identidad")
+def pf_ads_identidad():
+    """Página / IG / pixel VINCULADOS a la cuenta (para los desplegables)."""
+    if not _user_actual():
+        return jsonify({"ok": False})
+    cfg = _ADS_CUENTAS.get(request.args.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"]
+    acct = cfg["ad_account"]
+
+    def lst(path, fields):
+        try:
+            return _ads_call("GET", "act_%s/%s" % (acct, path), params={"fields": fields, "limit": 50}).get("data", [])
+        except Exception:
+            return []
+    pixels = [{"id": p["id"], "name": p.get("name", "")} for p in lst("adspixels", "id,name")]
+    igs = [{"id": i["id"], "name": "@" + (i.get("username") or "")} for i in lst("instagram_accounts", "id,username")]
+    pages = [{"id": p["id"], "name": p.get("name", "")} for p in lst("promote_pages", "id,name")]
+    if cfg.get("page") and not any(p["id"] == cfg["page"] for p in pages):
+        pages.insert(0, {"id": cfg["page"], "name": "NoxaLab Argentina"})
+    return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages,
+                    "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")}})
+
+
+@app.get("/pf-ads-campanas")
+def pf_ads_campanas():
+    if not _user_actual():
+        return jsonify({"ok": False, "campanas": []})
+    cfg = _ADS_CUENTAS.get(request.args.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"]
+    try:
+        r = _ads_call("GET", "act_%s/campaigns" % cfg["ad_account"],
+                      params={"fields": "name,effective_status,daily_budget", "limit": 100,
+                              "effective_status": _json.dumps(["ACTIVE"])})   # solo campañas ACTIVAS
+        out = [{"id": c["id"], "name": c.get("name", ""), "cbo": bool(c.get("daily_budget")),
+                "presupuesto": int((c.get("daily_budget") or 0)) // 100, "activa": True}
+               for c in r.get("data", []) if c.get("effective_status") == "ACTIVE"]
+        out.sort(key=lambda x: int(x["id"]) if str(x["id"]).isdigit() else 0, reverse=True)
+        return jsonify({"ok": True, "campanas": out})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e), "campanas": []})
+
+
+@app.get("/pf-ads-conjuntos")
+def pf_ads_conjuntos():
+    """Conjuntos (adsets) REALES de una campaña, para elegir cuál duplicar / al que sumar ads."""
+    if not _user_actual():
+        return jsonify({"ok": False, "conjuntos": []})
+    cid = (request.args.get("campaign_id") or "").strip()
+    if not cid:
+        return jsonify({"ok": False, "conjuntos": []})
+    try:
+        r = _ads_call("GET", "%s/adsets" % cid,
+                      params={"fields": "name,effective_status", "limit": 60})
+        out = []
+        for s in r.get("data", []):
+            try:
+                n = len(_ads_call("GET", "%s/ads" % s["id"], params={"fields": "id", "limit": 100}).get("data", []))
+            except Exception:
+                n = 0
+            out.append({"id": s["id"], "name": s.get("name", ""),
+                        "activo": s.get("effective_status") == "ACTIVE", "n_ads": n})
+        out.sort(key=lambda x: int(x["id"]) if str(x["id"]).isdigit() else 0, reverse=True)
+        return jsonify({"ok": True, "conjuntos": out})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e), "conjuntos": []})
+
+
+@app.post("/pf-ads-drive-listar")
+def pf_ads_drive_listar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    data = request.get_json(silent=True) or {}
+    if not (data.get("drive") or "").strip():
+        return jsonify({"ok": False, "msg": "pegá el link de Drive"}), 400
+    try:
+        vids = _ads_drive_listar(data["drive"])
+        if not vids:
+            return jsonify({"ok": False, "msg": "no encontré videos (¿compartiste la carpeta con la service account?)"})
+        return jsonify({"ok": True, "videos": vids})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+@app.post("/pf-ads-lanzar")
+def pf_ads_lanzar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    if not _ads_token():
+        return jsonify({"ok": False, "msg": "falta META_TOKEN en el servidor (Render → Environment)"}), 400
+    data = request.get_json(silent=True) or {}
+    if not (data.get("drive") or "").strip():
+        return jsonify({"ok": False, "msg": "pegá el link de Drive con los videos"}), 400
+    import uuid
+    job = uuid.uuid4().hex[:12]
+    _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+    threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
+    return jsonify({"ok": True, "job": job})
+
+
+@app.get("/pf-ads-progreso")
+def pf_ads_progreso():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    st = _ADS_JOBS.get((request.args.get("job") or "").strip())
+    if not st:
+        return jsonify({"ok": False}), 404
+    return jsonify({"ok": True, **{k: st[k] for k in ("done", "total", "msg", "listo", "error", "stats")}})
 
 
 # ---------------- Dashboard ----------------
