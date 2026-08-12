@@ -2002,7 +2002,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-tn-conectar-2opciones"})
+    return jsonify({"ok": True, "v": "2026-08-12-tn-despachos"})
 
 
 @app.get("/pf-diag")
