@@ -2006,7 +2006,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-sku-rotulos"})
+    return jsonify({"ok": True, "v": "2026-08-12-sku-shopify-empaq"})
 
 
 @app.get("/pf-diag")
@@ -3289,35 +3289,93 @@ def _sku_estampar_std(pg, sku):
 
 
 def _sku_unidades_map(email):
-    """{nº pedido → sprays (sin ebook)} de los pedidos pagados recientes de Tiendanube.
-    RÁPIDO: 1-2 llamadas (páginas de 200), sin consultar pedido por pedido."""
-    tk = _tn_tokens().get(email)
-    if not tk or not tk.get("access_token") or not tk.get("store_id"):
-        return {}
-    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    """{nº pedido → sprays (sin ebook)} de los pedidos recientes de las tiendas conectadas
+    (Shopify + Tiendanube). RÁPIDO: 1 lectura por tienda, sin consultar pedido por pedido.
+    Así funciona sea la etiqueta de Shopify (nº 1001…) o de Tiendanube (nº 2xxx)."""
     mapa = {}
-    for page in (1, 2):
+    # --- Tiendanube ---
+    tk = _tn_tokens().get(email)
+    if tk and tk.get("access_token") and tk.get("store_id"):
+        store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+        for page in (1, 2):
+            try:
+                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                    "per_page": 200, "page": page, "sort": "-id",
+                    "payment_status": "paid", "fields": "number,products"}, timeout=30)
+                d = r.json() if r.content else []
+            except Exception:
+                d = []
+            if not isinstance(d, list) or not d:
+                break
+            for o in d:
+                u = 0
+                for p in (o.get("products") or []):
+                    nm = p.get("name")
+                    if isinstance(nm, dict):
+                        nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
+                    if not _sku_es_ebook(nm):
+                        u += int(p.get("quantity") or 0)
+                mapa[str(o.get("number"))] = u
+            if len(d) < 200:
+                break
+    # --- Shopify (nº de pedido 1001…) ---
+    tks = _shop_tokens().get(email)
+    if tks and tks.get("access_token"):
+        hasta = _hoy()
+        desde = (_dt.date.today() - _dt.timedelta(days=60)).isoformat()
         try:
-            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                "per_page": 200, "page": page, "sort": "-id",
-                "payment_status": "paid", "fields": "number,products"}, timeout=30)
-            d = r.json() if r.content else []
+            for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta):
+                num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+                if not num:
+                    continue
+                u = 0
+                for li in (o.get("line_items") or []):
+                    if not _sku_es_ebook(li.get("title") or li.get("name")):
+                        u += int(li.get("quantity") or 0)
+                mapa[num] = u
         except Exception:
-            d = []
-        if not isinstance(d, list) or not d:
-            break
-        for o in d:
-            u = 0
-            for p in (o.get("products") or []):
-                nm = p.get("name")
-                if isinstance(nm, dict):
-                    nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
-                if not _sku_es_ebook(nm):
-                    u += int(p.get("quantity") or 0)
-            mapa[str(o.get("number"))] = u
-        if len(d) < 200:
-            break
+            pass
     return mapa
+
+
+def _sku_hoja_empaquetar(doc, detalle):
+    """Agrega una hoja final A4 'PARA EMPAQUETAR' con la lista de bolsas + totales 60/30ml."""
+    import fitz
+    from collections import Counter
+    paquetes = Counter(d["sku"] for d in detalle if d.get("sku"))
+    total_30 = total_60 = 0
+    for d in detalle:
+        u = d.get("unidades") or 0
+        if u > 0:
+            d60, d30 = _sku_despacho(u)
+            total_60 += d60
+            total_30 += d30
+    if not paquetes:
+        return
+    def palabra(sku):
+        return sku.replace("60ML", "SPRAY 60ML").replace("30ML", "SPRAY 30ML")
+    NEG, BLA = (0, 0, 0), (1, 1, 1)
+    pg = doc.new_page(width=595, height=842)
+    pg.insert_text((50, 92), "PARA EMPAQUETAR", fontname="hebo", fontsize=30, color=NEG)
+    pg.draw_line((50, 112), (545, 112), color=NEG, width=1.2)
+    y = 175
+    for k, v in sorted(paquetes.items(), key=lambda x: (-x[1], x[0])):
+        etq = "%dX %s" % (v, "BOLSA" if v == 1 else "BOLSAS")
+        fs = 21
+        w = fitz.get_text_length(etq, fontname="hebo", fontsize=fs)
+        pg.draw_rect(fitz.Rect(50, y - 17, 50 + w + 12, y + 6), color=None, fill=NEG)
+        pg.insert_text((56, y), etq, fontname="hebo", fontsize=fs, color=BLA)
+        pg.insert_text((50 + w + 24, y), "DE %s" % palabra(k), fontname="hebo", fontsize=fs, color=NEG)
+        y += 54
+        if y > 760:
+            pg = doc.new_page(width=595, height=842); y = 90
+    y += 12
+    pg.draw_line((50, y), (545, y), color=NEG, width=1.2)
+    y += 42
+    if total_60:
+        pg.insert_text((55, y), "TOTAL 60ML:   %d" % total_60, fontname="hebo", fontsize=18, color=NEG)
+        y += 34
+    pg.insert_text((55, y), "TOTAL 30ML:   %d" % total_30, fontname="hebo", fontsize=18, color=NEG)
 
 
 @app.post("/pf-despachos-sku")
@@ -3341,12 +3399,14 @@ def pf_despachos_sku():
         return jsonify({"ok": False, "msg": "no pude abrir el PDF: %s" % e}), 400
     mapa = _sku_unidades_map(email)
     estampadas = 0
+    detalle = []
     for pg in doc:
         texto = pg.get_text()
         nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
         ped = _sku_pedido(texto, nuevo)
         sprays = mapa.get(str(ped), 0) if ped else 0
         sku = _sku_texto(sprays)
+        detalle.append({"pedido": ped or "?", "unidades": sprays, "sku": sku})
         if not sku:
             continue
         if nuevo:
@@ -3356,6 +3416,8 @@ def pf_despachos_sku():
         else:
             _sku_estampar_std(pg, sku)
         estampadas += 1
+    # Hoja final "PARA EMPAQUETAR" (siempre): lista de bolsas + totales 60/30ml.
+    _sku_hoja_empaquetar(doc, detalle)
     import io
     buf = io.BytesIO()
     doc.save(buf, garbage=3, deflate=True)
