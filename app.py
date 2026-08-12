@@ -2006,7 +2006,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-fix-logout2"})
+    return jsonify({"ok": True, "v": "2026-08-12-fix-logout3"})
 
 
 @app.get("/pf-diag")
@@ -3828,7 +3828,8 @@ def home():
         html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
     # Caja de usuario abajo a la izquierda (email + cerrar sesión).
     inicial = (email[0] if email else "?").upper()
-    userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px">'
+    userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
+               'onclick="window.location.assign(\'/logout\');return false;">'
                '<span class="rp-ic" style="background:#137fec;color:#fff;font-weight:700;font-size:14px">'
                + inicial + '</span>'
                '<span class="rp-lbl"><span class="em">' + email + '</span>'
