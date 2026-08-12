@@ -270,6 +270,10 @@ _SOLO_DASH = r"""
    // Meter los pills DENTRO del aside: al pasarles el mouse cuenta como hover de la barra y NO se cierra.
    var _pp=document.querySelectorAll('.rp-pill');
    for(var pi=0;pi<_pp.length;pi++){ if(_pp[pi].parentNode!==aside){ try{ aside.appendChild(_pp[pi]); }catch(e){} } }
+   // El aside crea su propio stacking-context → subo su z-index POR ENCIMA de los overlays de
+   // sección (100000) para que los pills (Integraciones + Cerrar sesión) SIEMPRE sean clickeables,
+   // pero POR DEBAJO de los modales full-screen (100002) que sí deben tapar todo.
+   try{ aside.style.zIndex='100001'; if(getComputedStyle(aside).position==='static') aside.style.position='relative'; }catch(e){}
    // Los pills (Integraciones + cuenta) se abren/cierran A LA PAR de la barra lateral.
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
@@ -2002,7 +2006,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-tn-despachos"})
+    return jsonify({"ok": True, "v": "2026-08-12-fix-logout2"})
 
 
 @app.get("/pf-diag")
