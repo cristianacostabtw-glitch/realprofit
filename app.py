@@ -1744,9 +1744,12 @@ _SOLO_DASH = r"""
    var P=(j&&j.productos)||[]; if(!b)return;
    var add='<div style="text-align:center;margin-top:8px"><a onclick="rpStkAgregar()" style="color:#54a8f0;cursor:pointer;font-weight:700;font-size:13px">+ Agregar producto</a></div>';
    if(!P.length){ b.innerHTML='<div class="card" style="text-align:center;color:#93a3ba">Todav&iacute;a no cargaste productos al stock.</div>'+add; return; }
-   b.innerHTML=P.map(cardHTML).join('')+add;
+   b.innerHTML=P.map(cardHTML).join('')+add; window._STK=P; P.forEach(function(pp){try{rpStkProj(pp.id,30);}catch(e){}});
   }).catch(function(){ if(b)b.innerHTML='<div class="card">No se pudo cargar el stock.</div>'; }); };
  function stat(k,v){return '<div style="background:#0b1320;border:1px solid #1c2739;border-radius:12px;padding:11px 13px"><div style="font-size:9.5px;color:#5c6b82;text-transform:uppercase;letter-spacing:.6px;font-weight:800">'+k+'</div><div style="font-size:15px;font-weight:800;margin-top:5px">'+v+'</div></div>';}
+ function spark(v){ if(!v||!v.length)return ''; var W=560,H=52,n=v.length,gap=6,bw=(W-gap*(n-1))/n; var mx=Math.max.apply(null,v),mn=Math.min.apply(null,v),s=''; for(var i=0;i<n;i++){var fr=(v[i]-mn)/((mx-mn)||1),h=(H-4)*(0.32+0.68*fr),x=i*(bw+gap),y=H-h,last=i===n-1; s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3" fill="'+(last?'#54a8f0':'#2a3c54')+'"/>';} return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:52px;display:block">'+s+'</svg><div style="display:flex;justify-content:space-between;font-size:10px;color:#5c6b82;margin-top:5px"><span>hace 14 d&iacute;as</span><span>hoy</span></div>'; }
+ window.rpStkProj=function(pid,n){ var P=(window._STK||[]).filter(function(x){return x.id===pid;})[0]; if(!P)return; var vender=Math.round((P.rate||0)*n),faltan=Math.max(0,vender-P.stock),el=$('stkproj-'+sid(pid)); if(el)el.innerHTML='En <b style="color:#eafff8">'+n+' d&iacute;as</b> vender&iacute;as <b style="color:#3dd4a0">'+vender.toLocaleString('es-AR')+' '+esc(P.unidad)+'</b> &middot; '+(faltan>0?('te faltan <b style="color:#eafff8">'+faltan.toLocaleString('es-AR')+' '+esc(P.unidad)+'</b> <a onclick="rpStkUsar(\''+pid+'\','+faltan+')" style="color:#54a8f0;cursor:pointer;font-weight:700">pedir eso</a>'):'te alcanza el stock &#10003;'); [15,30,60,90].forEach(function(m){var b=$('stkchip-'+sid(pid)+'-'+m); if(b){b.style.background=(m===n)?'#18314e':'#0b1420'; b.style.color=(m===n)?'#dcebfb':'#93a3ba';}}); };
+ window.rpStkUsar=function(pid,q){ var el=$('stk-ped-'+sid(pid)); if(el){el.value=q; el.scrollIntoView({behavior:'smooth',block:'center'});} };
  function cardHTML(p){
    var rate=p.rate||0, d=rate?Math.round(p.stock/rate):0; var s=salud(rate?d:99);
    var pend=(p.pendientes||[]).map(function(o){return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #1c2739"><div style="flex:1"><b>'+o.qty.toLocaleString('es-AR')+' '+esc(p.unidad)+'</b> <span style="font-size:10px;font-weight:800;color:#f6b93b;background:rgba(246,185,59,.13);padding:3px 8px;border-radius:7px">en proceso</span><div style="color:#5c6b82;font-size:11.5px;margin-top:2px">Pedido '+esc(o.fecha)+'</div></div><button onclick="rpStkDep(\''+o.id+'\')" style="background:#0e2a20;border:1px solid rgba(61,212,160,.3);color:#3dd4a0;padding:9px 13px;font-size:12px;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Poner en dep&oacute;sito</button></div>';}).join('');
@@ -1755,6 +1758,12 @@ _SOLO_DASH = r"""
      '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:14px;flex-wrap:wrap"><div><div style="font-size:40px;font-weight:800;letter-spacing:-1.2px;color:'+s.c+';line-height:1">'+p.stock.toLocaleString('es-AR')+'</div><div style="font-size:13px;color:#93a3ba;margin-top:6px">'+esc(p.unidad)+' en dep&oacute;sito</div></div>'+
        '<div style="text-align:right"><div style="font-size:21px;font-weight:800">'+(rate?('~'+d+' d&iacute;as'):'&mdash;')+'</div><div style="font-size:11.5px;color:#5c6b82;margin-top:2px">vend&eacute;s '+rate+' '+esc(p.unidad)+'/d&iacute;a</div></div></div>'+
      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px">'+stat('&Uacute;lt. 7 d&iacute;as',p.d7+' '+esc(p.unidad))+stat('&Uacute;lt. 14 d&iacute;as',p.d14+' '+esc(p.unidad))+stat('Valor',ars(p.stock*(p.costo||0)))+'</div>'+
+     '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #1c2739">'+
+       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px"><span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#93a3ba">Proyecci&oacute;n de ventas</span><span style="font-size:11.5px;color:#5c6b82">prom '+rate+' '+esc(p.unidad)+'/d&iacute;a</span></div>'+
+       spark(p.ventas14||[])+
+       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px"><span style="font-size:12.5px;color:#93a3ba">Proyectar a</span>'+[15,30,60,90].map(function(nn){return '<button onclick="rpStkProj(\''+p.id+'\','+nn+')" id="stkchip-'+sid(p.id)+'-'+nn+'" style="border:1px solid #26344a;background:#0b1420;color:#93a3ba;font-family:inherit;font-weight:700;font-size:12.5px;padding:7px 13px;border-radius:9px;cursor:pointer">'+nn+'</button>';}).join('')+'<span style="font-size:12.5px;color:#93a3ba">d&iacute;as</span></div>'+
+       '<div id="stkproj-'+sid(p.id)+'" style="margin-top:12px;background:rgba(55,201,141,.06);border:1px solid rgba(55,201,141,.2);border-radius:11px;padding:12px 15px;font-size:13px;color:#c4f3e0"></div>'+
+     '</div>'+
      '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:150px"><div style="font-size:11.5px;color:#93a3ba;margin-bottom:7px">Pedir stock ('+esc(p.unidad)+')</div><input id="stk-ped-'+sid(p.id)+'" type="number" placeholder="0" style="width:100%;background:#0b1320;border:1px solid #26344a;color:#eef3f9;border-radius:10px;padding:11px 13px;font-size:16px;font-weight:800;font-family:inherit;outline:none;box-sizing:border-box"></div>'+
        '<button onclick="rpStkPedir(\''+p.id+'\')" style="background:linear-gradient(135deg,#2b8ef0,#1668cc);border:none;color:#fff;padding:12px 20px;border-radius:11px;font-weight:800;cursor:pointer;font-family:inherit">Pedir</button></div>'+
      (pend?('<div style="margin-top:8px">'+pend+'</div>'):'')+
@@ -2571,7 +2580,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock2"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock3"})
 
 
 @app.get("/pf-diag")
