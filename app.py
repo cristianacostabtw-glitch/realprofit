@@ -1882,7 +1882,9 @@ _SOLO_DASH = r"""
 </div>
 <style>
 @media(max-width:820px){
- #rp-stock-ov,#rp-ads-ov,#rp-prod-ov,#rp-comis-ov,#rp-integ-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov{left:0 !important}
+ #rp-stock-ov,#rp-ads-ov,#rp-prod-ov,#rp-comis-ov,#rp-integ-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov,#rpf-lock{left:0 !important}
+ #rpf-lock{padding:18px !important}
+ #rpf-lock p{max-width:100% !important}
  #rp-moblau{display:flex !important}
 }
 #rp-moblau{display:none;position:fixed;right:15px;bottom:80px;z-index:100055;width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#2b8ef0,#1668cc);box-shadow:0 12px 26px -8px rgba(43,142,240,.75);align-items:center;justify-content:center;cursor:pointer;border:none}
@@ -2741,7 +2743,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock11-mobresp"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock12-lockfix"})
 
 
 @app.get("/pf-diag")
