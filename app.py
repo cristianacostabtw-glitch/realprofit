@@ -988,6 +988,7 @@ _SOLO_DASH = r"""
    var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
    else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if((p.key==='shopify'&&window._rpTn)||(p.key==='tn'&&window._rpShop)){ var otra=(p.key==='shopify')?'Tiendanube':'Shopify'; right='<span style="display:inline-flex;align-items:center;gap:7px;background:#1c150c;border:1px solid #3d2e14;color:#e0a83b;border-radius:20px;padding:7px 13px;font-size:12px;font-weight:600">&#128274; Ya conectaste '+otra+'</span>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
@@ -1710,6 +1711,44 @@ _SOLO_DASH = r"""
     for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
       if(t==='Todas'||t==='Shopify'||t==='MercadoLibre'){ _factEl=null; [120,400,800,1400,2200].forEach(function(ms){ setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, ms); }); break; }
       el=el.parentElement; } }, true);
+})();
+</script>
+
+<script>
+/* RealProfit — ÍCONO + TEXTO de tienda del dashboard reflejan lo realmente conectado.
+   MÉTODO: SOLO CSS (content:url / font-size:0 + ::after / display:none). NO se muta el DOM de React →
+   (1) el chip de canal sigue 100% clickeable (no le tocamos el botón ni su texto), y
+   (2) ícono/texto NO vuelven a Shopify en cada re-render (CSS pisa el pixel, React no lo revierte).
+   Shopify -> icono+texto Shopify · Tiendanube -> icono+texto Tiendanube · sin tienda -> "Sin tienda".
+   Además se ocultan las notificaciones de venta (#mfy_toasts) — RealProfit se actualiza solo, sin avisos. */
+(function(){
+  var SIG='LjYyIDQuMzR6IiBmaWxsPSIjZmZmIi8+PC9zdmc+';   // trozo del base64 del icono Shopify (los 16 usos)
+  var TN_SVG='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#2d6cdf"><path d="M6.5 20q-2.28 0-3.89-1.57Q1 16.85 1 14.58q0-1.95 1.17-3.48Q3.35 9.57 5.25 9.15q.63-2.3 2.5-3.72Q9.63 4 12 4q2.93 0 4.96 2.04Q19 8.07 19 11q1.73.2 2.86 1.5Q23 13.78 23 15.5q0 1.87-1.31 3.19Q20.37 20 18.5 20z"/></svg>';
+  var TN_URI='data:image/svg+xml;base64,'+btoa(TN_SVG);
+  var stEl=document.getElementById('rp-tienda-css'); if(!stEl){ stEl=document.createElement('style'); stEl.id='rp-tienda-css'; (document.head||document.documentElement).appendChild(stEl); }
+  function paint(){
+    var sel='img[src*="'+SIG+'"]';                       // los 16 <img> del icono Shopify
+    var chip='button:has(> img[src*="'+SIG+'"])';        // el chip de canal (único botón con el icono como hijo directo)
+    var noNotif='#mfy_toasts{display:none!important}';   // sin notificaciones de venta arriba a la derecha
+    if(window._rpShop===true){ stEl.textContent=noNotif; return; }   // Shopify: icono + texto originales
+    if(window._rpTn===true){                                          // Tiendanube: ícono Y texto por CSS (no se toca React)
+      stEl.textContent=noNotif
+        +sel+'{content:url("'+TN_URI+'")!important}'
+        +chip+'{font-size:0!important}'                               // oculta el texto "Shopify" del chip
+        +chip+'::after{content:"Tiendanube"!important;font-size:12px!important}'; return; }
+    if(window._rpShop===false && window._rpTn===false){               // sin tienda: icono oculto + "Sin tienda"
+      stEl.textContent=noNotif
+        +sel+'{display:none!important}'
+        +chip+'{font-size:0!important}'
+        +chip+'::after{content:"Sin tienda"!important;font-size:12px!important}'; return; }
+    stEl.textContent=noNotif;   // unknown (aún no resolvió estado): al menos sacar las notificaciones
+  }
+  function estado(k,url){ return fetch(url).then(function(r){return r.json();}).then(function(j){ window[k]=!!(j&&j.conectado); }).catch(function(){}); }
+  var ps=[];
+  if(window._rpShop===undefined) ps.push(estado('_rpShop','/shopify/estado'));
+  if(window._rpTn===undefined) ps.push(estado('_rpTn','/tiendanube/estado'));
+  Promise.all(ps).then(paint);
+  paint();   // por si los estados ya venían seteados
 })();
 </script>
 
@@ -2740,10 +2779,81 @@ def pf_stock_depositar():
     return jsonify({"ok": True})
 
 
+@app.get("/pf-mp-efectivo")
+def pf_mp_efectivo():
+    """Ventas en EFECTIVO (Rapipago/PagoFacil = payment_type 'ticket') del MercadoPago
+    conectado del usuario logueado (ej. NoxaLab). Se abre en el navegador logueado."""
+    email = _user_actual()
+    if not email:
+        return "No hay sesion. Entra a RealProfit primero (logueate) y volve a abrir este link.", 401
+    tk = _mp_tokens().get(email)
+    token = tk.get("access_token") if tk else None
+    if not token:
+        return "No tenes MercadoPago conectado en RealProfit (Integraciones -> MercadoPago).", 400
+    begin = (_dt.datetime.utcnow() - _dt.timedelta(days=150)).date().isoformat() + "T00:00:00.000-03:00"
+    end = _dt.datetime.utcnow().date().isoformat() + "T23:59:59.999-03:00"
+    efectivo = []; ultimos = []; offset = 0
+    try:
+        while offset < 500:
+            r = requests.get("https://api.mercadopago.com/v1/payments/search",
+                             headers={"Authorization": "Bearer " + token},
+                             params={"sort": "date_created", "criteria": "desc",
+                                     "range": "date_created", "begin_date": begin, "end_date": end,
+                                     "offset": offset, "limit": 50}, timeout=30)
+            if r.status_code >= 400:
+                if offset == 0:
+                    return "MercadoPago rechazo la consulta (%d). Reconecta MP en RealProfit." % r.status_code, 502
+                break
+            res = r.json().get("results") or []
+            if not res:
+                break
+            for pp in res:
+                if len(ultimos) < 8:
+                    ultimos.append(pp)
+                if (pp.get("payment_type_id") or "") == "ticket":
+                    efectivo.append(pp)
+            if len(res) < 50:
+                break
+            offset += 50
+    except Exception as e:
+        return "Error consultando MP: %s" % e, 500
+
+    def fmt(pp):
+        pa = pp.get("payer") or {}; idf = pa.get("identification") or {}; ph = pa.get("phone") or {}
+        nom = (str(pa.get("first_name") or "") + " " + str(pa.get("last_name") or "")).strip()
+        tel = (str(ph.get("area_code") or "") + str(ph.get("number") or "")).strip()
+        dni = (str(idf.get("type") or "") + " " + str(idf.get("number") or "")).strip()
+        return ("<tr><td>%s</td><td style='text-align:right'>$%s</td><td>%s</td><td>%s</td><td>%s</td>"
+                "<td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>") % (
+            (pp.get("date_approved") or pp.get("date_created") or "")[:19],
+            "{:,.0f}".format(float(pp.get("transaction_amount") or 0)).replace(",", "."),
+            pp.get("status") or "", nom or "-", pa.get("email") or "-", dni or "-", tel or "-",
+            pp.get("payment_method_id") or "", pp.get("external_reference") or "-", pp.get("id"))
+
+    cab = ("<tr><th>Fecha</th><th>Monto</th><th>Estado</th><th>Nombre</th><th>Email</th>"
+           "<th>DNI</th><th>Tel</th><th>Metodo</th><th>Ref pedido</th><th>MP id</th></tr>")
+    if efectivo:
+        cuerpo = "<h2>Ventas en EFECTIVO (Rapipago/PagoFacil) &mdash; %d</h2><table>%s%s</table>" % (
+            len(efectivo), cab, "".join(fmt(x) for x in efectivo[:30]))
+    else:
+        cuerpo = ("<h2>No hay ventas en efectivo (ticket) en los ultimos 150 dias.</h2>"
+                  "<p style='color:#93a3ba'>Te muestro los ultimos 8 pagos por si el metodo es otro:</p>"
+                  "<table>%s%s</table>" % (cab, "".join(fmt(x) for x in ultimos)))
+    html = ("<!doctype html><html><head><meta charset=utf-8><title>Ventas efectivo</title>"
+            "<style>body{background:#0a0f18;color:#eef3f9;font-family:system-ui,-apple-system;padding:22px}"
+            "h1{font-size:19px;margin:0 0 4px}h2{font-size:15px;color:#eef3f9;margin:18px 0 10px}"
+            "table{border-collapse:collapse;width:100%;font-size:12.5px;overflow-x:auto;display:block}"
+            "th,td{border:1px solid #1c2739;padding:8px 10px;text-align:left;white-space:nowrap}"
+            "th{color:#93a3ba;text-transform:uppercase;font-size:10px;letter-spacing:.4px}"
+            "td{font-variant-numeric:tabular-nums}</style></head><body>"
+            "<h1>MercadoPago &mdash; %s</h1>%s</body></html>") % (email, cuerpo)
+    return html
+
+
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock12-lockfix"})
+    return jsonify({"ok": True, "v": "2026-08-13-tienda16-txt-noNotif"})
 
 
 @app.get("/pf-diag")
