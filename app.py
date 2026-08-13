@@ -5693,10 +5693,6 @@ def pf_marketing():
     return jsonify({"ok": True, "mk": {}})
 
 
-@app.get("/pf-stock")
-def pf_stock():
-    return jsonify({"ok": True, "st": []})
-
 
 @app.get("/pf-despachos")
 def pf_despachos():
