@@ -284,7 +284,7 @@ _SOLO_DASH = r"""
     if(an0){ var cst=an0.cloneNode(true); cst.id='rp-stock-nav'; cst.style.display='';
      var ast=cst.querySelector('a'); if(ast){ ast.setAttribute('href','#'); ast.removeAttribute('aria-current'); ast.classList.remove('bg-white/[0.08]'); ast.classList.remove('text-primary');
       var nast=ast.cloneNode(true); ast.parentNode.replaceChild(nast,ast); nast.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpStock(true); }); ast=nast; }
-     var icst=cst.querySelector('.material-symbols-outlined'); if(icst) icst.textContent='inventory_2';
+     var icst=cst.querySelector('.material-symbols-outlined'); if(icst) icst.textContent='warehouse';
      var spst=cst.querySelectorAll('span'); for(var sx=0;sx<spst.length;sx++){ var s9=spst[sx]; if(!s9.classList.contains('material-symbols-outlined') && s9.children.length===0 && (s9.textContent||'').trim()){ s9.textContent='Stock'; } }
      an0.parentNode.insertBefore(cst, an0.nextSibling);
     }
@@ -1726,7 +1726,7 @@ _SOLO_DASH = r"""
 #rp-stock-ov .hero::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--hc,#3dd4a0)}
 </style>
 <div class="sw">
- <div class="hd"><span class="ic"><span class="material-symbols-outlined">inventory_2</span></span><div><h1>Stock</h1><div class="lead">Con cada venta pagada baja el stock; si hay devoluci&oacute;n o cancelaci&oacute;n, vuelve. Nombre/SKU/unidad salen de Productos.</div></div></div>
+ <div class="hd"><span class="ic"><span class="material-symbols-outlined">warehouse</span></span><div><h1>Stock</h1><div class="lead">Con cada venta pagada baja el stock; si hay devoluci&oacute;n o cancelaci&oacute;n, vuelve. Nombre/SKU/unidad salen de Productos.</div></div></div>
  <div id="rp-stock-body">Cargando&hellip;</div>
 </div>
 <script>
@@ -2492,6 +2492,20 @@ def pf_stock_catalogo():
     for p in _tn_productos(email):
         cat.append({"id": p["id"], "nombre": p["nombre"], "sku": p.get("sku_base", ""),
                     "costo": p.get("costo", 0)})
+    tk = _shop_tokens().get(email)
+    if tk and tk.get("access_token") and tk.get("shop"):
+        costos = (_costos().get(email) or {})
+        try:
+            r = requests.get("https://%s/admin/api/2026-07/products.json" % tk["shop"],
+                             headers={"X-Shopify-Access-Token": tk["access_token"]},
+                             params={"limit": 250, "fields": "id,title,variants"}, timeout=30)
+            for pr in (r.json().get("products", []) if r.status_code == 200 else []):
+                v = (pr.get("variants") or [{}])[0]
+                pid = str(pr.get("id"))
+                cat.append({"id": pid, "nombre": pr.get("title") or "",
+                            "sku": v.get("sku") or "", "costo": costos.get(pid) or 0})
+        except Exception:
+            pass
     return jsonify({"ok": True, "productos": cat})
 
 
@@ -2557,7 +2571,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock2"})
 
 
 @app.get("/pf-diag")
