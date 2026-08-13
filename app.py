@@ -1766,9 +1766,11 @@ _SOLO_DASH = r"""
      '</div>'+
      '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:150px"><div style="font-size:11.5px;color:#93a3ba;margin-bottom:7px">Pedir stock ('+esc(p.unidad)+')</div><input id="stk-ped-'+sid(p.id)+'" type="number" placeholder="0" style="width:100%;background:#0b1320;border:1px solid #26344a;color:#eef3f9;border-radius:10px;padding:11px 13px;font-size:16px;font-weight:800;font-family:inherit;outline:none;box-sizing:border-box"></div>'+
        '<button onclick="rpStkPedir(\''+p.id+'\')" style="background:linear-gradient(135deg,#2b8ef0,#1668cc);border:none;color:#fff;padding:12px 20px;border-radius:11px;font-weight:800;cursor:pointer;font-family:inherit">Pedir</button></div>'+
+     '<div style="margin-top:11px"><a onclick="rpStkAjustar(\''+p.id+'\','+p.stock+')" style="color:#93a3ba;cursor:pointer;font-size:11.5px">&#9998; Corregir stock (si te confundiste o hubo rotura/ajuste)</a></div>'+
      (pend?('<div style="margin-top:8px">'+pend+'</div>'):'')+
    '</div>';
  }
+ window.rpStkAjustar=function(pid,actual){ var v=prompt('Stock REAL que ten\u00e9s ahora en dep\u00f3sito (corrige si te confundiste):', actual); if(v===null)return; var n=Math.max(0,Math.round(+v||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
  window.rpStkPedir=function(pid){ var el=$('stk-ped-'+sid(pid)); var q=Math.max(0,Math.round(+(el&&el.value)||0)); if(q<=0)return;
    fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
  window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
@@ -2580,7 +2582,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock3"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock4"})
 
 
 @app.get("/pf-diag")
