@@ -1887,6 +1887,21 @@ _SOLO_DASH = r"""
 }
 #rp-moblau{display:none;position:fixed;right:15px;bottom:80px;z-index:100055;width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#2b8ef0,#1668cc);box-shadow:0 12px 26px -8px rgba(43,142,240,.75);align-items:center;justify-content:center;cursor:pointer;border:none}
 #rp-moblau .material-symbols-outlined{color:#fff;font-size:27px}
+/* En celu: que las secciones no queden zoomeadas -> apilar grillas anchas y achicar padding */
+@media(max-width:760px){
+ #rp-stock-ov .wrap{padding:20px 14px 70px}
+ #rp-prod-ov [class*="aw"],#rp-comis-ov [class*="aw"],#rp-desp-ov [class*="aw"],#rp-fact-ov [class*="aw"],#rp-mov-ov [class*="aw"],#rp-ads-ov [class*="aw"],#rp-integ-ov [class*="aw"]{padding-left:14px !important;padding-right:14px !important}
+ [id$="-ov"] [style*="repeat(4"]{grid-template-columns:repeat(2,1fr) !important}
+ [id$="-ov"] [style*="repeat(3"]{grid-template-columns:1fr !important}
+ [id$="-ov"] [style*="minmax(2"]{grid-template-columns:1fr !important}
+ [id$="-ov"] [style*="minmax(3"]{grid-template-columns:1fr !important}
+ [id$="-ov"] table{font-size:12px !important}
+ [id$="-ov"] .row,[id$="-ov"] [style*="display:flex;gap"]{flex-wrap:wrap}
+}
+@media(max-width:480px){
+ [id$="-ov"] [style*="repeat(2"]{grid-template-columns:1fr !important}
+ [id$="-ov"] [style*="repeat(4"]{grid-template-columns:1fr !important}
+}
 #rp-mobsheet{display:none;position:fixed;inset:0;z-index:100065;background:rgba(4,8,14,.6);align-items:flex-end;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
 #rp-mobsheet.on{display:flex}
 #rp-mobsheet .sh{width:100%;background:#0e1521;border-top-left-radius:22px;border-top-right-radius:22px;padding:12px 12px 30px;border-top:1px solid #1e2b3d;max-height:82vh;overflow:auto}
@@ -2726,7 +2741,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock10-mobfix"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock11-mobresp"})
 
 
 @app.get("/pf-diag")
