@@ -1880,6 +1880,40 @@ _SOLO_DASH = r"""
 })();
 </script>
 </div>
+<style>
+@media(max-width:820px){
+ #rp-stock-ov,#rp-ads-ov,#rp-prod-ov,#rp-comis-ov,#rp-integ-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov{left:0 !important}
+ #rp-moblau{display:flex !important}
+}
+#rp-moblau{display:none;position:fixed;right:15px;bottom:80px;z-index:100055;width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,#2b8ef0,#1668cc);box-shadow:0 12px 26px -8px rgba(43,142,240,.75);align-items:center;justify-content:center;cursor:pointer;border:none}
+#rp-moblau .material-symbols-outlined{color:#fff;font-size:27px}
+#rp-mobsheet{display:none;position:fixed;inset:0;z-index:100065;background:rgba(4,8,14,.6);align-items:flex-end;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+#rp-mobsheet.on{display:flex}
+#rp-mobsheet .sh{width:100%;background:#0e1521;border-top-left-radius:22px;border-top-right-radius:22px;padding:12px 12px 30px;border-top:1px solid #1e2b3d;max-height:82vh;overflow:auto}
+#rp-mobsheet .gr{width:40px;height:4px;border-radius:3px;background:#2b3a52;margin:3px auto 10px}
+#rp-mobsheet .ti{font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#5b6678;padding:6px 12px 8px}
+#rp-mobsheet .mi{display:flex;align-items:center;gap:14px;padding:14px 12px;border-radius:12px;color:#e8edf4;font-size:15.5px;font-weight:600;cursor:pointer}
+#rp-mobsheet .mi:active{background:#16273e}
+#rp-mobsheet .mi .material-symbols-outlined{color:#54a8f0;font-size:23px}
+</style>
+<button id="rp-moblau" onclick="document.getElementById('rp-mobsheet').classList.add('on')"><span class="material-symbols-outlined">grid_view</span></button>
+<div id="rp-mobsheet" onclick="if(event.target===this)this.classList.remove('on')">
+ <div class="sh"><div class="gr"></div>
+  <div class="ti">Ir a una secci&oacute;n</div>
+  <div class="mi" onclick="rpMobClose()"><span class="material-symbols-outlined">home</span>Inicio (Dashboard)</div>
+  <div class="mi" onclick="rpMob('rpStock')"><span class="material-symbols-outlined">warehouse</span>Stock</div>
+  <div class="mi" onclick="rpMob('rpMov')"><span class="material-symbols-outlined">swap_vert</span>Movimientos</div>
+  <div class="mi" onclick="rpMob('rpFact')"><span class="material-symbols-outlined">receipt_long</span>Facturaci&oacute;n</div>
+  <div class="mi" onclick="rpMob('rpDesp')"><span class="material-symbols-outlined">local_shipping</span>Despachos</div>
+  <div class="mi" onclick="rpMob('rpProd')"><span class="material-symbols-outlined">inventory_2</span>Productos</div>
+  <div class="mi" onclick="rpMob('rpComis')"><span class="material-symbols-outlined">percent</span>Comisiones</div>
+  <div class="mi" onclick="rpMob('rpAds')"><span class="material-symbols-outlined">rocket_launch</span>Subir ADS</div>
+ </div>
+</div>
+<script>
+ window.rpMob=function(name){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); try{ if(typeof window[name]==='function') window[name](true); }catch(e){} };
+ window.rpMobClose=function(){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); ['rpProd','rpComis','rpInteg','rpDesp','rpFact','rpMov','rpAds','rpStock'].forEach(function(n){ try{ if(typeof window[n]==='function') window[n](false); }catch(e){} }); };
+</script>
 <div id="rp-ads-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#e8edf4">
 <style>
  #rp-ads-ov .aw{max-width:1180px;margin:0 auto;padding:26px 30px 70px}
@@ -2677,7 +2711,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock7"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock8-mobile"})
 
 
 @app.get("/pf-diag")
