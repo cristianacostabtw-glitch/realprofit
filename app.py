@@ -210,7 +210,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -278,9 +278,20 @@ _SOLO_DASH = r"""
      mn0.parentNode.insertBefore(cad, mn0.nextSibling);
     }
    }
+   // Agregar "Stock" en la barra (debajo de Subir ADS).
+   if(!nav.querySelector('#rp-stock-nav')){
+    var an0=nav.querySelector('#rp-ads-nav')||nav.querySelector('#rp-mov-nav')||nav.querySelector('#rp-fact-nav');
+    if(an0){ var cst=an0.cloneNode(true); cst.id='rp-stock-nav'; cst.style.display='';
+     var ast=cst.querySelector('a'); if(ast){ ast.setAttribute('href','#'); ast.removeAttribute('aria-current'); ast.classList.remove('bg-white/[0.08]'); ast.classList.remove('text-primary');
+      var nast=ast.cloneNode(true); ast.parentNode.replaceChild(nast,ast); nast.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpStock(true); }); ast=nast; }
+     var icst=cst.querySelector('.material-symbols-outlined'); if(icst) icst.textContent='inventory_2';
+     var spst=cst.querySelectorAll('span'); for(var sx=0;sx<spst.length;sx++){ var s9=spst[sx]; if(!s9.classList.contains('material-symbols-outlined') && s9.children.length===0 && (s9.textContent||'').trim()){ s9.textContent='Stock'; } }
+     an0.parentNode.insertBefore(cst, an0.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpAds(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpAds(false);}catch(e){} try{window.rpStock(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -297,7 +308,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var ov8=document.getElementById('rp-stock-ov'); if(ov8) ov8.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -870,7 +881,7 @@ _SOLO_DASH = r"""
   window.rpMovF=function(f){ filtro=f; var ps=document.querySelectorAll('#mv-pills .mpill'); for(var i=0;i<ps.length;i++){ ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f); } rpMovRender(); };
   function filtered(){ return MOV.filter(function(m){ if(filtro==='todos')return true; if(filtro==='afuera')return esAfuera(m); if(filtro==='ingreso')return esIn(m); if(filtro==='egreso')return esEg(m); return true; }); }
   window.rpMov=function(open){ var o=$('rp-mov-ov'); if(!o)return;
-    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-ads-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
+    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
       var _lk=$('rpf-lock'); if(_lk)_lk.style.display='none';
       try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=$('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
       _rpNavActive('rp-mov-nav');
@@ -1091,21 +1102,21 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  window._rpNavActive=function(id){ try{
-   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-ads-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
+   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-ads-nav','rp-stock-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]', !id); da.classList.toggle('text-primary', !id); }
  }catch(e){} }
  function rpProdSetActive(on){ _rpNavActive(on?'rp-prod-nav':null); }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
  function rpComisSetActive(on){ _rpNavActive(on?'rp-comis-nav':null); }
  function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
    var ti=g('rp-c-tienda'), iva=g('rp-c-iva'), iibb=g('rp-c-iibb'), t;
    if(window._rpMpReal!=null){ t=window._rpMpReal + ti + iibb; }
    else { t=(g('rp-c-mp')+g('rp-c-cuotas'))*(1+iva/100) + ti + iibb; }
    var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
- window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+ window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
 
  // ===================== DESPACHOS =====================
  var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false;
@@ -1116,8 +1127,8 @@ _SOLO_DASH = r"""
  function _dColor(nm){ var s=0; for(var i=0;i<(nm||'').length;i++) s+=nm.charCodeAt(i); return _DCOL[s%_DCOL.length]; }
  function _dStat(msg,color){ var s=document.getElementById('rp-d-status'); if(s){ s.textContent=msg||''; s.style.color=color||'#34d399'; } }
  window.rpDesp=function(open){ var o=document.getElementById('rp-desp-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
-     var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none';
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none';
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-desp-nav');
    } else { _rpNavActive(null); }
@@ -1256,7 +1267,7 @@ _SOLO_DASH = r"""
  function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
  function _fEmit(){ var v=(document.getElementById('rpf-emit')||{}).value||''; if(!v)return ''; var p=v.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
  window.rpFact=function(open){ var o=document.getElementById('rp-fact-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-fact-nav');
    } else { _rpNavActive(null); }
@@ -1702,6 +1713,67 @@ _SOLO_DASH = r"""
 })();
 </script>
 
+<div id="rp-stock-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#eef3f9">
+<style>
+#rp-stock-ov .sw{max-width:820px;margin:0 auto;padding:28px 30px 70px}
+#rp-stock-ov .hd{display:flex;align-items:center;gap:13px;margin-bottom:20px}
+#rp-stock-ov .hd .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(150deg,#16324f,#122539);border:1px solid #23415f}
+#rp-stock-ov .hd .ic .material-symbols-outlined{color:#54a8f0;font-size:21px}
+#rp-stock-ov h1{margin:0;font-size:24px;font-weight:800;color:#f4f7fb;letter-spacing:-.5px}
+#rp-stock-ov .lead{margin:4px 0 0;color:#93a3ba;font-size:13px}
+#rp-stock-ov .card{background:linear-gradient(180deg,#0f1723,#0b111c);border:1px solid #1c2739;border-radius:16px;padding:18px 20px;margin-bottom:14px}
+#rp-stock-ov .hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 22px;margin-bottom:16px;border:1px solid #1c2739;background:linear-gradient(168deg,var(--htint,rgba(61,212,160,.05)),#0b111c 62%)}
+#rp-stock-ov .hero::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--hc,#3dd4a0)}
+</style>
+<div class="sw">
+ <div class="hd"><span class="ic"><span class="material-symbols-outlined">inventory_2</span></span><div><h1>Stock</h1><div class="lead">Con cada venta pagada baja el stock; si hay devoluci&oacute;n o cancelaci&oacute;n, vuelve. Nombre/SKU/unidad salen de Productos.</div></div></div>
+ <div id="rp-stock-body">Cargando&hellip;</div>
+</div>
+<script>
+(function(){
+ function $(id){return document.getElementById(id);}
+ function ars(n){return '$'+Math.round(n).toLocaleString('es-AR');}
+ function esc(t){return (t||'').replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
+ function sid(pid){return (pid||'').replace(/[^a-z0-9]/gi,'');}
+ function salud(d){ if(d>=10)return {c:'#3dd4a0',lb:'Saludable'}; if(d>=5)return {c:'#f6b93b',lb:'Reponer pronto'}; return {c:'#fb6f88',lb:'Cr&iacute;tico'}; }
+ window.rpStock=function(open){ var o=$('rp-stock-ov'); if(!o)return;
+  if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){var x=$(id);if(x)x.style.display='none';}); var lk=$('rpf-lock'); if(lk)lk.style.display='none'; }
+  o.style.display=open?'block':'none'; try{window._rpNavActive(open?'rp-stock-nav':null);}catch(e){} if(open) rpStkLoad(); };
+ window.rpStkLoad=function(){ var b=$('rp-stock-body'); if(b)b.innerHTML='Cargando&hellip;';
+  fetch('/pf-stock').then(function(r){return r.json();}).then(function(j){
+   var P=(j&&j.productos)||[]; if(!b)return;
+   var add='<div style="text-align:center;margin-top:8px"><a onclick="rpStkAgregar()" style="color:#54a8f0;cursor:pointer;font-weight:700;font-size:13px">+ Agregar producto</a></div>';
+   if(!P.length){ b.innerHTML='<div class="card" style="text-align:center;color:#93a3ba">Todav&iacute;a no cargaste productos al stock.</div>'+add; return; }
+   b.innerHTML=P.map(cardHTML).join('')+add;
+  }).catch(function(){ if(b)b.innerHTML='<div class="card">No se pudo cargar el stock.</div>'; }); };
+ function stat(k,v){return '<div style="background:#0b1320;border:1px solid #1c2739;border-radius:12px;padding:11px 13px"><div style="font-size:9.5px;color:#5c6b82;text-transform:uppercase;letter-spacing:.6px;font-weight:800">'+k+'</div><div style="font-size:15px;font-weight:800;margin-top:5px">'+v+'</div></div>';}
+ function cardHTML(p){
+   var rate=p.rate||0, d=rate?Math.round(p.stock/rate):0; var s=salud(rate?d:99);
+   var pend=(p.pendientes||[]).map(function(o){return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #1c2739"><div style="flex:1"><b>'+o.qty.toLocaleString('es-AR')+' '+esc(p.unidad)+'</b> <span style="font-size:10px;font-weight:800;color:#f6b93b;background:rgba(246,185,59,.13);padding:3px 8px;border-radius:7px">en proceso</span><div style="color:#5c6b82;font-size:11.5px;margin-top:2px">Pedido '+esc(o.fecha)+'</div></div><button onclick="rpStkDep(\''+o.id+'\')" style="background:#0e2a20;border:1px solid rgba(61,212,160,.3);color:#3dd4a0;padding:9px 13px;font-size:12px;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Poner en dep&oacute;sito</button></div>';}).join('');
+   return '<div class="hero" style="--hc:'+s.c+';--htint:'+s.c+'0f">'+
+     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:15px">'+esc(p.nombre)+'</b>'+(p.sku?'<span style="font-size:10.5px;color:#93a3ba;background:#0b1521;border:1px solid #1c2739;border-radius:6px;padding:3px 7px">'+esc(p.sku)+'</span>':'')+'<span style="margin-left:auto;font-size:11.5px;font-weight:800;color:'+s.c+';background:'+s.c+'22;padding:6px 12px;border-radius:8px">'+s.lb+'</span></div>'+
+     '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:14px;flex-wrap:wrap"><div><div style="font-size:40px;font-weight:800;letter-spacing:-1.2px;color:'+s.c+';line-height:1">'+p.stock.toLocaleString('es-AR')+'</div><div style="font-size:13px;color:#93a3ba;margin-top:6px">'+esc(p.unidad)+' en dep&oacute;sito</div></div>'+
+       '<div style="text-align:right"><div style="font-size:21px;font-weight:800">'+(rate?('~'+d+' d&iacute;as'):'&mdash;')+'</div><div style="font-size:11.5px;color:#5c6b82;margin-top:2px">vend&eacute;s '+rate+' '+esc(p.unidad)+'/d&iacute;a</div></div></div>'+
+     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px">'+stat('&Uacute;lt. 7 d&iacute;as',p.d7+' '+esc(p.unidad))+stat('&Uacute;lt. 14 d&iacute;as',p.d14+' '+esc(p.unidad))+stat('Valor',ars(p.stock*(p.costo||0)))+'</div>'+
+     '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:150px"><div style="font-size:11.5px;color:#93a3ba;margin-bottom:7px">Pedir stock ('+esc(p.unidad)+')</div><input id="stk-ped-'+sid(p.id)+'" type="number" placeholder="0" style="width:100%;background:#0b1320;border:1px solid #26344a;color:#eef3f9;border-radius:10px;padding:11px 13px;font-size:16px;font-weight:800;font-family:inherit;outline:none;box-sizing:border-box"></div>'+
+       '<button onclick="rpStkPedir(\''+p.id+'\')" style="background:linear-gradient(135deg,#2b8ef0,#1668cc);border:none;color:#fff;padding:12px 20px;border-radius:11px;font-weight:800;cursor:pointer;font-family:inherit">Pedir</button></div>'+
+     (pend?('<div style="margin-top:8px">'+pend+'</div>'):'')+
+   '</div>';
+ }
+ window.rpStkPedir=function(pid){ var el=$('stk-ped-'+sid(pid)); var q=Math.max(0,Math.round(+(el&&el.value)||0)); if(q<=0)return;
+   fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
+ window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
+ window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){
+   var cat=(j&&j.productos)||[]; if(!cat.length){ alert('Conect&aacute; tu tienda para traer los productos.'); return; }
+   var nombre=prompt('Producto (peg&aacute; parte del nombre):'); if(!nombre)return;
+   var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0]; if(!m){ alert('No encontr&eacute; ese producto.'); return; }
+   var unidad=prompt('Unidad (potes / sprays / u):','u')||'u';
+   var stock=parseInt(prompt('Stock actual que ten&eacute;s hoy en dep&oacute;sito:','0')||'0',10)||0;
+   fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:m.id,nombre:m.nombre,sku:m.sku,unidad:unidad,stock:stock,costo:m.costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); });
+ }); };
+})();
+</script>
+</div>
 <div id="rp-ads-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#e8edf4">
 <style>
  #rp-ads-ov .aw{max-width:1180px;margin:0 auto;padding:26px 30px 70px}
@@ -2252,10 +2324,240 @@ def _shop_img(shop, token, product_id):
     return url
 
 
+# ==================== STOCK (inventario) ====================
+STOCK_FILE = DATA_DIR / "stock.json"           # {email: {pid: {nombre,unidad,stock,costo,sku}}}
+STOCK_LEDGER = DATA_DIR / "stock_ledger.json"  # {email: {order_key: {delta:{pid:qty}, estado}}}
+STOCK_PEDIDOS = DATA_DIR / "stock_pedidos.json"  # {email: [{id,pid,qty,fecha,estado}]}
+
+
+def _stk_read(path, default):
+    try:
+        return _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def _stk_write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(_json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _stock_orders(email, dias=90):
+    """Pedidos recientes (TN + Shopify) -> [{key, pid_qty, estado, fecha}].
+    estado: paid | pending | refunded | cancelled."""
+    desde = (_dt.datetime.utcnow() - _dt.timedelta(days=dias)).date().isoformat()
+    out = []
+    tk = _tn_tokens().get(email)
+    if tk and tk.get("access_token") and tk.get("store_id"):
+        store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+        page = 1
+        while page <= 14:
+            try:
+                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr,
+                                 params={"per_page": 50, "page": page,
+                                         "created_at_min": desde + "T00:00:00-03:00",
+                                         "fields": "id,payment_status,cancelled_at,created_at,products"},
+                                 timeout=30)
+                lote = r.json() if r.content else []
+            except Exception:
+                lote = []
+            if not isinstance(lote, list) or not lote:
+                break
+            for o in lote:
+                pq = {}
+                for li in (o.get("products") or []):
+                    pid = "tn:%s" % li.get("product_id")
+                    pq[pid] = pq.get(pid, 0) + int(li.get("quantity") or 0)
+                ps = (o.get("payment_status") or "").lower()
+                est = ("cancelled" if o.get("cancelled_at")
+                       else "refunded" if ps in ("refunded", "voided", "partially_refunded")
+                       else "paid" if ps == "paid" else "pending")
+                out.append({"key": "tn:%s" % o.get("id"), "pid_qty": pq, "estado": est,
+                            "fecha": str(o.get("created_at") or "")[:10]})
+            if len(lote) < 50:
+                break
+            page += 1
+    stk = _shop_tokens().get(email)
+    if stk and stk.get("access_token") and stk.get("shop"):
+        try:
+            r = requests.get("https://%s/admin/api/2026-07/orders.json" % stk["shop"],
+                             headers={"X-Shopify-Access-Token": stk["access_token"]},
+                             params={"status": "any", "limit": 250,
+                                     "created_at_min": desde + "T00:00:00-03:00",
+                                     "fields": "id,financial_status,cancelled_at,created_at,line_items"},
+                             timeout=30)
+            for o in (r.json().get("orders", []) if r.status_code == 200 else []):
+                pq = {}
+                for li in (o.get("line_items") or []):
+                    pid = str(li.get("product_id") or "")
+                    if pid:
+                        pq[pid] = pq.get(pid, 0) + int(li.get("quantity") or 0)
+                fs = (o.get("financial_status") or "").lower()
+                est = ("cancelled" if o.get("cancelled_at")
+                       else "refunded" if fs in ("refunded", "partially_refunded", "voided")
+                       else "paid" if fs in ("paid", "partially_paid") else "pending")
+                out.append({"key": "sh:%s" % o.get("id"), "pid_qty": pq, "estado": est,
+                            "fecha": str(o.get("created_at") or "")[:10]})
+        except Exception:
+            pass
+    return out
+
+
+def _stock_sync(email):
+    """Aplica ventas pagadas (descuenta) y devoluciones/cancelaciones (repone). Idempotente."""
+    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+    if not prods:
+        return prods, []
+    led = _stk_read(STOCK_LEDGER, {}); ledE = led.get(email) or {}
+    orders = _stock_orders(email, 90)
+    changed = False
+    for o in orders:
+        deltas = {pid: q for pid, q in o["pid_qty"].items() if pid in prods and q > 0}
+        if not deltas:
+            continue
+        entry = ledE.get(o["key"])
+        if o["estado"] == "paid" and not entry:
+            for pid, q in deltas.items():
+                prods[pid]["stock"] = int(prods[pid].get("stock", 0)) - q
+            ledE[o["key"]] = {"delta": deltas, "estado": "paid", "fecha": o["fecha"]}
+            changed = True
+        elif o["estado"] in ("refunded", "cancelled") and entry and entry.get("estado") == "paid":
+            for pid, q in (entry.get("delta") or {}).items():
+                if pid in prods:
+                    prods[pid]["stock"] = int(prods[pid].get("stock", 0)) + q
+            entry["estado"] = "reverted"
+            changed = True
+    if changed:
+        st[email] = prods; _stk_write(STOCK_FILE, st)
+        led[email] = ledE; _stk_write(STOCK_LEDGER, led)
+    return prods, orders
+
+
+def _stock_seed(email, pid):
+    """Al empezar a trackear un producto, marca los pedidos ACTUALES como ya procesados
+    (no retro-descuenta el histórico; solo cuentan las ventas NUEVAS)."""
+    led = _stk_read(STOCK_LEDGER, {}); ledE = led.get(email) or {}
+    for o in _stock_orders(email, 120):
+        if pid in o["pid_qty"] and o["key"] not in ledE:
+            ledE[o["key"]] = {"delta": {}, "estado": "seed"}
+    led[email] = ledE; _stk_write(STOCK_LEDGER, led)
+
+
+def _stock_metrics(email, pid, orders):
+    hoy = _dt.datetime.utcnow().date()
+    dias = {}
+    for o in orders:
+        if o["estado"] != "paid":
+            continue
+        q = o["pid_qty"].get(pid, 0)
+        if not q:
+            continue
+        try:
+            f = _dt.date.fromisoformat(o["fecha"])
+        except Exception:
+            continue
+        off = (hoy - f).days
+        if 0 <= off < 14:
+            dias[off] = dias.get(off, 0) + q
+    ventas14 = [dias.get(13 - i, 0) for i in range(14)]
+    d14 = sum(ventas14); d7 = sum(ventas14[-7:]); rate = round(d14 / 14) if d14 else 0
+    return {"ventas14": ventas14, "d7": d7, "d14": d14, "rate": rate}
+
+
+@app.get("/pf-stock")
+def pf_stock():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "productos": []})
+    prods, orders = _stock_sync(email)
+    ped = (_stk_read(STOCK_PEDIDOS, {}).get(email) or [])
+    out = []
+    for pid, p in prods.items():
+        m = _stock_metrics(email, pid, orders)
+        pend = [x for x in ped if x.get("pid") == pid and x.get("estado") == "proceso"]
+        out.append({"id": pid, "nombre": p.get("nombre", ""), "unidad": p.get("unidad", "u"),
+                    "stock": int(p.get("stock", 0)), "costo": float(p.get("costo", 0)),
+                    "sku": p.get("sku", ""), "ventas14": m["ventas14"], "d7": m["d7"],
+                    "d14": m["d14"], "rate": m["rate"], "pendientes": pend})
+    return jsonify({"ok": True, "productos": out})
+
+
+@app.get("/pf-stock-catalogo")
+def pf_stock_catalogo():
+    """Productos de la tienda para elegir cuál trackear en Stock."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": True, "productos": []})
+    cat = []
+    for p in _tn_productos(email):
+        cat.append({"id": p["id"], "nombre": p["nombre"], "sku": p.get("sku_base", ""),
+                    "costo": p.get("costo", 0)})
+    return jsonify({"ok": True, "productos": cat})
+
+
+@app.post("/pf-stock-set")
+def pf_stock_set():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    pid = str(d.get("pid") or "").strip()
+    if not pid:
+        return jsonify({"ok": False, "msg": "falta el producto"}), 400
+    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+    prev = prods.get(pid, {}); nuevo = pid not in prods
+    prods[pid] = {"nombre": d.get("nombre") or prev.get("nombre", ""),
+                  "unidad": d.get("unidad") or prev.get("unidad", "u"),
+                  "stock": int(d.get("stock", prev.get("stock", 0))),
+                  "costo": float(d.get("costo", prev.get("costo", 0))),
+                  "sku": d.get("sku") or prev.get("sku", "")}
+    st[email] = prods; _stk_write(STOCK_FILE, st)
+    if nuevo:
+        _stock_seed(email, pid)
+    return jsonify({"ok": True})
+
+
+@app.post("/pf-stock-pedir")
+def pf_stock_pedir():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    pid = str(d.get("pid") or ""); qty = int(d.get("qty") or 0)
+    if not pid or qty <= 0:
+        return jsonify({"ok": False, "msg": "cantidad inválida"}), 400
+    import uuid
+    allp = _stk_read(STOCK_PEDIDOS, {}); lst = allp.get(email) or []
+    lst.insert(0, {"id": uuid.uuid4().hex[:10], "pid": pid, "qty": qty,
+                   "fecha": _dt.datetime.utcnow().date().isoformat(), "estado": "proceso"})
+    allp[email] = lst; _stk_write(STOCK_PEDIDOS, allp)
+    return jsonify({"ok": True})
+
+
+@app.post("/pf-stock-depositar")
+def pf_stock_depositar():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    pedid = str(d.get("id") or "")
+    allp = _stk_read(STOCK_PEDIDOS, {}); lst = allp.get(email) or []
+    o = next((x for x in lst if x.get("id") == pedid and x.get("estado") == "proceso"), None)
+    if not o:
+        return jsonify({"ok": False, "msg": "pedido no encontrado"}), 404
+    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+    if o["pid"] in prods:
+        prods[o["pid"]]["stock"] = int(prods[o["pid"]].get("stock", 0)) + int(o["qty"])
+        st[email] = prods; _stk_write(STOCK_FILE, st)
+    o["estado"] = "depositado"
+    allp[email] = lst; _stk_write(STOCK_PEDIDOS, allp)
+    return jsonify({"ok": True})
+
+
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-ads-detecta-tipo"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock"})
 
 
 @app.get("/pf-diag")
