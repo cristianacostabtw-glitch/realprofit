@@ -1913,6 +1913,18 @@ _SOLO_DASH = r"""
 <script>
  window.rpMob=function(name){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); try{ if(typeof window[name]==='function') window[name](true); }catch(e){} };
  window.rpMobClose=function(){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); ['rpProd','rpComis','rpInteg','rpDesp','rpFact','rpMov','rpAds','rpStock'].forEach(function(n){ try{ if(typeof window[n]==='function') window[n](false); }catch(e){} }); };
+ // El "Más" y el ☰ nativos del celu estaban de adorno -> los enganchamos para abrir nuestro menú.
+ document.addEventListener('click', function(e){ if(window.innerWidth>820)return; try{
+   var el=e.target;
+   for(var i=0;i<6 && el;i++){
+     var clickable=(el.tagName==='BUTTON'||el.tagName==='A'||(el.getAttribute&&el.getAttribute('role')==='button'));
+     var t=(el.textContent||'').trim();
+     var isMas=(t==='Más'||t==='Mas');
+     var isBurger=clickable && !t && el.querySelector && el.querySelector('svg') && (el.getBoundingClientRect().top<90 && el.getBoundingClientRect().left<70);
+     if(clickable && (isMas||isBurger)){ e.preventDefault(); e.stopPropagation(); var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.add('on'); return; }
+     el=el.parentElement;
+   }
+ }catch(err){} }, true);
 </script>
 <div id="rp-ads-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#e8edf4">
 <style>
@@ -2711,7 +2723,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock8-mobile"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock9-mobnav"})
 
 
 @app.get("/pf-diag")
