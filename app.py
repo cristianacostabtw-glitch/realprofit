@@ -1713,77 +1713,168 @@ _SOLO_DASH = r"""
 })();
 </script>
 
-<div id="rp-stock-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c15;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif;color:#eef3f9">
+<div id="rp-stock-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;display:none;overflow:auto;transition:left .18s ease;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1200px 560px at 88% -14%,rgba(84,168,240,.06),transparent 60%),radial-gradient(900px 500px at 0% 118%,rgba(180,164,245,.06),transparent 58%),#080c14;color:#eef3f9">
 <style>
-#rp-stock-ov .sw{max-width:820px;margin:0 auto;padding:28px 30px 70px}
-#rp-stock-ov .hd{display:flex;align-items:center;gap:13px;margin-bottom:20px}
-#rp-stock-ov .hd .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(150deg,#16324f,#122539);border:1px solid #23415f}
-#rp-stock-ov .hd .ic .material-symbols-outlined{color:#54a8f0;font-size:21px}
-#rp-stock-ov h1{margin:0;font-size:24px;font-weight:800;color:#f4f7fb;letter-spacing:-.5px}
-#rp-stock-ov .lead{margin:4px 0 0;color:#93a3ba;font-size:13px}
-#rp-stock-ov .card{background:linear-gradient(180deg,#0f1723,#0b111c);border:1px solid #1c2739;border-radius:16px;padding:18px 20px;margin-bottom:14px}
-#rp-stock-ov .hero{position:relative;overflow:hidden;border-radius:20px;padding:20px 22px;margin-bottom:16px;border:1px solid #1c2739;background:linear-gradient(168deg,var(--htint,rgba(61,212,160,.05)),#0b111c 62%)}
-#rp-stock-ov .hero::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--hc,#3dd4a0)}
+#rp-stock-ov{--card:#0f1723;--card2:#0b111b;--inset:#0a1119;--line:#1b2635;--line2:#25344a;--hair:rgba(255,255,255,.045);--ink:#eef3f9;--ink2:#93a3ba;--ink3:#5a6a80;--blue:#54a8f0;--green:#37c98d;--warn:#e8b13e;--crit:#f0637f;font-variant-numeric:tabular-nums}
+#rp-stock-ov .wrap{max-width:800px;margin:0 auto;padding:30px 22px 70px}
+#rp-stock-ov .hdr{display:flex;align-items:center;gap:13px}
+#rp-stock-ov .hdr .ic{width:42px;height:42px;border-radius:12px;flex:none;display:grid;place-items:center;background:linear-gradient(150deg,#16324f,#122539);border:1px solid #23415f}
+#rp-stock-ov .hdr .ic .material-symbols-outlined{color:var(--blue);font-size:22px}
+#rp-stock-ov h1{margin:0;font-size:25px;font-weight:800;letter-spacing:-.5px}
+#rp-stock-ov .lead{margin:5px 0 0;color:var(--ink2);font-size:13px;max-width:52ch;line-height:1.5}
+#rp-stock-ov .lead b{color:#9fc0e4;font-weight:700}
+#rp-stock-ov .card{position:relative;background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;box-shadow:0 1px 0 var(--hair) inset,0 18px 40px -34px #000}
+#rp-stock-ov .hero{padding:22px 24px;margin-top:20px;overflow:hidden}
+#rp-stock-ov .hero::before{content:"";position:absolute;top:-90px;right:-70px;width:240px;height:240px;border-radius:50%;background:var(--hc);opacity:.10;filter:blur(46px)}
+#rp-stock-ov .htop{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+#rp-stock-ov .hnm{font-weight:800;font-size:16px;letter-spacing:-.2px}
+#rp-stock-ov .sku{font-size:10.5px;font-weight:700;letter-spacing:.5px;color:var(--ink2);background:#0b1521;border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+#rp-stock-ov .pill{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:8px;background:var(--hpb);color:var(--hc)}
+#rp-stock-ov .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--hc)}
+#rp-stock-ov .hmid{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-top:14px;flex-wrap:wrap}
+#rp-stock-ov .num{font-size:40px;font-weight:800;letter-spacing:-1.2px;line-height:1;color:var(--hc)}
+#rp-stock-ov .num .u{font-size:13.5px;font-weight:600;color:var(--ink2);letter-spacing:0;margin-left:7px}
+#rp-stock-ov .days{text-align:right}
+#rp-stock-ov .days .n{font-size:21px;font-weight:800;letter-spacing:-.4px;color:var(--ink)}
+#rp-stock-ov .days .n b{color:var(--hc)}
+#rp-stock-ov .days .l{font-size:11.5px;color:var(--ink3);font-weight:600;margin-top:1px}
+#rp-stock-ov .cov{margin-top:18px}
+#rp-stock-ov .covbar{height:10px;border-radius:6px;background:#0c1622;border:1px solid var(--line);overflow:hidden;position:relative}
+#rp-stock-ov .covbar>b{display:block;height:100%;border-radius:6px 0 0 6px;background:linear-gradient(90deg,var(--hc),color-mix(in srgb,var(--hc) 60%,#0b111b))}
+#rp-stock-ov .covbar>s{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink2);opacity:.55}
+#rp-stock-ov .covlb{display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink3);margin-top:7px}
+#rp-stock-ov .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:12px}
+@media(max-width:680px){#rp-stock-ov .tiles{grid-template-columns:1fr 1fr}}
+#rp-stock-ov .tile{padding:14px 15px}
+#rp-stock-ov .tile .k{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.7px;font-weight:700}
+#rp-stock-ov .tile .v{font-size:20px;font-weight:800;letter-spacing:-.5px;margin-top:8px}
+#rp-stock-ov .tile .v small{font-size:11.5px;color:var(--ink2);font-weight:600}
+#rp-stock-ov .tile.accent .v{color:var(--green)}
+#rp-stock-ov .sec{display:flex;align-items:center;gap:10px;margin:26px 0 12px}
+#rp-stock-ov .sec .bb{width:14px;height:2px;border-radius:2px;background:#b4a4f5}
+#rp-stock-ov .sec h2{margin:0;font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--ink2)}
+#rp-stock-ov .sec .x{margin-left:auto;font-size:11.5px;color:var(--ink3)}
+#rp-stock-ov .note{color:var(--ink3);font-size:12px;margin:-4px 0 12px;line-height:1.5}
+#rp-stock-ov .note b{color:var(--green)}
+#rp-stock-ov .proj{padding:20px 22px}
+#rp-stock-ov .pstats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:560px){#rp-stock-ov .pstats{grid-template-columns:1fr}}
+#rp-stock-ov .ps{background:var(--inset);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+#rp-stock-ov .ps .k{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.6px;font-weight:700}
+#rp-stock-ov .ps .v{font-size:19px;font-weight:800;margin-top:6px;letter-spacing:-.4px}
+#rp-stock-ov .ps .v small{font-size:11px;color:var(--ink2);font-weight:600}
+#rp-stock-ov .chart{margin:18px 0 6px}
+#rp-stock-ov .chart svg{width:100%;height:60px;display:block}
+#rp-stock-ov .chart .lb{display:flex;justify-content:space-between;font-size:10px;color:var(--ink3);margin-top:5px}
+#rp-stock-ov .proj-sel{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+#rp-stock-ov .proj-sel .lab{font-size:12.5px;color:var(--ink2)}
+#rp-stock-ov .chips{display:inline-flex;gap:4px;background:#0b1420;border:1px solid var(--line);border-radius:10px;padding:3px}
+#rp-stock-ov .chips button{border:none;background:transparent;color:var(--ink2);font-family:inherit;font-weight:700;font-size:12.5px;padding:7px 13px;border-radius:7px;cursor:pointer;transition:.12s}
+#rp-stock-ov .chips button.on{background:#18314e;color:#dcebfb}
+#rp-stock-ov .cinput{width:66px}
+#rp-stock-ov .proj-out{margin-top:15px;background:linear-gradient(100deg,rgba(55,201,141,.08),transparent);border:1px solid rgba(55,201,141,.2);border-radius:12px;padding:14px 17px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+#rp-stock-ov .proj-out .big{font-size:22px;font-weight:800;color:var(--green);letter-spacing:-.5px}
+#rp-stock-ov .proj-out .tx{font-size:13px;color:var(--ink2)}
+#rp-stock-ov input.f{background:var(--inset);border:1px solid var(--line2);border-radius:11px;color:var(--ink);font-family:inherit;outline:none;font-weight:800;transition:.15s}
+#rp-stock-ov input.f:focus{border-color:#356fae;box-shadow:0 0 0 3px rgba(53,111,174,.16)}
+#rp-stock-ov input.big{width:100%;font-size:21px;padding:13px 15px}
+#rp-stock-ov input.sm{font-size:15px;padding:8px 10px;text-align:center}
+#rp-stock-ov .pedir{padding:18px 20px}
+#rp-stock-ov .pedir-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+#rp-stock-ov .field{flex:1;min-width:180px}
+#rp-stock-ov .field .l{font-size:11.5px;color:var(--ink2);font-weight:600;margin-bottom:8px}
+#rp-stock-ov .btn{border:none;border-radius:11px;cursor:pointer;font-family:inherit;font-weight:800;color:#fff}
+#rp-stock-ov .btn-b{background:linear-gradient(135deg,#2b8ef0,#1668cc);box-shadow:0 8px 20px -9px rgba(43,142,240,.8);padding:13px 22px;font-size:14px;display:inline-flex;gap:8px;align-items:center;white-space:nowrap}
+#rp-stock-ov .hint{margin-top:11px;font-size:12px;color:var(--ink3)}
+#rp-stock-ov .hint b{color:#b4a4f5}
+#rp-stock-ov .addlink{color:var(--blue);cursor:pointer;font-weight:700;font-size:13px}
+#rp-stock-ov .plist{display:flex;flex-direction:column;gap:10px}
+#rp-stock-ov .empty{color:var(--ink3);font-size:12.5px;text-align:center;padding:20px;border:1px dashed var(--line2);border-radius:13px}
+#rp-stock-ov .prow{display:flex;align-items:center;gap:13px;padding:13px 15px}
+#rp-stock-ov .prow .tx{flex:1}
+#rp-stock-ov .prow .tx .q{font-weight:800;font-size:14.5px}
+#rp-stock-ov .prow .tx .d{color:var(--ink3);font-size:11.5px;margin-top:2px}
+#rp-stock-ov .badge{font-size:10px;font-weight:800;padding:3px 8px;border-radius:7px;background:rgba(232,177,62,.13);color:var(--warn);margin-left:6px}
+#rp-stock-ov .btn-dep{background:#0e2a20;border:1px solid rgba(55,201,141,.3);color:var(--green);padding:9px 13px;font-size:12px;border-radius:10px;white-space:nowrap;font-weight:800;cursor:pointer;font-family:inherit}
+#rp-stock-ov .corr{margin-top:12px}
+#rp-stock-ov .corr a{color:var(--ink2);cursor:pointer;font-size:11.5px}
 </style>
-<div class="sw">
- <div class="hd"><span class="ic"><span class="material-symbols-outlined">warehouse</span></span><div><h1>Stock</h1><div class="lead">Con cada venta pagada baja el stock; si hay devoluci&oacute;n o cancelaci&oacute;n, vuelve. Nombre/SKU/unidad salen de Productos.</div></div></div>
- <div id="rp-stock-body">Cargando&hellip;</div>
+<div class="wrap">
+  <div class="hdr"><span class="ic"><span class="material-symbols-outlined">warehouse</span></span><div><h1>Stock</h1><p class="lead">El <b>nombre, SKU y unidad</b> de cada producto salen de tu secci&oacute;n <b>Productos</b>. Ac&aacute; ves cu&aacute;nto ten&eacute;s, proyect&aacute;s la venta y ped&iacute;s reposici&oacute;n.</p></div></div>
+  <div id="rp-stock-body"></div>
 </div>
+<div id="rp-stk-toast" style="position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(18px);opacity:0;background:#0e2a20;border:1px solid rgba(55,201,141,.35);color:#cdf3e2;padding:11px 17px;border-radius:11px;font-size:13px;font-weight:700;transition:.28s;pointer-events:none;z-index:100010"></div>
 <script>
 (function(){
  function $(id){return document.getElementById(id);}
- function ars(n){return '$'+Math.round(n).toLocaleString('es-AR');}
  function esc(t){return (t||'').replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];});}
  function sid(pid){return (pid||'').replace(/[^a-z0-9]/gi,'');}
- function salud(d){ if(d>=10)return {c:'#3dd4a0',lb:'Saludable'}; if(d>=5)return {c:'#f6b93b',lb:'Reponer pronto'}; return {c:'#fb6f88',lb:'Cr&iacute;tico'}; }
+ function ars(n){return '$'+Math.round(n).toLocaleString('es-AR');}
+ function salud(d){ if(d>=10)return {c:'var(--green)',pb:'rgba(55,201,141,.13)',lb:'Saludable'}; if(d>=5)return {c:'var(--warn)',pb:'rgba(232,177,62,.14)',lb:'Reponer pronto'}; return {c:'var(--crit)',pb:'rgba(240,99,127,.14)',lb:'Crítico'}; }
+ function prod(pid){return (window._STK||[]).filter(function(x){return x.id===pid;})[0];}
+ function tile(k,v,cls){return '<div class="card tile '+cls+'"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
+ function tstk(m){var t=$('rp-stk-toast');if(!t)return;t.textContent=m;t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';clearTimeout(t._t);t._t=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(18px)';},2500);}
  window.rpStock=function(open){ var o=$('rp-stock-ov'); if(!o)return;
   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){var x=$(id);if(x)x.style.display='none';}); var lk=$('rpf-lock'); if(lk)lk.style.display='none'; }
   o.style.display=open?'block':'none'; try{window._rpNavActive(open?'rp-stock-nav':null);}catch(e){} if(open) rpStkLoad(); };
- window.rpStkLoad=function(){ var b=$('rp-stock-body'); if(b)b.innerHTML='Cargando&hellip;';
-  fetch('/pf-stock').then(function(r){return r.json();}).then(function(j){
-   var P=(j&&j.productos)||[]; if(!b)return;
-   var add='<div style="text-align:center;margin-top:8px"><a onclick="rpStkAgregar()" style="color:#54a8f0;cursor:pointer;font-weight:700;font-size:13px">+ Agregar producto</a></div>';
-   if(!P.length){ b.innerHTML='<div class="card" style="text-align:center;color:#93a3ba">Todav&iacute;a no cargaste productos al stock.</div>'+add; return; }
-   b.innerHTML=P.map(cardHTML).join('')+add; window._STK=P; P.forEach(function(pp){try{rpStkProj(pp.id,30);}catch(e){}});
-  }).catch(function(){ if(b)b.innerHTML='<div class="card">No se pudo cargar el stock.</div>'; }); };
- function stat(k,v){return '<div style="background:#0b1320;border:1px solid #1c2739;border-radius:12px;padding:11px 13px"><div style="font-size:9.5px;color:#5c6b82;text-transform:uppercase;letter-spacing:.6px;font-weight:800">'+k+'</div><div style="font-size:15px;font-weight:800;margin-top:5px">'+v+'</div></div>';}
- function spark(v){ if(!v||!v.length)return ''; var W=560,H=52,n=v.length,gap=6,bw=(W-gap*(n-1))/n; var mx=Math.max.apply(null,v),mn=Math.min.apply(null,v),s=''; for(var i=0;i<n;i++){var fr=(v[i]-mn)/((mx-mn)||1),h=(H-4)*(0.32+0.68*fr),x=i*(bw+gap),y=H-h,last=i===n-1; s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3" fill="'+(last?'#54a8f0':'#2a3c54')+'"/>';} return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:52px;display:block">'+s+'</svg><div style="display:flex;justify-content:space-between;font-size:10px;color:#5c6b82;margin-top:5px"><span>hace 14 d&iacute;as</span><span>hoy</span></div>'; }
- window.rpStkProj=function(pid,n){ var P=(window._STK||[]).filter(function(x){return x.id===pid;})[0]; if(!P)return; var vender=Math.round((P.rate||0)*n),faltan=Math.max(0,vender-P.stock),el=$('stkproj-'+sid(pid)); if(el)el.innerHTML='En <b style="color:#eafff8">'+n+' d&iacute;as</b> vender&iacute;as <b style="color:#3dd4a0">'+vender.toLocaleString('es-AR')+' '+esc(P.unidad)+'</b> &middot; '+(faltan>0?('te faltan <b style="color:#eafff8">'+faltan.toLocaleString('es-AR')+' '+esc(P.unidad)+'</b> <a onclick="rpStkUsar(\''+pid+'\','+faltan+')" style="color:#54a8f0;cursor:pointer;font-weight:700">pedir eso</a>'):'te alcanza el stock &#10003;'); [15,30,60,90].forEach(function(m){var b=$('stkchip-'+sid(pid)+'-'+m); if(b){b.style.background=(m===n)?'#18314e':'#0b1420'; b.style.color=(m===n)?'#dcebfb':'#93a3ba';}}); };
- window.rpStkUsar=function(pid,q){ var el=$('stk-ped-'+sid(pid)); if(el){el.value=q; el.scrollIntoView({behavior:'smooth',block:'center'});} };
- function cardHTML(p){
-   var rate=p.rate||0, d=rate?Math.round(p.stock/rate):0; var s=salud(rate?d:99); var cov=Math.max(5,Math.min(100, rate? d/20*100 : 100)), usg=esc((p.unidad||'').replace(/s$/,''));
-   var pend=(p.pendientes||[]).map(function(o){return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid #1c2739"><div style="flex:1"><b>'+o.qty.toLocaleString('es-AR')+' '+esc(p.unidad)+'</b> <span style="font-size:10px;font-weight:800;color:#f6b93b;background:rgba(246,185,59,.13);padding:3px 8px;border-radius:7px">en proceso</span><div style="color:#5c6b82;font-size:11.5px;margin-top:2px">Pedido '+esc(o.fecha)+'</div></div><button onclick="rpStkDep(\''+o.id+'\')" style="background:#0e2a20;border:1px solid rgba(61,212,160,.3);color:#3dd4a0;padding:9px 13px;font-size:12px;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Poner en dep&oacute;sito</button></div>';}).join('');
-   return '<div class="hero" style="--hc:'+s.c+';--htint:'+s.c+'0f">'+
-     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:15px">'+esc(p.nombre)+'</b>'+(p.sku?'<span style="font-size:10.5px;color:#93a3ba;background:#0b1521;border:1px solid #1c2739;border-radius:6px;padding:3px 7px">'+esc(p.sku)+'</span>':'')+'<span style="margin-left:auto;font-size:11.5px;font-weight:800;color:'+s.c+';background:'+s.c+'22;padding:6px 12px;border-radius:8px">'+s.lb+'</span></div>'+
-     '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:14px;flex-wrap:wrap"><div><div style="font-size:40px;font-weight:800;letter-spacing:-1.2px;color:'+s.c+';line-height:1">'+p.stock.toLocaleString('es-AR')+'</div><div style="font-size:13px;color:#93a3ba;margin-top:6px">'+esc(p.unidad)+' en dep&oacute;sito</div></div>'+
-       '<div style="text-align:right"><div style="font-size:21px;font-weight:800;color:'+s.c+'">'+(rate?('~'+d+' d&iacute;as'):'&mdash;')+'</div><div style="font-size:11.5px;color:#5c6b82;margin-top:2px">te alcanza a este ritmo</div></div></div>'+
-     '<div style="margin-top:16px"><div style="position:relative;height:9px;border-radius:6px;background:#0c1622;border:1px solid #1c2739;overflow:hidden"><b style="display:block;height:100%;width:'+cov+'%;background:'+s.c+';border-radius:6px 0 0 6px"></b><s style="position:absolute;top:-3px;bottom:-3px;left:50%;width:2px;background:#93a3ba;opacity:.5"></s></div><div style="display:flex;justify-content:space-between;font-size:10.5px;color:#5c6b82;margin-top:6px"><span>0</span><span>10 d&iacute;as &middot; sano</span><span>20+</span></div></div>'+
-     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:16px">'+stat('En stock',p.stock.toLocaleString('es-AR')+' '+esc(p.unidad))+stat('Valor en stock','<span style="color:#3dd4a0">'+ars(p.stock*(p.costo||0))+'</span>')+stat('Venta por d&iacute;a',rate+' '+esc(p.unidad)+'/d&iacute;a')+stat('Valor por '+usg,ars(p.costo||0))+'</div>'+
-     '<div style="margin-top:20px;padding-top:18px;border-top:1px solid #1c2739">'+
-       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#93a3ba">Proyecci&oacute;n de ventas</span><span style="font-size:11.5px;color:#5c6b82">prom '+rate+' '+esc(p.unidad)+'/d&iacute;a</span></div>'+
-       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+stat('&Uacute;ltimos 7 d&iacute;as',p.d7+' '+esc(p.unidad))+stat('&Uacute;ltimos 14 d&iacute;as',p.d14+' '+esc(p.unidad))+stat('Promedio por d&iacute;a',rate+' '+esc(p.unidad))+'</div>'+
-       spark(p.ventas14||[])+
-       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px"><span style="font-size:12.5px;color:#93a3ba">Proyectar a</span>'+[15,30,60,90].map(function(nn){return '<button onclick="rpStkProj(\''+p.id+'\','+nn+')" id="stkchip-'+sid(p.id)+'-'+nn+'" style="border:1px solid #26344a;background:#0b1420;color:#93a3ba;font-family:inherit;font-weight:700;font-size:12.5px;padding:7px 13px;border-radius:9px;cursor:pointer">'+nn+'</button>';}).join('')+'<span style="font-size:12.5px;color:#93a3ba">d&iacute;as</span></div>'+
-       '<div id="stkproj-'+sid(p.id)+'" style="margin-top:12px;background:rgba(55,201,141,.06);border:1px solid rgba(55,201,141,.2);border-radius:11px;padding:12px 15px;font-size:13px;color:#c4f3e0"></div>'+
+ window.rpStkLoad=function(){ var b=$('rp-stock-body'); if(b)b.innerHTML='<div class="note" style="margin-top:22px">Cargando&hellip;</div>';
+  fetch('/pf-stock').then(function(r){return r.json();}).then(function(j){ var P=(j&&j.productos)||[]; window._STK=P; if(!b)return;
+   var add='<div style="text-align:center;margin-top:16px"><a class="addlink" onclick="rpStkAgregar()">+ Agregar producto</a></div>';
+   if(!P.length){ b.innerHTML='<div class="card" style="margin-top:20px;padding:24px;text-align:center;color:var(--ink2)">Todav&iacute;a no cargaste productos al stock.</div>'+add; return; }
+   b.innerHTML=P.map(bloque).join('')+add;
+   P.forEach(function(p){ renderProj(p.id); proj(p.id); });
+  }).catch(function(){ if(b)b.innerHTML='<div class="card" style="margin-top:20px;padding:22px">No se pudo cargar el stock.</div>'; }); };
+ function bloque(p){
+   var rate=p.rate||0, d=rate?Math.round(p.stock/rate):0, s=salud(rate?d:99);
+   var cov=Math.max(5,Math.min(100,rate?d/20*100:100)), id=sid(p.id), u=esc(p.unidad), usg=esc((p.unidad||'').replace(/s$/,''));
+   var pend=(p.pendientes||[]);
+   var plist = pend.length? pend.map(function(o){return '<div class="card prow"><span class="tx"><div class="q">'+o.qty.toLocaleString('es-AR')+' '+u+'<span class="badge">en proceso</span></div><div class="d">Pedido '+esc(o.fecha)+' &middot; '+ars(o.qty*(p.costo||0))+'</div></span><button class="btn-dep" onclick="rpStkDep(\''+o.id+'\')">Poner en depósito</button></div>';}).join('') : '<div class="empty">No hay pedidos en proceso.</div>';
+   return '<div class="card hero" style="--hc:'+s.c+';--hpb:'+s.pb+'">'+
+       '<div class="htop"><span class="hnm">'+esc(p.nombre)+'</span>'+(p.sku?'<span class="sku">'+esc(p.sku)+'</span>':'')+'<span class="pill"><span class="dot"></span>'+s.lb+'</span></div>'+
+       '<div class="hmid"><div class="num">'+p.stock.toLocaleString('es-AR')+'<span class="u">'+u+' en depósito</span></div>'+
+         '<div class="days"><div class="n"><b>'+d+'</b> días</div><div class="l">te alcanza a este ritmo</div></div></div>'+
+       '<div class="cov"><div class="covbar"><b style="width:'+cov+'%"></b><s style="left:50%"></s></div><div class="covlb"><span>0</span><span>10 días &middot; sano</span><span>20+</span></div></div>'+
      '</div>'+
-     '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:150px"><div style="font-size:11.5px;color:#93a3ba;margin-bottom:7px">Pedir stock ('+esc(p.unidad)+')</div><input id="stk-ped-'+sid(p.id)+'" type="number" placeholder="0" style="width:100%;background:#0b1320;border:1px solid #26344a;color:#eef3f9;border-radius:10px;padding:11px 13px;font-size:16px;font-weight:800;font-family:inherit;outline:none;box-sizing:border-box"></div>'+
-       '<button onclick="rpStkPedir(\''+p.id+'\')" style="background:linear-gradient(135deg,#2b8ef0,#1668cc);border:none;color:#fff;padding:12px 20px;border-radius:11px;font-weight:800;cursor:pointer;font-family:inherit">Pedir</button></div>'+
-     '<div style="margin-top:11px"><a onclick="rpStkAjustar(\''+p.id+'\','+p.stock+')" style="color:#93a3ba;cursor:pointer;font-size:11.5px">&#9998; Corregir stock (si te confundiste o hubo rotura/ajuste)</a></div>'+
-     (pend?('<div style="margin-top:8px">'+pend+'</div>'):'')+
-   '</div>';
+     '<div class="tiles">'+tile('En stock',p.stock.toLocaleString('es-AR')+' <small>'+u+'</small>','')+tile('Valor en stock',ars(p.stock*(p.costo||0)),'accent')+tile('Venta por día',rate+' <small>'+u+'/día</small>','')+tile('Valor por '+usg,ars(p.costo||0),'')+'</div>'+
+     '<div class="sec"><span class="bb"></span><h2>Proyección de ventas</h2><span class="x">promedio '+rate+' '+u+'/día</span></div>'+
+     '<div class="card proj">'+
+       '<div class="pstats"><div class="ps"><div class="k">Últimos 7 días</div><div class="v">'+p.d7+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Últimos 14 días</div><div class="v">'+p.d14+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Promedio por día</div><div class="v">'+rate+' <small>'+u+'</small></div></div></div>'+
+       '<div class="chart"><svg id="spark-'+id+'" viewBox="0 0 700 60" preserveAspectRatio="none"></svg><div class="lb"><span>hace 14 días</span><span>hoy</span></div></div>'+
+       '<div class="proj-sel"><span class="lab">Proyectar a</span><span class="chips" id="chips-'+id+'"></span><input id="ndias-'+id+'" class="f sm cinput" type="number" value="30" oninput="proj(\''+p.id+'\')"><span class="lab">días</span></div>'+
+       '<div class="proj-out" id="pout-'+id+'"></div>'+
+     '</div>'+
+     '<div class="sec"><span class="bb"></span><h2>Pedir stock</h2></div>'+
+     '<div class="note">Poné cuántas unidades vas a pedir. Queda <b>en proceso</b> &mdash; no suma al stock todavía.</div>'+
+     '<div class="card pedir"><div class="pedir-row"><div class="field"><div class="l">Unidades a pedir ('+u+')</div><input id="ped-'+id+'" class="f big" type="number" placeholder="0" oninput="rpStkHint(\''+p.id+'\')"></div><button class="btn btn-b" onclick="rpStkPedir(\''+p.id+'\')">Pedir</button></div>'+
+       '<div class="hint" id="hint-'+id+'">Usá la proyección de arriba para saber cuánto pedir.</div>'+
+       '<div class="corr"><a onclick="rpStkAjustar(\''+p.id+'\','+p.stock+')">&#9998; Corregir stock (si te confundiste o hubo rotura/ajuste)</a></div>'+
+     '</div>'+
+     '<div class="sec"><span class="bb"></span><h2>En proceso</h2><span class="x">'+(pend.length?(pend.length+' pedido'+(pend.length>1?'s':'')):'')+'</span></div>'+
+     '<div class="plist">'+plist+'</div>';
  }
- window.rpStkAjustar=function(pid,actual){ var v=prompt('Stock REAL que ten\u00e9s ahora en dep\u00f3sito (corrige si te confundiste):', actual); if(v===null)return; var n=Math.max(0,Math.round(+v||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
- window.rpStkPedir=function(pid){ var el=$('stk-ped-'+sid(pid)); var q=Math.max(0,Math.round(+(el&&el.value)||0)); if(q<=0)return;
-   fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
- window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); };
- window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){
-   var cat=(j&&j.productos)||[]; if(!cat.length){ alert('Conect&aacute; tu tienda para traer los productos.'); return; }
-   var nombre=prompt('Producto (peg&aacute; parte del nombre):'); if(!nombre)return;
-   var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0]; if(!m){ alert('No encontr&eacute; ese producto.'); return; }
-   var unidad=prompt('Unidad (potes / sprays / u):','u')||'u';
-   var stock=parseInt(prompt('Stock actual que ten&eacute;s hoy en dep&oacute;sito:','0')||'0',10)||0;
-   fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:m.id,nombre:m.nombre,sku:m.sku,unidad:unidad,stock:stock,costo:m.costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); });
- }); };
+ function renderProj(pid){ var p=prod(pid); if(!p)return; var id=sid(pid), v=p.ventas14||[];
+   var W=700,H=60,n=v.length,gap=7,bw=(W-gap*(n-1))/n,mx=Math.max.apply(null,v),mn=Math.min.apply(null,v),svg='';
+   for(var i=0;i<n;i++){var fr=(v[i]-mn)/((mx-mn)||1),h=(H-4)*(0.32+0.68*fr),x=i*(bw+gap),y=H-h,last=i===n-1; svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3" fill="'+(last?'#54a8f0':'#2a3c54')+'"/>';}
+   var sp=$('spark-'+id); if(sp)sp.innerHTML=svg;
+   var ch=$('chips-'+id); if(ch)ch.innerHTML=[15,30,60,90].map(function(x){return '<button onclick="rpStkSetN(\''+pid+'\','+x+')">'+x+'</button>';}).join('');
+ }
+ window.rpStkSetN=function(pid,n){ var el=$('ndias-'+sid(pid)); if(el)el.value=n; proj(pid); };
+ window.proj=function(pid){ var p=prod(pid); if(!p)return; var id=sid(pid), n=Math.max(1,Math.round(+($('ndias-'+id)||{}).value||30)), rate=p.rate||0;
+   var vender=Math.round(rate*n), faltan=Math.max(0,vender-p.stock), o=$('pout-'+id);
+   if(o)o.innerHTML='<span class="big">'+vender.toLocaleString('es-AR')+' '+esc(p.unidad)+'</span><span class="tx">vas a vender en <b style="color:var(--ink)">'+n+' días</b> &middot; '+(faltan>0?('para cubrirlos te faltan <b style="color:var(--ink)">'+faltan.toLocaleString('es-AR')+' '+esc(p.unidad)+'</b> <a onclick="rpStkUsar(\''+pid+'\','+faltan+')" style="color:var(--blue);cursor:pointer;font-weight:700">pedir eso</a>'):'te alcanza el stock &#10003;')+'</span>';
+   var ch=$('chips-'+id); if(ch)ch.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',+b.textContent===n);});
+ };
+ window.rpStkUsar=function(pid,q){ var el=$('ped-'+sid(pid)); if(el){el.value=q; rpStkHint(pid); el.scrollIntoView({behavior:'smooth',block:'center'});} };
+ window.rpStkHint=function(pid){ var p=prod(pid); if(!p)return; var id=sid(pid), q=Math.max(0,Math.round(+($('ped-'+id)||{}).value||0)), h=$('hint-'+id), rate=p.rate||0;
+   if(!h)return; if(q>0){var dias=rate?Math.round((p.stock+q)/rate):0; h.innerHTML='Al llegar quedarías con <b style="color:var(--ink)">'+(p.stock+q).toLocaleString('es-AR')+' '+esc(p.unidad)+'</b> (~'+dias+' días) &middot; cuesta '+ars(q*(p.costo||0));} else h.innerHTML='Usá la proyección de arriba para saber cuánto pedir.'; };
+ window.rpStkPedir=function(pid){ var q=Math.max(0,Math.round(+($('ped-'+sid(pid))||{}).value||0)); if(q<=0)return;
+   fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ tstk('Pedido registrado en proceso'); rpStkLoad(); }); };
+ window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ tstk('Sumado al stock'); rpStkLoad(); }); };
+ window.rpStkAjustar=function(pid,actual){ var v=prompt('Stock REAL que tenés ahora en depósito (corrige si te confundiste):', actual); if(v===null)return; var n=Math.max(0,Math.round(+v||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ tstk('Stock corregido'); rpStkLoad(); }); };
+ window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[]; if(!cat.length){ alert('Conectá tu tienda para traer los productos.'); return; }
+   var nombre=prompt('Producto (pegá parte del nombre):'); if(!nombre)return; var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0]; if(!m){ alert('No encontré ese producto.'); return; }
+   var unidad=prompt('Unidad (potes / sprays / u):','u')||'u'; var stock=parseInt(prompt('Stock actual que tenés hoy en depósito:','0')||'0',10)||0;
+   fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:m.id,nombre:m.nombre,sku:m.sku,unidad:unidad,stock:stock,costo:m.costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); }); };
 })();
 </script>
 </div>
@@ -2584,7 +2675,7 @@ def pf_stock_depositar():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-stock5"})
+    return jsonify({"ok": True, "v": "2026-08-13-stock6"})
 
 
 @app.get("/pf-diag")
