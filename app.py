@@ -1874,8 +1874,8 @@ _SOLO_DASH = r"""
  window.rpaFuente=function(f){ $('rpa-fdrive').classList.toggle('on',f=='drive');$('rpa-farch').classList.toggle('on',f=='arch');
   $('rpa-srcdrive').style.display=f=='drive'?'block':'none';$('rpa-srcarch').style.display=f=='arch'?'block':'none';rpaReset();};
  window.rpaSubir=function(){ var inp=$('rpa-file'); if(!inp.files||!inp.files.length)return;
-  var fd=new FormData(); for(var i=0;i<inp.files.length;i++)fd.append('videos',inp.files[i]);
-  $('rpa-vc').textContent='subiendo…'; $('rpa-vids').innerHTML='<div style=\"color:#c4b5fd;font-size:12.5px;margin-top:10px\">\u23f3 Subiendo tus videos… (no cierres esto)</div>';
+  var fd=new FormData(),allImg=true,allVid=true; for(var i=0;i<inp.files.length;i++){fd.append('videos',inp.files[i]); if(/\.(jpg|jpeg|png|webp)$/i.test(inp.files[i].name))allVid=false; else allImg=false;} var KIND=allImg?'fotos':(allVid?'videos':'creativos');
+  $('rpa-vc').textContent='subiendo…'; $('rpa-vids').innerHTML='<div style=\"color:#c4b5fd;font-size:12.5px;margin-top:10px\">\u23f3 Subiendo tus '+KIND+'… (no cierres esto)</div>';
   fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">'+((j&&j.msg)||'no pude subir')+'</div>';VIDS=0;UPLOAD_ID='';rpaCalc();return;}
    UPLOAD_ID=j.upload_id;VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
@@ -2255,7 +2255,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-ads-fotos-video"})
+    return jsonify({"ok": True, "v": "2026-08-12-ads-detecta-tipo"})
 
 
 @app.get("/pf-diag")
@@ -4786,9 +4786,7 @@ def _ads_creative_payload(nombre, medio, cfg, ad):
     if cfg.get("ig"):
         oss["instagram_user_id"] = cfg["ig"]
     return {"name": nombre, "object_story_spec": oss,
-            "degrees_of_freedom_spec": {"creative_features_spec": {
-                "standard_enhancements": {"enroll_status": "OPT_OUT"},
-                "site_extensions": {"enroll_status": "OPT_OUT"}}}}
+            "degrees_of_freedom_spec": {"creative_features_spec": {"site_extensions": {"enroll_status": "OPT_OUT"}}}}
 
 
 def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None):
