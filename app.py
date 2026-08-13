@@ -783,6 +783,7 @@ _SOLO_DASH = r"""
     <div><h1>Movimientos</h1><p>Ingresos, egresos y <b style="color:#cbd5e1">aportes de socios</b>. Separ&aacute; la <b style="color:#cbd5e1">reinversi&oacute;n de la marca</b> de la <b style="color:#cbd5e1">plata que pusieron de afuera</b> &mdash; para dividir y devolver todo bien cuando se recupere.</p></div>
    </div>
    <div class="mv-chips">
+    <button class="mv-chip" style="cursor:pointer;border-color:#1f5a3d;color:#8be6bd" onclick="rpMovBase()" title="Fija tu saldo actual de Mercado Pago (para que el total cuadre)">💰 Fijar saldo MP</button>
     <span class="mv-chip">🇦🇷 ARS</span>
     <button class="mv-x" onclick="rpMov(false)" title="Cerrar">&#10005;</button>
    </div>
@@ -863,6 +864,9 @@ _SOLO_DASH = r"""
   function fueTag(m){ if(m.socio==='marca') return m.clase==='egreso'?'<span class="afuera" style="color:#8b97a8">reinversión</span>':''; return m.clase==='aporte'?'<span class="afuera" style="color:#fbbf24">de afuera</span>':'<span class="afuera" style="color:#34d399">recupero</span>'; }
   function esc(s){return (''+s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
   function $(id){return document.getElementById(id);}
+  window.rpMovBase=function(){ var v=prompt('Pegá tu saldo ACTUAL de Mercado Pago (lo que tenés disponible ahora):'); if(v===null||v==='')return;
+    fetch('/pf-movimientos-base',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({saldo:v})}).then(function(r){return r.json();}).then(function(j){
+      if(j&&j.ok){ if(typeof rpMovLoad==='function')rpMovLoad(); else location.reload(); } else { alert('No se pudo fijar el saldo.'); } }).catch(function(){ alert('Error de conexión.'); }); };
   window.rpMovF=function(f){ filtro=f; var ps=document.querySelectorAll('#mv-pills .mpill'); for(var i=0;i<ps.length;i++){ ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f); } rpMovRender(); };
   function filtered(){ return MOV.filter(function(m){ if(filtro==='todos')return true; if(filtro==='afuera')return esAfuera(m); if(filtro==='ingreso')return esIn(m); if(filtro==='egreso')return esEg(m); return true; }); }
   window.rpMov=function(open){ var o=$('rp-mov-ov'); if(!o)return;
@@ -1825,7 +1829,7 @@ _SOLO_DASH = r"""
  var _inited=false;
  function rpaInit(){ var d=new Date();d.setDate(d.getDate()+1);$('rpa-fecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
   $('rpa-fecha').addEventListener('change',rpaCalc);$('rpa-hora').addEventListener('change',rpaCalc);
-  fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){if(j&&j.cuentas&&j.cuentas[0]){$('rpa-copy').value=j.cuentas[0].copy||'';}});
+  fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){if(j&&j.cuentas&&j.cuentas[0]){var c0=j.cuentas[0];$('rpa-copy').value=c0.copy||'';if(!$('rpa-titulo').value)$('rpa-titulo').value=c0.titulo||'';if(!$('rpa-sub').value)$('rpa-sub').value=c0.subtitulo||'';}});
   fetch('/pf-ads-identidad?cuenta=cp1').then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
@@ -2233,7 +2237,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-sku-ordenado"})
+    return jsonify({"ok": True, "v": "2026-08-12-ads-winner-config"})
 
 
 @app.get("/pf-diag")
@@ -2822,13 +2826,82 @@ def _mov_save(email, cur) -> None:
     _mov_write(d)
 
 
+_MOV_MP_CACHE = {}   # {email: (ts, rows)} — cache de los movimientos auto de MP
+
+
+def _mp_movimientos(email, desde, hasta):
+    """Movimientos REALES de Mercado Pago: ingreso = neto que deposita MP por cada venta
+    (net_received_amount, sin restarle nada mas), y devolucion = lo reembolsado. Auto."""
+    tk = _mp_tokens().get(email)
+    token = tk.get("access_token") if tk else None
+    if not token:
+        return []
+    ini = desde + "T00:00:00.000-03:00"
+    fin = hasta + "T23:59:59.999-03:00"
+    out = []
+    offset = 0
+    try:
+        while offset < 5000:
+            r = requests.get("https://api.mercadopago.com/v1/payments/search",
+                             headers={"Authorization": "Bearer " + token},
+                             params={"sort": "date_approved", "criteria": "desc",
+                                     "range": "date_approved", "begin_date": ini, "end_date": fin,
+                                     "offset": offset, "limit": 100}, timeout=30)
+            if r.status_code >= 400:
+                break
+            data = r.json(); res = data.get("results") or []
+            for pmt in res:
+                if pmt.get("status") not in ("approved", "refunded"):
+                    continue
+                det = pmt.get("transaction_details") or {}
+                net = float(det.get("net_received_amount") or 0)
+                fecha = str(pmt.get("date_approved") or pmt.get("date_created") or "")[:10]
+                ref = (pmt.get("external_reference") or "").strip()
+                pid = str(pmt.get("id"))
+                if net > 0:
+                    out.append({"id": "mp:" + pid, "d": fecha, "clase": "ingreso", "cat": "Venta MP",
+                                "desc": ("Pedido #" + ref) if ref else ("Pago MP " + pid),
+                                "socio": "marca", "monto": round(net), "auto": True})
+                refd = float(pmt.get("transaction_amount_refunded") or 0)
+                if refd > 0:
+                    out.append({"id": "mpr:" + pid, "d": fecha, "clase": "devolucion", "cat": "Devolucion MP",
+                                "desc": ("Reembolso #" + ref) if ref else ("Reembolso " + pid),
+                                "socio": "marca", "monto": round(refd), "auto": True})
+            offset += 100
+            if offset >= (data.get("paging") or {}).get("total", 0) or not res:
+                break
+    except Exception:
+        return out
+    return out
+
+
 @app.get("/pf-movimientos")
 def pf_movimientos():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "rows": []})
     cur = _mov_get(email)
-    return jsonify({"ok": True, "rows": cur.get("rows", [])})
+    rows = list(cur.get("rows", []))
+    # AUTO: neto real de cada venta de Mercado Pago + devoluciones (ultimos 60 dias, cacheado)
+    import time as _t
+    c = _MOV_MP_CACHE.get(email)
+    if c and (_t.time() - c[0] < 180):
+        mp_rows = c[1]
+    else:
+        try:
+            hasta = _hoy(); desde = _hoy()   # SOLO HOY (desde las 00:00)
+            mp_rows = _mp_movimientos(email, desde, hasta)
+        except Exception:
+            mp_rows = []
+        _MOV_MP_CACHE[email] = (_t.time(), mp_rows)
+    rows = rows + mp_rows
+    base = cur.get("base")
+    if base and base.get("fecha") == _hoy():
+        rows.append({"id": "base", "d": base["fecha"], "clase": "ingreso", "cat": "Saldo inicial",
+                     "desc": "Saldo en MP al iniciar el dia", "socio": "marca",
+                     "monto": base["monto"], "auto": True})
+    rows.sort(key=lambda r: str(r.get("d") or ""), reverse=True)
+    return jsonify({"ok": True, "rows": rows})
 
 
 @app.post("/pf-movimientos-add")
@@ -2862,6 +2935,33 @@ def pf_movimientos_add():
     cur["seq"] = seq
     _mov_save(email, cur)
     return jsonify({"ok": True, "id": seq})
+
+
+@app.post("/pf-movimientos-base")
+def pf_movimientos_base():
+    """Fija el 'saldo inicial' del dia con el saldo ACTUAL de MP que pega el usuario.
+    base = saldo_actual - (neto de hoy - devoluciones de hoy) -> asi base + hoy = saldo real."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get("saldo") or "").replace("$", "").replace(" ", "").replace(".", "").replace(",", ".")
+    try:
+        saldo = round(float(raw or 0))
+    except Exception:
+        saldo = 0
+    hoy = _hoy()
+    try:
+        mp = _mp_movimientos(email, hoy, hoy)
+    except Exception:
+        mp = []
+    hoy_neto = (sum(m["monto"] for m in mp if m["clase"] == "ingreso")
+                - sum(m["monto"] for m in mp if m["clase"] == "devolucion"))
+    cur = _mov_get(email)
+    cur["base"] = {"fecha": hoy, "monto": round(saldo - hoy_neto)}
+    _mov_save(email, cur)
+    _MOV_MP_CACHE.pop(email, None)
+    return jsonify({"ok": True, "base": cur["base"]["monto"], "saldo": saldo})
 
 
 @app.post("/pf-movimientos-del")
@@ -4506,7 +4606,7 @@ _ADS_CUENTAS = {
         "nombre": "CP1 — NoxaLab", "ad_account": "1913715339273327",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "",  # ig="" = page-backed
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
-        "titulo": "NoxaLab", "presupuesto": 35,
+        "titulo": "+10.000 Hombres Usan NoxaLab 💪", "subtitulo": "Ultimas unidades", "presupuesto": 35,
         "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
                  "Si venís buscando:\n\n"
                  "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
@@ -4634,15 +4734,18 @@ def _ads_creative_payload(nombre, video_id, thumb, cfg, ad):
     vd = {"video_id": video_id, "message": ad.get("copy") or cfg["copy"],
           "call_to_action": {"type": "SHOP_NOW", "value": {"link": url}},
           "title": (ad.get("titulo") or cfg.get("titulo") or "")}
-    if (ad.get("subtitulo") or "").strip():
-        vd["link_description"] = ad["subtitulo"].strip()
+    _sub = (ad.get("subtitulo") or "").strip() or (cfg.get("subtitulo") or "").strip()
+    if _sub:
+        vd["link_description"] = _sub
     if thumb:
         vd["image_url"] = thumb
     oss = {"page_id": cfg["page"], "video_data": vd}
     if cfg.get("ig"):
         oss["instagram_user_id"] = cfg["ig"]
     return {"name": nombre, "object_story_spec": oss,
-            "degrees_of_freedom_spec": {"creative_features_spec": {"site_extensions": {"enroll_status": "OPT_OUT"}}}}
+            "degrees_of_freedom_spec": {"creative_features_spec": {
+                "standard_enhancements": {"enroll_status": "OPT_OUT"},
+                "site_extensions": {"enroll_status": "OPT_OUT"}}}}
 
 
 def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None):
@@ -4829,7 +4932,8 @@ def _ads_run(job, params):
 def pf_ads_cuentas():
     if not _user_actual():
         return jsonify({"ok": False, "cuentas": []})
-    cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"]}
+    cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
+           "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", "")}
           for k, v in _ADS_CUENTAS.items()]
     return jsonify({"ok": True, "cuentas": cs, "token": bool(_ads_token())})
 
