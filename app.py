@@ -1765,11 +1765,11 @@ _SOLO_DASH = r"""
     <div id="rpa-srcdrive">
      <span class="lb">Link de carpeta de Google Drive</span>
      <div style="display:flex;gap:9px"><input class="in" id="rpa-drive" style="flex:1" placeholder="https://drive.google.com/drive/folders/…" oninput="rpaReset()">
-      <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar videos</button></div>
+      <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar</button></div>
     </div>
     <div id="rpa-srcarch" style="display:none">
-     <span class="lb">Sub&iacute; tus videos (.mp4 / .mov)</span>
-     <input class="in" id="rpa-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" multiple style="width:100%;box-sizing:border-box;padding:9px" onchange="rpaSubir()">
+     <span class="lb">Sub&iacute; tus videos o fotos (.mp4 / .mov / .jpg / .png)</span>
+     <input class="in" id="rpa-file" type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp" multiple style="width:100%;box-sizing:border-box;padding:9px" onchange="rpaSubir()">
      <div style="color:#5b6678;font-size:11.5px;margin-top:6px">Pod&eacute;s elegir varios de una. Se suben directo desde tu compu.</div>
     </div>
     <div id="rpa-vids"></div>
@@ -1868,8 +1868,8 @@ _SOLO_DASH = r"""
   fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:$('rpa-drive').value})}).then(function(r){return r.json();}).then(function(j){
    b.textContent='Buscar videos';b.disabled=false;
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style="color:#fb7185;font-size:12.5px;margin-top:10px">'+((j&&j.msg)||'no pude leer el Drive')+'</div>';VIDS=0;rpaCalc();return;}
-   VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' videos';
-   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class="vitem"><div class="vi">✓</div><div style="flex:1;color:#e2e8f0;font-weight:600">'+v.name+'</div><div style="color:#5b6678;font-size:11px">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style="color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px">✅ '+VIDS+' videos ubicados en orden.</div>';rpaCalc();
+   VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
+   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class="vitem"><div class="vi">✓</div><div style="flex:1;color:#e2e8f0;font-weight:600">'+v.name+'</div><div style="color:#5b6678;font-size:11px">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style="color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px">✅ '+VIDS+' creativos ubicados en orden.</div>';rpaCalc();
   }).catch(function(){b.textContent='Buscar videos';b.disabled=false;});};
  window.rpaFuente=function(f){ $('rpa-fdrive').classList.toggle('on',f=='drive');$('rpa-farch').classList.toggle('on',f=='arch');
   $('rpa-srcdrive').style.display=f=='drive'?'block':'none';$('rpa-srcarch').style.display=f=='arch'?'block':'none';rpaReset();};
@@ -1878,8 +1878,8 @@ _SOLO_DASH = r"""
   $('rpa-vc').textContent='subiendo…'; $('rpa-vids').innerHTML='<div style=\"color:#c4b5fd;font-size:12.5px;margin-top:10px\">\u23f3 Subiendo tus videos… (no cierres esto)</div>';
   fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">'+((j&&j.msg)||'no pude subir')+'</div>';VIDS=0;UPLOAD_ID='';rpaCalc();return;}
-   UPLOAD_ID=j.upload_id;VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' videos';
-   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class=\"vitem\"><div class=\"vi\">\u2713</div><div style=\"flex:1;color:#e2e8f0;font-weight:600\">'+v.name+'</div><div style=\"color:#5b6678;font-size:11px\">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style=\"color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px\">\u2705 '+VIDS+' videos subidos.</div>';rpaCalc();
+   UPLOAD_ID=j.upload_id;VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
+   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class=\"vitem\"><div class=\"vi\">\u2713</div><div style=\"flex:1;color:#e2e8f0;font-weight:600\">'+v.name+'</div><div style=\"color:#5b6678;font-size:11px\">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style=\"color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px\">\u2705 '+VIDS+' creativos subidos.</div>';rpaCalc();
   }).catch(function(){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">error subiendo (probá de nuevo)</div>';VIDS=0;UPLOAD_ID='';rpaCalc();});};
  function schedTxt(){var f=$('rpa-fecha').value,h=$('rpa-hora').value||'05:00';if(!f)return h;var p=f.split('-');return p[2]+'/'+p[1]+' '+h;}
  window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
@@ -2255,7 +2255,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-ads-archivos-rapido"})
+    return jsonify({"ok": True, "v": "2026-08-12-ads-fotos-video"})
 
 
 @app.get("/pf-diag")
@@ -4681,6 +4681,20 @@ def _ads_subir_video(acct, ruta):
     return vid
 
 
+def _ads_es_imagen(ruta):
+    return ruta.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+
+
+def _ads_subir_imagen(acct, ruta):
+    """Sube una imagen a /adimages y devuelve su image_hash."""
+    with open(ruta, "rb") as f:
+        r = _ads_call("POST", "act_%s/adimages" % acct, files={"img": f})
+    imgs = r.get("images", {}) or {}
+    if not imgs:
+        raise RuntimeError("Meta no devolvió el hash de la imagen")
+    return next(iter(imgs.values()))["hash"]
+
+
 def _ads_video_ready(vid):
     import time as _t
     for _ in range(75):
@@ -4747,18 +4761,28 @@ def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=No
     return p
 
 
-def _ads_creative_payload(nombre, video_id, thumb, cfg, ad):
-    """ad: {copy, titulo, subtitulo, url} (lo que cargó el usuario; cae a los defaults de la cuenta)."""
+def _ads_creative_payload(nombre, medio, cfg, ad):
+    """medio: {'kind':'video','video_id','thumb'} o {'kind':'image','image_hash'}.
+    ad: {copy, titulo, subtitulo, url} (cae a los defaults de la cuenta)."""
     url = (ad.get("url") or "").strip() or cfg["landing"]
-    vd = {"video_id": video_id, "message": ad.get("copy") or cfg["copy"],
-          "call_to_action": {"type": "SHOP_NOW", "value": {"link": url}},
-          "title": (ad.get("titulo") or cfg.get("titulo") or "")}
+    cta = {"type": "SHOP_NOW", "value": {"link": url}}
+    title = (ad.get("titulo") or cfg.get("titulo") or "")
+    msg = ad.get("copy") or cfg["copy"]
     _sub = (ad.get("subtitulo") or "").strip() or (cfg.get("subtitulo") or "").strip()
-    if _sub:
-        vd["link_description"] = _sub
-    if thumb:
-        vd["image_url"] = thumb
-    oss = {"page_id": cfg["page"], "video_data": vd}
+    if medio.get("kind") == "image":
+        ld = {"image_hash": medio["image_hash"], "link": url, "message": msg,
+              "name": title, "call_to_action": cta}
+        if _sub:
+            ld["description"] = _sub
+        oss = {"page_id": cfg["page"], "link_data": ld}
+    else:
+        vd = {"video_id": medio["video_id"], "message": msg,
+              "call_to_action": cta, "title": title}
+        if _sub:
+            vd["link_description"] = _sub
+        if medio.get("thumb"):
+            vd["image_url"] = medio["thumb"]
+        oss = {"page_id": cfg["page"], "video_data": vd}
     if cfg.get("ig"):
         oss["instagram_user_id"] = cfg["ig"]
     return {"name": nombre, "object_story_spec": oss,
@@ -4824,8 +4848,8 @@ def _ads_drive_listar(link):
     q = "'%s' in parents and trashed=false" % fid
     files = svc.files().list(q=q, fields="files(id,name,mimeType,size)", supportsAllDrives=True,
                              includeItemsFromAllDrives=True, pageSize=100).execute().get("files", [])
-    vids = [f for f in files if "video" in (f.get("mimeType") or "")
-            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v"))]
+    vids = [f for f in files if "video" in (f.get("mimeType") or "") or "image" in (f.get("mimeType") or "")
+            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"))]
     vids.sort(key=lambda f: f.get("name", ""))
     return [{"name": f.get("name", ""),
              "mb": round(int(f.get("size") or 0) / 1048576) if f.get("size") else 0} for f in vids]
@@ -4839,8 +4863,8 @@ def _ads_drive_bajar(link, dest_dir):
     q = "'%s' in parents and trashed=false" % fid
     files = svc.files().list(q=q, fields="files(id,name,mimeType)", supportsAllDrives=True,
                              includeItemsFromAllDrives=True, pageSize=100).execute().get("files", [])
-    vids = [f for f in files if "video" in (f.get("mimeType") or "")
-            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v"))]
+    vids = [f for f in files if "video" in (f.get("mimeType") or "") or "image" in (f.get("mimeType") or "")
+            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"))]
     vids.sort(key=lambda f: f.get("name", ""))
     out = []
     for f in vids:
@@ -4900,14 +4924,17 @@ def _ads_run(job, params):
         _pl = threading.Lock(); _pn = {"n": 0}
 
         def _prep(idx, ruta):
-            vid = _ads_subir_video(acct, ruta)
-            _ads_video_ready(vid)
-            thumb = _ads_thumb(vid)
+            if _ads_es_imagen(ruta):
+                medio = {"kind": "image", "image_hash": _ads_subir_imagen(acct, ruta)}
+            else:
+                vid = _ads_subir_video(acct, ruta)
+                _ads_video_ready(vid)
+                medio = {"kind": "video", "video_id": vid, "thumb": _ads_thumb(vid)}
             with _pl:
                 _pn["n"] += 2
                 st["done"] = _pn["n"]
-                st["msg"] = "Videos listos %d/%d…" % (_pn["n"] // 2, len(rutas))
-            return idx, (vid, thumb)
+                st["msg"] = "Creativos listos %d/%d…" % (_pn["n"] // 2, len(rutas))
+            return idx, medio
 
         with _cf.ThreadPoolExecutor(max_workers=min(6, max(1, len(rutas)))) as _ex:
             _futs = [_ex.submit(_prep, i, r) for i, r in enumerate(rutas)]
@@ -4945,8 +4972,8 @@ def _ads_run(job, params):
         # ads en cada conjunto (1 por video)
         creados = 0
         for adset_id in adsets:
-            for i, (vid, thumb) in enumerate(medios, start=1):
-                cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), vid, thumb, cfg, ad))
+            for i, medio in enumerate(medios, start=1):
+                cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
                 _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
                                          "creative": {"creative_id": cid}, "status": estado})
                 creados += 1
@@ -5069,13 +5096,13 @@ def pf_ads_subir():
     vids = []
     for f in files:
         name = _os.path.basename(f.filename or "video.mp4")
-        if not name.lower().endswith((".mp4", ".mov", ".m4v")):
+        if not name.lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")):
             continue
         ruta = _os.path.join(d, name)
         f.save(ruta)
         vids.append({"name": name, "mb": round(_os.path.getsize(ruta) / 1048576)})
     if not vids:
-        return jsonify({"ok": False, "msg": "esos archivos no son videos (.mp4/.mov)"}), 400
+        return jsonify({"ok": False, "msg": "esos archivos no son videos ni fotos (.mp4/.mov/.jpg/.png)"}), 400
     vids.sort(key=lambda v: v["name"])
     _ADS_UPLOADS[up_id] = d
     return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
