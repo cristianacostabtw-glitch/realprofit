@@ -1760,10 +1760,18 @@ _SOLO_DASH = r"""
     <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select></div>
    </div>
    <div class="card">
-    <div class="ch"><div class="cn">2</div><div class="ct">Creativos</div><div class="cs" id="rpa-vc">peg&aacute; el link y busc&aacute;</div></div>
-    <span class="lb">Link de carpeta de Google Drive</span>
-    <div style="display:flex;gap:9px"><input class="in" id="rpa-drive" style="flex:1" placeholder="https://drive.google.com/drive/folders/…" oninput="rpaReset()">
-     <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar videos</button></div>
+    <div class="ch"><div class="cn">2</div><div class="ct">Creativos</div><div class="cs" id="rpa-vc">eleg&iacute; de d&oacute;nde</div></div>
+    <div class="seg" style="margin-bottom:12px"><div class="s on" id="rpa-fdrive" onclick="rpaFuente('drive')">Google Drive</div><div class="s" id="rpa-farch" onclick="rpaFuente('arch')">Mis archivos</div></div>
+    <div id="rpa-srcdrive">
+     <span class="lb">Link de carpeta de Google Drive</span>
+     <div style="display:flex;gap:9px"><input class="in" id="rpa-drive" style="flex:1" placeholder="https://drive.google.com/drive/folders/…" oninput="rpaReset()">
+      <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar videos</button></div>
+    </div>
+    <div id="rpa-srcarch" style="display:none">
+     <span class="lb">Sub&iacute; tus videos (.mp4 / .mov)</span>
+     <input class="in" id="rpa-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov,.m4v" multiple style="width:100%;box-sizing:border-box;padding:9px" onchange="rpaSubir()">
+     <div style="color:#5b6678;font-size:11.5px;margin-top:6px">Pod&eacute;s elegir varios de una. Se suben directo desde tu compu.</div>
+    </div>
     <div id="rpa-vids"></div>
    </div>
    <div class="card">
@@ -1820,7 +1828,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
 (function(){
- var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[];
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='';
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
@@ -1855,7 +1863,7 @@ _SOLO_DASH = r"""
  window.rpaEstado=function(){EST=EST=='activa'?'pausada':'activa';$('rpa-tk').classList.toggle('on',EST=='activa');
   $('rpa-estlb').textContent=EST=='activa'?'Programada (se activa sola el día/hora)':'Pausada (para revisar antes)';
   $('rpa-progbox').style.display=EST=='activa'?'flex':'none';rpaCalc();};
- window.rpaReset=function(){$('rpa-vids').innerHTML='';VIDS=0;$('rpa-vc').textContent='pegá el link y buscá';rpaCalc();};
+ window.rpaReset=function(){$('rpa-vids').innerHTML='';VIDS=0;UPLOAD_ID='';$('rpa-vc').textContent='cargá tus videos';rpaCalc();};
  window.rpaBuscar=function(){var b=$('rpa-btnb');b.textContent='Buscando…';b.disabled=true;
   fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:$('rpa-drive').value})}).then(function(r){return r.json();}).then(function(j){
    b.textContent='Buscar videos';b.disabled=false;
@@ -1863,6 +1871,16 @@ _SOLO_DASH = r"""
    VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' videos';
    $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class="vitem"><div class="vi">✓</div><div style="flex:1;color:#e2e8f0;font-weight:600">'+v.name+'</div><div style="color:#5b6678;font-size:11px">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style="color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px">✅ '+VIDS+' videos ubicados en orden.</div>';rpaCalc();
   }).catch(function(){b.textContent='Buscar videos';b.disabled=false;});};
+ window.rpaFuente=function(f){ $('rpa-fdrive').classList.toggle('on',f=='drive');$('rpa-farch').classList.toggle('on',f=='arch');
+  $('rpa-srcdrive').style.display=f=='drive'?'block':'none';$('rpa-srcarch').style.display=f=='arch'?'block':'none';rpaReset();};
+ window.rpaSubir=function(){ var inp=$('rpa-file'); if(!inp.files||!inp.files.length)return;
+  var fd=new FormData(); for(var i=0;i<inp.files.length;i++)fd.append('videos',inp.files[i]);
+  $('rpa-vc').textContent='subiendo…'; $('rpa-vids').innerHTML='<div style=\"color:#c4b5fd;font-size:12.5px;margin-top:10px\">\u23f3 Subiendo tus videos… (no cierres esto)</div>';
+  fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">'+((j&&j.msg)||'no pude subir')+'</div>';VIDS=0;UPLOAD_ID='';rpaCalc();return;}
+   UPLOAD_ID=j.upload_id;VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' videos';
+   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class=\"vitem\"><div class=\"vi\">\u2713</div><div style=\"flex:1;color:#e2e8f0;font-weight:600\">'+v.name+'</div><div style=\"color:#5b6678;font-size:11px\">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style=\"color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px\">\u2705 '+VIDS+' videos subidos.</div>';rpaCalc();
+  }).catch(function(){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">error subiendo (probá de nuevo)</div>';VIDS=0;UPLOAD_ID='';rpaCalc();});};
  function schedTxt(){var f=$('rpa-fecha').value,h=$('rpa-hora').value||'05:00';if(!f)return h;var p=f.split('-');return p[2]+'/'+p[1]+' '+h;}
  window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
   var cmpName=CMP=='nueva'?(( new Date().getDate())+'-'+(new Date().getMonth()+1)+' '+ang):((CMPS.find(function(c){return c.id==$('rpa-cmp').value;})||{}).name||'(existente)');
@@ -1872,8 +1890,8 @@ _SOLO_DASH = r"""
   $('rpa-rvids').textContent=VIDS;$('rpa-adsx').textContent=VIDS;
   $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
   $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(VIDS*NCONJ);};
- window.rpaLanzar=function(){ if(VIDS<1){alert('Primero buscá los videos del Drive.');return;}
-  var body={cuenta:'cp1',drive:$('rpa-drive').value,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
+ window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
+  var body={cuenta:'cp1',drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
@@ -2237,7 +2255,7 @@ def _shop_img(shop, token, product_id):
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-12-ads-winner-config"})
+    return jsonify({"ok": True, "v": "2026-08-12-ads-archivos-rapido"})
 
 
 @app.get("/pf-diag")
@@ -4599,6 +4617,7 @@ def desconectar_meta():
 # ==================== SUBIR CREATIVOS (Meta Ads) ====================
 _ADS_API = "https://graph.facebook.com/v23.0"
 _ADS_JOBS = {}
+_ADS_UPLOADS = {}   # upload_id -> carpeta temporal con los videos que subió el usuario
 
 # Cuentas configuradas (CP1/NoxaLab). Extensible a más cuentas.
 _ADS_CUENTAS = {
@@ -4670,7 +4689,7 @@ def _ads_video_ready(vid):
             return True
         if st == "error":
             return False
-        _t.sleep(4)
+        _t.sleep(2.5)
     return True
 
 
@@ -4680,7 +4699,7 @@ def _ads_thumb(vid):
         d = _ads_call("GET", "%s/thumbnails" % vid, params={"fields": "uri,is_preferred"}).get("data", [])
         if d:
             return ([t for t in d if t.get("is_preferred")] or d)[0]["uri"]
-        _t.sleep(3)
+        _t.sleep(2)
     try:
         return _ads_call("GET", str(vid), params={"fields": "picture"}).get("picture")
     except Exception:
@@ -4861,22 +4880,40 @@ def _ads_run(job, params):
         src = params.get("adset_src_id")
         start = _ads_sched(params)                            # día/hora de salida
 
-        st["msg"] = "Bajando videos de Drive…"
-        rutas = _ads_drive_bajar(params.get("drive", ""), tmp)
-        if not rutas:
-            raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
+        up_id = (params.get("upload_id") or "").strip()
+        if up_id:
+            st["msg"] = "Tomando tus videos…"
+            updir = _ADS_UPLOADS.get(up_id)
+            rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)) if (updir and _os.path.isdir(updir)) else []
+            if not rutas:
+                raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
+        else:
+            st["msg"] = "Bajando videos de Drive…"
+            rutas = _ads_drive_bajar(params.get("drive", ""), tmp)
+            if not rutas:
+                raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
         st["total"] = len(rutas) * 2 + 1 + n_conj
 
-        # subir + procesar videos
-        listos = []
-        for i, r in enumerate(rutas):
-            st["done"] = i; st["msg"] = "Subiendo video %d de %d…" % (i + 1, len(rutas))
-            listos.append(_ads_subir_video(acct, r))
-        medios = []
-        for i, vid in enumerate(listos):
-            st["done"] = len(rutas) + i; st["msg"] = "Procesando video %d de %d…" % (i + 1, len(rutas))
+        # subir + procesar videos EN PARALELO (mucho más rápido que uno por uno)
+        import concurrent.futures as _cf
+        medios = [None] * len(rutas)
+        _pl = threading.Lock(); _pn = {"n": 0}
+
+        def _prep(idx, ruta):
+            vid = _ads_subir_video(acct, ruta)
             _ads_video_ready(vid)
-            medios.append((vid, _ads_thumb(vid)))
+            thumb = _ads_thumb(vid)
+            with _pl:
+                _pn["n"] += 2
+                st["done"] = _pn["n"]
+                st["msg"] = "Videos listos %d/%d…" % (_pn["n"] // 2, len(rutas))
+            return idx, (vid, thumb)
+
+        with _cf.ThreadPoolExecutor(max_workers=min(6, max(1, len(rutas)))) as _ex:
+            _futs = [_ex.submit(_prep, i, r) for i, r in enumerate(rutas)]
+            for _f in _cf.as_completed(_futs):
+                _idx, _m = _f.result()
+                medios[_idx] = _m
 
         # campaña
         st["done"] = len(rutas) * 2; st["msg"] = "Creando campaña…"
@@ -5019,6 +5056,31 @@ def pf_ads_drive_listar():
         return jsonify({"ok": False, "msg": str(e)})
 
 
+@app.post("/pf-ads-subir")
+def pf_ads_subir():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    import tempfile, uuid
+    files = request.files.getlist("videos")
+    if not files:
+        return jsonify({"ok": False, "msg": "elegí al menos un video"}), 400
+    up_id = uuid.uuid4().hex[:12]
+    d = tempfile.mkdtemp(prefix="adsup_")
+    vids = []
+    for f in files:
+        name = _os.path.basename(f.filename or "video.mp4")
+        if not name.lower().endswith((".mp4", ".mov", ".m4v")):
+            continue
+        ruta = _os.path.join(d, name)
+        f.save(ruta)
+        vids.append({"name": name, "mb": round(_os.path.getsize(ruta) / 1048576)})
+    if not vids:
+        return jsonify({"ok": False, "msg": "esos archivos no son videos (.mp4/.mov)"}), 400
+    vids.sort(key=lambda v: v["name"])
+    _ADS_UPLOADS[up_id] = d
+    return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
+
+
 @app.post("/pf-ads-lanzar")
 def pf_ads_lanzar():
     if not _user_actual():
@@ -5026,8 +5088,8 @@ def pf_ads_lanzar():
     if not _ads_token():
         return jsonify({"ok": False, "msg": "falta META_TOKEN en el servidor (Render → Environment)"}), 400
     data = request.get_json(silent=True) or {}
-    if not (data.get("drive") or "").strip():
-        return jsonify({"ok": False, "msg": "pegá el link de Drive con los videos"}), 400
+    if not (data.get("drive") or "").strip() and not (data.get("upload_id") or "").strip():
+        return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
     import uuid
     job = uuid.uuid4().hex[:12]
     _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
