@@ -1671,18 +1671,11 @@ _SOLO_DASH = r"""
   // Busca el título aunque tenga un ícono adelante (los headers son '<span>icono</span>Texto').
   function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
   function layoutFijo(){
-    var rt=leafTxt('Resumen del período'); if(!rt) return;
-    var ut=leafTxt('Últimas ventas');
-    // contenedor = fila padre que tiene como hermanas la fila KPI + "Resumen del período" (+ "Últimas ventas").
-    var cont=null;
-    if(ut){ var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
-      cont=ut; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement; }
-    if(!cont){ // vista filtrada (Shopify/Tiendanube): a veces no hay "Últimas ventas" → subir desde rt
-      cont=rt.parentElement;
-      for(var k=0;k<9 && cont;k++){ var tx=cont.textContent||'';
-        if(/Facturaci/.test(tx) && /Ganancia/.test(tx) && /Ticket/.test(tx) && /Resumen del per/.test(tx)) break;
-        cont=cont.parentElement; } }
-    if(!cont) return;
+    var rt=leafTxt('Resumen del período'), ut=leafTxt('Últimas ventas'); if(!rt||!ut) return;
+    var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
+    var cont=ut; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement; if(!cont) return;
+    // Guarda: nunca reordenar un contenedor que incluya el header/chips (romperia la pagina y el chip "Todas").
+    if(/Visión operativa|período seleccionado/.test(cont.textContent||'')) return;
     var kids=cont.children;
     for(var i=0;i<kids.length;i++){ var el=kids[i], t=el.textContent||'', ord=90, hide=false;
       if(/Facturaci/.test(t) && /Ganancia/.test(t) && /Ticket/.test(t)) ord=1;              // fila KPI
@@ -1692,6 +1685,29 @@ _SOLO_DASH = r"""
       if(el.style.order!==String(ord)) el.style.order=ord;
       var d=hide?'none':''; if(el.style.display!==d) el.style.display=d; }
     if(getComputedStyle(cont).display==='block') cont.style.display='flex', cont.style.flexDirection='column';
+  }
+  // FIX filtrado: cuando filtrás por tienda, el widget de los 4 KPIs queda al fondo. Lo forzamos arriba.
+  // 100% seguro: solo pone order:-1 al item del KPI y SOLO si su contenedor ya es flex/grid (no convierte ni
+  // reestructura nada). Ancla real = label con icono shopping_bag + "Ventas". Si algo no cuadra, no toca nada.
+  function kpiArriba(){
+    var rt=leafTxt('Resumen del período'); if(!rt) return;
+    var sp=document.getElementsByTagName('span'), lab=null;
+    for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').replace(/\s+/g,' ').trim();
+      if(t.length<20 && t.slice(-6)==='Ventas' && /shopping_bag/.test(sp[i].innerHTML) && sp[i].offsetParent!==null){ lab=sp[i]; break; } }
+    if(!lab) return;
+    var kpi=lab;                                        // subir al widget que agrupa los 4 KPIs
+    for(var k=0;k<8;k++){ kpi=kpi.parentElement; if(!kpi) return; var tk=kpi.textContent||'';
+      if(/Facturaci/.test(tk) && /Ganancia/.test(tk) && /Ticket/.test(tk)) break; }
+    if(!kpi || !/Facturaci/.test(kpi.textContent||'')) return;
+    var anc=[], a=kpi; while(a){ anc.push(a); a=a.parentElement; }     // lista = ancestro común con "Resumen"
+    var lista=rt; while(lista && anc.indexOf(lista)<0) lista=lista.parentElement;
+    if(!lista) return;
+    if(/período seleccionado|Visión operativa/.test(lista.textContent||'')) return;   // guarda: nunca el header/chips
+    var item=kpi; while(item && item.parentElement!==lista) item=item.parentElement;  // item sortable del KPI
+    if(!item) return;
+    var disp=getComputedStyle(lista).display;
+    if(disp!=='flex' && disp!=='grid') return;          // SOLO si ya es flex/grid → no convierto ni rompo nada
+    if(item.style.order!=='-1') item.style.order='-1';  // KPI primero
   }
   // Mientras arrastrás para reordenar ("Mover"), NO re-aplico nada (sino cancelo el drag).
   var _busy=false, _bt=null;
@@ -1710,7 +1726,7 @@ _SOLO_DASH = r"""
   function matarGrafico(){ if(_grafDone) return; var t=leafTxt('Evolución'); if(!t) return;
     var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
     if(c&&/rounded/.test(c.className||'')){ if(c.style.display!=='none') c.style.display='none'; _grafDone=true; } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -2868,7 +2884,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-tienda18-kpi-orden"})
+    return jsonify({"ok": True, "v": "2026-08-13-tienda20-kpi-arriba"})
 
 
 @app.get("/pf-diag")
