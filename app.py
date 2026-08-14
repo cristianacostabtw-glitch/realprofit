@@ -2910,7 +2910,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-meta25-token-link"})
+    return jsonify({"ok": True, "v": "2026-08-14-ads27-va1"})
 
 
 @app.get("/pf-diag")
@@ -5315,7 +5315,7 @@ _ADS_UPLOADS = {}   # upload_id -> carpeta temporal con los videos que subió el
 _ADS_CUENTAS = {
     "cp1": {
         "nombre": "CP1 — NoxaLab", "ad_account": "1913715339273327",
-        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "",  # ig="" = page-backed
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab 💪", "subtitulo": "Ultimas unidades", "presupuesto": 35,
         "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
@@ -5329,12 +5329,32 @@ _ADS_CUENTAS = {
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
+    "va1": {
+        "nombre": "VA1 — VisionPure", "ad_account": "964010428983612",
+        "page": "1105184446002428", "pixel": "1237139148560920", "ig": "17841471399362397",  # IG @visionpure.argentina
+        "landing": "https://tryvisionpure.shop/productos/visionpure-recupera-la-nitidez-que-perdiste-con-los-anos2/",
+        "titulo": "Recuperá la nitidez que perdiste con los años", "subtitulo": "Envío gratis hoy", "presupuesto": 35,
+        "copy": ("\U0001f441️ ¿Ves más borroso de cerca o te cuesta manejar de noche?\n\n"
+                 "Con los años, los ojos piden una mano.\n\n"
+                 "VisionPure es un spray ocular con luteína que:\n"
+                 "✨ Ayuda a nutrir tus ojos día a día\n"
+                 "\U0001f319 Muchos notaron ver más nítido para leer y manejar\n"
+                 "\U0001f4a7 Fácil de usar: un par de gotas, sin pastillas\n\n"
+                 "Miles de personas +65 ya lo suman a su rutina.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y recuperá la nitidez."),
+    },
 }
 
 
+_ads_local = threading.local()   # token del usuario que lanzó la subida (por thread), para no cruzar cuentas
+
+
 def _ads_token():
-    # Prioridad: token que el usuario PEGÓ en la app (meta_tokens.json) → env META_TOKEN.
-    # Sirve en request y en threads de subida (ahí usa el primer token manual guardado, app de un dueño).
+    # 1) Si el job de subida fijó un token para ESTE thread, usá ese (cuenta correcta, sin cruces).
+    t = getattr(_ads_local, "token", None)
+    if t:
+        return t
+    # 2) Request: token que el usuario logueado PEGÓ en la app (meta_tokens.json) → env META_TOKEN.
     try:
         email = _user_actual()
     except Exception:
@@ -5583,6 +5603,7 @@ def _ads_drive_bajar(link, dest_dir):
 
 def _ads_run(job, params):
     """Baja de Drive → sube videos → crea campaña + N conjuntos + ads. Con progreso."""
+    _ads_local.token = params.get("_token") or None   # usar el token del usuario que lanzó (cuenta correcta)
     st = _ADS_JOBS.get(job)
     import tempfile, shutil
     tmp = tempfile.mkdtemp(prefix="ads_")
@@ -5821,6 +5842,7 @@ def pf_ads_lanzar():
         return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
     import uuid
     job = uuid.uuid4().hex[:12]
+    data["_token"] = _ads_token()   # token del usuario logueado AHORA (request) → el thread usa este, no el de otra cuenta
     _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
     threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
     return jsonify({"ok": True, "job": job})
