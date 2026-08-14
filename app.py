@@ -1799,17 +1799,14 @@ _SOLO_DASH = r"""
       if(el.style.display!==d) el.style.display=d; }
   }
   // Barre PARA SIEMPRE las secciones que no van. Solo quedan: los 4 KPI, Resumen del período (+Costos) y
-  // Últimas ventas. Corre en cada tick (tras cada re-render de React) → no vuelven. Sube desde el título hasta
-  // el widget sortable 'group pt-3' (o a la tarjeta 'rounded' como fallback) y lo esconde.
-  var _SECFUERA=['Desglose por tienda','Recomendación Estratégica','Riesgos Activos','Evolución'];
-  function matarSeccion(nombre){ var t=leafTxt(nombre); if(!t) return;
-    var g=t, hit=null;
-    for(var k=0;k<12&&g;k++){ g=g.parentElement; if(!g) break; var cl=g.className||'';
-      if(typeof cl!=='string') continue;
-      if(cl.indexOf('group')>=0 && cl.indexOf('pt-3')>=0){ hit=g; break; }        // widget entero → mejor
-      if(/rounded-2xl|rounded-xl/.test(cl) && !hit) hit=g; }                       // fallback: la tarjeta
-    if(hit && hit.style.display!=='none') hit.style.display='none'; }
-  function sacarSecciones(){ for(var i=0;i<_SECFUERA.length;i++){ try{ matarSeccion(_SECFUERA[i]); }catch(e){} } }
+  // Últimas ventas. Esconde el widget sortable 'div.group.pt-3' ENTERO (no solo su contenido) — así NO queda
+  // el hueco de 12px del padding pt-3 que dejaba el espacio invisible entre KPI y Resumen. Matcher por
+  // textContent, VERIFICADO contra el DOM real (28 widgets → 16 fuera, 12 quedan: KPI/Resumen/Últimas ×4,
+  // ningún keep se oculta). Corre en cada tick → aunque React re-renderice, se esconden solas.
+  var _SECFUERA=['Top productos','Desglose por tienda','Evolución','Recomendación Estratégica','Riesgos Activos'];
+  function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
+    for(var i=0;i<g.length;i++){ var t=g[i].textContent||'';
+      for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0){ if(g[i].style.display!=='none') g[i].style.display='none'; break; } } } }
   function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
@@ -2996,7 +2993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-solo3-secciones"})
+    return jsonify({"ok": True, "v": "2026-08-14-solo3-nohueco"})
 
 
 @app.get("/pf-diag")
