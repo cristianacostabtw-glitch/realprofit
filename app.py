@@ -207,6 +207,9 @@ _SOLO_DASH = r"""
  [aria-roledescription="sortable"],
  [title="Arrastrar para reordenar"],
  div:has(> [aria-roledescription="sortable"]){display:none!important}
+ /* Secciones que no van: se marcan con esta clase. El !important gana sobre cualquier display inline que
+    le pongan otras funciones (ocultarVacios/layoutFijo) → una vez marcada, NO vuelve a aparecer. */
+ .rp-oculto{display:none!important}
 </style>
 <script>
 (function(){
@@ -1793,6 +1796,7 @@ _SOLO_DASH = r"""
     for(var i=0;i<all.length;i++){ var el=all[i], cn=el.className;
       if(typeof cn!=='string' || cn.indexOf('group')<0 || cn.indexOf('pt-3')<0) continue;
       var t=el.textContent||'';
+      if(_esFuera(t)) continue;   // sección barrida (rp-oculto) → no la toco, la maneja sacarSecciones
       if(t.indexOf('drag_indicator')<0 && t.indexOf('Mover')<0) continue;   // debe tener el handle de arrastre
       var inner=t.replace(/drag_indicator|Mover|visibility_off|visibility_on|visibility/gi,'').replace(/\s+/g,'');
       var d=inner ? '' : 'none';
@@ -1804,9 +1808,9 @@ _SOLO_DASH = r"""
   // textContent, VERIFICADO contra el DOM real (28 widgets → 16 fuera, 12 quedan: KPI/Resumen/Últimas ×4,
   // ningún keep se oculta). Corre en cada tick → aunque React re-renderice, se esconden solas.
   var _SECFUERA=['Top productos','Desglose por tienda','Evolución','Recomendación Estratégica','Riesgos Activos'];
+  function _esFuera(t){ for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0) return true; } return false; }
   function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
-    for(var i=0;i<g.length;i++){ var t=g[i].textContent||'';
-      for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0){ if(g[i].style.display!=='none') g[i].style.display='none'; break; } } } }
+    for(var i=0;i<g.length;i++){ if(_esFuera(g[i].textContent||'') && !g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); } }
   function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
@@ -2993,7 +2997,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-solo3-nohueco"})
+    return jsonify({"ok": True, "v": "2026-08-14-solo3-important"})
 
 
 @app.get("/pf-diag")
