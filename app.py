@@ -2935,7 +2935,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-costos28-unit-var-fijo"})
+    return jsonify({"ok": True, "v": "2026-08-14-perf32-cache"})
 
 
 @app.get("/pf-diag")
@@ -2999,32 +2999,18 @@ def _tn_ventas(email, desde, hasta):
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return None
-    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-    out, vistos, page = [], set(), 1
-    while page <= 20:
-        try:
-            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                "per_page": 200, "page": page,
-                "created_at_min": desde + "T00:00:00-03:00",
-                "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
-            lote = r.json() if r.content else []
-        except Exception:
-            lote = []
-        if not isinstance(lote, list) or not lote:
-            break
-        for o in lote:
-            num = str(o.get("number") or "")
-            if not num or num in vistos or o.get("cancelled_at"):
-                continue
-            vistos.add(num)
-            tot = float(o.get("total") or 0)
-            out.append({"num": num, "origen": "Tiendanube",
-                        "estado": _TN_ESTADO.get((o.get("payment_status") or "").lower(), "—"),
-                        "fecha": o.get("created_at") or "", "total": round(tot, 2),
-                        "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
-        if len(lote) < 200:
-            break
-        page += 1
+    out = []
+    for o in _tn_orders_raw(email, desde, hasta):        # órdenes cacheadas (compartidas con el dashboard)
+        num = str(o.get("number") or "")
+        if not num or o.get("cancelled_at"):
+            continue
+        if (o.get("payment_status") or "").lower() != "paid":   # como Shopify: pendiente NO cuenta
+            continue
+        tot = float(o.get("total") or 0)
+        out.append({"num": num, "origen": "Tiendanube",
+                    "estado": _TN_ESTADO.get((o.get("payment_status") or "").lower(), "—"),
+                    "fecha": o.get("created_at") or "", "total": round(tot, 2),
+                    "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
     return out
 
 
@@ -4553,9 +4539,17 @@ def pf_despachos_seg_enviar():
     return jsonify({"ok": False, "msg": "el envío de seguimiento se conecta en el próximo paso"})
 
 
+_MP_LISTA_CACHE = {}   # {(email,desde,hasta): (ts, out)} — pagos de MP, cache 60s: se pide en varias secciones
+
+
 def _mp_pagos_lista(email, desde, hasta):
     """Lista de pagos aprobados de MP del usuario: {ref, amount, net, fee}. None si no hay MP.
     Sirve para MATCHEAR cada pago con su pedido de Shopify (comisión exacta por venta, sin inflar)."""
+    import time as _t
+    ck = (email, desde, hasta)
+    c = _MP_LISTA_CACHE.get(ck)
+    if c and (_t.time() - c[0] < 60):     # mismo período pedido de nuevo en <60s → sin re-bajar de MP
+        return c[1]
     tk = _mp_tokens().get(email)
     token = tk.get("access_token") if tk else None
     if not token:
@@ -4589,20 +4583,21 @@ def _mp_pagos_lista(email, desde, hasta):
                                                  for f in (p.get("fee_details") or []))
                 # desglose para el modal: comisión MP (mercadopago+application) vs cuotas (financing)
                 fd = p.get("fee_details") or []
-                fin = sum(float(f.get("amount") or 0) for f in fd if f.get("type") == "financing_fee")
+                finanz = sum(float(f.get("amount") or 0) for f in fd if f.get("type") == "financing_fee")
                 base = sum(float(f.get("amount") or 0) for f in fd if f.get("type") != "financing_fee")
                 if not fd:
-                    base = fee; fin = 0.0
+                    base = fee; finanz = 0.0
                 out.append({"ref": (p.get("external_reference") or "").strip(),
                             "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                             "inst": int(p.get("installments") or 1),
-                            "fee_mp": round(base, 2), "fee_cuotas": round(fin, 2),
+                            "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
                             "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
             if offset >= (data.get("paging") or {}).get("total", 0) or not res:
                 break
     except Exception:
         return None
+    _MP_LISTA_CACHE[ck] = (_t.time(), out)
     return out
 
 
@@ -4738,13 +4733,22 @@ def _shopify_resumen(email, desde, hasta):
     return {"raw": r, "prod": prod, "ords": ords_list}
 
 
-def _tn_resumen(email, desde, hasta):
-    """Mismo 'raw'/prod/ords que _shopify_resumen pero con los pedidos de Tiendanube."""
+_TN_ORDERS_CACHE = {}   # {(email,desde,hasta): (ts, [orders])} — órdenes crudas de TN, cache 60s
+
+
+def _tn_orders_raw(email, desde, hasta):
+    """Órdenes crudas de TN del período (cache 60s). Las comparten el dashboard y últimas ventas,
+    así no se bajan dos veces en la misma carga."""
+    import time as _t
+    ck = (email, desde, hasta)
+    c = _TN_ORDERS_CACHE.get(ck)
+    if c and (_t.time() - c[0] < 60):
+        return c[1]
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
-        return None
+        return []
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-    orders, vistos, page = [], set(), 1
+    out, vistos, page = [], set(), 1
     while page <= 20:
         try:
             r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
@@ -4758,11 +4762,21 @@ def _tn_resumen(email, desde, hasta):
             break
         for o in lote:
             n = str(o.get("number") or "")
-            if n and n not in vistos and not o.get("cancelled_at"):
-                vistos.add(n); orders.append(o)
+            if n and n not in vistos:
+                vistos.add(n); out.append(o)
         if len(lote) < 200:
             break
         page += 1
+    _TN_ORDERS_CACHE[ck] = (_t.time(), out)
+    return out
+
+
+def _tn_resumen(email, desde, hasta):
+    """Mismo 'raw'/prod/ords que _shopify_resumen pero con los pedidos de Tiendanube."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("store_id"):
+        return None
+    orders = [o for o in _tn_orders_raw(email, desde, hasta) if not o.get("cancelled_at")]
     costos = (_costos().get(email) or {})
     pagos = _mp_pagos_lista(email, desde, hasta)
     by_amt = {}
@@ -5747,10 +5761,20 @@ def _ads_run(job, params):
 def pf_ads_cuentas():
     if not _user_actual():
         return jsonify({"ok": False, "cuentas": []})
+    tok = _ads_token()
+    accesibles = set()                                   # cuentas publicitarias que ve ESTE token
+    if tok:
+        try:
+            r = requests.get("https://graph.facebook.com/%s/me/adaccounts" % META_API,
+                             params={"access_token": tok, "fields": "account_id", "limit": 200}, timeout=20)
+            accesibles = {str(a.get("account_id")) for a in ((r.json() or {}).get("data") or [])}
+        except Exception:
+            accesibles = set()
     cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", "")}
-          for k, v in _ADS_CUENTAS.items()]
-    return jsonify({"ok": True, "cuentas": cs, "token": bool(_ads_token())})
+          for k, v in _ADS_CUENTAS.items()
+          if (not accesibles) or str(v["ad_account"]) in accesibles]   # solo las que el token puede usar
+    return jsonify({"ok": True, "cuentas": cs, "token": bool(tok)})
 
 
 @app.get("/pf-ads-identidad")
@@ -5766,11 +5790,27 @@ def pf_ads_identidad():
             return _ads_call("GET", "act_%s/%s" % (acct, path), params={"fields": fields, "limit": 50}).get("data", [])
         except Exception:
             return []
+
+    def lst_raw(path, fields):
+        try:
+            return _ads_call("GET", path, params={"fields": fields, "limit": 100}).get("data", [])
+        except Exception:
+            return []
     pixels = [{"id": p["id"], "name": p.get("name", "")} for p in lst("adspixels", "id,name")]
     igs = [{"id": i["id"], "name": "@" + (i.get("username") or "")} for i in lst("instagram_accounts", "id,username")]
-    pages = [{"id": p["id"], "name": p.get("name", "")} for p in lst("promote_pages", "id,name")]
-    if cfg.get("page") and not any(p["id"] == cfg["page"] for p in pages):
-        pages.insert(0, {"id": cfg["page"], "name": "NoxaLab Argentina"})
+    # Páginas: las que conectaste (me/accounts) + las promocionables de la cuenta. Sin nombres hardcodeados.
+    pages, seen = [], set()
+    for p in (lst_raw("me/accounts", "id,name") + lst("promote_pages", "id,name")):
+        pid = p.get("id")
+        if pid and pid not in seen:
+            seen.add(pid); pages.append({"id": pid, "name": p.get("name", "") or "Página"})
+    if cfg.get("page") and cfg["page"] not in seen:                # la del config, con su NOMBRE REAL
+        nm = ""
+        try:
+            nm = (_ads_call("GET", str(cfg["page"]), params={"fields": "name"}) or {}).get("name", "")
+        except Exception:
+            pass
+        pages.insert(0, {"id": cfg["page"], "name": nm or "Página conectada"})
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages,
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")}})
 
@@ -6030,19 +6070,25 @@ def _guardar_costo(email, pid, costo) -> None:
     PROD_COSTOS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def _tn_productos(email):
-    """Productos de Tiendanube en el mismo formato que pf-productos (id 'tn:<id>')."""
+_TN_PROD_CACHE = {}   # {email: (ts, [raw])} — el fetch a TN es lento, lo cacheamos 60s
+
+
+def _tn_productos_raw(email):
+    """Fetch crudo de productos de Tiendanube (cacheado 60s). Solo id/nombre/sku/precio/img."""
+    import time as _t
+    c = _TN_PROD_CACHE.get(email)
+    if c and (_t.time() - c[0] < 60):
+        return c[1]
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return []
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-    costos = (_costos().get(email) or {})
-    skus = _skus_map(email)
-    prods, page = [], 1
+    raw, page = [], 1
     while page <= 10:
         try:
             r = requests.get("%s/%s/products" % (TN_API, store), headers=hdr,
-                             params={"per_page": 200, "page": page}, timeout=30)
+                             params={"per_page": 200, "page": page,
+                                     "fields": "id,name,variants,images"}, timeout=30)   # menos payload = más rápido
             lote = r.json() if r.content else []
         except Exception:
             lote = []
@@ -6054,20 +6100,32 @@ def _tn_productos(email):
                 nombre = nombre.get("es") or next(iter(nombre.values()), "") if nombre else ""
             v = (p.get("variants") or [{}])[0]
             imgs = p.get("images") or []
-            pid = "tn:%s" % p.get("id")
-            g = skus.get(pid)
-            cfg = _sku_cfg(g) if g else {"tipo": "fijo", "base": v.get("sku") or "", "map": {}}
-            prods.append({
-                "id": pid, "nombre": nombre or "",
-                "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
-                "sku_ej": _sku_calc(g or cfg, 2),
-                "precio": float(v.get("price") or 0),
-                "img": (imgs[0].get("src") if imgs else "") or "",
-                "costo": costos.get(pid) or 0,
-            })
+            raw.append({"pid": "tn:%s" % p.get("id"), "nombre": nombre or "",
+                        "sku_shopify": v.get("sku") or "", "precio": float(v.get("price") or 0),
+                        "img": (imgs[0].get("src") if imgs else "") or ""})
         if len(lote) < 200:
             break
         page += 1
+    _TN_PROD_CACHE[email] = (_t.time(), raw)
+    return raw
+
+
+def _tn_productos(email):
+    """Productos de TN con costo/SKU aplicados FRESCOS (el fetch va cacheado; las ediciones no)."""
+    costos = (_costos().get(email) or {})
+    skus = _skus_map(email)
+    prods = []
+    for p in _tn_productos_raw(email):
+        pid = p["pid"]
+        g = skus.get(pid)
+        cfg = _sku_cfg(g) if g else {"tipo": "fijo", "base": p["sku_shopify"], "map": {}}
+        prods.append({
+            "id": pid, "nombre": p["nombre"],
+            "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
+            "sku_ej": _sku_calc(g or cfg, 2),
+            "precio": p["precio"], "img": p["img"],
+            "costo": costos.get(pid) or 0,
+        })
     return prods
 
 
