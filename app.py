@@ -1437,6 +1437,23 @@ _SOLO_DASH = r"""
   var row=inp.closest('tr'); var b=row&&row.querySelector('.rp-badge');
   if(b){ if(v>0){ b.className='rp-badge rp-concosto'; b.style.cssText='background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#10003; Cargado'; } else { b.className='rp-badge rp-sincosto'; b.style.cssText='background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#9888;&#65039; Sin costo'; } }
   rpProdWarn(); };
+ // Cambio de tipo (Unitario/Variable/Fijo): guarda el tipo y recarga para mostrar el editor correcto.
+ window.rpSkuTipoChg=function(id){
+  var t=(document.getElementById('rp-sku-t-'+id)||{}).value||'unitario';
+  var be=document.getElementById('rp-sku-b-'+id); var base=be?be.value:'';
+  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,tipo:t,base:base})}).then(function(){ rpProdLoad(); }).catch(function(){ rpProdLoad(); }); };
+ // Variable: guarda el SKU de cada cantidad (1 a 4).
+ window.rpSkuVarSave=function(id){
+  var map={}; for(var q=1;q<=4;q++){ var e=document.getElementById('rp-skum-'+id+'-'+q); if(e&&e.value.trim()) map[q]=e.value.trim(); }
+  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,tipo:'variable',map:map})}).catch(function(){}); };
+ // Variable: guarda el COSTO de cada cantidad (1 a 4). El margen usa el costo exacto de esa cantidad.
+ window.rpCostoVarSave=function(id){
+  var g=function(x){ var e=document.getElementById(x); return e?(parseFloat(String(e.value||'').replace(/\./g,'').replace(',','.'))||0):0; };
+  var costos={}, algo=false; for(var q=1;q<=4;q++){ var v=g('rp-cvar-'+id+'-'+q); if(v>0){ costos[q]=v; algo=true; } }
+  fetch('/pf-guardar-costo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,variable:1,costos:costos})}).catch(function(){});
+  var el=document.getElementById('rp-cvar-'+id+'-1'), row=el&&el.closest('tr'), b=row&&row.querySelector('.rp-badge');
+  if(b){ if(algo){ b.className='rp-badge rp-concosto'; b.style.cssText='background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#10003; Cargado'; } else { b.className='rp-badge rp-sincosto'; b.style.cssText='background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#9888;&#65039; Sin costo'; } }
+  rpProdWarn(); };
  function rpProdLoad(){ var chip=document.getElementById('rp-prod-chip'), warn=document.getElementById('rp-prod-warn'), body=document.getElementById('rp-prod-body'); if(!body)return;
   body.innerHTML='<div style="color:#94a3b8;font-size:13px;padding:24px 4px">Cargando...</div>'; warn.innerHTML=''; chip.innerHTML='';
   fetch('/pf-productos').then(function(r){return r.json();}).then(function(j){
@@ -1446,22 +1463,30 @@ _SOLO_DASH = r"""
    if(!ps.length){ warn.innerHTML=''; body.innerHTML='<div style="color:#94a3b8;font-size:13px;padding:24px 4px">Tu tienda no tiene productos cargados todav&iacute;a.</div>'; return; }
    var h='<table style="width:100%;border-collapse:collapse;margin-top:14px"><thead><tr><th style="text-align:left;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Producto</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Precio de venta</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">SKU</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Costo</th></tr></thead><tbody>';
    ps.forEach(function(p){ var img=p.img?'<img src="'+p.img+'" style="width:100%;height:100%;object-fit:cover">':'&#128247;';
-    var tiene=p.costo&&Number(p.costo)>0;
+    var esVar=(p.sku_tipo==='variable');
+    var cmap=(p.costo&&typeof p.costo==='object')?p.costo:{};
+    var smap=p.sku_map||{};
+    var _cnum=(p.costo&&typeof p.costo==='object')?(Number(p.costo['1'])||0):(Number(p.costo)||0);
+    var tiene=esVar?['1','2','3','4'].some(function(k){return Number(cmap[k])>0;}):(_cnum>0);
     var badge= tiene ? '<span class="rp-badge rp-concosto" style="background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#10003; Cargado</span>' : '<span class="rp-badge rp-sincosto" style="background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#9888;&#65039; Sin costo</span>';
-    h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">'
-     +'<div style="display:flex;gap:6px;align-items:center">'
-      +'<select id="rp-sku-t-'+p.id+'" onchange="rpSkuSave(\''+p.id+'\')" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:8px 8px;font-size:12.5px;cursor:pointer">'
-       +'<option value="xn"'+(p.sku_tipo==='xn'?' selected':'')+'>xN cantidad</option>'
-       +'<option value="spray"'+(p.sku_tipo==='spray'?' selected':'')+'>Spray 30/60</option>'
+    var sIn='background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right';
+    var sSm='background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:7px 9px;font-size:12.5px';
+    var skuC='<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
+      +'<select id="rp-sku-t-'+p.id+'" onchange="rpSkuTipoChg(\''+p.id+'\')" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:8px 8px;font-size:12.5px;cursor:pointer">'
+       +'<option value="unitario"'+(p.sku_tipo==='unitario'?' selected':'')+'>Unitario</option>'
+       +'<option value="variable"'+(p.sku_tipo==='variable'?' selected':'')+'>Variable</option>'
        +'<option value="fijo"'+(p.sku_tipo==='fijo'?' selected':'')+'>Fijo</option>'
-      +'</select>'
-      +'<input id="rp-sku-b-'+p.id+'" value="'+esc(p.sku_base||'')+'" '+(p.sku_tipo==='spray'?'disabled':'')+' placeholder="'+(p.sku_tipo==='fijo'?'código fijo':'nombre (ej: pote)')+'" onchange="rpSkuSave(\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right'+(p.sku_tipo==='spray'?';opacity:.4':'')+'">'
-     +'</div>'
-     +'<span id="rp-sku-ej-'+p.id+'" style="color:#5b6b82;font-size:11px">ej: 2→'+esc(p.sku_ej||'')+'</span>'
-    +'</div></td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><input value="'+(tiene?Number(p.costo).toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpSaveCosto(this,\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right"></td></tr>'; });
+      +'</select>';
+    if(esVar){ for(var q=1;q<=4;q++){ var ejs=(q===1?'1 30ml':q===2?'1 60ml':q===3?'1 30ml + 1 60ml':'2 60ml'); skuC+='<div style="display:flex;gap:6px;align-items:center"><span style="color:#5b6b82;font-size:10.5px;width:14px;text-align:right">'+q+'</span><input id="rp-skum-'+p.id+'-'+q+'" value="'+esc(smap[q]||'')+'" placeholder="'+ejs+'" onchange="rpSkuVarSave(\''+p.id+'\')" style="width:132px;'+sSm+';text-align:left"></div>'; } }
+    else { skuC+='<input id="rp-sku-b-'+p.id+'" value="'+esc(p.sku_base||'')+'" placeholder="'+(p.sku_tipo==='fijo'?'código fijo':'nombre (ej: Pote)')+'" onchange="rpSkuSave(\''+p.id+'\')" style="width:120px;'+sIn+'"><span id="rp-sku-ej-'+p.id+'" style="color:#5b6b82;font-size:11px">ej: 2&rarr;'+esc(p.sku_ej||'')+'</span>'; }
+    skuC+='</div>';
+    var costC;
+    if(esVar){ costC='<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><div style="height:32px"></div>'; for(var w=1;w<=4;w++){ var cv=Number(cmap[w])||0; costC+='<input id="rp-cvar-'+p.id+'-'+w+'" value="'+(cv?cv.toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpCostoVarSave(\''+p.id+'\')" style="width:94px;'+sSm+';text-align:right">'; } costC+='</div>'; }
+    else { costC='<input value="'+(tiene?_cnum.toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpSaveCosto(this,\''+p.id+'\')" style="width:110px;'+sIn+'">'; }
+    h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e;vertical-align:top"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px;vertical-align:top">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+skuC+'</td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+costC+'</td></tr>'; });
    h+='</tbody></table>'; body.innerHTML=h; rpProdWarn();
    var rf=document.getElementById('rp-prod-ref'); if(rf) rf.onclick=rpProdLoad;
   }).catch(function(){ body.innerHTML='<div style="color:#f87171;font-size:13px;padding:24px 4px">No se pudieron cargar los productos.</div>'; }); }
@@ -2526,7 +2551,7 @@ def pf_debug_ordenes():
     for o in orders[:n]:
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
-        cp = sum(float(costos.get(str(li.get("product_id") or "")) or 0) * int(li.get("quantity") or 0)
+        cp = sum(_costo_qty(costos.get(str(li.get("product_id") or "")), int(li.get("quantity") or 0))
                  for li in (o.get("line_items") or []))
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         # envío real o promedio
@@ -2759,7 +2784,7 @@ def pf_stock_catalogo():
     cat = []
     for p in _tn_productos(email):
         cat.append({"id": p["id"], "nombre": p["nombre"], "sku": p.get("sku_base", ""),
-                    "costo": p.get("costo", 0)})
+                    "costo": _costo_num(p.get("costo"))})
     tk = _shop_tokens().get(email)
     if tk and tk.get("access_token") and tk.get("shop"):
         costos = (_costos().get(email) or {})
@@ -2771,7 +2796,7 @@ def pf_stock_catalogo():
                 v = (pr.get("variants") or [{}])[0]
                 pid = str(pr.get("id"))
                 cat.append({"id": pid, "nombre": pr.get("title") or "",
-                            "sku": v.get("sku") or "", "costo": costos.get(pid) or 0})
+                            "sku": v.get("sku") or "", "costo": _costo_num(costos.get(pid))})
         except Exception:
             pass
     return jsonify({"ok": True, "productos": cat})
@@ -2910,7 +2935,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-ads27-va1"})
+    return jsonify({"ok": True, "v": "2026-08-14-costos28-unit-var-fijo"})
 
 
 @app.get("/pf-diag")
@@ -3071,8 +3096,8 @@ def pf_orden():
     for li in (o.get("line_items") or []):
         q = int(li.get("quantity") or 0)
         pid = str(li.get("product_id") or "")
-        cu = float(costos.get(pid) or 0)
-        costo_prod += cu * q
+        cu = costos.get(pid)
+        costo_prod += _costo_qty(cu, q)
         items.append({"nombre": li.get("title") or li.get("name") or "?", "cantidad": q,
                       "precio": float(li.get("price") or 0), "foto": _shop_img(shop, token, pid)})
     # MP: matcheo el pago de esta orden por fecha/monto para el desglose real.
@@ -3158,36 +3183,29 @@ def _skus_save(email, m) -> None:
 
 
 def _sku_cfg(v) -> dict:
-    """Normaliza el valor guardado (string viejo o dict) → {'tipo','base'}."""
+    """Normaliza → {'tipo','base','map'}. tipo: unitario | variable | fijo.
+    Compat con lo viejo: xn→unitario, spray→variable, string→fijo."""
     if isinstance(v, dict):
-        return {"tipo": (v.get("tipo") or "xn"), "base": (v.get("base") or "")}
+        t = (v.get("tipo") or "unitario")
+        t = {"xn": "unitario", "spray": "variable"}.get(t, t)
+        if t not in ("unitario", "variable", "fijo"):
+            t = "unitario"
+        return {"tipo": t, "base": (v.get("base") or ""), "map": (v.get("map") or {})}
     if isinstance(v, str) and v.strip():
-        return {"tipo": "fijo", "base": v.strip()}
-    return {"tipo": "xn", "base": ""}
-
-
-def _sku_vp(u: int) -> str:
-    """SKU VisionPure: cada 2 sprays → 1 de 60ML, el que sobra → 1 de 30ML. Ej: 3 → '1 60ML + 1 30ML'."""
-    if u <= 0:
-        return ""
-    d60, d30 = u // 2, u % 2
-    p = []
-    if d60:
-        p.append("%d 60ML" % d60)
-    if d30:
-        p.append("%d 30ML" % d30)
-    return " + ".join(p)
+        return {"tipo": "fijo", "base": v.strip(), "map": {}}
+    return {"tipo": "unitario", "base": "", "map": {}}
 
 
 def _sku_calc(cfg, u: int) -> str:
-    """SKU de la orden según el tipo de producto y la cantidad comprada `u`."""
+    """SKU de la orden según el tipo y la cantidad comprada `u`."""
     c = _sku_cfg(cfg)
-    t, b = c["tipo"], (c["base"] or "").strip()
-    if t == "spray":
-        return _sku_vp(u)
+    t, b, m = c["tipo"], (c["base"] or "").strip(), (c.get("map") or {})
+    if t == "variable":
+        s = (str(m.get(str(int(u))) or "")).strip()
+        return s if s else ("x%d" % u)            # cantidad sin definir → xN
     if t == "fijo":
         return b
-    # 'xn' (por defecto): xN + nombre  → 'x2 pote'
+    # unitario: 'xN base' (ej 'x2 Pote')
     return (("x%d %s" % (u, b)).strip()) if b else ("x%d" % u)
 
 
@@ -3200,15 +3218,25 @@ def pf_sku_set():
     pid = str(data.get("pid") or "").strip()
     if not pid:
         return jsonify({"ok": False})
-    tipo = (data.get("tipo") or "xn").strip()
-    if tipo not in ("xn", "spray", "fijo"):
-        tipo = "xn"
+    tipo = (data.get("tipo") or "unitario").strip()
+    tipo = {"xn": "unitario", "spray": "variable"}.get(tipo, tipo)
+    if tipo not in ("unitario", "variable", "fijo"):
+        tipo = "unitario"
     base = str(data.get("base") or "").strip()
+    smap = {}                                          # variable: {cantidad: sku}
+    for k, v in (data.get("map") or {}).items():
+        if str(k).isdigit() and str(v or "").strip():
+            smap[str(int(k))] = str(v).strip()
     m = _skus_map(email)
-    if tipo == "spray" or base:            # spray no necesita base; los otros sí para guardar
+    if tipo == "variable":
+        if smap:
+            m[pid] = {"tipo": "variable", "base": "", "map": smap}
+        else:
+            m[pid] = {"tipo": "variable", "base": "", "map": {}}
+    elif base:
         m[pid] = {"tipo": tipo, "base": base}
     else:
-        m.pop(pid, None)                   # sin base y no-spray → limpiar
+        m.pop(pid, None)                               # sin base y no-variable → limpiar
     _skus_save(email, m)
     return jsonify({"ok": True, "ejemplos": {str(n): _sku_calc(m.get(pid), n) for n in (1, 2, 3)}})
 
@@ -4648,7 +4676,7 @@ def _shopify_resumen(email, desde, hasta):
             pid = str(li.get("product_id") or "")
             c = costos.get(pid)
             if c:
-                costo_prod += float(c) * q
+                costo_prod += _costo_qty(c, q)
             nm = li.get("title") or "?"
             prodmap[nm] = prodmap.get(nm, 0) + q
         for rf in (o.get("refunds") or []):
@@ -4763,7 +4791,7 @@ def _tn_resumen(email, desde, hasta):
             q = int(p.get("quantity") or 0); unidades += q
             c = costos.get("tn:%s" % p.get("product_id"))
             if c:
-                costo_prod += float(c) * q
+                costo_prod += _costo_qty(c, q)
             nm = p.get("name") or "?"
             if isinstance(nm, dict):
                 nm = nm.get("es") or next(iter(nm.values()), "?")
@@ -5946,10 +5974,55 @@ def _costos() -> dict:
         return {}
 
 
+def _costo_qty(cost, qty) -> float:
+    """Costo de `qty` unidades.
+    - VARIABLE: costo guardado como dict {'1':c1,'2':c2,'3':c3,'4':c4} (costo por cantidad).
+      Usa el de esa cantidad exacta; si no está (5+), usa el unitario ('1') × cantidad.
+    - UNITARIO/FIJO (número plano): costo*qty (backward-compatible)."""
+    if not cost:
+        return 0.0
+    try:
+        q = int(qty or 0)
+    except Exception:
+        q = 0
+    if isinstance(cost, dict):
+        if str(q) in cost:
+            return float(cost.get(str(q)) or 0)
+        return float(cost.get("1") or 0) * q     # cantidad no definida → unitario × cantidad
+    try:
+        return float(cost) * q
+    except Exception:
+        return 0.0
+
+
+def _costo_num(c) -> float:
+    """Costo como número para pantallas que muestran 1 solo valor (usa la cantidad '1' si es variable)."""
+    if isinstance(c, dict):
+        return float(c.get("1") or 0)
+    try:
+        return float(c or 0)
+    except Exception:
+        return 0.0
+
+
 def _guardar_costo(email, pid, costo) -> None:
     d = _costos()
     u = d.get(email) or {}
-    if costo and float(costo) > 0:
+    if isinstance(costo, dict):                                   # VARIABLE: {'1':c1,'2':c2,...}
+        m = {}
+        for k, v in costo.items():
+            if str(k).isdigit():
+                try:
+                    fv = float(v or 0)
+                except Exception:
+                    fv = 0
+                if fv > 0:
+                    m[str(int(k))] = fv
+        if m:
+            u[str(pid)] = m
+        else:
+            u.pop(str(pid), None)
+    elif costo and float(costo) > 0:                              # UNITARIO/FIJO (número)
         u[str(pid)] = float(costo)
     else:
         u.pop(str(pid), None)
@@ -5964,6 +6037,7 @@ def _tn_productos(email):
         return []
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
     costos = (_costos().get(email) or {})
+    skus = _skus_map(email)
     prods, page = [], 1
     while page <= 10:
         try:
@@ -5981,10 +6055,12 @@ def _tn_productos(email):
             v = (p.get("variants") or [{}])[0]
             imgs = p.get("images") or []
             pid = "tn:%s" % p.get("id")
+            g = skus.get(pid)
+            cfg = _sku_cfg(g) if g else {"tipo": "fijo", "base": v.get("sku") or "", "map": {}}
             prods.append({
                 "id": pid, "nombre": nombre or "",
-                "sku_tipo": "fijo", "sku_base": v.get("sku") or "",
-                "sku_ej": v.get("sku") or "",
+                "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
+                "sku_ej": _sku_calc(g or cfg, 2),
                 "precio": float(v.get("price") or 0),
                 "img": (imgs[0].get("src") if imgs else "") or "",
                 "costo": costos.get(pid) or 0,
@@ -6025,14 +6101,14 @@ def pf_productos():
                 if guardado:
                     cfg = _sku_cfg(guardado)                       # tipo + base que cargó el usuario
                 elif v.get("sku"):
-                    cfg = {"tipo": "fijo", "base": v.get("sku")}   # fallback: el SKU fijo de Shopify
+                    cfg = {"tipo": "fijo", "base": v.get("sku"), "map": {}}   # fallback: el SKU fijo de Shopify
                 else:
-                    cfg = {"tipo": "xn", "base": ""}               # default: por cantidad
+                    cfg = {"tipo": "unitario", "base": "", "map": {}}         # default: por cantidad
                 productos.append({
                     "id": pid,
                     "nombre": p.get("title") or "",
-                    "sku_tipo": cfg["tipo"], "sku_base": cfg["base"],
-                    "sku_ej": _sku_calc(cfg, 2),                    # ejemplo con 2 unidades para mostrar
+                    "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
+                    "sku_ej": _sku_calc(guardado or cfg, 2),        # ejemplo con 2 unidades para mostrar
                     "precio": float(v.get("price") or 0),
                     "img": (p.get("image") or {}).get("src") or "",
                     "costo": costos.get(str(pid)) or 0,
@@ -6054,11 +6130,20 @@ def pf_guardar_costo():
     pid = str(data.get("id") or "")
     if not pid:
         return jsonify({"ok": False, "error": "falta id"}), 400
-    try:
-        costo = float(data.get("costo") or 0)
-    except Exception:
-        costo = 0
-    _guardar_costo(email, pid, costo)
+    if data.get("variable") or isinstance(data.get("costos"), dict):   # VARIABLE → mapa {cantidad: costo}
+        m = {}
+        for k, v in (data.get("costos") or {}).items():
+            try:
+                m[str(int(k))] = float(v or 0)
+            except Exception:
+                pass
+        _guardar_costo(email, pid, m)
+    else:                                                              # UNITARIO/FIJO → número plano
+        try:
+            costo = float(data.get("costo") or 0)
+        except Exception:
+            costo = 0
+        _guardar_costo(email, pid, costo)
     return jsonify({"ok": True})
 
 
