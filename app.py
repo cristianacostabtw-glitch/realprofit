@@ -1686,28 +1686,43 @@ _SOLO_DASH = r"""
       var d=hide?'none':''; if(el.style.display!==d) el.style.display=d; }
     if(getComputedStyle(cont).display==='block') cont.style.display='flex', cont.style.flexDirection='column';
   }
-  // FIX filtrado: cuando filtrás por tienda, el widget de los 4 KPIs queda al fondo. Lo forzamos arriba.
-  // 100% seguro: solo pone order:-1 al item del KPI y SOLO si su contenedor ya es flex/grid (no convierte ni
-  // reestructura nada). Ancla real = label con icono shopping_bag + "Ventas". Si algo no cuadra, no toca nada.
+  // FIX filtrado: cuando filtrás por tienda/canal, el widget de los 4 KPIs queda al fondo. Lo MOVEMOS
+  // físicamente al tope de su lista (más confiable que el CSS order, que en la vista filtrada no engancha).
+  // Ancla real = label con icono shopping_bag + "Ventas". Guarda: nunca tocamos el contenedor del header/chips.
   function kpiArriba(){
-    var rt=leafTxt('Resumen del período'); if(!rt) return;
-    var sp=document.getElementsByTagName('span'), lab=null;
+    var sp=document.getElementsByTagName('span'), cand=[];
     for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').replace(/\s+/g,' ').trim();
-      if(t.length<20 && t.slice(-6)==='Ventas' && /shopping_bag/.test(sp[i].innerHTML) && sp[i].offsetParent!==null){ lab=sp[i]; break; } }
-    if(!lab) return;
+      if(t.length<20 && t.slice(-6)==='Ventas' && /shopping_bag/.test(sp[i].innerHTML)) cand.push(sp[i]); }
+    if(!cand.length) return;
+    var lab=null; for(var c=0;c<cand.length;c++){ if(cand[c].offsetParent!==null){ lab=cand[c]; break; } }
+    if(!lab) lab=cand[0];
     var kpi=lab;                                        // subir al widget que agrupa los 4 KPIs
     for(var k=0;k<8;k++){ kpi=kpi.parentElement; if(!kpi) return; var tk=kpi.textContent||'';
       if(/Facturaci/.test(tk) && /Ganancia/.test(tk) && /Ticket/.test(tk)) break; }
     if(!kpi || !/Facturaci/.test(kpi.textContent||'')) return;
-    var anc=[], a=kpi; while(a){ anc.push(a); a=a.parentElement; }     // lista = ancestro común con "Resumen"
-    var lista=rt; while(lista && anc.indexOf(lista)<0) lista=lista.parentElement;
+    // subir hasta el contenedor que TAMBIÉN contiene "Resumen del período" (= la lista de widgets).
+    // Si topamos con el header/chips antes, abortamos (seguridad total).
+    var lista=kpi.parentElement;
+    while(lista){ var tl=lista.textContent||'';
+      if(/período seleccionado|Visión operativa/.test(tl)) return;   // header → abort
+      if(/Resumen del per/.test(tl)) break;                          // contenedor con KPI + Resumen
+      lista=lista.parentElement; }
     if(!lista) return;
-    if(/período seleccionado|Visión operativa/.test(lista.textContent||'')) return;   // guarda: nunca el header/chips
-    var item=kpi; while(item && item.parentElement!==lista) item=item.parentElement;  // item sortable del KPI
+    var item=kpi; while(item && item.parentElement!==lista) item=item.parentElement;  // item del KPI (hijo directo)
     if(!item) return;
-    var disp=getComputedStyle(lista).display;
-    if(disp!=='flex' && disp!=='grid') return;          // SOLO si ya es flex/grid → no convierto ni rompo nada
-    if(item.style.order!=='-1') item.style.order='-1';  // KPI primero
+    if(lista.firstElementChild!==item){ try{ lista.insertBefore(item, lista.firstElementChild); }catch(e){} }  // KPI al tope
+  }
+  // En la tarjeta VENTAS, dejar SOLO el total: ocultar el desglose por plataforma (logitos + conteos).
+  // El contenedor del número es el hermano siguiente al label "Ventas"; su 1er hijo = total, el resto = desglose.
+  function ventasSinLogos(){
+    var sp=document.getElementsByTagName('span');
+    for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').replace(/\s+/g,' ').trim();
+      if(t.length<20 && t.slice(-6)==='Ventas' && /shopping_bag/.test(sp[i].innerHTML)){
+        var nb=sp[i].nextElementSibling; if(!nb) continue;
+        var ch=nb.children;
+        for(var j=1;j<ch.length;j++){ if(ch[j].style.display!=='none') ch[j].style.display='none'; }  // oculta desglose, deja el total
+        var im=nb.getElementsByTagName('img');                                                          // y cualquier <img> de plataforma
+        for(var q=0;q<im.length;q++){ if(im[q].style.display!=='none') im[q].style.display='none'; } } }
   }
   // Mientras arrastrás para reordenar ("Mover"), NO re-aplico nada (sino cancelo el drag).
   var _busy=false, _bt=null;
@@ -1726,7 +1741,7 @@ _SOLO_DASH = r"""
   function matarGrafico(){ if(_grafDone) return; var t=leafTxt('Evolución'); if(!t) return;
     var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
     if(c&&/rounded/.test(c.className||'')){ if(c.style.display!=='none') c.style.display='none'; _grafDone=true; } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ ventasSinLogos(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -2884,7 +2899,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-tienda20-kpi-arriba"})
+    return jsonify({"ok": True, "v": "2026-08-13-tienda22-kpimove-ventas"})
 
 
 @app.get("/pf-diag")
