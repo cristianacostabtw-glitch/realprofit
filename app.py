@@ -202,6 +202,11 @@ _SOLO_DASH = r"""
  .rp-pill.rp-active .rp-lbl{color:#fff}
  .rp-pill .rp-lbl a{color:#94a3b8;font-size:11px;font-weight:500;text-decoration:none;display:block}
  .rp-pill .rp-lbl .em{display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+ /* Chip flotante "Mover / 👁" de cada widget (dnd-kit sortable): el layout es fijo, no se reordena.
+    Lo mata por SELECTOR, así aunque React lo re-renderice el navegador lo esconde de nuevo solo (no vuelve). */
+ [aria-roledescription="sortable"],
+ [title="Arrastrar para reordenar"],
+ div:has(> [aria-roledescription="sortable"]){display:none!important}
 </style>
 <script>
 (function(){
@@ -1772,12 +1777,9 @@ _SOLO_DASH = r"""
   document.addEventListener('pointerdown', function(){ _busy=true; }, true);
   document.addEventListener('pointerup', function(){ clearTimeout(_bt); _bt=setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, 500); }, true);
   var _th=null;
-  // Saca el chip "Mover / 👁" de arriba (el layout es fijo, no se reordena → ese control confunde). Una sola vez.
-  var _movDone=false;
-  function sacarMover(){ if(_movDone) return; var all=document.querySelectorAll('button,div,span,a');
-    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
-      if(tx==='Mover'){ var box=e; for(var k=0;k<4&&box;k++){ if(box.parentElement){ var pt=(box.parentElement.textContent||'').replace(/\s+/g,' ').trim(); if(pt.length>14) break; box=box.parentElement; } else break; }
-        if(box&&box.style.display!=='none') box.style.display='none'; _movDone=true; } } }
+  // El chip flotante "Mover / 👁" de cada widget ahora lo esconde el CSS de arriba (por selector dnd-kit),
+  // que NO vuelve aunque React re-renderice. Esta función queda como no-op para no pelear con el layout.
+  function sacarMover(){ }
   // Mata el gráfico "Evolución" (muestra data demo falsa) — INDEPENDIENTE del layoutFijo, por si el pf.html
   // de producción difiere y layoutFijo no llega a esconderlo. Busca la tarjeta que contiene "Evolución".
   var _grafDone=false;
@@ -1796,7 +1798,19 @@ _SOLO_DASH = r"""
       var d=inner ? '' : 'none';
       if(el.style.display!==d) el.style.display=d; }
   }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  // Barre PARA SIEMPRE las secciones que no van. Solo quedan: los 4 KPI, Resumen del período (+Costos) y
+  // Últimas ventas. Corre en cada tick (tras cada re-render de React) → no vuelven. Sube desde el título hasta
+  // el widget sortable 'group pt-3' (o a la tarjeta 'rounded' como fallback) y lo esconde.
+  var _SECFUERA=['Desglose por tienda','Recomendación Estratégica','Riesgos Activos','Evolución'];
+  function matarSeccion(nombre){ var t=leafTxt(nombre); if(!t) return;
+    var g=t, hit=null;
+    for(var k=0;k<12&&g;k++){ g=g.parentElement; if(!g) break; var cl=g.className||'';
+      if(typeof cl!=='string') continue;
+      if(cl.indexOf('group')>=0 && cl.indexOf('pt-3')>=0){ hit=g; break; }        // widget entero → mejor
+      if(/rounded-2xl|rounded-xl/.test(cl) && !hit) hit=g; }                       // fallback: la tarjeta
+    if(hit && hit.style.display!=='none') hit.style.display='none'; }
+  function sacarSecciones(){ for(var i=0;i<_SECFUERA.length;i++){ try{ matarSeccion(_SECFUERA[i]); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -2982,7 +2996,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-oper900-fulfill-insumos"})
+    return jsonify({"ok": True, "v": "2026-08-14-solo3-secciones"})
 
 
 @app.get("/pf-diag")
