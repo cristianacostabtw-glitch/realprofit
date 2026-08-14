@@ -1784,7 +1784,19 @@ _SOLO_DASH = r"""
   function matarGrafico(){ if(_grafDone) return; var t=leafTxt('Evolución'); if(!t) return;
     var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
     if(c&&/rounded/.test(c.className||'')){ if(c.style.display!=='none') c.style.display='none'; _grafDone=true; } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  // Barrido GLOBAL: oculta cualquier widget del dashboard (item sortable 'group pt-3') cuyo contenido,
+  // sacando el control de arrastre (Mover/visibility), esté vacío → ese es el hueco invisible que bugea todo.
+  function ocultarVacios(){
+    var all=document.getElementsByTagName('div');
+    for(var i=0;i<all.length;i++){ var el=all[i], cn=el.className;
+      if(typeof cn!=='string' || cn.indexOf('group')<0 || cn.indexOf('pt-3')<0) continue;
+      var t=el.textContent||'';
+      if(t.indexOf('drag_indicator')<0 && t.indexOf('Mover')<0) continue;   // debe tener el handle de arrastre
+      var inner=t.replace(/drag_indicator|Mover|visibility_off|visibility_on|visibility/gi,'').replace(/\s+/g,'');
+      var d=inner ? '' : 'none';
+      if(el.style.display!==d) el.style.display=d; }
+  }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -2286,7 +2298,7 @@ def resumen_vacio() -> dict:
     ceros_int = ["ordenes", "unidades", "reemb_cantidad", "reemb_monto", "reemb_despachados",
                  "ventas_recompras", "ventas_periodo", "meli_ventas", "meli_unidades", "tot_ordenes"]
     ceros_float = ["facturado", "cobrado", "costo_prod", "envio", "comision", "impuestos",
-                   "com_plataforma", "com_pago", "fullfilment", "envios", "envio_prom",
+                   "com_plataforma", "com_pago", "fullfilment", "envios", "envio_prom", "oper_monto",
                    "costos_extra", "reemb_perdida", "gan_por_venta", "cpa", "publi_ars",
                    "publi_cuenta", "ganancia", "margen", "roas", "roas_be", "ticket",
                    "tasa_recompra", "facturacion_recompras",
@@ -2337,8 +2349,11 @@ def _shopify_orders(shop, token, desde, hasta):
 _MP_COST_CACHE = {}
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
 IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
-ENVIO_DOMICILIO = 9000  # costo promedio de envío a domicilio (Andreani)
-ENVIO_SUCURSAL = 6000   # costo promedio de envío a sucursal (Andreani)
+ENVIO_DOMICILIO = 8270  # promedio REAL de 50 envíos a domicilio (Andreani, total pagado ÷ 50)
+ENVIO_SUCURSAL = 5483   # promedio REAL de 50 envíos a sucursal (Andreani, total pagado ÷ 50)
+FULFILLMENT_ORDEN = 700  # costo de fulfillment por pedido (fijo)
+INSUMOS_ORDEN = 200      # costo de insumos/packaging por pedido (fijo)
+OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 900/pedido: fulfillment + insumos (aparte del envío)
 
 
 def _envio_costo(o) -> int:
@@ -2581,12 +2596,13 @@ def pf_debug_ordenes():
         mp_neto = pago["net"] if pago else None
         iibb = tot * IIBB_PCT / 100.0
         tienda = tot * TIENDA_PCT / 100.0
-        gan = tot - cp - mp_fee - env - iibb - tienda
+        gan = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN
         out.append({"pedido": num, "total": round(tot, 2), "unidades": u,
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
                     "mp_matcheo": ("ok" if pago else "SIN MATCH"),
                     "envio": round(env, 2), "envio_fuente": env_fuente,
+                    "oper": OPER_ORDEN,
                     "iibb": round(iibb, 2), "tienda": round(tienda, 2),
                     "ganancia": round(gan, 2)})
     return jsonify({"ok": True, "shopify": True, "mp_conectado": pagos is not None, "ordenes": out})
@@ -2966,7 +2982,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-recompras34-async"})
+    return jsonify({"ok": True, "v": "2026-08-14-oper900-fulfill-insumos"})
 
 
 @app.get("/pf-diag")
@@ -3140,8 +3156,9 @@ def pf_orden():
     envio = _real_env if _real_env is not None else _envio_costo(o)
     # MP ya descuenta sus comisiones en pago["net"]; si no hay pago, lo estimamos.
     net_mp = pago["net"] if pago else round(tot - fee_mp - fee_cuotas, 2)
-    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto y envío.
-    neto = net_mp - tienda - iibb - costo_prod - envio
+    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto, envío,
+    # fulfillment ($700) e insumos ($200) por pedido.
+    neto = net_mp - tienda - iibb - costo_prod - envio - OPER_ORDEN
     cust = o.get("customer") or {}
     medio = "Mercado Pago" if pago else (", ".join(o.get("payment_gateway_names") or []) or o.get("gateway") or "—")
     return jsonify({"ok": True, "orden": {
@@ -3153,6 +3170,7 @@ def pf_orden():
         "total": round(tot, 2), "descuento": round(desc, 2),
         "fee_mp": round(fee_mp, 2), "fee_cuotas": round(fee_cuotas, 2), "cuotas": inst,
         "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2),
+        "fulfillment": FULFILLMENT_ORDEN, "insumos": INSUMOS_ORDEN, "oper": OPER_ORDEN,
         "envio_real": _real_env is not None,
         "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
 
@@ -4860,9 +4878,11 @@ def _shopify_resumen(email, desde, hasta):
     r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
-    ganancia = fact - costo_prod - comision_monto - envio_monto
+    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($700) + insumos ($200) por pedido
+    r["oper_monto"] = round(oper_monto, 2)
+    ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     # Break-even: contribución ANTES de ads (lo que queda para pagar publicidad).
-    _pre_ads = fact - costo_prod - comision_monto - envio_monto
+    _pre_ads = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["be_roas"] = round(fact / _pre_ads, 2) if _pre_ads > 0 else 0.0
     r["breakeven_roas"] = r["be_roas"]
     r["be_cpa"] = round(_pre_ads / ordenes, 2) if ordenes else 0.0
@@ -4980,11 +5000,13 @@ def _tn_resumen(email, desde, hasta):
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
     comision_monto = mp_costo + iibb_monto + tienda_monto
-    ganancia = fact - costo_prod - comision_monto - envio_monto
+    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($700) + insumos ($200) por pedido
+    ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
-    _pre = fact - costo_prod - comision_monto - envio_monto
+    r["oper_monto"] = round(oper_monto, 2)
+    _pre = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
@@ -5015,7 +5037,7 @@ def _combinar_resumen(a, b):
     r["fecha"] = ra.get("fecha"); r["desde"] = ra.get("desde"); r["hasta"] = ra.get("hasta")
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
-           "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
+           "oper_monto", "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
            "comision", "ganancia", "reemb_cantidad", "reemb_monto",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo"]
     for k in SUM:
@@ -5024,7 +5046,7 @@ def _combinar_resumen(a, b):
     r["margen"] = r["tot_margen"] = round(gan / fact * 100, 2) if fact else 0.0
     r["ticket"] = r["tot_aov"] = round(fact / ordn, 2) if ordn else 0.0
     r["gan_por_venta"] = r["tot_gan_por_venta"] = round(gan / ordn, 2) if ordn else 0.0
-    _pre = fact - r["costo_prod"] - r["comision"] - r["envio_monto"]
+    _pre = fact - r["costo_prod"] - r["comision"] - r["envio_monto"] - (r.get("oper_monto") or 0)
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordn, 2) if ordn else 0.0
     prod = (a.get("prod") or []) + (b.get("prod") or [])
