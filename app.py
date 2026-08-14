@@ -992,7 +992,7 @@ _SOLO_DASH = r"""
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
-    else if(p.key==='meta'){ b='<a href="/conectar-meta" onclick="window.location.assign(\'/conectar-meta\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='meta'){ b='<a href="#" onclick="rpMetaTokToggle();return false;" style="'+bs+'">&#9889; '+(window._rpMetaTokOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='tn'){ b='<a href="#" onclick="rpTnToggle();return false;" style="'+bs+'">&#9889; '+(window._rpTnOpen?'Cerrar':'Conectar')+'</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -1005,6 +1005,7 @@ _SOLO_DASH = r"""
    var panel='';
    if(p.key==='shopify' && window._rpShopOpen && !shopOn) panel=rpShopPanel();
    else if(p.key==='meta' && metaOn) panel=rpMetaPanel();
+   else if(p.key==='meta' && !metaOn && window._rpMetaTokOpen) panel=rpMetaTokenPanel();
    else if(p.key==='envialo' && window._rpEnvOpen && !window._rpEnv) panel=rpEnvPanel();
    else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
@@ -1012,6 +1013,28 @@ _SOLO_DASH = r"""
   document.getElementById('rp-integ-cards').innerHTML=h;
   if(metaOn){ try{ rpMetaLoad(); }catch(e){} }
  }
+ window.rpMetaTokToggle=function(){ window._rpMetaTokOpen=!window._rpMetaTokOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
+ function rpMetaTokenPanel(){ return ''
+  +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">Peg&aacute; tu <b>token de Meta</b> (sin &laquo;Vincular&raquo;, sin App Review)</div>'
+  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:5px;line-height:1.6"><b style="color:#cbd5e1">1)</b> Abr&iacute; Meta con el bot&oacute;n de abajo y gener&aacute; un <b style="color:#cbd5e1">System User token</b> (caducidad <b style="color:#cbd5e1">Nunca</b>, permisos <b style="color:#cbd5e1">ads_read</b> + <b style="color:#cbd5e1">ads_management</b>). <b style="color:#cbd5e1">2)</b> Peg&aacute;lo abajo y toc&aacute; Conectar.</div>'
+  +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:11px">'
+  +'<a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:7px;background:#0d1b30;border:1px solid #1c3350;color:#7db3f5;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;text-decoration:none">&#128279; Sacar mi token (System User)</a>'
+  +'<a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:7px;background:#111c2b;border:1px solid #1e2b3d;color:#94a3b8;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:600;text-decoration:none">&#9889; Token r&aacute;pido (Graph Explorer)</a>'
+  +'</div>'
+  +'<textarea id="rp-meta-tok" placeholder="Peg&aacute; ac&aacute; el token (empieza con EAAG...)" style="width:100%;height:74px;margin-top:11px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:12px;box-sizing:border-box;resize:vertical;font-family:monospace"></textarea>'
+  +'<div style="display:flex;gap:11px;align-items:center;margin-top:10px"><button onclick="rpMetaTokSave(this)" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:10px 22px;font-weight:700;font-size:13px;cursor:pointer">Conectar</button><span id="rp-meta-tok-msg" style="font-size:12px;font-weight:600"></span></div>'
+  +'</div>'; }
+ window.rpMetaTokSave=function(btn){ var ta=document.getElementById('rp-meta-tok'), m=document.getElementById('rp-meta-tok-msg'); var t=(ta&&ta.value||'').trim();
+  if(t.length<30){ if(m){m.style.color='#fb7185';m.textContent='Peg&aacute; un token v&aacute;lido.';} return; }
+  if(btn){btn.disabled=true;} if(m){m.style.color='#94a3b8';m.textContent='Verificando con Meta...';}
+  fetch('/meta/token-manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(function(r){return r.json();}).then(function(j){
+   if(btn){btn.disabled=false;}
+   if(j&&j.ok){ if(m){m.style.color='#34d399';m.textContent='✓ Conectado &middot; '+((j.cuentas||[]).length)+' cuenta(s)';}
+    window._rpMeta=true; window._rpMetaTokOpen=false; window._rpMetaCuentas={cuentas:j.cuentas||[],elegida:j.elegida};
+    setTimeout(function(){ cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); },800); }
+   else { if(m){m.style.color='#fb7185';m.textContent=(j&&j.error)||'No se pudo conectar.';} }
+  }).catch(function(){ if(btn){btn.disabled=false;} if(m){m.style.color='#fb7185';m.textContent='Error de red, reintent&aacute;.';} }); };
  function rpMetaPanel(){ return '<div style="border-top:1px solid #1e2b3d;padding:14px 17px;background:#0c1521"><div style="font-weight:700;color:#e2e8f0;font-size:12.5px;margin-bottom:8px">Cuenta publicitaria <span style="color:#94a3b8;font-weight:400">(de ac&aacute; sale el gasto de ads)</span></div><div id="rp-meta-cuentas" style="color:#94a3b8;font-size:12.5px">Cargando cuentas...</div></div>'; }
  function rpMetaRender(cuentas,elegida){ var c=document.getElementById('rp-meta-cuentas'); if(!c)return;
   if(!cuentas.length){ c.innerHTML='<span style="color:#94a3b8;font-size:12px">No encontramos cuentas publicitarias en tu Meta (revis&aacute; permisos).</span>'; return; }
@@ -1712,18 +1735,6 @@ _SOLO_DASH = r"""
     if(!item) return;
     if(lista.firstElementChild!==item){ try{ lista.insertBefore(item, lista.firstElementChild); }catch(e){} }  // KPI al tope
   }
-  // En la tarjeta VENTAS, dejar SOLO el total: ocultar el desglose por plataforma (logitos + conteos).
-  // El contenedor del número es el hermano siguiente al label "Ventas"; su 1er hijo = total, el resto = desglose.
-  function ventasSinLogos(){
-    var sp=document.getElementsByTagName('span');
-    for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').replace(/\s+/g,' ').trim();
-      if(t.length<20 && t.slice(-6)==='Ventas' && /shopping_bag/.test(sp[i].innerHTML)){
-        var nb=sp[i].nextElementSibling; if(!nb) continue;
-        var ch=nb.children;
-        for(var j=1;j<ch.length;j++){ if(ch[j].style.display!=='none') ch[j].style.display='none'; }  // oculta desglose, deja el total
-        var im=nb.getElementsByTagName('img');                                                          // y cualquier <img> de plataforma
-        for(var q=0;q<im.length;q++){ if(im[q].style.display!=='none') im[q].style.display='none'; } } }
-  }
   // Mientras arrastrás para reordenar ("Mover"), NO re-aplico nada (sino cancelo el drag).
   var _busy=false, _bt=null;
   document.addEventListener('pointerdown', function(){ _busy=true; }, true);
@@ -1741,7 +1752,7 @@ _SOLO_DASH = r"""
   function matarGrafico(){ if(_grafDone) return; var t=leafTxt('Evolución'); if(!t) return;
     var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
     if(c&&/rounded/.test(c.className||'')){ if(c.style.display!=='none') c.style.display='none'; _grafDone=true; } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ ventasSinLogos(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -2899,7 +2910,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-tienda22-kpimove-ventas"})
+    return jsonify({"ok": True, "v": "2026-08-13-meta25-token-link"})
 
 
 @app.get("/pf-diag")
@@ -5131,6 +5142,42 @@ def meta_callback():
     return redirect("/?integ=1", code=302)
 
 
+@app.post("/meta/token-manual")
+@limiter.limit("30 per hour")
+def meta_token_manual():
+    """Conexión SIN OAuth: el usuario pega su token (System User o Graph Explorer) y lo guardamos.
+    Lo usan el gasto (dashboard) Y el subir ads. Valida contra Meta antes de guardar."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Entrá a RealProfit primero."}), 401
+    data = request.get_json(silent=True) or {}
+    token = str(data.get("token") or "").strip()
+    if len(token) < 30:
+        return jsonify({"ok": False, "error": "Pegá un token válido de Meta."}), 400
+    try:
+        r = requests.get("https://graph.facebook.com/%s/me/adaccounts" % META_API,
+                         params={"access_token": token,
+                                 "fields": "account_id,name,currency,account_status", "limit": 500}, timeout=30)
+        j = r.json() if r.content else {}
+    except Exception:
+        return jsonify({"ok": False, "error": "No pude contactar a Meta. Probá de nuevo."}), 502
+    if j.get("error"):
+        return jsonify({"ok": False, "error": "Token inválido: " + (j["error"].get("message") or "")[:120]}), 400
+    cuentas = [{"id": a.get("account_id"),
+                "name": a.get("name") or ("Cuenta " + str(a.get("account_id"))),
+                "moneda": a.get("currency")} for a in (j.get("data") or [])]
+    if not cuentas:
+        return jsonify({"ok": False, "error": "El token no ve ninguna cuenta publicitaria (¿le falta ads_read o el acceso a la cuenta?)."}), 400
+    d = _meta_tokens(); tk = d.get(email) or {}
+    tk["access_token"] = token
+    tk["manual"] = True
+    if not tk.get("cuenta"):
+        tk["cuenta"] = cuentas[0]["id"]
+    d[email] = tk
+    META_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return jsonify({"ok": True, "cuentas": cuentas, "elegida": tk.get("cuenta")})
+
+
 @app.get("/meta/estado")
 def meta_estado():
     email = _user_actual()
@@ -5182,14 +5229,15 @@ def _meta_spend(email, desde, hasta):
     sin OAuth ni App Review. Solo para tu propio usuario."""
     import os
     tk = _meta_tokens().get(email)
-    token = tk.get("access_token") if tk else None
+    token = tk.get("access_token") if tk else None    # token PEGADO por el usuario (prioridad)
     cuenta = tk.get("cuenta") if tk else None
     es_owner = False
-    owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
-    if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
-        token = os.getenv("META_OWNER_TOKEN")
-        cuenta = os.getenv("META_OWNER_ACT") or cuenta
-        es_owner = True
+    if not token:                                      # fallback: System User token de env (atajo dueño)
+        owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
+        if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
+            token = os.getenv("META_OWNER_TOKEN")
+            cuenta = os.getenv("META_OWNER_ACT") or cuenta
+            es_owner = True
     if not token or not cuenta:
         return 0.0
     acc = str(cuenta).replace("act_", "")
@@ -5285,6 +5333,18 @@ _ADS_CUENTAS = {
 
 
 def _ads_token():
+    # Prioridad: token que el usuario PEGÓ en la app (meta_tokens.json) → env META_TOKEN.
+    # Sirve en request y en threads de subida (ahí usa el primer token manual guardado, app de un dueño).
+    try:
+        email = _user_actual()
+    except Exception:
+        email = None
+    toks = _meta_tokens()
+    if email and (toks.get(email) or {}).get("access_token"):
+        return toks[email]["access_token"]
+    for v in toks.values():
+        if isinstance(v, dict) and v.get("access_token"):
+            return v["access_token"]
     return _os.getenv("META_TOKEN") or ""
 
 
