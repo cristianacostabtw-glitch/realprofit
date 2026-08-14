@@ -3051,7 +3051,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-pinta-kpis"})
+    return jsonify({"ok": True, "v": "2026-08-14-threads8"})
 
 
 @app.get("/pf-diag")
@@ -6233,7 +6233,36 @@ def home():
 
 
 # ---------------- Endpoints en blanco (para que no rompa nada) ----------------
-_PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
+_PF_CACHE_FILE = DATA_DIR / "pf_cache.json"   # caché en DISCO → sobrevive a reinicios/deploys (entrar = instantáneo)
+
+
+def _pf_cache_cargar():
+    try:
+        raw = _json.loads(_PF_CACHE_FILE.read_text(encoding="utf-8"))
+        out = {}
+        for k, v in raw.items():
+            p = k.split("|", 2)
+            if len(p) == 3:
+                out[(p[0], p[1], p[2])] = (_dt.datetime.fromisoformat(v[0]), v[1])
+        return out
+    except Exception:
+        return {}
+
+
+_PF_CACHE_LOCK = threading.Lock()   # con 8 hilos, que dos no escriban el archivo a la vez
+
+
+def _pf_cache_guardar():
+    try:
+        with _PF_CACHE_LOCK:
+            items = sorted(_PF_CACHE.items(), key=lambda kv: kv[1][0])[-150:]   # las 150 más recientes
+            raw = {("%s|%s|%s" % k): [ts.isoformat(), blob] for k, (ts, blob) in items}
+            _PF_CACHE_FILE.write_text(_json.dumps(raw), encoding="utf-8")
+    except Exception:
+        pass
+
+
+_PF_CACHE = _pf_cache_cargar()   # (email, desde, hasta) -> (momento, blob) — arranca desde el disco
 
 
 def _pf_computar(email, desde, hasta, deadline=None):
@@ -6306,6 +6335,7 @@ def _pf_refrescar_bg(email, desde, hasta, key):
     try:
         blob, _ = _pf_computar(email, desde, hasta)   # sin deadline → datos COMPLETOS
         _PF_CACHE[key] = (_dt.datetime.utcnow(), blob)
+        _pf_cache_guardar()
     except Exception:
         pass
     finally:
@@ -6333,6 +6363,7 @@ def pf_periodo():
         # no hayan llegado. Si quedó incompleto, disparo el refresco de fondo para completarlo enseguida.
         blob, completo = _pf_computar(email, desde, hasta, deadline=5)
         _PF_CACHE[key] = (now, blob)
+        _pf_cache_guardar()
         if not completo and key not in _PF_REFRESCANDO:
             _PF_REFRESCANDO.add(key)
             threading.Thread(target=_pf_refrescar_bg, args=(email, desde, hasta, key), daemon=True).start()
