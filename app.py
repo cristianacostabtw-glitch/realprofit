@@ -1506,15 +1506,31 @@ _SOLO_DASH = r"""
    (costos viejos). Sobreescribo esas 2 tarjetas con los valores reales del backend
    (be_roas = facturación / contribución antes de ads · be_cpa = contribución antes de ads / pedidos). */
 (function(){
-  var _raw=null, _of=window.fetch;
+  var _raw=null, _of=window.fetch, _periodo='';
+  function _pfAplicar(j){ try{ var r=(j&&j.raw)||j;
+      if(r && r._ms) try{ console.log('⏱ pf-periodo (ms):', r._ms); }catch(e){}
+      if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r;
+        setTimeout(paint,60); setTimeout(paint,300); setTimeout(paint,900);
+        try{ pedirRecompras(r.desde,r.hasta); }catch(e){} return true; } }catch(e){}
+    return false; }
+  function _capPeriodo(u){ try{ var d=String(u).match(/[?&]desde=([^&]+)/), h=String(u).match(/[?&]hasta=([^&]+)/);
+    if(d&&h){ _periodo='desde='+d[1]+'&hasta='+h[1]; } }catch(e){} }
+  // (1) fetch
   window.fetch=function(){ var args=arguments, p=_of.apply(this,args);
     try{ var u=(args[0]&&args[0].url)||args[0];
-      if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
-        p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
-          if(r && r._ms) try{ console.log('⏱ pf-periodo (ms):', r._ms); }catch(e){}
-          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
-      } }catch(e){}
+      if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){ _capPeriodo(u);
+        p.then(function(res){ try{ res.clone().json().then(_pfAplicar).catch(function(){}); }catch(e){} }); }
+    }catch(e){}
     return p; };
+  // (2) XHR/axios — la app puede pedir /pf-periodo por acá (no por fetch) → también lo agarro.
+  try{ var _xo=XMLHttpRequest.prototype.open, _xs=XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open=function(m,u){ this.__pf=(typeof u==='string' && u.indexOf('/pf-periodo')>-1)?u:null; return _xo.apply(this,arguments); };
+    XMLHttpRequest.prototype.send=function(){ var x=this;
+      if(x.__pf){ _capPeriodo(x.__pf); try{ x.addEventListener('load',function(){ try{ _pfAplicar(JSON.parse(x.responseText)); }catch(e){} }); }catch(e){} }
+      return _xs.apply(this,arguments); }; }catch(e){}
+  // (3) FALLBACK ACTIVO: si a 1.5s nadie trajo la data, la pido YO directo al backend y pinto (con reintentos).
+  [1500,3200,6000,12000].forEach(function(ms){ setTimeout(function(){ if(_raw) return;
+    _of('/pf-periodo'+(_periodo?('?'+_periodo):'')).then(function(r){return r.json();}).then(_pfAplicar).catch(function(){}); }, ms); });
   // Recompras: se piden APARTE (el histórico es pesado y frenaba el dashboard). Se rellenan al llegar.
   var _recKey='';
   function pedirRecompras(d,h){ if(!d||!h) return; var k=d+'|'+h; if(k===_recKey) return; _recKey=k;
@@ -1548,7 +1564,7 @@ _SOLO_DASH = r"""
     try{ costos4(); }catch(e){}
     try{ metricas(); }catch(e){}
     _raw=save;
-    try{ fixFacturacion(); }catch(e){} }
+    try{ fixFacturacion(); }catch(e){} try{ fixKpis(); }catch(e){} try{ fixVentas(); }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
@@ -1572,6 +1588,33 @@ _SOLO_DASH = r"""
     if(!real) return;
     if(!_factEl || !_factEl.isConnected) _factEl=_findFactEl();              // scan caro SOLO si hace falta
     if(_factEl){ var t=fmt(real); if(_factEl.textContent!==t) _factEl.textContent=t; } }
+  // Las OTRAS tarjetas KPI de arriba (Ticket prom, Ganancia = montos $; Ventas = entero). La app las pinta
+  // sola cuando trae data; si NO trae (data caída/no fetch), quedan en 0 → las fuerzo yo desde _raw.
+  var _kpiEls={};
+  function _findKpiVal(label){ var LB=label.toLowerCase(), all=document.querySelectorAll('span,p,div');
+    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+      if(tx.length>label.length+3 || tx.toLowerCase().slice(-LB.length)!==LB || e.offsetParent===null) continue;
+      var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
+      if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
+      var dvs=card.querySelectorAll('span,div');
+      for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
+        if(/^\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
+    return null; }
+  function fixKpis(){ if(!_raw || _canalActivo()==='MercadoLibre') return;
+    var m=[['Ticket prom', _raw.ticket||_raw.tot_aov||0], ['Ganancia', _raw.ganancia||_raw.tot_ganancia||0]];
+    for(var i=0;i<m.length;i++){ var lab=m[i][0], el=_kpiEls[lab];
+      if(!el||!el.isConnected){ el=_findKpiVal(lab); _kpiEls[lab]=el; }
+      if(el){ var t=fmt(m[i][1]); if(el.textContent!==t) el.textContent=t; } } }
+  function fixVentas(){ if(!_raw || _canalActivo()==='MercadoLibre') return;
+    var el=_kpiEls['Ventas'];
+    if(!el||!el.isConnected){ var all=document.querySelectorAll('span,p,div');
+      for(var i=0;i<all.length && !el;i++){ var e=all[i]; if((e.textContent||'').replace(/\s+/g,' ').trim()!=='Ventas'||e.offsetParent===null) continue;
+        var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
+        if(!card||!/rounded/.test(card.className||'')) continue;
+        var dvs=card.querySelectorAll('span,div');
+        for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0 && /^\d{1,7}$/.test((dvs[q].textContent||'').trim())){ el=dvs[q]; break; } } }
+      _kpiEls['Ventas']=el; }
+    if(el){ var v=String(_raw.ordenes||_raw.ventas_periodo||0); if(el.textContent!==v) el.textContent=v; } }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
@@ -3008,7 +3051,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-tn-paralelo"})
+    return jsonify({"ok": True, "v": "2026-08-14-pinta-kpis"})
 
 
 @app.get("/pf-diag")
