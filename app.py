@@ -3008,7 +3008,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-swr-instant"})
+    return jsonify({"ok": True, "v": "2026-08-14-tn-paralelo"})
 
 
 @app.get("/pf-diag")
@@ -4955,25 +4955,39 @@ def _tn_orders_raw(email, desde, hasta):
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return []
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-    out, vistos, page = [], set(), 1
-    while page <= 20:
+    _base = {"per_page": 200,
+             "created_at_min": desde + "T00:00:00-03:00",
+             "created_at_max": hasta + "T23:59:59-03:00"}
+    def _pagina(page):
         try:
-            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                "per_page": 200, "page": page,
-                "created_at_min": desde + "T00:00:00-03:00",
-                "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr,
+                             params={**_base, "page": page}, timeout=25)
             lote = r.json() if r.content else []
+            return lote if isinstance(lote, list) else []
         except Exception:
-            lote = []
-        if not isinstance(lote, list) or not lote:
+            return []
+    # La API de TiendaNube tarda ~13s POR PÁGINA. En serie, 7 páginas = 90s. Traigo las páginas
+    # EN PARALELO por tandas de 8 → una tanda ≈ el tiempo de UNA página (~13s) en vez de 8×.
+    import concurrent.futures as _cf
+    out, vistos = [], set()
+    LOTE, base = 8, 1
+    while base <= 40:
+        pages = list(range(base, base + LOTE))
+        with _cf.ThreadPoolExecutor(max_workers=LOTE) as _ex:
+            resultados = list(_ex.map(_pagina, pages))
+        corto = False
+        for lote in resultados:
+            if not lote:
+                corto = True; break        # página vacía → no hay más
+            for o in lote:
+                n = str(o.get("number") or "")
+                if n and n not in vistos:
+                    vistos.add(n); out.append(o)
+            if len(lote) < 200:
+                corto = True; break         # última página (parcial) → no hay más
+        if corto:
             break
-        for o in lote:
-            n = str(o.get("number") or "")
-            if n and n not in vistos:
-                vistos.add(n); out.append(o)
-        if len(lote) < 200:
-            break
-        page += 1
+        base += LOTE
     _TN_ORDERS_CACHE[ck] = (_t.time(), out)
     return out
 
@@ -6179,11 +6193,16 @@ def home():
 _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
 
 
-def _pf_computar(email, desde, hasta):
-    """Arma el blob del período. Las 3 fuentes (Shopify / Tiendanube / Meta-ads) son independientes →
-    las corro EN PARALELO en vez de en serie (antes se sumaban las latencias TN + MP + Meta)."""
+def _pf_computar(email, desde, hasta, deadline=None):
+    """Arma el blob del período. Las 3 fuentes (Shopify / Tiendanube / Meta-ads) corren EN PARALELO.
+
+    `deadline` (seg): tope para la carga. Las VENTAS (Shopify/Tiendanube = los KPI) esperan hasta el
+    deadline; Meta-ads (solo refina ganancia/ROAS) espera un ratito nomás. Si algo no llegó a tiempo,
+    devuelve lo que hay (completo=False) y el que llama dispara un refresco de fondo para completarlo.
+    Sin deadline (refresco de fondo) espera a todas → datos completos.
+    Devuelve (blob, completo)."""
     import concurrent.futures as _cf, time as _tm
-    _t0 = _tm.time(); _ms = {}
+    _t0 = _tm.time(); _ms = {}; _falta = []
     def _run(nombre, fn):
         _s = _tm.time()
         try:
@@ -6192,14 +6211,29 @@ def _pf_computar(email, desde, hasta):
             return None
         finally:
             _ms[nombre] = int((_tm.time() - _s) * 1000)
+    def _esperar(nombre, f, budget):
+        if f is None:
+            return None
+        rem = None if budget is None else max(0.1, budget - (_tm.time() - _t0))
+        try:
+            return f.result(timeout=rem)
+        except Exception:            # incluye TimeoutError → quedó corriendo, la completa el refresco
+            _falta.append(nombre)
+            return None
     shop_conn = email in _shop_tokens()
-    with _cf.ThreadPoolExecutor(max_workers=3) as _ex:
+    _ex = _cf.ThreadPoolExecutor(max_workers=3)
+    try:
         f_shop = _ex.submit(_run, "shop", lambda: _shopify_resumen(email, desde, hasta)) if shop_conn else None
         f_tn = _ex.submit(_run, "tn", lambda: _tn_resumen(email, desde, hasta))
         f_meta = _ex.submit(_run, "meta", lambda: _meta_spend(email, desde, hasta))
-        blob = f_shop.result() if f_shop else None
-        tn_blob = f_tn.result()   # Tiendanube (None si no está conectada)
-        spend = f_meta.result() or 0.0
+        # Ventas SIN tope (son los KPI; con las páginas de TN en paralelo ya vienen rápido, y cortarlas
+        # dejaría los KPI en 0). Meta (solo refina ganancia/ROAS) SÍ con tope = `deadline`, así una cuenta
+        # de ads lenta no frena la primera pintada; si se pasa, la completa el refresco de fondo.
+        blob = _esperar("shop", f_shop, None)
+        tn_blob = _esperar("tn", f_tn, None)
+        spend = _esperar("meta", f_meta, deadline) or 0.0
+    finally:
+        _ex.shutdown(wait=False)     # NO bloqueo esperando a las lentas: siguen y las recoge el refresco
     if tn_blob:
         blob = _combinar_resumen(blob, tn_blob)
     if blob is None:
@@ -6219,7 +6253,7 @@ def _pf_computar(email, desde, hasta):
         r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
         r["tot_ganancia"] = r["ganancia"]
         r["tot_margen"] = r["margen"]
-    return blob
+    return blob, (not _falta)
 
 
 _PF_REFRESCANDO = set()   # claves con un refresco en background en curso (para no lanzar dos)
@@ -6227,7 +6261,7 @@ _PF_REFRESCANDO = set()   # claves con un refresco en background en curso (para 
 
 def _pf_refrescar_bg(email, desde, hasta, key):
     try:
-        blob = _pf_computar(email, desde, hasta)
+        blob, _ = _pf_computar(email, desde, hasta)   # sin deadline → datos COMPLETOS
         _PF_CACHE[key] = (_dt.datetime.utcnow(), blob)
     except Exception:
         pass
@@ -6252,8 +6286,13 @@ def pf_periodo():
                 _PF_REFRESCANDO.add(key)
                 threading.Thread(target=_pf_refrescar_bg, args=(email, desde, hasta, key), daemon=True).start()
             return jsonify({"ok": True, **c[1]})
-        blob = _pf_computar(email, desde, hasta)   # primera vez de este rango → sincrónico
+        # PRIMERA vez de este rango (caché fría): devuelvo en ≤8s con las VENTAS/KPI listos aunque Meta/MP
+        # no hayan llegado. Si quedó incompleto, disparo el refresco de fondo para completarlo enseguida.
+        blob, completo = _pf_computar(email, desde, hasta, deadline=5)
         _PF_CACHE[key] = (now, blob)
+        if not completo and key not in _PF_REFRESCANDO:
+            _PF_REFRESCANDO.add(key)
+            threading.Thread(target=_pf_refrescar_bg, args=(email, desde, hasta, key), daemon=True).start()
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
 
