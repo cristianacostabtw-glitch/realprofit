@@ -1672,28 +1672,26 @@ _SOLO_DASH = r"""
   function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
   function layoutFijo(){
     var rt=leafTxt('Resumen del período'); if(!rt) return;
-    // 1) Ubico el WIDGET de KPIs por su contenido: el div más chico que tiene los 4 KPI juntos
-    //    (Ventas + Facturación + Ganancia + Ticket). Así lo detecto igual en "Todas" que filtrado.
-    var kpi=null, all=document.getElementsByTagName('div');
-    for(var i=0;i<all.length;i++){ var t=all[i].textContent||'';
-      if(t.length<600 && /Ventas/.test(t) && /Facturaci/.test(t) && /Ganancia/.test(t) && /Ticket/.test(t)){
-        if(!kpi || t.length<(kpi.textContent||'').length) kpi=all[i]; } }
-    if(!kpi) return;
-    // 2) Contenedor = ancestro COMÚN del widget KPI y de "Resumen del período" (ahí son hermanos sortables).
-    //    Con esto el KPI SIEMPRE es hijo directo de cont, esté arriba o abajo en el DOM.
-    var anc=[], a=kpi; while(a){ anc.push(a); a=a.parentElement; }
-    var cont=rt; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement;
+    var ut=leafTxt('Últimas ventas');
+    // contenedor = fila padre que tiene como hermanas la fila KPI + "Resumen del período" (+ "Últimas ventas").
+    var cont=null;
+    if(ut){ var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
+      cont=ut; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement; }
+    if(!cont){ // vista filtrada (Shopify/Tiendanube): a veces no hay "Últimas ventas" → subir desde rt
+      cont=rt.parentElement;
+      for(var k=0;k<9 && cont;k++){ var tx=cont.textContent||'';
+        if(/Facturaci/.test(tx) && /Ganancia/.test(tx) && /Ticket/.test(tx) && /Resumen del per/.test(tx)) break;
+        cont=cont.parentElement; } }
     if(!cont) return;
-    // 3) Ordeno por flex-order: KPI arriba (1), Resumen (2), Últimas ventas (3), gráficos demo ocultos.
     var kids=cont.children;
-    for(var j=0;j<kids.length;j++){ var el=kids[j], ord=90, hide=false;
-      if(el===kpi || el.contains(kpi)) ord=1;                                                // widget KPI
-      else if(el===rt || el.contains(rt)) ord=2;                                             // Resumen (Finanzas/Publicidad/Costos)
-      else if((el.textContent||'').indexOf('Últimas ventas')>=0) ord=3;                      // tabla
-      else if(el.querySelector && el.querySelector('[class*=\"rounded\"]')) hide=true;        // gráfico / Recomendación / Riesgos
+    for(var i=0;i<kids.length;i++){ var el=kids[i], t=el.textContent||'', ord=90, hide=false;
+      if(/Facturaci/.test(t) && /Ganancia/.test(t) && /Ticket/.test(t)) ord=1;              // fila KPI
+      else if(t.indexOf('Resumen del per')>=0) ord=2;                                        // Publicidad + Costos
+      else if(t.indexOf('Últimas ventas')>=0) ord=3;                                         // tabla
+      else if(el.querySelector && el.querySelector('[class*=\"rounded\"]')) hide=true;       // gráfico / Recomendación / Riesgos
       if(el.style.order!==String(ord)) el.style.order=ord;
       var d=hide?'none':''; if(el.style.display!==d) el.style.display=d; }
-    if(getComputedStyle(cont).display==='block'){ cont.style.display='flex'; cont.style.flexDirection='column'; }
+    if(getComputedStyle(cont).display==='block') cont.style.display='flex', cont.style.flexDirection='column';
   }
   // Mientras arrastrás para reordenar ("Mover"), NO re-aplico nada (sino cancelo el drag).
   var _busy=false, _bt=null;
@@ -2870,7 +2868,7 @@ def pf_mp_efectivo():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-13-tienda19-kpi-lca"})
+    return jsonify({"ok": True, "v": "2026-08-13-tienda18-kpi-orden"})
 
 
 @app.get("/pf-diag")
