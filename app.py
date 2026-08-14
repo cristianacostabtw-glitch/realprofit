@@ -1531,6 +1531,16 @@ _SOLO_DASH = r"""
     for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\s+/g,' ').trim();
       if((t==='Todas'||t==='Shopify'||t==='MercadoLibre') && /text-primary|bg-primary/.test(bs[i].className||'')) return t; }
     return 'Todas'; }
+  // Dejar SOLO el chip "Todas" (todo mixto). Escondo Shopify/Tiendanube y MercadoLibre con .rp-oculto
+  // (el !important no lo deja volver). Si el filtro activo era uno de esos, clickeo "Todas" una vez para
+  // que no queden datos filtrados/en cero.
+  function soloTodas(){ var bs=document.querySelectorAll('button'), todas=null, activoOculto=false;
+    for(var i=0;i<bs.length;i++){ var b=bs[i], t=(b.textContent||'').replace(/\s+/g,' ').trim();
+      if(t==='Todas'){ todas=b; continue; }
+      if(t==='Shopify'||t==='MercadoLibre'||t==='Tiendanube'){
+        if(/text-primary|bg-primary/.test(b.className||'')) activoOculto=true;
+        if(!b.classList.contains('rp-oculto')) b.classList.add('rp-oculto'); } }
+    if(activoOculto && todas && !/text-primary|bg-primary/.test(todas.className||'')){ try{ todas.click(); }catch(e){} } }
   function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
   function paint(){ if(!_raw)return;
     // MercadoLibre no tiene ventas (todo es Shopify) → paso datos en CERO para no pintar los de Shopify.
@@ -1812,7 +1822,7 @@ _SOLO_DASH = r"""
   function _esFuera(t){ for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0) return true; } return false; }
   function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
     for(var i=0;i<g.length;i++){ if(_esFuera(g[i].textContent||'') && !g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ soloTodas(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -2512,7 +2522,7 @@ def _mp_costos(email, desde, hasta):
                              headers={"Authorization": "Bearer " + token},
                              params={"sort": "date_approved", "criteria": "desc",
                                      "range": "date_approved", "begin_date": ini, "end_date": fin,
-                                     "status": "approved", "offset": offset, "limit": 100}, timeout=30)
+                                     "status": "approved", "offset": offset, "limit": 100}, timeout=12)
             if r.status_code >= 400:
                 return None if offset == 0 else None
             data = r.json()
@@ -2998,7 +3008,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-paralelo-cronometro"})
+    return jsonify({"ok": True, "v": "2026-08-14-swr-instant"})
 
 
 @app.get("/pf-diag")
@@ -4635,7 +4645,7 @@ def _mp_pagos_lista(email, desde, hasta):
                              headers={"Authorization": "Bearer " + token},
                              params={"sort": "date_approved", "criteria": "desc",
                                      "range": "date_approved", "begin_date": ini, "end_date": fin,
-                                     "status": "approved", "offset": offset, "limit": 100}, timeout=30)
+                                     "status": "approved", "offset": offset, "limit": 100}, timeout=12)
             if r.status_code >= 400:
                 return None if offset == 0 else out
             data = r.json()
@@ -5491,7 +5501,7 @@ def _meta_spend(email, desde, hasta):
         r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
                          params={"access_token": token, "fields": "spend,account_currency",
                                  "time_range": _json.dumps({"since": desde, "until": hasta}),
-                                 "level": "account"}, timeout=30)
+                                 "level": "account"}, timeout=12)
         data = r.json().get("data") or []
         if data:
             spend = float(data[0].get("spend") or 0)
@@ -6169,6 +6179,62 @@ def home():
 _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
 
 
+def _pf_computar(email, desde, hasta):
+    """Arma el blob del período. Las 3 fuentes (Shopify / Tiendanube / Meta-ads) son independientes →
+    las corro EN PARALELO en vez de en serie (antes se sumaban las latencias TN + MP + Meta)."""
+    import concurrent.futures as _cf, time as _tm
+    _t0 = _tm.time(); _ms = {}
+    def _run(nombre, fn):
+        _s = _tm.time()
+        try:
+            return fn()
+        except Exception:
+            return None
+        finally:
+            _ms[nombre] = int((_tm.time() - _s) * 1000)
+    shop_conn = email in _shop_tokens()
+    with _cf.ThreadPoolExecutor(max_workers=3) as _ex:
+        f_shop = _ex.submit(_run, "shop", lambda: _shopify_resumen(email, desde, hasta)) if shop_conn else None
+        f_tn = _ex.submit(_run, "tn", lambda: _tn_resumen(email, desde, hasta))
+        f_meta = _ex.submit(_run, "meta", lambda: _meta_spend(email, desde, hasta))
+        blob = f_shop.result() if f_shop else None
+        tn_blob = f_tn.result()   # Tiendanube (None si no está conectada)
+        spend = f_meta.result() or 0.0
+    if tn_blob:
+        blob = _combinar_resumen(blob, tn_blob)
+    if blob is None:
+        blob = _blob_vacio()
+    _ms["total"] = int((_tm.time() - _t0) * 1000)
+    blob["raw"]["_ms"] = _ms   # cronómetro por fuente (ms)
+    if spend:
+        r = blob["raw"]
+        fact = r.get("facturado", 0.0)
+        ordenes = r.get("ordenes", 0)
+        r["publi_ars"] = round(spend, 2)
+        r["publi_cuenta"] = round(spend, 2)
+        r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+        r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
+        r["roas"] = round(fact / spend, 2) if spend else 0.0
+        r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+        r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
+        r["tot_ganancia"] = r["ganancia"]
+        r["tot_margen"] = r["margen"]
+    return blob
+
+
+_PF_REFRESCANDO = set()   # claves con un refresco en background en curso (para no lanzar dos)
+
+
+def _pf_refrescar_bg(email, desde, hasta, key):
+    try:
+        blob = _pf_computar(email, desde, hasta)
+        _PF_CACHE[key] = (_dt.datetime.utcnow(), blob)
+    except Exception:
+        pass
+    finally:
+        _PF_REFRESCANDO.discard(key)
+
+
 @app.get("/pf-periodo")
 def pf_periodo():
     email = _user_actual()
@@ -6178,47 +6244,15 @@ def pf_periodo():
         key = (email, desde, hasta)
         now = _dt.datetime.utcnow()
         c = _PF_CACHE.get(key)
-        if c and (now - c[0]).total_seconds() < 60:
+        # STALE-WHILE-REVALIDATE: si hay algo cacheado (fresco o viejo) lo devuelvo AL INSTANTE.
+        # Si está viejo (>45s), disparo un refresco en background para la próxima carga. Así "entrar"
+        # es inmediato salvo la PRIMERA vez de cada rango (cuando todavía no hay nada calculado).
+        if c:
+            if (now - c[0]).total_seconds() >= 45 and key not in _PF_REFRESCANDO:
+                _PF_REFRESCANDO.add(key)
+                threading.Thread(target=_pf_refrescar_bg, args=(email, desde, hasta, key), daemon=True).start()
             return jsonify({"ok": True, **c[1]})
-        # Las 3 fuentes (Shopify / Tiendanube / Meta-ads) son independientes → las corro EN PARALELO
-        # en vez de en serie. Antes se sumaban las latencias (TN + MP + Meta) y por eso tardaba.
-        import concurrent.futures as _cf, time as _tm
-        _t0 = _tm.time(); _ms = {}
-        def _run(nombre, fn):
-            _s = _tm.time()
-            try:
-                return fn()
-            except Exception:
-                return None
-            finally:
-                _ms[nombre] = int((_tm.time() - _s) * 1000)
-        shop_conn = email in _shop_tokens()
-        with _cf.ThreadPoolExecutor(max_workers=3) as _ex:
-            f_shop = _ex.submit(_run, "shop", lambda: _shopify_resumen(email, desde, hasta)) if shop_conn else None
-            f_tn = _ex.submit(_run, "tn", lambda: _tn_resumen(email, desde, hasta))
-            f_meta = _ex.submit(_run, "meta", lambda: _meta_spend(email, desde, hasta))
-            blob = f_shop.result() if f_shop else None
-            tn_blob = f_tn.result()   # Tiendanube (None si no está conectada)
-            spend = f_meta.result() or 0.0
-        if tn_blob:
-            blob = _combinar_resumen(blob, tn_blob)
-        if blob is None:
-            blob = _blob_vacio()
-        _ms["total"] = int((_tm.time() - _t0) * 1000)
-        blob["raw"]["_ms"] = _ms   # cronómetro por fuente (ms) — para ver qué tarda
-        if spend:
-            r = blob["raw"]
-            fact = r.get("facturado", 0.0)
-            ordenes = r.get("ordenes", 0)
-            r["publi_ars"] = round(spend, 2)
-            r["publi_cuenta"] = round(spend, 2)
-            r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
-            r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
-            r["roas"] = round(fact / spend, 2) if spend else 0.0
-            r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
-            r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
-            r["tot_ganancia"] = r["ganancia"]
-            r["tot_margen"] = r["margen"]
+        blob = _pf_computar(email, desde, hasta)   # primera vez de este rango → sincrónico
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
