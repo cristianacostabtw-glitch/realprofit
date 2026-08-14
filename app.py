@@ -1503,9 +1503,15 @@ _SOLO_DASH = r"""
     try{ var u=(args[0]&&args[0].url)||args[0];
       if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
         p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
-          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); } }).catch(function(){}); }catch(e){} });
+          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
       } }catch(e){}
     return p; };
+  // Recompras: se piden APARTE (el histórico es pesado y frenaba el dashboard). Se rellenan al llegar.
+  var _recKey='';
+  function pedirRecompras(d,h){ if(!d||!h) return; var k=d+'|'+h; if(k===_recKey) return; _recKey=k;
+    fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
+      if(j&&j.ok&&_raw){ _raw.recompras=j.recompras; _raw.fact_recompra=j.fact_recompra; try{paint();}catch(e){} setTimeout(paint,200); }
+    }).catch(function(){ _recKey=''; }); }
   function money(n){ try{ return '$'+Math.round(n).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
     for(var i=0;i<all.length;i++){ if((all[i].textContent||'').trim()===label){ var box=all[i].parentElement; if(!box)continue;
@@ -1730,6 +1736,7 @@ _SOLO_DASH = r"""
       else if(t.indexOf('Resumen del per')>=0) ord=2;                                        // Publicidad + Costos
       else if(t.indexOf('Últimas ventas')>=0) ord=3;                                         // tabla
       else if(el.querySelector && el.querySelector('[class*=\"rounded\"]')) hide=true;       // gráfico / Recomendación / Riesgos
+      else { var inner=t.replace(/drag_indicator|Mover|visibility_off|visibility_on|visibility/gi,'').replace(/\s+/g,''); if(!inner) hide=true; }   // widget oculto/vacío (solo el handle) → colapsar
       if(el.style.order!==String(ord)) el.style.order=ord;
       var d=hide?'none':''; if(el.style.display!==d) el.style.display=d; }
     if(getComputedStyle(cont).display==='block') cont.style.display='flex', cont.style.flexDirection='column';
@@ -2932,10 +2939,34 @@ def pf_mp_efectivo():
     return html
 
 
+@app.get("/pf-recompras")
+def pf_recompras():
+    """Recompras (clientes que ya compraron antes) del período. Se pide APARTE del dashboard
+    para no frenar la carga (el histórico de 90 días es pesado). Cacheado 10 min por dentro."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    desde = request.args.get("desde") or _hoy()
+    hasta = request.args.get("hasta") or desde
+    rc = 0
+    rf = 0.0
+    try:
+        c1, f1 = _recompras_periodo(_tn_hist_orders(email, hasta), desde, hasta)
+        rc += c1; rf += f1
+    except Exception:
+        pass
+    try:
+        c2, f2 = _recompras_periodo(_shop_hist_orders(email, hasta), desde, hasta)
+        rc += c2; rf += f2
+    except Exception:
+        pass
+    return jsonify({"ok": True, "recompras": rc, "fact_recompra": round(rf, 2)})
+
+
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-perf32-cache"})
+    return jsonify({"ok": True, "v": "2026-08-14-recompras34-async"})
 
 
 @app.get("/pf-diag")
@@ -4599,6 +4630,136 @@ def _mp_pagos_lista(email, desde, hasta):
         return None
     _MP_LISTA_CACHE[ck] = (_t.time(), out)
     return out
+
+
+def _norm_txt(s):
+    return "".join(ch for ch in str(s or "").lower() if ch.isalnum())
+
+
+def _norm_tel(s):
+    d = "".join(ch for ch in str(s or "") if ch.isdigit())
+    return d[-10:] if len(d) >= 10 else d
+
+
+def _recompras_periodo(orders, desde, hasta):
+    """orders: historico [{'fecha','total','email','tel','nombre'}]. Dos ordenes son del MISMO cliente si
+    comparten >=2 de {email, telefono, nombre}. Devuelve (cant, facturacion) de las compras del periodo
+    [desde,hasta] que NO son la 1ra del cliente (o sea, recompras)."""
+    parent = {}
+    def find(x):
+        parent.setdefault(x, x)
+        r = x
+        while parent[r] != r:
+            r = parent[r]
+        while parent[x] != r:
+            parent[x], x = r, parent[x]
+        return r
+    def union(a, b):
+        parent[find(a)] = find(b)
+    for i, o in enumerate(orders):
+        e, ph, n = _norm_txt(o.get("email")), _norm_tel(o.get("tel")), _norm_txt(o.get("nombre"))
+        parent.setdefault(("o", i), ("o", i))
+        if e and ph:
+            union(("o", i), ("k", "ep:%s|%s" % (e, ph)))
+        if e and n:
+            union(("o", i), ("k", "en:%s|%s" % (e, n)))
+        if ph and n:
+            union(("o", i), ("k", "pn:%s|%s" % (ph, n)))
+    groups = {}
+    for i in range(len(orders)):
+        groups.setdefault(find(("o", i)), []).append(i)
+    cant = 0
+    fact = 0.0
+    for idxs in groups.values():
+        if len(idxs) < 2:
+            continue
+        idxs.sort(key=lambda i: (orders[i].get("fecha") or ""))
+        for j, i in enumerate(idxs):
+            if j == 0:
+                continue
+            f = (orders[i].get("fecha") or "")[:10]
+            if desde <= f <= hasta:
+                cant += 1
+                fact += float(orders[i].get("total") or 0)
+    return cant, round(fact, 2)
+
+
+_TN_HIST_CACHE = {}
+_SHOP_HIST_CACHE = {}
+
+
+def _tn_hist_orders(email, hasta):
+    """Ordenes PAGADAS de TN de los ultimos 180 dias hasta `hasta` (cache 10 min) - para recompras."""
+    import time as _t
+    ck = (email, hasta)
+    c = _TN_HIST_CACHE.get(ck)
+    if c and (_t.time() - c[0] < 600):
+        return c[1]
+    try:
+        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=90)).isoformat()
+    except Exception:
+        d0 = hasta
+    hist = []
+    for o in _tn_orders_raw(email, d0, hasta):
+        if (o.get("payment_status") or "").lower() != "paid" or o.get("cancelled_at"):
+            continue
+        cu = o.get("customer") or {}
+        sa = o.get("shipping_address") or {}
+        hist.append({"fecha": o.get("created_at") or "", "total": float(o.get("total") or 0),
+                     "email": o.get("contact_email") or cu.get("email") or "",
+                     "tel": o.get("contact_phone") or o.get("billing_phone") or cu.get("phone") or sa.get("phone") or "",
+                     "nombre": cu.get("name") or o.get("contact_name") or sa.get("name") or ""})
+    _TN_HIST_CACHE[ck] = (_t.time(), hist)
+    return hist
+
+
+def _shop_hist_orders(email, hasta):
+    """Ordenes pagadas de Shopify de los ultimos 180 dias hasta `hasta` (cache 10 min) - para recompras."""
+    import time as _t, re as _re
+    ck = (email, hasta)
+    c = _SHOP_HIST_CACHE.get(ck)
+    if c and (_t.time() - c[0] < 600):
+        return c[1]
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("shop"):
+        return []
+    shop, token = tk["shop"], tk["access_token"]
+    try:
+        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=90)).isoformat()
+    except Exception:
+        d0 = hasta
+    hist = []
+    url = "https://%s/admin/api/2026-07/orders.json" % shop
+    params = {"status": "any", "financial_status": "paid", "limit": 250,
+              "created_at_min": d0 + "T00:00:00-03:00", "created_at_max": hasta + "T23:59:59-03:00",
+              "fields": "created_at,total_price,customer,contact_email,email,billing_address,shipping_address"}
+    for _ in range(20):
+        try:
+            r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=30)
+        except Exception:
+            break
+        if r.status_code != 200:
+            break
+        for o in (r.json().get("orders") or []):
+            cu = o.get("customer") or {}
+            ba = o.get("billing_address") or {}
+            sa = o.get("shipping_address") or {}
+            hist.append({"fecha": o.get("created_at") or "", "total": float(o.get("total_price") or 0),
+                         "email": o.get("email") or o.get("contact_email") or cu.get("email") or "",
+                         "tel": cu.get("phone") or ba.get("phone") or sa.get("phone") or "",
+                         "nombre": ((cu.get("first_name") or "") + " " + (cu.get("last_name") or "")).strip() or ba.get("name") or sa.get("name") or ""})
+        nxt = None
+        for part in (r.headers.get("Link", "") or "").split(","):
+            if 'rel="next"' in part:
+                m = _re.search(r"<([^>]+)>", part)
+                if m:
+                    nxt = m.group(1)
+        if not nxt:
+            break
+        url = nxt
+        params = {}
+    _SHOP_HIST_CACHE[ck] = (_t.time(), hist)
+    return hist
 
 
 def _shopify_resumen(email, desde, hasta):
