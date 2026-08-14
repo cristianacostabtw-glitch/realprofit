@@ -1866,10 +1866,13 @@ _SOLO_DASH = r"""
   function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
     for(var i=0;i<g.length;i++){ if(_esFuera(g[i].textContent||'') && !g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); } }
   function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ soloTodas(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
-  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
+  // Antes: tick en CADA mutación (throttle 220ms). Con el DOM gigante y React re-renderizando seguido, los
+  // scans full-DOM pegaban el hilo principal y CONGELABAN la página (por eso quedaba en 0 y ni cargaba).
+  // Ahora corre a ritmo FIJO (cada 1.2s), desacoplado de las mutaciones → CPU predecible, nunca se traba.
+  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 1200); }
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
-  [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
-  setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
+  setInterval(function(){ if(!_busy){ try{ tick(); }catch(e){} } }, 1200);   // latido fijo (no depende de mutaciones)
+  [0,600,1600,3200].forEach(function(ms){ setTimeout(tick, ms); });   // arranques
   // Al tocar un chip de canal (Todas/Shopify/MercadoLibre) React re-renderiza → re-aplico mis parches.
   document.addEventListener('click', function(e){ var el=e.target;
     for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
@@ -3051,7 +3054,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-threads8"})
+    return jsonify({"ok": True, "v": "2026-08-14-nofreeze"})
 
 
 @app.get("/pf-diag")
