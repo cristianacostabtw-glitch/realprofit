@@ -1511,6 +1511,7 @@ _SOLO_DASH = r"""
     try{ var u=(args[0]&&args[0].url)||args[0];
       if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
         p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
+          if(r && r._ms) try{ console.log('⏱ pf-periodo (ms):', r._ms); }catch(e){}
           if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
       } }catch(e){}
     return p; };
@@ -2997,7 +2998,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-solo3-important"})
+    return jsonify({"ok": True, "v": "2026-08-14-paralelo-cronometro"})
 
 
 @app.get("/pf-diag")
@@ -4972,9 +4973,14 @@ def _tn_resumen(email, desde, hasta):
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return None
-    orders = [o for o in _tn_orders_raw(email, desde, hasta) if not o.get("cancelled_at")]
+    # Órdenes de TN y pagos de MP son independientes → en paralelo (antes se hacían en serie).
+    import concurrent.futures as _cf
+    with _cf.ThreadPoolExecutor(max_workers=2) as _ex:
+        _fo = _ex.submit(_tn_orders_raw, email, desde, hasta)
+        _fp = _ex.submit(_mp_pagos_lista, email, desde, hasta)
+        orders = [o for o in (_fo.result() or []) if not o.get("cancelled_at")]
+        pagos = _fp.result()
     costos = (_costos().get(email) or {})
-    pagos = _mp_pagos_lista(email, desde, hasta)
     by_amt = {}
     for p in (pagos or []):
         by_amt.setdefault(p["amount"], []).append(p)
@@ -6174,16 +6180,32 @@ def pf_periodo():
         c = _PF_CACHE.get(key)
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
-        blob = None
-        if email in _shop_tokens():
-            blob = _shopify_resumen(email, desde, hasta)
-        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
+        # Las 3 fuentes (Shopify / Tiendanube / Meta-ads) son independientes → las corro EN PARALELO
+        # en vez de en serie. Antes se sumaban las latencias (TN + MP + Meta) y por eso tardaba.
+        import concurrent.futures as _cf, time as _tm
+        _t0 = _tm.time(); _ms = {}
+        def _run(nombre, fn):
+            _s = _tm.time()
+            try:
+                return fn()
+            except Exception:
+                return None
+            finally:
+                _ms[nombre] = int((_tm.time() - _s) * 1000)
+        shop_conn = email in _shop_tokens()
+        with _cf.ThreadPoolExecutor(max_workers=3) as _ex:
+            f_shop = _ex.submit(_run, "shop", lambda: _shopify_resumen(email, desde, hasta)) if shop_conn else None
+            f_tn = _ex.submit(_run, "tn", lambda: _tn_resumen(email, desde, hasta))
+            f_meta = _ex.submit(_run, "meta", lambda: _meta_spend(email, desde, hasta))
+            blob = f_shop.result() if f_shop else None
+            tn_blob = f_tn.result()   # Tiendanube (None si no está conectada)
+            spend = f_meta.result() or 0.0
         if tn_blob:
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
             blob = _blob_vacio()
-        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
-        spend = _meta_spend(email, desde, hasta)
+        _ms["total"] = int((_tm.time() - _t0) * 1000)
+        blob["raw"]["_ms"] = _ms   # cronómetro por fuente (ms) — para ver qué tarda
         if spend:
             r = blob["raw"]
             fact = r.get("facturado", 0.0)
