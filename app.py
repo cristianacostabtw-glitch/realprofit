@@ -218,7 +218,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -295,6 +295,17 @@ _SOLO_DASH = r"""
      var icst=cst.querySelector('.material-symbols-outlined'); if(icst) icst.textContent='warehouse';
      var spst=cst.querySelectorAll('span'); for(var sx=0;sx<spst.length;sx++){ var s9=spst[sx]; if(!s9.classList.contains('material-symbols-outlined') && s9.children.length===0 && (s9.textContent||'').trim()){ s9.textContent='Stock'; } }
      an0.parentNode.insertBefore(cst, an0.nextSibling);
+    }
+   }
+   // Agregar "WhatsApp" en la barra (debajo de Subir ADS) → abre la sección /wa.
+   if(!nav.querySelector('#rp-wa-nav')){
+    var wa0=nav.querySelector('#rp-ads-nav')||nav.querySelector('#rp-stock-nav')||nav.querySelector('#rp-mov-nav');
+    if(wa0){ var cwa=wa0.cloneNode(true); cwa.id='rp-wa-nav'; cwa.style.display='';
+     var awa=cwa.querySelector('a'); if(awa){ awa.setAttribute('href','/wa'); awa.removeAttribute('aria-current'); awa.classList.remove('bg-white/[0.08]'); awa.classList.remove('text-primary');
+      var nawa=awa.cloneNode(true); awa.parentNode.replaceChild(nawa,awa); nawa.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.location.href='/wa'; }); awa=nawa; }
+     var icwa=cwa.querySelector('.material-symbols-outlined'); if(icwa){ icwa.textContent=''; icwa.style.fontSize='0'; icwa.innerHTML='<svg viewBox="0 0 24 24" width="22" height="22" fill="#25D366" style="display:block"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>'; }
+     var spwa=cwa.querySelectorAll('span'); for(var sy=0;sy<spwa.length;sy++){ var s10=spwa[sy]; if(!s10.classList.contains('material-symbols-outlined') && s10.children.length===0 && (s10.textContent||'').trim()){ s10.textContent='WhatsApp'; } }
+     wa0.parentNode.insertBefore(cwa, wa0.nextSibling);
     }
    }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
@@ -3121,7 +3132,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-freeze-mp-wa2"})
+    return jsonify({"ok": True, "v": "2026-08-15-freeze-mp-wa3"})
 
 
 @app.get("/pf-diag")
@@ -6305,7 +6316,8 @@ def home():
                '<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>'
                '</span><span class="rp-lbl"><span class="em">WhatsApp</span></span></a>')
     # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
-    extra = _SOLO_DASH + userbox + wa_pill
+    # (El link de WhatsApp ahora es un ítem del menú, se agrega en el JS de _SOLO_DASH.)
+    extra = _SOLO_DASH + userbox
     if "</body>" in html:
         html = html.replace("</body>", extra + "</body>", 1)
     else:
