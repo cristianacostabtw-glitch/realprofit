@@ -3121,7 +3121,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-freeze-mp-wa"})
+    return jsonify({"ok": True, "v": "2026-08-15-freeze-mp-wa2"})
 
 
 @app.get("/pf-diag")
@@ -7136,16 +7136,25 @@ _WA_PAGE = """<!doctype html>
  .tpl-item button{background:var(--wa);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
  .tpl-item button:disabled{background:#cbd5d8;cursor:not-allowed}
  @media(max-width:820px){.list{width:100%}.conv{display:none}.list.hide{display:none}.conv.show{display:flex}}
+ .lock{display:none;position:fixed;inset:56px 0 0 0;z-index:30;align-items:flex-start;justify-content:center;overflow:auto;background:rgba(6,20,14,.36)}
+ body.locked .lock{display:flex}
+ body.locked #app{filter:blur(7px) brightness(.82);pointer-events:none;user-select:none}
+ body.locked #bTpl,body.locked #bCfg{display:none!important}
+ body.locked #num{opacity:.45}
+ .lockcard{background:#fff;border-radius:18px;padding:30px 28px;max-width:468px;width:92%;margin:min(6vh,56px) 0;box-shadow:0 24px 70px rgba(0,0,0,.34)}
+ .lockbadge{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#25D366,#0a7d3c);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 8px 22px rgba(37,211,102,.35)}
+ .lockcard h2{margin:0 0 5px;font-size:23px}
 </style></head>
 <body>
 <div class="top">
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
  <span class="num" id="num"></span>
  <button id="bTpl" style="display:none" onclick="openTpl()">Plantillas</button>
- <button id="bCfg" style="display:none" onclick="renderConnect()">Config</button>
+ <button id="bCfg" style="display:none" onclick="doDisc()">Desconectar</button>
  <button onclick="location.href='/'">&#8592; RealProfit</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
+<div class="lock" id="lock"><div class="lockcard" id="lockcard"></div></div>
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 <div class="lightbox" id="lb" onclick="this.classList.remove('on')"><img alt=""></div>
 <script>
@@ -7157,24 +7166,22 @@ function form(o){ return Object.keys(o).map(function(k){return encodeURIComponen
 function post(u,o){ return fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form(o||{})}).then(function(r){return r.json();}); }
 function get(u){ return fetch(u).then(function(r){return r.json();}); }
 
-function boot(){ get('/wa-estado').then(function(s){ EST=s; if(s&&s.conectado){renderApp();}else{renderConnect();} }); }
-
-function renderConnect(){
- if(POLL){clearInterval(POLL);POLL=null;}
- document.getElementById('bTpl').style.display='none';
+function boot(){ get('/wa-estado').then(function(s){ EST=s; renderApp(); if(s&&s.conectado){ unlock(); } else { lockScreen(); } }); }
+function unlock(){ document.body.classList.remove('locked'); }
+function lockScreen(){ if(POLL){clearInterval(POLL);POLL=null;} document.body.classList.add('locked'); renderLockForm(); }
+function renderConnect(){ lockScreen(); }
+function renderLockForm(){
  var e=EST||{};
- var app=document.getElementById('app');
- app.innerHTML='<div class="connect">'
-  +'<h2>Conectar WhatsApp</h2>'
-  +'<div class="sub">Pegá las credenciales de tu <b>número de la Cloud API</b>. Sin QR, sin baneo.</div>'
+ document.getElementById('lockcard').innerHTML=
+  '<div class="lockbadge"><svg viewBox="0 0 24 24" fill="#fff" width="30" height="30"><path d="M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm-3 8V7a3 3 0 016 0v3H9z"/></svg></div>'
+  +'<h2>Conectá tu WhatsApp</h2>'
+  +'<div class="sub">Vinculá tu número de la Cloud API para <b>desbloquear</b> el chat, las plantillas y los envíos. Sin QR, sin baneo.</div>'
   +'<div class="fld"><label>Phone number ID</label><input id="f_pid" value="'+esc(e.phone_id||'')+'" placeholder="Ej: 123456789012345"><small>WhatsApp → API Setup, es el ID del número (no el número).</small></div>'
   +'<div class="fld"><label>Token permanente</label><input id="f_tok" value="" placeholder="EAAG..."><small>Token de la app de WhatsApp (permanente/de sistema).</small></div>'
   +'<div class="fld"><label>WABA ID <span style="color:#94a3b8">(para plantillas)</span></label><input id="f_waba" value="'+esc(e.waba_id||'')+'" placeholder="ID de la WhatsApp Business Account"></div>'
-  +'<div class="fld"><label>Reenviar entrantes al bot <span style="color:#94a3b8">(opcional)</span></label><input id="f_fwd" value="'+esc(e.forward_url||'')+'" placeholder="https://.../wpp-webhook del METAFY"><small>Para no cortar el auto-respondedor: pegá acá la URL del webhook actual del bot.</small></div>'
-  +'<button class="btn" onclick="doConnect()">'+(e.conectado?'Guardar cambios':'Conectar')+'</button>'
-  +(e.conectado?'<button class="btn dng sec" onclick="doDisc()">Desconectar</button>':'')
-  +'<div id="cmsg"></div><div id="chook">'+(e.conectado?hookHtml(e):'')+'</div>'
-  +'</div>';
+  +'<div class="fld"><label>Reenviar entrantes al bot <span style="color:#94a3b8">(opcional)</span></label><input id="f_fwd" value="'+esc(e.forward_url||'')+'" placeholder="https://.../wpp-webhook del METAFY"><small>Para no cortar el auto-respondedor: pegá la URL del webhook actual del bot.</small></div>'
+  +'<button class="btn" onclick="doConnect()">&#128275; Conectar y desbloquear</button>'
+  +'<div id="cmsg"></div><div id="chook"></div>';
 }
 function hookHtml(e){
  return '<div class="hook"><b>&#10003; Conectado'+(e.numero?' — '+esc(e.numero):'')+'</b>'
@@ -7197,7 +7204,7 @@ function doConnect(){
   } else { document.getElementById('cmsg').innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'; }
  });
 }
-function doDisc(){ post('/wa-desconectar',{}).then(function(){ EST={conectado:false}; renderConnect(); }); }
+function doDisc(){ post('/wa-desconectar',{}).then(function(){ EST={conectado:false}; lockScreen(); }); }
 function val(id){ return (document.getElementById(id)||{}).value||''; }
 
 function renderApp(){
