@@ -186,6 +186,7 @@ def _user_actual():
 _SOLO_DASH = r"""
 <style>
  aside > a[aria-label="Ir al Dashboard"]{display:none!important}
+ .rp-oculto{display:none!important}
  /* barra lateral MAS ANGOSTA (colapsada) + hover-expand un poco menos, sin romper nada */
  @media(min-width:768px){
   aside[class*="group/sidebar"]{width:62px!important;padding-left:6px!important;padding-right:6px!important}
@@ -202,14 +203,6 @@ _SOLO_DASH = r"""
  .rp-pill.rp-active .rp-lbl{color:#fff}
  .rp-pill .rp-lbl a{color:#94a3b8;font-size:11px;font-weight:500;text-decoration:none;display:block}
  .rp-pill .rp-lbl .em{display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis}
- /* Chip flotante "Mover / 👁" de cada widget (dnd-kit sortable): el layout es fijo, no se reordena.
-    Lo mata por SELECTOR, así aunque React lo re-renderice el navegador lo esconde de nuevo solo (no vuelve). */
- [aria-roledescription="sortable"],
- [title="Arrastrar para reordenar"],
- div:has(> [aria-roledescription="sortable"]){display:none!important}
- /* Secciones que no van: se marcan con esta clase. El !important gana sobre cualquier display inline que
-    le pongan otras funciones (ocultarVacios/layoutFijo) → una vez marcada, NO vuelve a aparecer. */
- .rp-oculto{display:none!important}
 </style>
 <script>
 (function(){
@@ -1000,7 +993,7 @@ _SOLO_DASH = r"""
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
-    else if(p.key==='meta'){ b='<a href="#" onclick="rpMetaTokToggle();return false;" style="'+bs+'">&#9889; '+(window._rpMetaTokOpen?'Cerrar':'Conectar')+'</a>'; }
+    else if(p.key==='meta'){ b='<a href="/conectar-meta" onclick="window.location.assign(\'/conectar-meta\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='tn'){ b='<a href="#" onclick="rpTnToggle();return false;" style="'+bs+'">&#9889; '+(window._rpTnOpen?'Cerrar':'Conectar')+'</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -1013,7 +1006,6 @@ _SOLO_DASH = r"""
    var panel='';
    if(p.key==='shopify' && window._rpShopOpen && !shopOn) panel=rpShopPanel();
    else if(p.key==='meta' && metaOn) panel=rpMetaPanel();
-   else if(p.key==='meta' && !metaOn && window._rpMetaTokOpen) panel=rpMetaTokenPanel();
    else if(p.key==='envialo' && window._rpEnvOpen && !window._rpEnv) panel=rpEnvPanel();
    else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
@@ -1021,28 +1013,6 @@ _SOLO_DASH = r"""
   document.getElementById('rp-integ-cards').innerHTML=h;
   if(metaOn){ try{ rpMetaLoad(); }catch(e){} }
  }
- window.rpMetaTokToggle=function(){ window._rpMetaTokOpen=!window._rpMetaTokOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
- function rpMetaTokenPanel(){ return ''
-  +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
-  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">Peg&aacute; tu <b>token de Meta</b> (sin &laquo;Vincular&raquo;, sin App Review)</div>'
-  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:5px;line-height:1.6"><b style="color:#cbd5e1">1)</b> Abr&iacute; Meta con el bot&oacute;n de abajo y gener&aacute; un <b style="color:#cbd5e1">System User token</b> (caducidad <b style="color:#cbd5e1">Nunca</b>, permisos <b style="color:#cbd5e1">ads_read</b> + <b style="color:#cbd5e1">ads_management</b>). <b style="color:#cbd5e1">2)</b> Peg&aacute;lo abajo y toc&aacute; Conectar.</div>'
-  +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:11px">'
-  +'<a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:7px;background:#0d1b30;border:1px solid #1c3350;color:#7db3f5;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:700;text-decoration:none">&#128279; Sacar mi token (System User)</a>'
-  +'<a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:7px;background:#111c2b;border:1px solid #1e2b3d;color:#94a3b8;border-radius:8px;padding:9px 14px;font-size:12.5px;font-weight:600;text-decoration:none">&#9889; Token r&aacute;pido (Graph Explorer)</a>'
-  +'</div>'
-  +'<textarea id="rp-meta-tok" placeholder="Peg&aacute; ac&aacute; el token (empieza con EAAG...)" style="width:100%;height:74px;margin-top:11px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:12px;box-sizing:border-box;resize:vertical;font-family:monospace"></textarea>'
-  +'<div style="display:flex;gap:11px;align-items:center;margin-top:10px"><button onclick="rpMetaTokSave(this)" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:10px 22px;font-weight:700;font-size:13px;cursor:pointer">Conectar</button><span id="rp-meta-tok-msg" style="font-size:12px;font-weight:600"></span></div>'
-  +'</div>'; }
- window.rpMetaTokSave=function(btn){ var ta=document.getElementById('rp-meta-tok'), m=document.getElementById('rp-meta-tok-msg'); var t=(ta&&ta.value||'').trim();
-  if(t.length<30){ if(m){m.style.color='#fb7185';m.textContent='Peg&aacute; un token v&aacute;lido.';} return; }
-  if(btn){btn.disabled=true;} if(m){m.style.color='#94a3b8';m.textContent='Verificando con Meta...';}
-  fetch('/meta/token-manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})}).then(function(r){return r.json();}).then(function(j){
-   if(btn){btn.disabled=false;}
-   if(j&&j.ok){ if(m){m.style.color='#34d399';m.textContent='✓ Conectado &middot; '+((j.cuentas||[]).length)+' cuenta(s)';}
-    window._rpMeta=true; window._rpMetaTokOpen=false; window._rpMetaCuentas={cuentas:j.cuentas||[],elegida:j.elegida};
-    setTimeout(function(){ cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); },800); }
-   else { if(m){m.style.color='#fb7185';m.textContent=(j&&j.error)||'No se pudo conectar.';} }
-  }).catch(function(){ if(btn){btn.disabled=false;} if(m){m.style.color='#fb7185';m.textContent='Error de red, reintent&aacute;.';} }); };
  function rpMetaPanel(){ return '<div style="border-top:1px solid #1e2b3d;padding:14px 17px;background:#0c1521"><div style="font-weight:700;color:#e2e8f0;font-size:12.5px;margin-bottom:8px">Cuenta publicitaria <span style="color:#94a3b8;font-weight:400">(de ac&aacute; sale el gasto de ads)</span></div><div id="rp-meta-cuentas" style="color:#94a3b8;font-size:12.5px">Cargando cuentas...</div></div>'; }
  function rpMetaRender(cuentas,elegida){ var c=document.getElementById('rp-meta-cuentas'); if(!c)return;
   if(!cuentas.length){ c.innerHTML='<span style="color:#94a3b8;font-size:12px">No encontramos cuentas publicitarias en tu Meta (revis&aacute; permisos).</span>'; return; }
@@ -1445,23 +1415,6 @@ _SOLO_DASH = r"""
   var row=inp.closest('tr'); var b=row&&row.querySelector('.rp-badge');
   if(b){ if(v>0){ b.className='rp-badge rp-concosto'; b.style.cssText='background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#10003; Cargado'; } else { b.className='rp-badge rp-sincosto'; b.style.cssText='background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#9888;&#65039; Sin costo'; } }
   rpProdWarn(); };
- // Cambio de tipo (Unitario/Variable/Fijo): guarda el tipo y recarga para mostrar el editor correcto.
- window.rpSkuTipoChg=function(id){
-  var t=(document.getElementById('rp-sku-t-'+id)||{}).value||'unitario';
-  var be=document.getElementById('rp-sku-b-'+id); var base=be?be.value:'';
-  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,tipo:t,base:base})}).then(function(){ rpProdLoad(); }).catch(function(){ rpProdLoad(); }); };
- // Variable: guarda el SKU de cada cantidad (1 a 4).
- window.rpSkuVarSave=function(id){
-  var map={}; for(var q=1;q<=4;q++){ var e=document.getElementById('rp-skum-'+id+'-'+q); if(e&&e.value.trim()) map[q]=e.value.trim(); }
-  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,tipo:'variable',map:map})}).catch(function(){}); };
- // Variable: guarda el COSTO de cada cantidad (1 a 4). El margen usa el costo exacto de esa cantidad.
- window.rpCostoVarSave=function(id){
-  var g=function(x){ var e=document.getElementById(x); return e?(parseFloat(String(e.value||'').replace(/\./g,'').replace(',','.'))||0):0; };
-  var costos={}, algo=false; for(var q=1;q<=4;q++){ var v=g('rp-cvar-'+id+'-'+q); if(v>0){ costos[q]=v; algo=true; } }
-  fetch('/pf-guardar-costo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,variable:1,costos:costos})}).catch(function(){});
-  var el=document.getElementById('rp-cvar-'+id+'-1'), row=el&&el.closest('tr'), b=row&&row.querySelector('.rp-badge');
-  if(b){ if(algo){ b.className='rp-badge rp-concosto'; b.style.cssText='background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#10003; Cargado'; } else { b.className='rp-badge rp-sincosto'; b.style.cssText='background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#9888;&#65039; Sin costo'; } }
-  rpProdWarn(); };
  function rpProdLoad(){ var chip=document.getElementById('rp-prod-chip'), warn=document.getElementById('rp-prod-warn'), body=document.getElementById('rp-prod-body'); if(!body)return;
   body.innerHTML='<div style="color:#94a3b8;font-size:13px;padding:24px 4px">Cargando...</div>'; warn.innerHTML=''; chip.innerHTML='';
   fetch('/pf-productos').then(function(r){return r.json();}).then(function(j){
@@ -1471,30 +1424,22 @@ _SOLO_DASH = r"""
    if(!ps.length){ warn.innerHTML=''; body.innerHTML='<div style="color:#94a3b8;font-size:13px;padding:24px 4px">Tu tienda no tiene productos cargados todav&iacute;a.</div>'; return; }
    var h='<table style="width:100%;border-collapse:collapse;margin-top:14px"><thead><tr><th style="text-align:left;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Producto</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Precio de venta</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">SKU</th><th style="text-align:right;color:#94a3b8;font-size:12px;font-weight:600;padding:9px 10px;border-bottom:1px solid #1a2636">Costo</th></tr></thead><tbody>';
    ps.forEach(function(p){ var img=p.img?'<img src="'+p.img+'" style="width:100%;height:100%;object-fit:cover">':'&#128247;';
-    var esVar=(p.sku_tipo==='variable');
-    var cmap=(p.costo&&typeof p.costo==='object')?p.costo:{};
-    var smap=p.sku_map||{};
-    var _cnum=(p.costo&&typeof p.costo==='object')?(Number(p.costo['1'])||0):(Number(p.costo)||0);
-    var tiene=esVar?['1','2','3','4'].some(function(k){return Number(cmap[k])>0;}):(_cnum>0);
+    var tiene=p.costo&&Number(p.costo)>0;
     var badge= tiene ? '<span class="rp-badge rp-concosto" style="background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#10003; Cargado</span>' : '<span class="rp-badge rp-sincosto" style="background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600">&#9888;&#65039; Sin costo</span>';
-    var sIn='background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right';
-    var sSm='background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:7px 9px;font-size:12.5px';
-    var skuC='<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">'
-      +'<select id="rp-sku-t-'+p.id+'" onchange="rpSkuTipoChg(\''+p.id+'\')" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:8px 8px;font-size:12.5px;cursor:pointer">'
-       +'<option value="unitario"'+(p.sku_tipo==='unitario'?' selected':'')+'>Unitario</option>'
-       +'<option value="variable"'+(p.sku_tipo==='variable'?' selected':'')+'>Variable</option>'
+    h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">'
+     +'<div style="display:flex;gap:6px;align-items:center">'
+      +'<select id="rp-sku-t-'+p.id+'" onchange="rpSkuSave(\''+p.id+'\')" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:8px 8px;font-size:12.5px;cursor:pointer">'
+       +'<option value="xn"'+(p.sku_tipo==='xn'?' selected':'')+'>xN cantidad</option>'
+       +'<option value="spray"'+(p.sku_tipo==='spray'?' selected':'')+'>Spray 30/60</option>'
        +'<option value="fijo"'+(p.sku_tipo==='fijo'?' selected':'')+'>Fijo</option>'
-      +'</select>';
-    if(esVar){ for(var q=1;q<=4;q++){ var ejs=(q===1?'1 30ml':q===2?'1 60ml':q===3?'1 30ml + 1 60ml':'2 60ml'); skuC+='<div style="display:flex;gap:6px;align-items:center"><span style="color:#5b6b82;font-size:10.5px;width:14px;text-align:right">'+q+'</span><input id="rp-skum-'+p.id+'-'+q+'" value="'+esc(smap[q]||'')+'" placeholder="'+ejs+'" onchange="rpSkuVarSave(\''+p.id+'\')" style="width:132px;'+sSm+';text-align:left"></div>'; } }
-    else { skuC+='<input id="rp-sku-b-'+p.id+'" value="'+esc(p.sku_base||'')+'" placeholder="'+(p.sku_tipo==='fijo'?'código fijo':'nombre (ej: Pote)')+'" onchange="rpSkuSave(\''+p.id+'\')" style="width:120px;'+sIn+'"><span id="rp-sku-ej-'+p.id+'" style="color:#5b6b82;font-size:11px">ej: 2&rarr;'+esc(p.sku_ej||'')+'</span>'; }
-    skuC+='</div>';
-    var costC;
-    if(esVar){ costC='<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end"><div style="height:32px"></div>'; for(var w=1;w<=4;w++){ var cv=Number(cmap[w])||0; costC+='<input id="rp-cvar-'+p.id+'-'+w+'" value="'+(cv?cv.toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpCostoVarSave(\''+p.id+'\')" style="width:94px;'+sSm+';text-align:right">'; } costC+='</div>'; }
-    else { costC='<input value="'+(tiene?_cnum.toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpSaveCosto(this,\''+p.id+'\')" style="width:110px;'+sIn+'">'; }
-    h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e;vertical-align:top"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px;vertical-align:top">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+skuC+'</td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+costC+'</td></tr>'; });
+      +'</select>'
+      +'<input id="rp-sku-b-'+p.id+'" value="'+esc(p.sku_base||'')+'" '+(p.sku_tipo==='spray'?'disabled':'')+' placeholder="'+(p.sku_tipo==='fijo'?'código fijo':'nombre (ej: pote)')+'" onchange="rpSkuSave(\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right'+(p.sku_tipo==='spray'?';opacity:.4':'')+'">'
+     +'</div>'
+     +'<span id="rp-sku-ej-'+p.id+'" style="color:#5b6b82;font-size:11px">ej: 2→'+esc(p.sku_ej||'')+'</span>'
+    +'</div></td>'
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right"><input value="'+(tiene?Number(p.costo).toLocaleString('es-AR'):'')+'" placeholder="0" onchange="rpSaveCosto(this,\''+p.id+'\')" style="width:110px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;text-align:right"></td></tr>'; });
    h+='</tbody></table>'; body.innerHTML=h; rpProdWarn();
    var rf=document.getElementById('rp-prod-ref'); if(rf) rf.onclick=rpProdLoad;
   }).catch(function(){ body.innerHTML='<div style="color:#f87171;font-size:13px;padding:24px 4px">No se pudieron cargar los productos.</div>'; }); }
@@ -1506,37 +1451,14 @@ _SOLO_DASH = r"""
    (costos viejos). Sobreescribo esas 2 tarjetas con los valores reales del backend
    (be_roas = facturación / contribución antes de ads · be_cpa = contribución antes de ads / pedidos). */
 (function(){
-  var _raw=null, _of=window.fetch, _periodo='';
-  function _pfAplicar(j){ try{ var r=(j&&j.raw)||j;
-      if(r && r._ms) try{ console.log('⏱ pf-periodo (ms):', r._ms); }catch(e){}
-      if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r;
-        setTimeout(paint,60); setTimeout(paint,300); setTimeout(paint,900);
-        try{ pedirRecompras(r.desde,r.hasta); }catch(e){} return true; } }catch(e){}
-    return false; }
-  function _capPeriodo(u){ try{ var d=String(u).match(/[?&]desde=([^&]+)/), h=String(u).match(/[?&]hasta=([^&]+)/);
-    if(d&&h){ _periodo='desde='+d[1]+'&hasta='+h[1]; } }catch(e){} }
-  // (1) fetch
+  var _raw=null, _of=window.fetch;
   window.fetch=function(){ var args=arguments, p=_of.apply(this,args);
     try{ var u=(args[0]&&args[0].url)||args[0];
-      if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){ _capPeriodo(u);
-        p.then(function(res){ try{ res.clone().json().then(_pfAplicar).catch(function(){}); }catch(e){} }); }
-    }catch(e){}
+      if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
+        p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
+          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); } }).catch(function(){}); }catch(e){} });
+      } }catch(e){}
     return p; };
-  // (2) XHR/axios — la app puede pedir /pf-periodo por acá (no por fetch) → también lo agarro.
-  try{ var _xo=XMLHttpRequest.prototype.open, _xs=XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open=function(m,u){ this.__pf=(typeof u==='string' && u.indexOf('/pf-periodo')>-1)?u:null; return _xo.apply(this,arguments); };
-    XMLHttpRequest.prototype.send=function(){ var x=this;
-      if(x.__pf){ _capPeriodo(x.__pf); try{ x.addEventListener('load',function(){ try{ _pfAplicar(JSON.parse(x.responseText)); }catch(e){} }); }catch(e){} }
-      return _xs.apply(this,arguments); }; }catch(e){}
-  // (3) FALLBACK ACTIVO: si a 1.5s nadie trajo la data, la pido YO directo al backend y pinto (con reintentos).
-  [1500,3200,6000,12000].forEach(function(ms){ setTimeout(function(){ if(_raw) return;
-    _of('/pf-periodo'+(_periodo?('?'+_periodo):'')).then(function(r){return r.json();}).then(_pfAplicar).catch(function(){}); }, ms); });
-  // Recompras: se piden APARTE (el histórico es pesado y frenaba el dashboard). Se rellenan al llegar.
-  var _recKey='';
-  function pedirRecompras(d,h){ if(!d||!h) return; var k=d+'|'+h; if(k===_recKey) return; _recKey=k;
-    fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
-      if(j&&j.ok&&_raw){ _raw.recompras=j.recompras; _raw.fact_recompra=j.fact_recompra; try{paint();}catch(e){} setTimeout(paint,200); }
-    }).catch(function(){ _recKey=''; }); }
   function money(n){ try{ return '$'+Math.round(n).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
     for(var i=0;i<all.length;i++){ if((all[i].textContent||'').trim()===label){ var box=all[i].parentElement; if(!box)continue;
@@ -1547,16 +1469,6 @@ _SOLO_DASH = r"""
     for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\s+/g,' ').trim();
       if((t==='Todas'||t==='Shopify'||t==='MercadoLibre') && /text-primary|bg-primary/.test(bs[i].className||'')) return t; }
     return 'Todas'; }
-  // Dejar SOLO el chip "Todas" (todo mixto). Escondo Shopify/Tiendanube y MercadoLibre con .rp-oculto
-  // (el !important no lo deja volver). Si el filtro activo era uno de esos, clickeo "Todas" una vez para
-  // que no queden datos filtrados/en cero.
-  function soloTodas(){ var bs=document.querySelectorAll('button'), todas=null, activoOculto=false;
-    for(var i=0;i<bs.length;i++){ var b=bs[i], t=(b.textContent||'').replace(/\s+/g,' ').trim();
-      if(t==='Todas'){ todas=b; continue; }
-      if(t==='Shopify'||t==='MercadoLibre'||t==='Tiendanube'){
-        if(/text-primary|bg-primary/.test(b.className||'')) activoOculto=true;
-        if(!b.classList.contains('rp-oculto')) b.classList.add('rp-oculto'); } }
-    if(activoOculto && todas && !/text-primary|bg-primary/.test(todas.className||'')){ try{ todas.click(); }catch(e){} } }
   function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
   function paint(){ if(!_raw)return;
     // MercadoLibre no tiene ventas (todo es Shopify) → paso datos en CERO para no pintar los de Shopify.
@@ -1564,16 +1476,14 @@ _SOLO_DASH = r"""
     try{ costos4(); }catch(e){}
     try{ metricas(); }catch(e){}
     _raw=save;
-    try{ fixFacturacion(); }catch(e){} try{ fixKpis(); }catch(e){} try{ fixVentas(); }catch(e){} }
+    try{ fixFacturacion(); }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
   // gráfico killeado (que también dice 'Facturación'). Es el scan caro (lee offsetParent) → se cachea.
   function _findFactEl(){
     var all=document.querySelectorAll('span,p,div');
-    for(var i=0;i<all.length;i++){ var e=all[i];
-      if(e.children.length>2) continue;   // saltear contenedores grandes (leer su textContent = O(subárbol))
-      var tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>34 || tx.slice(-11)!=='Facturación') continue;
       if(e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
@@ -1590,35 +1500,6 @@ _SOLO_DASH = r"""
     if(!real) return;
     if(!_factEl || !_factEl.isConnected) _factEl=_findFactEl();              // scan caro SOLO si hace falta
     if(_factEl){ var t=fmt(real); if(_factEl.textContent!==t) _factEl.textContent=t; } }
-  // Las OTRAS tarjetas KPI de arriba (Ticket prom, Ganancia = montos $; Ventas = entero). La app las pinta
-  // sola cuando trae data; si NO trae (data caída/no fetch), quedan en 0 → las fuerzo yo desde _raw.
-  var _kpiEls={};
-  function _findKpiVal(label){ var LB=label.toLowerCase(), all=document.querySelectorAll('span,p,div');
-    for(var i=0;i<all.length;i++){ var e=all[i];
-      if(e.children.length>2) continue;
-      var tx=(e.textContent||'').replace(/\s+/g,' ').trim();
-      if(tx.length>label.length+3 || tx.toLowerCase().slice(-LB.length)!==LB || e.offsetParent===null) continue;
-      var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
-      if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
-      var dvs=card.querySelectorAll('span,div');
-      for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
-        if(/^\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
-    return null; }
-  function fixKpis(){ if(!_raw || _canalActivo()==='MercadoLibre') return;
-    var m=[['Ticket prom', _raw.ticket||_raw.tot_aov||0], ['Ganancia', _raw.ganancia||_raw.tot_ganancia||0]];
-    for(var i=0;i<m.length;i++){ var lab=m[i][0], el=_kpiEls[lab];
-      if(!el||!el.isConnected){ el=_findKpiVal(lab); _kpiEls[lab]=el; }
-      if(el){ var t=fmt(m[i][1]); if(el.textContent!==t) el.textContent=t; } } }
-  function fixVentas(){ if(!_raw || _canalActivo()==='MercadoLibre') return;
-    var el=_kpiEls['Ventas'];
-    if(!el||!el.isConnected){ var all=document.querySelectorAll('span,p,div');
-      for(var i=0;i<all.length && !el;i++){ var e=all[i]; if(e.children.length>2) continue; if((e.textContent||'').replace(/\s+/g,' ').trim()!=='Ventas'||e.offsetParent===null) continue;
-        var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
-        if(!card||!/rounded/.test(card.className||'')) continue;
-        var dvs=card.querySelectorAll('span,div');
-        for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0 && /^\d{1,7}$/.test((dvs[q].textContent||'').trim())){ el=dvs[q]; break; } } }
-      _kpiEls['Ventas']=el; }
-    if(el){ var v=String(_raw.ordenes||_raw.ventas_periodo||0); if(el.textContent!==v) el.textContent=v; } }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
@@ -1654,7 +1535,7 @@ _SOLO_DASH = r"""
       if(el.style.display!==tgt) el.style.display=tgt; }
     // Barrido: cualquier tarjeta 'Reembolsos / cancel.' que haya quedado suelta → ocultar (no va en el diseño).
     var sp=document.querySelectorAll('span,div');
-    for(var q=0;q<sp.length;q++){ if(sp[q].children.length>2) continue; var tx=(sp[q].textContent||'').replace(/\s+/g,' ').trim();
+    for(var q=0;q<sp.length;q++){ var tx=(sp[q].textContent||'').replace(/\s+/g,' ').trim();
       if(tx==='Reembolsos / cancel.'){ var c=sp[q]; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl/.test(c.className||'')) break; }
         if(c&&/rounded-2xl/.test(c.className||'')&&c.style.display!=='none') c.style.display='none'; } } }
   function cardDe(label){ var sp=document.querySelectorAll('span');
@@ -1789,94 +1670,66 @@ _SOLO_DASH = r"""
   // Layout FIJO: KPI (Ventas/Facturación/Ticket/Ganancia) arriba, después Resumen (Publicidad+Costos)
   // y Últimas ventas. Escondo gráfico, Recomendación y Riesgos. Uso CSS 'order' (no toca el DOM → no pelea con React).
   // Busca el título aunque tenga un ícono adelante (los headers son '<span>icono</span>Texto').
-  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; if(e.children.length>2) continue; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
+  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
   function layoutFijo(){
-    var rt=leafTxt('Resumen del período'), ut=leafTxt('Últimas ventas'); if(!rt||!ut) return;
-    var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
-    var cont=ut; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement; if(!cont) return;
-    // Guarda: nunca reordenar un contenedor que incluya el header/chips (romperia la pagina y el chip "Todas").
-    if(/Visión operativa|período seleccionado/.test(cont.textContent||'')) return;
+    var rt=leafTxt('Resumen del período'); if(!rt) return;
+    // 1) Ubico el WIDGET de KPIs por su contenido: el div más chico que tiene los 4 KPI juntos
+    //    (Ventas + Facturación + Ganancia + Ticket). Así lo detecto igual en "Todas" que filtrado.
+    var kpi=null, all=document.getElementsByTagName('div');
+    for(var i=0;i<all.length;i++){ var t=all[i].textContent||'';
+      if(t.length<600 && /Ventas/.test(t) && /Facturaci/.test(t) && /Ganancia/.test(t) && /Ticket/.test(t)){
+        if(!kpi || t.length<(kpi.textContent||'').length) kpi=all[i]; } }
+    if(!kpi) return;
+    // 2) Contenedor = ancestro COMÚN del widget KPI y de "Resumen del período" (ahí son hermanos sortables).
+    //    Con esto el KPI SIEMPRE es hijo directo de cont, esté arriba o abajo en el DOM.
+    var anc=[], a=kpi; while(a){ anc.push(a); a=a.parentElement; }
+    var cont=rt; while(cont && anc.indexOf(cont)<0) cont=cont.parentElement;
+    if(!cont) return;
+    // 3) Ordeno por flex-order: KPI arriba (1), Resumen (2), Últimas ventas (3), gráficos demo ocultos.
     var kids=cont.children;
-    for(var i=0;i<kids.length;i++){ var el=kids[i], t=el.textContent||'', ord=90, hide=false;
-      if(/Facturaci/.test(t) && /Ganancia/.test(t) && /Ticket/.test(t)) ord=1;              // fila KPI
-      else if(t.indexOf('Resumen del per')>=0) ord=2;                                        // Publicidad + Costos
-      else if(t.indexOf('Últimas ventas')>=0) ord=3;                                         // tabla
-      else if(el.querySelector && el.querySelector('[class*=\"rounded\"]')) hide=true;       // gráfico / Recomendación / Riesgos
-      else { var inner=t.replace(/drag_indicator|Mover|visibility_off|visibility_on|visibility/gi,'').replace(/\s+/g,''); if(!inner) hide=true; }   // widget oculto/vacío (solo el handle) → colapsar
+    for(var j=0;j<kids.length;j++){ var el=kids[j], ord=90, hide=false;
+      if(el===kpi || el.contains(kpi)) ord=1;                                                // widget KPI
+      else if(el===rt || el.contains(rt)) ord=2;                                             // Resumen (Finanzas/Publicidad/Costos)
+      else if((el.textContent||'').indexOf('Últimas ventas')>=0) ord=3;                      // tabla
+      else if(el.querySelector && el.querySelector('[class*=\"rounded\"]')) hide=true;        // gráfico / Recomendación / Riesgos
       if(el.style.order!==String(ord)) el.style.order=ord;
       var d=hide?'none':''; if(el.style.display!==d) el.style.display=d; }
-    if(getComputedStyle(cont).display==='block') cont.style.display='flex', cont.style.flexDirection='column';
-  }
-  // FIX filtrado: cuando filtrás por tienda/canal, el widget de los 4 KPIs queda al fondo. Lo MOVEMOS
-  // físicamente al tope de su lista (más confiable que el CSS order, que en la vista filtrada no engancha).
-  // Ancla real = label con icono shopping_bag + "Ventas". Guarda: nunca tocamos el contenedor del header/chips.
-  function kpiArriba(){
-    var sp=document.getElementsByTagName('span'), cand=[];
-    for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').replace(/\s+/g,' ').trim();
-      if(t.length<20 && t.slice(-6)==='Ventas' && /shopping_bag/.test(sp[i].innerHTML)) cand.push(sp[i]); }
-    if(!cand.length) return;
-    var lab=null; for(var c=0;c<cand.length;c++){ if(cand[c].offsetParent!==null){ lab=cand[c]; break; } }
-    if(!lab) lab=cand[0];
-    var kpi=lab;                                        // subir al widget que agrupa los 4 KPIs
-    for(var k=0;k<8;k++){ kpi=kpi.parentElement; if(!kpi) return; var tk=kpi.textContent||'';
-      if(/Facturaci/.test(tk) && /Ganancia/.test(tk) && /Ticket/.test(tk)) break; }
-    if(!kpi || !/Facturaci/.test(kpi.textContent||'')) return;
-    // subir hasta el contenedor que TAMBIÉN contiene "Resumen del período" (= la lista de widgets).
-    // Si topamos con el header/chips antes, abortamos (seguridad total).
-    var lista=kpi.parentElement;
-    while(lista){ var tl=lista.textContent||'';
-      if(/período seleccionado|Visión operativa/.test(tl)) return;   // header → abort
-      if(/Resumen del per/.test(tl)) break;                          // contenedor con KPI + Resumen
-      lista=lista.parentElement; }
-    if(!lista) return;
-    var item=kpi; while(item && item.parentElement!==lista) item=item.parentElement;  // item del KPI (hijo directo)
-    if(!item) return;
-    if(lista.firstElementChild!==item){ try{ lista.insertBefore(item, lista.firstElementChild); }catch(e){} }  // KPI al tope
+    if(getComputedStyle(cont).display==='block'){ cont.style.display='flex'; cont.style.flexDirection='column'; }
   }
   // Mientras arrastrás para reordenar ("Mover"), NO re-aplico nada (sino cancelo el drag).
   var _busy=false, _bt=null;
   document.addEventListener('pointerdown', function(){ _busy=true; }, true);
   document.addEventListener('pointerup', function(){ clearTimeout(_bt); _bt=setTimeout(function(){ _busy=false; try{ tick(); }catch(e){} }, 500); }, true);
   var _th=null;
-  // El chip flotante "Mover / 👁" de cada widget ahora lo esconde el CSS de arriba (por selector dnd-kit),
-  // que NO vuelve aunque React re-renderice. Esta función queda como no-op para no pelear con el layout.
-  function sacarMover(){ }
+  // Saca el chip "Mover / 👁" de arriba (el layout es fijo, no se reordena → ese control confunde). Una sola vez.
+  var _movDone=false;
+  function sacarMover(){ if(_movDone) return; var all=document.querySelectorAll('button,div,span,a');
+    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+      if(tx==='Mover'){ var box=e; for(var k=0;k<4&&box;k++){ if(box.parentElement){ var pt=(box.parentElement.textContent||'').replace(/\s+/g,' ').trim(); if(pt.length>14) break; box=box.parentElement; } else break; }
+        if(box&&box.style.display!=='none') box.style.display='none'; _movDone=true; } } }
   // Mata el gráfico "Evolución" (muestra data demo falsa) — INDEPENDIENTE del layoutFijo, por si el pf.html
   // de producción difiere y layoutFijo no llega a esconderlo. Busca la tarjeta que contiene "Evolución".
   var _grafDone=false;
   function matarGrafico(){ if(_grafDone) return; var t=leafTxt('Evolución'); if(!t) return;
     var c=t; for(var k=0;k<10&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) break; }
     if(c&&/rounded/.test(c.className||'')){ if(c.style.display!=='none') c.style.display='none'; _grafDone=true; } }
-  // Barrido GLOBAL: oculta cualquier widget del dashboard (item sortable 'group pt-3') cuyo contenido,
-  // sacando el control de arrastre (Mover/visibility), esté vacío → ese es el hueco invisible que bugea todo.
-  function ocultarVacios(){
-    var all=document.getElementsByTagName('div');
-    for(var i=0;i<all.length;i++){ var el=all[i], cn=el.className;
-      if(typeof cn!=='string' || cn.indexOf('group')<0 || cn.indexOf('pt-3')<0) continue;
-      var t=el.textContent||'';
-      if(_esFuera(t)) continue;   // sección barrida (rp-oculto) → no la toco, la maneja sacarSecciones
-      if(t.indexOf('drag_indicator')<0 && t.indexOf('Mover')<0) continue;   // debe tener el handle de arrastre
-      var inner=t.replace(/drag_indicator|Mover|visibility_off|visibility_on|visibility/gi,'').replace(/\s+/g,'');
-      var d=inner ? '' : 'none';
-      if(el.style.display!==d) el.style.display=d; }
-  }
-  // Barre PARA SIEMPRE las secciones que no van. Solo quedan: los 4 KPI, Resumen del período (+Costos) y
-  // Últimas ventas. Esconde el widget sortable 'div.group.pt-3' ENTERO (no solo su contenido) — así NO queda
-  // el hueco de 12px del padding pt-3 que dejaba el espacio invisible entre KPI y Resumen. Matcher por
-  // textContent, VERIFICADO contra el DOM real (28 widgets → 16 fuera, 12 quedan: KPI/Resumen/Últimas ×4,
-  // ningún keep se oculta). Corre en cada tick → aunque React re-renderice, se esconden solas.
+  // --- Ocultar secciones que no van + dejar solo "Todas" (liviano, scoped) ---
   var _SECFUERA=['Top productos','Desglose por tienda','Evolución','Recomendación Estratégica','Riesgos Activos'];
-  function _esFuera(t){ for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0) return true; } return false; }
   function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
-    for(var i=0;i<g.length;i++){ if(_esFuera(g[i].textContent||'') && !g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ soloTodas(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
-  // Antes: tick en CADA mutación (throttle 220ms). Con el DOM gigante y React re-renderizando seguido, los
-  // scans full-DOM pegaban el hilo principal y CONGELABAN la página (por eso quedaba en 0 y ni cargaba).
-  // Ahora corre a ritmo FIJO (cada 1.2s), desacoplado de las mutaciones → CPU predecible, nunca se traba.
-  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 1200); }
+    for(var i=0;i<g.length;i++){ var t=g[i].textContent||'';
+      for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0){ if(!g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); break; } } } }
+  function soloTodas(){ var bs=document.querySelectorAll('button'), todas=null, act=false;
+    for(var i=0;i<bs.length;i++){ var b=bs[i], t=(b.textContent||'').replace(/\s+/g,' ').trim();
+      if(t==='Todas'){ todas=b; continue; }
+      if(t==='Shopify'||t==='MercadoLibre'||t==='Tiendanube'){
+        if(/text-primary|bg-primary/.test(b.className||'')) act=true;
+        if(!b.classList.contains('rp-oculto')) b.classList.add('rp-oculto'); } }
+    if(act && todas && !/text-primary|bg-primary/.test(todas.className||'')){ try{ todas.click(); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ soloTodas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
-  setInterval(function(){ if(!_busy){ try{ tick(); }catch(e){} } }, 1200);   // latido fijo (no depende de mutaciones)
-  [0,600,1600,3200].forEach(function(ms){ setTimeout(tick, ms); });   // arranques
+  [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
+  setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
   // Al tocar un chip de canal (Todas/Shopify/MercadoLibre) React re-renderiza → re-aplico mis parches.
   document.addEventListener('click', function(e){ var el=e.target;
     for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
@@ -2374,7 +2227,7 @@ def resumen_vacio() -> dict:
     ceros_int = ["ordenes", "unidades", "reemb_cantidad", "reemb_monto", "reemb_despachados",
                  "ventas_recompras", "ventas_periodo", "meli_ventas", "meli_unidades", "tot_ordenes"]
     ceros_float = ["facturado", "cobrado", "costo_prod", "envio", "comision", "impuestos",
-                   "com_plataforma", "com_pago", "fullfilment", "envios", "envio_prom", "oper_monto",
+                   "com_plataforma", "com_pago", "fullfilment", "envios", "envio_prom",
                    "costos_extra", "reemb_perdida", "gan_por_venta", "cpa", "publi_ars",
                    "publi_cuenta", "ganancia", "margen", "roas", "roas_be", "ticket",
                    "tasa_recompra", "facturacion_recompras",
@@ -2425,11 +2278,11 @@ def _shopify_orders(shop, token, desde, hasta):
 _MP_COST_CACHE = {}
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
 IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
-ENVIO_DOMICILIO = 8270  # promedio REAL de 50 envíos a domicilio (Andreani, total pagado ÷ 50)
-ENVIO_SUCURSAL = 5483   # promedio REAL de 50 envíos a sucursal (Andreani, total pagado ÷ 50)
+ENVIO_DOMICILIO = 8270  # promedio REAL de 50 envíos a domicilio (Andreani, total pagado / 50)
+ENVIO_SUCURSAL = 5483   # promedio REAL de 50 envíos a sucursal (Andreani, total pagado / 50)
 FULFILLMENT_ORDEN = 700  # costo de fulfillment por pedido (fijo)
 INSUMOS_ORDEN = 200      # costo de insumos/packaging por pedido (fijo)
-OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 900/pedido: fulfillment + insumos (aparte del envío)
+OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 900/pedido: fulfillment + insumos (aparte del envio)
 
 
 def _envio_costo(o) -> int:
@@ -2572,7 +2425,7 @@ def _mp_costos(email, desde, hasta):
                              headers={"Authorization": "Bearer " + token},
                              params={"sort": "date_approved", "criteria": "desc",
                                      "range": "date_approved", "begin_date": ini, "end_date": fin,
-                                     "status": "approved", "offset": offset, "limit": 100}, timeout=12)
+                                     "status": "approved", "offset": offset, "limit": 100}, timeout=30)
             if r.status_code >= 400:
                 return None if offset == 0 else None
             data = r.json()
@@ -2649,7 +2502,7 @@ def pf_debug_ordenes():
     for o in orders[:n]:
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
-        cp = sum(_costo_qty(costos.get(str(li.get("product_id") or "")), int(li.get("quantity") or 0))
+        cp = sum(float(costos.get(str(li.get("product_id") or "")) or 0) * int(li.get("quantity") or 0)
                  for li in (o.get("line_items") or []))
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         # envío real o promedio
@@ -2678,7 +2531,6 @@ def pf_debug_ordenes():
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
                     "mp_matcheo": ("ok" if pago else "SIN MATCH"),
                     "envio": round(env, 2), "envio_fuente": env_fuente,
-                    "oper": OPER_ORDEN,
                     "iibb": round(iibb, 2), "tienda": round(tienda, 2),
                     "ganancia": round(gan, 2)})
     return jsonify({"ok": True, "shopify": True, "mp_conectado": pagos is not None, "ordenes": out})
@@ -2883,7 +2735,7 @@ def pf_stock_catalogo():
     cat = []
     for p in _tn_productos(email):
         cat.append({"id": p["id"], "nombre": p["nombre"], "sku": p.get("sku_base", ""),
-                    "costo": _costo_num(p.get("costo"))})
+                    "costo": p.get("costo", 0)})
     tk = _shop_tokens().get(email)
     if tk and tk.get("access_token") and tk.get("shop"):
         costos = (_costos().get(email) or {})
@@ -2895,7 +2747,7 @@ def pf_stock_catalogo():
                 v = (pr.get("variants") or [{}])[0]
                 pid = str(pr.get("id"))
                 cat.append({"id": pid, "nombre": pr.get("title") or "",
-                            "sku": v.get("sku") or "", "costo": _costo_num(costos.get(pid))})
+                            "sku": v.get("sku") or "", "costo": costos.get(pid) or 0})
         except Exception:
             pass
     return jsonify({"ok": True, "productos": cat})
@@ -3031,34 +2883,10 @@ def pf_mp_efectivo():
     return html
 
 
-@app.get("/pf-recompras")
-def pf_recompras():
-    """Recompras (clientes que ya compraron antes) del período. Se pide APARTE del dashboard
-    para no frenar la carga (el histórico de 90 días es pesado). Cacheado 10 min por dentro."""
-    email = _user_actual()
-    if not email:
-        return jsonify({"ok": False})
-    desde = request.args.get("desde") or _hoy()
-    hasta = request.args.get("hasta") or desde
-    rc = 0
-    rf = 0.0
-    try:
-        c1, f1 = _recompras_periodo(_tn_hist_orders(email, hasta), desde, hasta)
-        rc += c1; rf += f1
-    except Exception:
-        pass
-    try:
-        c2, f2 = _recompras_periodo(_shop_hist_orders(email, hasta), desde, hasta)
-        rc += c2; rf += f2
-    except Exception:
-        pass
-    return jsonify({"ok": True, "recompras": rc, "fact_recompra": round(rf, 2)})
-
-
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-cache-html"})
+    return jsonify({"ok": True, "v": "2026-08-14-ayer-mas-costos"})
 
 
 @app.get("/pf-diag")
@@ -3122,18 +2950,32 @@ def _tn_ventas(email, desde, hasta):
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return None
-    out = []
-    for o in _tn_orders_raw(email, desde, hasta):        # órdenes cacheadas (compartidas con el dashboard)
-        num = str(o.get("number") or "")
-        if not num or o.get("cancelled_at"):
-            continue
-        if (o.get("payment_status") or "").lower() != "paid":   # como Shopify: pendiente NO cuenta
-            continue
-        tot = float(o.get("total") or 0)
-        out.append({"num": num, "origen": "Tiendanube",
-                    "estado": _TN_ESTADO.get((o.get("payment_status") or "").lower(), "—"),
-                    "fecha": o.get("created_at") or "", "total": round(tot, 2),
-                    "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    out, vistos, page = [], set(), 1
+    while page <= 20:
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page,
+                "created_at_min": desde + "T00:00:00-03:00",
+                "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
+            lote = r.json() if r.content else []
+        except Exception:
+            lote = []
+        if not isinstance(lote, list) or not lote:
+            break
+        for o in lote:
+            num = str(o.get("number") or "")
+            if not num or num in vistos or o.get("cancelled_at"):
+                continue
+            vistos.add(num)
+            tot = float(o.get("total") or 0)
+            out.append({"num": num, "origen": "Tiendanube",
+                        "estado": _TN_ESTADO.get((o.get("payment_status") or "").lower(), "—"),
+                        "fecha": o.get("created_at") or "", "total": round(tot, 2),
+                        "neto": round(tot * (1 - TIENDA_PCT / 100.0), 2)})
+        if len(lote) < 200:
+            break
+        page += 1
     return out
 
 
@@ -3205,8 +3047,8 @@ def pf_orden():
     for li in (o.get("line_items") or []):
         q = int(li.get("quantity") or 0)
         pid = str(li.get("product_id") or "")
-        cu = costos.get(pid)
-        costo_prod += _costo_qty(cu, q)
+        cu = float(costos.get(pid) or 0)
+        costo_prod += cu * q
         items.append({"nombre": li.get("title") or li.get("name") or "?", "cantidad": q,
                       "precio": float(li.get("price") or 0), "foto": _shop_img(shop, token, pid)})
     # MP: matcheo el pago de esta orden por fecha/monto para el desglose real.
@@ -3232,8 +3074,7 @@ def pf_orden():
     envio = _real_env if _real_env is not None else _envio_costo(o)
     # MP ya descuenta sus comisiones en pago["net"]; si no hay pago, lo estimamos.
     net_mp = pago["net"] if pago else round(tot - fee_mp - fee_cuotas, 2)
-    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto, envío,
-    # fulfillment ($700) e insumos ($200) por pedido.
+    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto y envío.
     neto = net_mp - tienda - iibb - costo_prod - envio - OPER_ORDEN
     cust = o.get("customer") or {}
     medio = "Mercado Pago" if pago else (", ".join(o.get("payment_gateway_names") or []) or o.get("gateway") or "—")
@@ -3246,7 +3087,6 @@ def pf_orden():
         "total": round(tot, 2), "descuento": round(desc, 2),
         "fee_mp": round(fee_mp, 2), "fee_cuotas": round(fee_cuotas, 2), "cuotas": inst,
         "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2),
-        "fulfillment": FULFILLMENT_ORDEN, "insumos": INSUMOS_ORDEN, "oper": OPER_ORDEN,
         "envio_real": _real_env is not None,
         "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
 
@@ -3294,29 +3134,36 @@ def _skus_save(email, m) -> None:
 
 
 def _sku_cfg(v) -> dict:
-    """Normaliza → {'tipo','base','map'}. tipo: unitario | variable | fijo.
-    Compat con lo viejo: xn→unitario, spray→variable, string→fijo."""
+    """Normaliza el valor guardado (string viejo o dict) → {'tipo','base'}."""
     if isinstance(v, dict):
-        t = (v.get("tipo") or "unitario")
-        t = {"xn": "unitario", "spray": "variable"}.get(t, t)
-        if t not in ("unitario", "variable", "fijo"):
-            t = "unitario"
-        return {"tipo": t, "base": (v.get("base") or ""), "map": (v.get("map") or {})}
+        return {"tipo": (v.get("tipo") or "xn"), "base": (v.get("base") or "")}
     if isinstance(v, str) and v.strip():
-        return {"tipo": "fijo", "base": v.strip(), "map": {}}
-    return {"tipo": "unitario", "base": "", "map": {}}
+        return {"tipo": "fijo", "base": v.strip()}
+    return {"tipo": "xn", "base": ""}
+
+
+def _sku_vp(u: int) -> str:
+    """SKU VisionPure: cada 2 sprays → 1 de 60ML, el que sobra → 1 de 30ML. Ej: 3 → '1 60ML + 1 30ML'."""
+    if u <= 0:
+        return ""
+    d60, d30 = u // 2, u % 2
+    p = []
+    if d60:
+        p.append("%d 60ML" % d60)
+    if d30:
+        p.append("%d 30ML" % d30)
+    return " + ".join(p)
 
 
 def _sku_calc(cfg, u: int) -> str:
-    """SKU de la orden según el tipo y la cantidad comprada `u`."""
+    """SKU de la orden según el tipo de producto y la cantidad comprada `u`."""
     c = _sku_cfg(cfg)
-    t, b, m = c["tipo"], (c["base"] or "").strip(), (c.get("map") or {})
-    if t == "variable":
-        s = (str(m.get(str(int(u))) or "")).strip()
-        return s if s else ("x%d" % u)            # cantidad sin definir → xN
+    t, b = c["tipo"], (c["base"] or "").strip()
+    if t == "spray":
+        return _sku_vp(u)
     if t == "fijo":
         return b
-    # unitario: 'xN base' (ej 'x2 Pote')
+    # 'xn' (por defecto): xN + nombre  → 'x2 pote'
     return (("x%d %s" % (u, b)).strip()) if b else ("x%d" % u)
 
 
@@ -3329,25 +3176,15 @@ def pf_sku_set():
     pid = str(data.get("pid") or "").strip()
     if not pid:
         return jsonify({"ok": False})
-    tipo = (data.get("tipo") or "unitario").strip()
-    tipo = {"xn": "unitario", "spray": "variable"}.get(tipo, tipo)
-    if tipo not in ("unitario", "variable", "fijo"):
-        tipo = "unitario"
+    tipo = (data.get("tipo") or "xn").strip()
+    if tipo not in ("xn", "spray", "fijo"):
+        tipo = "xn"
     base = str(data.get("base") or "").strip()
-    smap = {}                                          # variable: {cantidad: sku}
-    for k, v in (data.get("map") or {}).items():
-        if str(k).isdigit() and str(v or "").strip():
-            smap[str(int(k))] = str(v).strip()
     m = _skus_map(email)
-    if tipo == "variable":
-        if smap:
-            m[pid] = {"tipo": "variable", "base": "", "map": smap}
-        else:
-            m[pid] = {"tipo": "variable", "base": "", "map": {}}
-    elif base:
+    if tipo == "spray" or base:            # spray no necesita base; los otros sí para guardar
         m[pid] = {"tipo": tipo, "base": base}
     else:
-        m.pop(pid, None)                               # sin base y no-variable → limpiar
+        m.pop(pid, None)                   # sin base y no-spray → limpiar
     _skus_save(email, m)
     return jsonify({"ok": True, "ejemplos": {str(n): _sku_calc(m.get(pid), n) for n in (1, 2, 3)}})
 
@@ -4664,17 +4501,9 @@ def pf_despachos_seg_enviar():
     return jsonify({"ok": False, "msg": "el envío de seguimiento se conecta en el próximo paso"})
 
 
-_MP_LISTA_CACHE = {}   # {(email,desde,hasta): (ts, out)} — pagos de MP, cache 60s: se pide en varias secciones
-
-
 def _mp_pagos_lista(email, desde, hasta):
     """Lista de pagos aprobados de MP del usuario: {ref, amount, net, fee}. None si no hay MP.
     Sirve para MATCHEAR cada pago con su pedido de Shopify (comisión exacta por venta, sin inflar)."""
-    import time as _t
-    ck = (email, desde, hasta)
-    c = _MP_LISTA_CACHE.get(ck)
-    if c and (_t.time() - c[0] < 60):     # mismo período pedido de nuevo en <60s → sin re-bajar de MP
-        return c[1]
     tk = _mp_tokens().get(email)
     token = tk.get("access_token") if tk else None
     if not token:
@@ -4695,7 +4524,7 @@ def _mp_pagos_lista(email, desde, hasta):
                              headers={"Authorization": "Bearer " + token},
                              params={"sort": "date_approved", "criteria": "desc",
                                      "range": "date_approved", "begin_date": ini, "end_date": fin,
-                                     "status": "approved", "offset": offset, "limit": 100}, timeout=12)
+                                     "status": "approved", "offset": offset, "limit": 100}, timeout=30)
             if r.status_code >= 400:
                 return None if offset == 0 else out
             data = r.json()
@@ -4708,152 +4537,21 @@ def _mp_pagos_lista(email, desde, hasta):
                                                  for f in (p.get("fee_details") or []))
                 # desglose para el modal: comisión MP (mercadopago+application) vs cuotas (financing)
                 fd = p.get("fee_details") or []
-                finanz = sum(float(f.get("amount") or 0) for f in fd if f.get("type") == "financing_fee")
+                fin = sum(float(f.get("amount") or 0) for f in fd if f.get("type") == "financing_fee")
                 base = sum(float(f.get("amount") or 0) for f in fd if f.get("type") != "financing_fee")
                 if not fd:
-                    base = fee; finanz = 0.0
+                    base = fee; fin = 0.0
                 out.append({"ref": (p.get("external_reference") or "").strip(),
                             "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                             "inst": int(p.get("installments") or 1),
-                            "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
+                            "fee_mp": round(base, 2), "fee_cuotas": round(fin, 2),
                             "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
             if offset >= (data.get("paging") or {}).get("total", 0) or not res:
                 break
     except Exception:
         return None
-    _MP_LISTA_CACHE[ck] = (_t.time(), out)
     return out
-
-
-def _norm_txt(s):
-    return "".join(ch for ch in str(s or "").lower() if ch.isalnum())
-
-
-def _norm_tel(s):
-    d = "".join(ch for ch in str(s or "") if ch.isdigit())
-    return d[-10:] if len(d) >= 10 else d
-
-
-def _recompras_periodo(orders, desde, hasta):
-    """orders: historico [{'fecha','total','email','tel','nombre'}]. Dos ordenes son del MISMO cliente si
-    comparten >=2 de {email, telefono, nombre}. Devuelve (cant, facturacion) de las compras del periodo
-    [desde,hasta] que NO son la 1ra del cliente (o sea, recompras)."""
-    parent = {}
-    def find(x):
-        parent.setdefault(x, x)
-        r = x
-        while parent[r] != r:
-            r = parent[r]
-        while parent[x] != r:
-            parent[x], x = r, parent[x]
-        return r
-    def union(a, b):
-        parent[find(a)] = find(b)
-    for i, o in enumerate(orders):
-        e, ph, n = _norm_txt(o.get("email")), _norm_tel(o.get("tel")), _norm_txt(o.get("nombre"))
-        parent.setdefault(("o", i), ("o", i))
-        if e and ph:
-            union(("o", i), ("k", "ep:%s|%s" % (e, ph)))
-        if e and n:
-            union(("o", i), ("k", "en:%s|%s" % (e, n)))
-        if ph and n:
-            union(("o", i), ("k", "pn:%s|%s" % (ph, n)))
-    groups = {}
-    for i in range(len(orders)):
-        groups.setdefault(find(("o", i)), []).append(i)
-    cant = 0
-    fact = 0.0
-    for idxs in groups.values():
-        if len(idxs) < 2:
-            continue
-        idxs.sort(key=lambda i: (orders[i].get("fecha") or ""))
-        for j, i in enumerate(idxs):
-            if j == 0:
-                continue
-            f = (orders[i].get("fecha") or "")[:10]
-            if desde <= f <= hasta:
-                cant += 1
-                fact += float(orders[i].get("total") or 0)
-    return cant, round(fact, 2)
-
-
-_TN_HIST_CACHE = {}
-_SHOP_HIST_CACHE = {}
-
-
-def _tn_hist_orders(email, hasta):
-    """Ordenes PAGADAS de TN de los ultimos 180 dias hasta `hasta` (cache 10 min) - para recompras."""
-    import time as _t
-    ck = (email, hasta)
-    c = _TN_HIST_CACHE.get(ck)
-    if c and (_t.time() - c[0] < 600):
-        return c[1]
-    try:
-        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=90)).isoformat()
-    except Exception:
-        d0 = hasta
-    hist = []
-    for o in _tn_orders_raw(email, d0, hasta):
-        if (o.get("payment_status") or "").lower() != "paid" or o.get("cancelled_at"):
-            continue
-        cu = o.get("customer") or {}
-        sa = o.get("shipping_address") or {}
-        hist.append({"fecha": o.get("created_at") or "", "total": float(o.get("total") or 0),
-                     "email": o.get("contact_email") or cu.get("email") or "",
-                     "tel": o.get("contact_phone") or o.get("billing_phone") or cu.get("phone") or sa.get("phone") or "",
-                     "nombre": cu.get("name") or o.get("contact_name") or sa.get("name") or ""})
-    _TN_HIST_CACHE[ck] = (_t.time(), hist)
-    return hist
-
-
-def _shop_hist_orders(email, hasta):
-    """Ordenes pagadas de Shopify de los ultimos 180 dias hasta `hasta` (cache 10 min) - para recompras."""
-    import time as _t, re as _re
-    ck = (email, hasta)
-    c = _SHOP_HIST_CACHE.get(ck)
-    if c and (_t.time() - c[0] < 600):
-        return c[1]
-    tk = _shop_tokens().get(email)
-    if not tk or not tk.get("access_token") or not tk.get("shop"):
-        return []
-    shop, token = tk["shop"], tk["access_token"]
-    try:
-        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=90)).isoformat()
-    except Exception:
-        d0 = hasta
-    hist = []
-    url = "https://%s/admin/api/2026-07/orders.json" % shop
-    params = {"status": "any", "financial_status": "paid", "limit": 250,
-              "created_at_min": d0 + "T00:00:00-03:00", "created_at_max": hasta + "T23:59:59-03:00",
-              "fields": "created_at,total_price,customer,contact_email,email,billing_address,shipping_address"}
-    for _ in range(20):
-        try:
-            r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=30)
-        except Exception:
-            break
-        if r.status_code != 200:
-            break
-        for o in (r.json().get("orders") or []):
-            cu = o.get("customer") or {}
-            ba = o.get("billing_address") or {}
-            sa = o.get("shipping_address") or {}
-            hist.append({"fecha": o.get("created_at") or "", "total": float(o.get("total_price") or 0),
-                         "email": o.get("email") or o.get("contact_email") or cu.get("email") or "",
-                         "tel": cu.get("phone") or ba.get("phone") or sa.get("phone") or "",
-                         "nombre": ((cu.get("first_name") or "") + " " + (cu.get("last_name") or "")).strip() or ba.get("name") or sa.get("name") or ""})
-        nxt = None
-        for part in (r.headers.get("Link", "") or "").split(","):
-            if 'rel="next"' in part:
-                m = _re.search(r"<([^>]+)>", part)
-                if m:
-                    nxt = m.group(1)
-        if not nxt:
-            break
-        url = nxt
-        params = {}
-    _SHOP_HIST_CACHE[ck] = (_t.time(), hist)
-    return hist
 
 
 def _shopify_resumen(email, desde, hasta):
@@ -4926,7 +4624,7 @@ def _shopify_resumen(email, desde, hasta):
             pid = str(li.get("product_id") or "")
             c = costos.get(pid)
             if c:
-                costo_prod += _costo_qty(c, q)
+                costo_prod += float(c) * q
             nm = li.get("title") or "?"
             prodmap[nm] = prodmap.get(nm, 0) + q
         for rf in (o.get("refunds") or []):
@@ -4990,71 +4688,33 @@ def _shopify_resumen(email, desde, hasta):
     return {"raw": r, "prod": prod, "ords": ords_list}
 
 
-_TN_ORDERS_CACHE = {}   # {(email,desde,hasta): (ts, [orders])} — órdenes crudas de TN, cache 60s
-
-
-def _tn_orders_raw(email, desde, hasta):
-    """Órdenes crudas de TN del período (cache 60s). Las comparten el dashboard y últimas ventas,
-    así no se bajan dos veces en la misma carga."""
-    import time as _t
-    ck = (email, desde, hasta)
-    c = _TN_ORDERS_CACHE.get(ck)
-    if c and (_t.time() - c[0] < 60):
-        return c[1]
-    tk = _tn_tokens().get(email)
-    if not tk or not tk.get("access_token") or not tk.get("store_id"):
-        return []
-    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-    _base = {"per_page": 200,
-             "created_at_min": desde + "T00:00:00-03:00",
-             "created_at_max": hasta + "T23:59:59-03:00"}
-    def _pagina(page):
-        try:
-            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr,
-                             params={**_base, "page": page}, timeout=25)
-            lote = r.json() if r.content else []
-            return lote if isinstance(lote, list) else []
-        except Exception:
-            return []
-    # La API de TiendaNube tarda ~13s POR PÁGINA. En serie, 7 páginas = 90s. Traigo las páginas
-    # EN PARALELO por tandas de 8 → una tanda ≈ el tiempo de UNA página (~13s) en vez de 8×.
-    import concurrent.futures as _cf
-    out, vistos = [], set()
-    LOTE, base = 8, 1
-    while base <= 40:
-        pages = list(range(base, base + LOTE))
-        with _cf.ThreadPoolExecutor(max_workers=LOTE) as _ex:
-            resultados = list(_ex.map(_pagina, pages))
-        corto = False
-        for lote in resultados:
-            if not lote:
-                corto = True; break        # página vacía → no hay más
-            for o in lote:
-                n = str(o.get("number") or "")
-                if n and n not in vistos:
-                    vistos.add(n); out.append(o)
-            if len(lote) < 200:
-                corto = True; break         # última página (parcial) → no hay más
-        if corto:
-            break
-        base += LOTE
-    _TN_ORDERS_CACHE[ck] = (_t.time(), out)
-    return out
-
-
 def _tn_resumen(email, desde, hasta):
     """Mismo 'raw'/prod/ords que _shopify_resumen pero con los pedidos de Tiendanube."""
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return None
-    # Órdenes de TN y pagos de MP son independientes → en paralelo (antes se hacían en serie).
-    import concurrent.futures as _cf
-    with _cf.ThreadPoolExecutor(max_workers=2) as _ex:
-        _fo = _ex.submit(_tn_orders_raw, email, desde, hasta)
-        _fp = _ex.submit(_mp_pagos_lista, email, desde, hasta)
-        orders = [o for o in (_fo.result() or []) if not o.get("cancelled_at")]
-        pagos = _fp.result()
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    orders, vistos, page = [], set(), 1
+    while page <= 20:
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page,
+                "created_at_min": desde + "T00:00:00-03:00",
+                "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
+            lote = r.json() if r.content else []
+        except Exception:
+            lote = []
+        if not isinstance(lote, list) or not lote:
+            break
+        for o in lote:
+            n = str(o.get("number") or "")
+            if n and n not in vistos and not o.get("cancelled_at"):
+                vistos.add(n); orders.append(o)
+        if len(lote) < 200:
+            break
+        page += 1
     costos = (_costos().get(email) or {})
+    pagos = _mp_pagos_lista(email, desde, hasta)
     by_amt = {}
     for p in (pagos or []):
         by_amt.setdefault(p["amount"], []).append(p)
@@ -5081,7 +4741,7 @@ def _tn_resumen(email, desde, hasta):
             q = int(p.get("quantity") or 0); unidades += q
             c = costos.get("tn:%s" % p.get("product_id"))
             if c:
-                costo_prod += _costo_qty(c, q)
+                costo_prod += float(c) * q
             nm = p.get("name") or "?"
             if isinstance(nm, dict):
                 nm = nm.get("es") or next(iter(nm.values()), "?")
@@ -5100,8 +4760,7 @@ def _tn_resumen(email, desde, hasta):
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
-    r["oper_monto"] = round(oper_monto, 2)
-    _pre = fact - costo_prod - comision_monto - envio_monto - oper_monto
+    _pre = fact - costo_prod - comision_monto - envio_monto
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
@@ -5132,7 +4791,7 @@ def _combinar_resumen(a, b):
     r["fecha"] = ra.get("fecha"); r["desde"] = ra.get("desde"); r["hasta"] = ra.get("hasta")
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
-           "oper_monto", "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
+           "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
            "comision", "ganancia", "reemb_cantidad", "reemb_monto",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo"]
     for k in SUM:
@@ -5141,7 +4800,7 @@ def _combinar_resumen(a, b):
     r["margen"] = r["tot_margen"] = round(gan / fact * 100, 2) if fact else 0.0
     r["ticket"] = r["tot_aov"] = round(fact / ordn, 2) if ordn else 0.0
     r["gan_por_venta"] = r["tot_gan_por_venta"] = round(gan / ordn, 2) if ordn else 0.0
-    _pre = fact - r["costo_prod"] - r["comision"] - r["envio_monto"] - (r.get("oper_monto") or 0)
+    _pre = fact - r["costo_prod"] - r["comision"] - r["envio_monto"]
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordn, 2) if ordn else 0.0
     prod = (a.get("prod") or []) + (b.get("prod") or [])
@@ -5462,42 +5121,6 @@ def meta_callback():
     return redirect("/?integ=1", code=302)
 
 
-@app.post("/meta/token-manual")
-@limiter.limit("30 per hour")
-def meta_token_manual():
-    """Conexión SIN OAuth: el usuario pega su token (System User o Graph Explorer) y lo guardamos.
-    Lo usan el gasto (dashboard) Y el subir ads. Valida contra Meta antes de guardar."""
-    email = _user_actual()
-    if not email:
-        return jsonify({"ok": False, "error": "Entrá a RealProfit primero."}), 401
-    data = request.get_json(silent=True) or {}
-    token = str(data.get("token") or "").strip()
-    if len(token) < 30:
-        return jsonify({"ok": False, "error": "Pegá un token válido de Meta."}), 400
-    try:
-        r = requests.get("https://graph.facebook.com/%s/me/adaccounts" % META_API,
-                         params={"access_token": token,
-                                 "fields": "account_id,name,currency,account_status", "limit": 500}, timeout=30)
-        j = r.json() if r.content else {}
-    except Exception:
-        return jsonify({"ok": False, "error": "No pude contactar a Meta. Probá de nuevo."}), 502
-    if j.get("error"):
-        return jsonify({"ok": False, "error": "Token inválido: " + (j["error"].get("message") or "")[:120]}), 400
-    cuentas = [{"id": a.get("account_id"),
-                "name": a.get("name") or ("Cuenta " + str(a.get("account_id"))),
-                "moneda": a.get("currency")} for a in (j.get("data") or [])]
-    if not cuentas:
-        return jsonify({"ok": False, "error": "El token no ve ninguna cuenta publicitaria (¿le falta ads_read o el acceso a la cuenta?)."}), 400
-    d = _meta_tokens(); tk = d.get(email) or {}
-    tk["access_token"] = token
-    tk["manual"] = True
-    if not tk.get("cuenta"):
-        tk["cuenta"] = cuentas[0]["id"]
-    d[email] = tk
-    META_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
-    return jsonify({"ok": True, "cuentas": cuentas, "elegida": tk.get("cuenta")})
-
-
 @app.get("/meta/estado")
 def meta_estado():
     email = _user_actual()
@@ -5549,15 +5172,14 @@ def _meta_spend(email, desde, hasta):
     sin OAuth ni App Review. Solo para tu propio usuario."""
     import os
     tk = _meta_tokens().get(email)
-    token = tk.get("access_token") if tk else None    # token PEGADO por el usuario (prioridad)
+    token = tk.get("access_token") if tk else None
     cuenta = tk.get("cuenta") if tk else None
     es_owner = False
-    if not token:                                      # fallback: System User token de env (atajo dueño)
-        owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
-        if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
-            token = os.getenv("META_OWNER_TOKEN")
-            cuenta = os.getenv("META_OWNER_ACT") or cuenta
-            es_owner = True
+    owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
+    if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
+        token = os.getenv("META_OWNER_TOKEN")
+        cuenta = os.getenv("META_OWNER_ACT") or cuenta
+        es_owner = True
     if not token or not cuenta:
         return 0.0
     acc = str(cuenta).replace("act_", "")
@@ -5565,7 +5187,7 @@ def _meta_spend(email, desde, hasta):
         r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
                          params={"access_token": token, "fields": "spend,account_currency",
                                  "time_range": _json.dumps({"since": desde, "until": hasta}),
-                                 "level": "account"}, timeout=12)
+                                 "level": "account"}, timeout=30)
         data = r.json().get("data") or []
         if data:
             spend = float(data[0].get("spend") or 0)
@@ -5635,7 +5257,7 @@ _ADS_UPLOADS = {}   # upload_id -> carpeta temporal con los videos que subió el
 _ADS_CUENTAS = {
     "cp1": {
         "nombre": "CP1 — NoxaLab", "ad_account": "1913715339273327",
-        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "",  # ig="" = page-backed
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab 💪", "subtitulo": "Ultimas unidades", "presupuesto": 35,
         "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
@@ -5649,42 +5271,10 @@ _ADS_CUENTAS = {
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
-    "va1": {
-        "nombre": "VA1 — VisionPure", "ad_account": "964010428983612",
-        "page": "1105184446002428", "pixel": "1237139148560920", "ig": "17841471399362397",  # IG @visionpure.argentina
-        "landing": "https://tryvisionpure.shop/productos/visionpure-recupera-la-nitidez-que-perdiste-con-los-anos2/",
-        "titulo": "Recuperá la nitidez que perdiste con los años", "subtitulo": "Envío gratis hoy", "presupuesto": 35,
-        "copy": ("\U0001f441️ ¿Ves más borroso de cerca o te cuesta manejar de noche?\n\n"
-                 "Con los años, los ojos piden una mano.\n\n"
-                 "VisionPure es un spray ocular con luteína que:\n"
-                 "✨ Ayuda a nutrir tus ojos día a día\n"
-                 "\U0001f319 Muchos notaron ver más nítido para leer y manejar\n"
-                 "\U0001f4a7 Fácil de usar: un par de gotas, sin pastillas\n\n"
-                 "Miles de personas +65 ya lo suman a su rutina.\n\n"
-                 "\U0001f447 Tocá \"Comprar Ahora\" y recuperá la nitidez."),
-    },
 }
 
 
-_ads_local = threading.local()   # token del usuario que lanzó la subida (por thread), para no cruzar cuentas
-
-
 def _ads_token():
-    # 1) Si el job de subida fijó un token para ESTE thread, usá ese (cuenta correcta, sin cruces).
-    t = getattr(_ads_local, "token", None)
-    if t:
-        return t
-    # 2) Request: token que el usuario logueado PEGÓ en la app (meta_tokens.json) → env META_TOKEN.
-    try:
-        email = _user_actual()
-    except Exception:
-        email = None
-    toks = _meta_tokens()
-    if email and (toks.get(email) or {}).get("access_token"):
-        return toks[email]["access_token"]
-    for v in toks.values():
-        if isinstance(v, dict) and v.get("access_token"):
-            return v["access_token"]
     return _os.getenv("META_TOKEN") or ""
 
 
@@ -5923,7 +5513,6 @@ def _ads_drive_bajar(link, dest_dir):
 
 def _ads_run(job, params):
     """Baja de Drive → sube videos → crea campaña + N conjuntos + ads. Con progreso."""
-    _ads_local.token = params.get("_token") or None   # usar el token del usuario que lanzó (cuenta correcta)
     st = _ADS_JOBS.get(job)
     import tempfile, shutil
     tmp = tempfile.mkdtemp(prefix="ads_")
@@ -6039,20 +5628,10 @@ def _ads_run(job, params):
 def pf_ads_cuentas():
     if not _user_actual():
         return jsonify({"ok": False, "cuentas": []})
-    tok = _ads_token()
-    accesibles = set()                                   # cuentas publicitarias que ve ESTE token
-    if tok:
-        try:
-            r = requests.get("https://graph.facebook.com/%s/me/adaccounts" % META_API,
-                             params={"access_token": tok, "fields": "account_id", "limit": 200}, timeout=20)
-            accesibles = {str(a.get("account_id")) for a in ((r.json() or {}).get("data") or [])}
-        except Exception:
-            accesibles = set()
     cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", "")}
-          for k, v in _ADS_CUENTAS.items()
-          if (not accesibles) or str(v["ad_account"]) in accesibles]   # solo las que el token puede usar
-    return jsonify({"ok": True, "cuentas": cs, "token": bool(tok)})
+          for k, v in _ADS_CUENTAS.items()]
+    return jsonify({"ok": True, "cuentas": cs, "token": bool(_ads_token())})
 
 
 @app.get("/pf-ads-identidad")
@@ -6068,27 +5647,11 @@ def pf_ads_identidad():
             return _ads_call("GET", "act_%s/%s" % (acct, path), params={"fields": fields, "limit": 50}).get("data", [])
         except Exception:
             return []
-
-    def lst_raw(path, fields):
-        try:
-            return _ads_call("GET", path, params={"fields": fields, "limit": 100}).get("data", [])
-        except Exception:
-            return []
     pixels = [{"id": p["id"], "name": p.get("name", "")} for p in lst("adspixels", "id,name")]
     igs = [{"id": i["id"], "name": "@" + (i.get("username") or "")} for i in lst("instagram_accounts", "id,username")]
-    # Páginas: las que conectaste (me/accounts) + las promocionables de la cuenta. Sin nombres hardcodeados.
-    pages, seen = [], set()
-    for p in (lst_raw("me/accounts", "id,name") + lst("promote_pages", "id,name")):
-        pid = p.get("id")
-        if pid and pid not in seen:
-            seen.add(pid); pages.append({"id": pid, "name": p.get("name", "") or "Página"})
-    if cfg.get("page") and cfg["page"] not in seen:                # la del config, con su NOMBRE REAL
-        nm = ""
-        try:
-            nm = (_ads_call("GET", str(cfg["page"]), params={"fields": "name"}) or {}).get("name", "")
-        except Exception:
-            pass
-        pages.insert(0, {"id": cfg["page"], "name": nm or "Página conectada"})
+    pages = [{"id": p["id"], "name": p.get("name", "")} for p in lst("promote_pages", "id,name")]
+    if cfg.get("page") and not any(p["id"] == cfg["page"] for p in pages):
+        pages.insert(0, {"id": cfg["page"], "name": "NoxaLab Argentina"})
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages,
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")}})
 
@@ -6188,7 +5751,6 @@ def pf_ads_lanzar():
         return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
     import uuid
     job = uuid.uuid4().hex[:12]
-    data["_token"] = _ads_token()   # token del usuario logueado AHORA (request) → el thread usa este, no el de otra cuenta
     _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
     threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
     return jsonify({"ok": True, "job": job})
@@ -6205,175 +5767,42 @@ def pf_ads_progreso():
 
 
 # ---------------- Dashboard ----------------
-_PF_BASE = None       # pf.html leído + blob vacío inyectado (igual para todos) → cacheado en memoria
-_HOME_CACHE = {}      # (email, nofix) -> (etag, bytes_gzip, bytes_raw) → no re-arma ni re-comprime por request
-
-
-def _pf_html_base():
-    """pf.html con el blob vacío en <head>. Se lee del disco UNA sola vez (antes se leía 8.6MB por request)."""
-    global _PF_BASE
-    if _PF_BASE is None:
-        h = (RAIZ / "pf.html").read_text(encoding="utf-8")
-        blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
-        if "</head>" in h:
-            h = h.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
-        _PF_BASE = h
-    return _PF_BASE
-
-
 @app.get("/")
 def home():
     email = _user_actual()
     if not email:                       # sin login → pantalla de ingreso
         return Response(_LOGIN_PAGE, mimetype="text/html")
-    import gzip as _gz, hashlib as _hl
-    nofix = "1" if request.args.get("nofix") else "0"
-    key = (email, nofix)
-    ent = _HOME_CACHE.get(key)
-    if ent is None:
-        try:
-            base = _pf_html_base()
-        except Exception as e:
-            return Response("<p style='color:#fff;font-family:sans-serif;padding:20px'>"
-                            "No se pudo cargar pf.html: %s</p>" % e, mimetype="text/html")
-        inicial = (email[0] if email else "?").upper()
-        userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
-                   'onclick="window.location.assign(\'/logout\');return false;">'
-                   '<span class="rp-ic" style="background:#137fec;color:#fff;font-weight:700;font-size:14px">'
-                   + inicial + '</span>'
-                   '<span class="rp-lbl"><span class="em">' + email + '</span>'
-                   '<span style="color:#94a3b8;font-size:11px">Cerrar sesión &#8594;</span></span></a>')
-        # ?nofix=1 → app cruda (sin _SOLO_DASH), para aislar el freeze.
-        extra = userbox if nofix == "1" else (_SOLO_DASH + userbox)
-        html = base.replace("</body>", extra + "</body>", 1) if "</body>" in base else (base + extra)
-        raw = html.encode("utf-8")
-        etag = '"' + _hl.md5(raw).hexdigest() + '"'
-        ent = (etag, _gz.compress(raw, 5), raw)
-        _HOME_CACHE[key] = ent
-    etag, body_gz, body_raw = ent
-    # Si el navegador ya lo tiene (mismo ETag) → 304, no re-baja los 8.6MB.
-    if request.headers.get("If-None-Match") == etag:
-        r = Response(status=304)
-        r.headers["ETag"] = etag; r.headers["Cache-Control"] = "private, max-age=60"
-        return r
-    acc = "gzip" in (request.headers.get("Accept-Encoding") or "")
-    resp = Response(body_gz if acc else body_raw, mimetype="text/html")
-    if acc:
-        resp.headers["Content-Encoding"] = "gzip"
-    # CACHEABLE por el navegador 10 min → entrar de nuevo (desde MercadoPago, etc.) es INSTANTÁNEO.
-    resp.headers["Cache-Control"] = "private, max-age=60"
-    resp.headers["ETag"] = etag
+    try:
+        html = (RAIZ / "pf.html").read_text(encoding="utf-8")
+    except Exception as e:
+        return Response(f"<p style='color:#fff;font-family:sans-serif;padding:20px'>"
+                        f"No se pudo cargar pf.html: {e}</p>", mimetype="text/html")
+    import json as _json
+    blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
+    # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
+    if "</head>" in html:
+        html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
+    # Caja de usuario abajo a la izquierda (email + cerrar sesión).
+    inicial = (email[0] if email else "?").upper()
+    userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
+               'onclick="window.location.assign(\'/logout\');return false;">'
+               '<span class="rp-ic" style="background:#137fec;color:#fff;font-weight:700;font-size:14px">'
+               + inicial + '</span>'
+               '<span class="rp-lbl"><span class="em">' + email + '</span>'
+               '<span style="color:#94a3b8;font-size:11px">Cerrar sesión &#8594;</span></span></a>')
+    # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
+    extra = _SOLO_DASH + userbox
+    if "</body>" in html:
+        html = html.replace("</body>", extra + "</body>", 1)
+    else:
+        html = html + extra
+    resp = Response(html, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return resp
 
 
 # ---------------- Endpoints en blanco (para que no rompa nada) ----------------
-_PF_CACHE_FILE = DATA_DIR / "pf_cache.json"   # caché en DISCO → sobrevive a reinicios/deploys (entrar = instantáneo)
-
-
-def _pf_cache_cargar():
-    try:
-        raw = _json.loads(_PF_CACHE_FILE.read_text(encoding="utf-8"))
-        out = {}
-        for k, v in raw.items():
-            p = k.split("|", 2)
-            if len(p) == 3:
-                out[(p[0], p[1], p[2])] = (_dt.datetime.fromisoformat(v[0]), v[1])
-        return out
-    except Exception:
-        return {}
-
-
-_PF_CACHE_LOCK = threading.Lock()   # con 8 hilos, que dos no escriban el archivo a la vez
-
-
-def _pf_cache_guardar():
-    try:
-        with _PF_CACHE_LOCK:
-            items = sorted(_PF_CACHE.items(), key=lambda kv: kv[1][0])[-150:]   # las 150 más recientes
-            raw = {("%s|%s|%s" % k): [ts.isoformat(), blob] for k, (ts, blob) in items}
-            _PF_CACHE_FILE.write_text(_json.dumps(raw), encoding="utf-8")
-    except Exception:
-        pass
-
-
-_PF_CACHE = _pf_cache_cargar()   # (email, desde, hasta) -> (momento, blob) — arranca desde el disco
-
-
-def _pf_computar(email, desde, hasta, deadline=None):
-    """Arma el blob del período. Las 3 fuentes (Shopify / Tiendanube / Meta-ads) corren EN PARALELO.
-
-    `deadline` (seg): tope para la carga. Las VENTAS (Shopify/Tiendanube = los KPI) esperan hasta el
-    deadline; Meta-ads (solo refina ganancia/ROAS) espera un ratito nomás. Si algo no llegó a tiempo,
-    devuelve lo que hay (completo=False) y el que llama dispara un refresco de fondo para completarlo.
-    Sin deadline (refresco de fondo) espera a todas → datos completos.
-    Devuelve (blob, completo)."""
-    import concurrent.futures as _cf, time as _tm
-    _t0 = _tm.time(); _ms = {}; _falta = []
-    def _run(nombre, fn):
-        _s = _tm.time()
-        try:
-            return fn()
-        except Exception:
-            return None
-        finally:
-            _ms[nombre] = int((_tm.time() - _s) * 1000)
-    def _esperar(nombre, f, budget):
-        if f is None:
-            return None
-        rem = None if budget is None else max(0.1, budget - (_tm.time() - _t0))
-        try:
-            return f.result(timeout=rem)
-        except Exception:            # incluye TimeoutError → quedó corriendo, la completa el refresco
-            _falta.append(nombre)
-            return None
-    shop_conn = email in _shop_tokens()
-    _ex = _cf.ThreadPoolExecutor(max_workers=3)
-    try:
-        f_shop = _ex.submit(_run, "shop", lambda: _shopify_resumen(email, desde, hasta)) if shop_conn else None
-        f_tn = _ex.submit(_run, "tn", lambda: _tn_resumen(email, desde, hasta))
-        f_meta = _ex.submit(_run, "meta", lambda: _meta_spend(email, desde, hasta))
-        # Ventas SIN tope (son los KPI; con las páginas de TN en paralelo ya vienen rápido, y cortarlas
-        # dejaría los KPI en 0). Meta (solo refina ganancia/ROAS) SÍ con tope = `deadline`, así una cuenta
-        # de ads lenta no frena la primera pintada; si se pasa, la completa el refresco de fondo.
-        blob = _esperar("shop", f_shop, None)
-        tn_blob = _esperar("tn", f_tn, None)
-        spend = _esperar("meta", f_meta, deadline) or 0.0
-    finally:
-        _ex.shutdown(wait=False)     # NO bloqueo esperando a las lentas: siguen y las recoge el refresco
-    if tn_blob:
-        blob = _combinar_resumen(blob, tn_blob)
-    if blob is None:
-        blob = _blob_vacio()
-    _ms["total"] = int((_tm.time() - _t0) * 1000)
-    blob["raw"]["_ms"] = _ms   # cronómetro por fuente (ms)
-    if spend:
-        r = blob["raw"]
-        fact = r.get("facturado", 0.0)
-        ordenes = r.get("ordenes", 0)
-        r["publi_ars"] = round(spend, 2)
-        r["publi_cuenta"] = round(spend, 2)
-        r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
-        r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
-        r["roas"] = round(fact / spend, 2) if spend else 0.0
-        r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
-        r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
-        r["tot_ganancia"] = r["ganancia"]
-        r["tot_margen"] = r["margen"]
-    return blob, (not _falta)
-
-
-_PF_REFRESCANDO = set()   # claves con un refresco en background en curso (para no lanzar dos)
-
-
-def _pf_refrescar_bg(email, desde, hasta, key):
-    try:
-        blob, _ = _pf_computar(email, desde, hasta)   # sin deadline → datos COMPLETOS
-        _PF_CACHE[key] = (_dt.datetime.utcnow(), blob)
-        _pf_cache_guardar()
-    except Exception:
-        pass
-    finally:
-        _PF_REFRESCANDO.discard(key)
+_PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
 
 
 @app.get("/pf-periodo")
@@ -6385,22 +5814,32 @@ def pf_periodo():
         key = (email, desde, hasta)
         now = _dt.datetime.utcnow()
         c = _PF_CACHE.get(key)
-        # STALE-WHILE-REVALIDATE: si hay algo cacheado (fresco o viejo) lo devuelvo AL INSTANTE.
-        # Si está viejo (>45s), disparo un refresco en background para la próxima carga. Así "entrar"
-        # es inmediato salvo la PRIMERA vez de cada rango (cuando todavía no hay nada calculado).
-        if c:
-            if (now - c[0]).total_seconds() >= 45 and key not in _PF_REFRESCANDO:
-                _PF_REFRESCANDO.add(key)
-                threading.Thread(target=_pf_refrescar_bg, args=(email, desde, hasta, key), daemon=True).start()
+        if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
-        # PRIMERA vez de este rango (caché fría): devuelvo en ≤8s con las VENTAS/KPI listos aunque Meta/MP
-        # no hayan llegado. Si quedó incompleto, disparo el refresco de fondo para completarlo enseguida.
-        blob, completo = _pf_computar(email, desde, hasta, deadline=5)
+        blob = None
+        if email in _shop_tokens():
+            blob = _shopify_resumen(email, desde, hasta)
+        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
+        if tn_blob:
+            blob = _combinar_resumen(blob, tn_blob)
+        if blob is None:
+            blob = _blob_vacio()
+        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
+        spend = _meta_spend(email, desde, hasta)
+        if spend:
+            r = blob["raw"]
+            fact = r.get("facturado", 0.0)
+            ordenes = r.get("ordenes", 0)
+            r["publi_ars"] = round(spend, 2)
+            r["publi_cuenta"] = round(spend, 2)
+            r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+            r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
+            r["roas"] = round(fact / spend, 2) if spend else 0.0
+            r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+            r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
+            r["tot_ganancia"] = r["ganancia"]
+            r["tot_margen"] = r["margen"]
         _PF_CACHE[key] = (now, blob)
-        _pf_cache_guardar()
-        if not completo and key not in _PF_REFRESCANDO:
-            _PF_REFRESCANDO.add(key)
-            threading.Thread(target=_pf_refrescar_bg, args=(email, desde, hasta, key), daemon=True).start()
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
 
@@ -6415,55 +5854,10 @@ def _costos() -> dict:
         return {}
 
 
-def _costo_qty(cost, qty) -> float:
-    """Costo de `qty` unidades.
-    - VARIABLE: costo guardado como dict {'1':c1,'2':c2,'3':c3,'4':c4} (costo por cantidad).
-      Usa el de esa cantidad exacta; si no está (5+), usa el unitario ('1') × cantidad.
-    - UNITARIO/FIJO (número plano): costo*qty (backward-compatible)."""
-    if not cost:
-        return 0.0
-    try:
-        q = int(qty or 0)
-    except Exception:
-        q = 0
-    if isinstance(cost, dict):
-        if str(q) in cost:
-            return float(cost.get(str(q)) or 0)
-        return float(cost.get("1") or 0) * q     # cantidad no definida → unitario × cantidad
-    try:
-        return float(cost) * q
-    except Exception:
-        return 0.0
-
-
-def _costo_num(c) -> float:
-    """Costo como número para pantallas que muestran 1 solo valor (usa la cantidad '1' si es variable)."""
-    if isinstance(c, dict):
-        return float(c.get("1") or 0)
-    try:
-        return float(c or 0)
-    except Exception:
-        return 0.0
-
-
 def _guardar_costo(email, pid, costo) -> None:
     d = _costos()
     u = d.get(email) or {}
-    if isinstance(costo, dict):                                   # VARIABLE: {'1':c1,'2':c2,...}
-        m = {}
-        for k, v in costo.items():
-            if str(k).isdigit():
-                try:
-                    fv = float(v or 0)
-                except Exception:
-                    fv = 0
-                if fv > 0:
-                    m[str(int(k))] = fv
-        if m:
-            u[str(pid)] = m
-        else:
-            u.pop(str(pid), None)
-    elif costo and float(costo) > 0:                              # UNITARIO/FIJO (número)
+    if costo and float(costo) > 0:
         u[str(pid)] = float(costo)
     else:
         u.pop(str(pid), None)
@@ -6471,25 +5865,18 @@ def _guardar_costo(email, pid, costo) -> None:
     PROD_COSTOS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-_TN_PROD_CACHE = {}   # {email: (ts, [raw])} — el fetch a TN es lento, lo cacheamos 60s
-
-
-def _tn_productos_raw(email):
-    """Fetch crudo de productos de Tiendanube (cacheado 60s). Solo id/nombre/sku/precio/img."""
-    import time as _t
-    c = _TN_PROD_CACHE.get(email)
-    if c and (_t.time() - c[0] < 60):
-        return c[1]
+def _tn_productos(email):
+    """Productos de Tiendanube en el mismo formato que pf-productos (id 'tn:<id>')."""
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return []
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-    raw, page = [], 1
+    costos = (_costos().get(email) or {})
+    prods, page = [], 1
     while page <= 10:
         try:
             r = requests.get("%s/%s/products" % (TN_API, store), headers=hdr,
-                             params={"per_page": 200, "page": page,
-                                     "fields": "id,name,variants,images"}, timeout=30)   # menos payload = más rápido
+                             params={"per_page": 200, "page": page}, timeout=30)
             lote = r.json() if r.content else []
         except Exception:
             lote = []
@@ -6501,32 +5888,18 @@ def _tn_productos_raw(email):
                 nombre = nombre.get("es") or next(iter(nombre.values()), "") if nombre else ""
             v = (p.get("variants") or [{}])[0]
             imgs = p.get("images") or []
-            raw.append({"pid": "tn:%s" % p.get("id"), "nombre": nombre or "",
-                        "sku_shopify": v.get("sku") or "", "precio": float(v.get("price") or 0),
-                        "img": (imgs[0].get("src") if imgs else "") or ""})
+            pid = "tn:%s" % p.get("id")
+            prods.append({
+                "id": pid, "nombre": nombre or "",
+                "sku_tipo": "fijo", "sku_base": v.get("sku") or "",
+                "sku_ej": v.get("sku") or "",
+                "precio": float(v.get("price") or 0),
+                "img": (imgs[0].get("src") if imgs else "") or "",
+                "costo": costos.get(pid) or 0,
+            })
         if len(lote) < 200:
             break
         page += 1
-    _TN_PROD_CACHE[email] = (_t.time(), raw)
-    return raw
-
-
-def _tn_productos(email):
-    """Productos de TN con costo/SKU aplicados FRESCOS (el fetch va cacheado; las ediciones no)."""
-    costos = (_costos().get(email) or {})
-    skus = _skus_map(email)
-    prods = []
-    for p in _tn_productos_raw(email):
-        pid = p["pid"]
-        g = skus.get(pid)
-        cfg = _sku_cfg(g) if g else {"tipo": "fijo", "base": p["sku_shopify"], "map": {}}
-        prods.append({
-            "id": pid, "nombre": p["nombre"],
-            "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
-            "sku_ej": _sku_calc(g or cfg, 2),
-            "precio": p["precio"], "img": p["img"],
-            "costo": costos.get(pid) or 0,
-        })
     return prods
 
 
@@ -6560,14 +5933,14 @@ def pf_productos():
                 if guardado:
                     cfg = _sku_cfg(guardado)                       # tipo + base que cargó el usuario
                 elif v.get("sku"):
-                    cfg = {"tipo": "fijo", "base": v.get("sku"), "map": {}}   # fallback: el SKU fijo de Shopify
+                    cfg = {"tipo": "fijo", "base": v.get("sku")}   # fallback: el SKU fijo de Shopify
                 else:
-                    cfg = {"tipo": "unitario", "base": "", "map": {}}         # default: por cantidad
+                    cfg = {"tipo": "xn", "base": ""}               # default: por cantidad
                 productos.append({
                     "id": pid,
                     "nombre": p.get("title") or "",
-                    "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
-                    "sku_ej": _sku_calc(guardado or cfg, 2),        # ejemplo con 2 unidades para mostrar
+                    "sku_tipo": cfg["tipo"], "sku_base": cfg["base"],
+                    "sku_ej": _sku_calc(cfg, 2),                    # ejemplo con 2 unidades para mostrar
                     "precio": float(v.get("price") or 0),
                     "img": (p.get("image") or {}).get("src") or "",
                     "costo": costos.get(str(pid)) or 0,
@@ -6589,20 +5962,11 @@ def pf_guardar_costo():
     pid = str(data.get("id") or "")
     if not pid:
         return jsonify({"ok": False, "error": "falta id"}), 400
-    if data.get("variable") or isinstance(data.get("costos"), dict):   # VARIABLE → mapa {cantidad: costo}
-        m = {}
-        for k, v in (data.get("costos") or {}).items():
-            try:
-                m[str(int(k))] = float(v or 0)
-            except Exception:
-                pass
-        _guardar_costo(email, pid, m)
-    else:                                                              # UNITARIO/FIJO → número plano
-        try:
-            costo = float(data.get("costo") or 0)
-        except Exception:
-            costo = 0
-        _guardar_costo(email, pid, costo)
+    try:
+        costo = float(data.get("costo") or 0)
+    except Exception:
+        costo = 0
+    _guardar_costo(email, pid, costo)
     return jsonify({"ok": True})
 
 
