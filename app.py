@@ -1571,7 +1571,9 @@ _SOLO_DASH = r"""
   // gráfico killeado (que también dice 'Facturación'). Es el scan caro (lee offsetParent) → se cachea.
   function _findFactEl(){
     var all=document.querySelectorAll('span,p,div');
-    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+    for(var i=0;i<all.length;i++){ var e=all[i];
+      if(e.children.length>2) continue;   // saltear contenedores grandes (leer su textContent = O(subárbol))
+      var tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>34 || tx.slice(-11)!=='Facturación') continue;
       if(e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
@@ -1592,7 +1594,9 @@ _SOLO_DASH = r"""
   // sola cuando trae data; si NO trae (data caída/no fetch), quedan en 0 → las fuerzo yo desde _raw.
   var _kpiEls={};
   function _findKpiVal(label){ var LB=label.toLowerCase(), all=document.querySelectorAll('span,p,div');
-    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+    for(var i=0;i<all.length;i++){ var e=all[i];
+      if(e.children.length>2) continue;
+      var tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>label.length+3 || tx.toLowerCase().slice(-LB.length)!==LB || e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
@@ -1608,7 +1612,7 @@ _SOLO_DASH = r"""
   function fixVentas(){ if(!_raw || _canalActivo()==='MercadoLibre') return;
     var el=_kpiEls['Ventas'];
     if(!el||!el.isConnected){ var all=document.querySelectorAll('span,p,div');
-      for(var i=0;i<all.length && !el;i++){ var e=all[i]; if((e.textContent||'').replace(/\s+/g,' ').trim()!=='Ventas'||e.offsetParent===null) continue;
+      for(var i=0;i<all.length && !el;i++){ var e=all[i]; if(e.children.length>2) continue; if((e.textContent||'').replace(/\s+/g,' ').trim()!=='Ventas'||e.offsetParent===null) continue;
         var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
         if(!card||!/rounded/.test(card.className||'')) continue;
         var dvs=card.querySelectorAll('span,div');
@@ -1650,7 +1654,7 @@ _SOLO_DASH = r"""
       if(el.style.display!==tgt) el.style.display=tgt; }
     // Barrido: cualquier tarjeta 'Reembolsos / cancel.' que haya quedado suelta → ocultar (no va en el diseño).
     var sp=document.querySelectorAll('span,div');
-    for(var q=0;q<sp.length;q++){ var tx=(sp[q].textContent||'').replace(/\s+/g,' ').trim();
+    for(var q=0;q<sp.length;q++){ if(sp[q].children.length>2) continue; var tx=(sp[q].textContent||'').replace(/\s+/g,' ').trim();
       if(tx==='Reembolsos / cancel.'){ var c=sp[q]; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl/.test(c.className||'')) break; }
         if(c&&/rounded-2xl/.test(c.className||'')&&c.style.display!=='none') c.style.display='none'; } } }
   function cardDe(label){ var sp=document.querySelectorAll('span');
@@ -1785,7 +1789,7 @@ _SOLO_DASH = r"""
   // Layout FIJO: KPI (Ventas/Facturación/Ticket/Ganancia) arriba, después Resumen (Publicidad+Costos)
   // y Últimas ventas. Escondo gráfico, Recomendación y Riesgos. Uso CSS 'order' (no toca el DOM → no pelea con React).
   // Busca el título aunque tenga un ícono adelante (los headers son '<span>icono</span>Texto').
-  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
+  function leafTxt(t){ var all=document.querySelectorAll('span,h2,h3,div,p'); for(var i=0;i<all.length;i++){ var e=all[i]; if(e.children.length>2) continue; var tx=(e.textContent||'').replace(/\s+/g,' ').trim(); if(tx.length<=t.length+24 && tx.slice(-t.length)===t) return e; } return null; }
   function layoutFijo(){
     var rt=leafTxt('Resumen del período'), ut=leafTxt('Últimas ventas'); if(!rt||!ut) return;
     var anc=[], a=rt; while(a){ anc.push(a); a=a.parentElement; }
@@ -3054,7 +3058,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-nofreeze"})
+    return jsonify({"ok": True, "v": "2026-08-14-nofreeze2"})
 
 
 @app.get("/pf-diag")
