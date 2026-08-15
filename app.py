@@ -302,7 +302,7 @@ _SOLO_DASH = r"""
     var wa0=nav.querySelector('#rp-ads-nav')||nav.querySelector('#rp-stock-nav')||nav.querySelector('#rp-mov-nav');
     if(wa0){ var cwa=wa0.cloneNode(true); cwa.id='rp-wa-nav'; cwa.style.display='';
      var awa=cwa.querySelector('a'); if(awa){ awa.setAttribute('href','/wa'); awa.removeAttribute('aria-current'); awa.classList.remove('bg-white/[0.08]'); awa.classList.remove('text-primary');
-      var nawa=awa.cloneNode(true); awa.parentNode.replaceChild(nawa,awa); nawa.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.location.href='/wa'; }); awa=nawa; }
+      var nawa=awa.cloneNode(true); awa.parentNode.replaceChild(nawa,awa); nawa.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); try{window.rpWa(true);}catch(err){window.location.href='/wa';} }); awa=nawa; }
      var icwa=cwa.querySelector('.material-symbols-outlined'); if(icwa){ icwa.textContent=''; icwa.style.fontSize='0'; icwa.innerHTML='<svg viewBox="0 0 24 24" width="22" height="22" fill="#25D366" style="display:block"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>'; }
      var spwa=cwa.querySelectorAll('span'); for(var sy=0;sy<spwa.length;sy++){ var s10=spwa[sy]; if(!s10.classList.contains('material-symbols-outlined') && s10.children.length===0 && (s10.textContent||'').trim()){ s10.textContent='WhatsApp'; } }
      wa0.parentNode.insertBefore(cwa, wa0.nextSibling);
@@ -327,7 +327,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var ov8=document.getElementById('rp-stock-ov'); if(ov8) ov8.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var ov8=document.getElementById('rp-stock-ov'); if(ov8) ov8.style.left=w+'px'; var ovwa=document.getElementById('rp-wa-ov'); if(ovwa) ovwa.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -351,6 +351,7 @@ _SOLO_DASH = r"""
   <div id="rp-integ-cards"></div>
  </div>
 </div>
+<div id="rp-wa-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0b141a;display:none;overflow:hidden;transition:left .18s ease"><iframe id="rp-wa-frame" title="WhatsApp" style="width:100%;height:100%;border:0;display:block"></iframe></div>
 <div id="rp-prod-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0a111e;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif">
  <div style="max-width:1120px;margin:0 auto;padding:26px 30px 60px">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
@@ -1147,7 +1148,8 @@ _SOLO_DASH = r"""
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
  window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  window._rpNavActive=function(id){ try{
-   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-ads-nav','rp-stock-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
+   var _wo=document.getElementById('rp-wa-ov'); if(_wo && id!=='rp-wa-nav') _wo.style.display='none';
+   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-ads-nav','rp-wa-nav','rp-stock-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]', !id); da.classList.toggle('text-primary', !id); }
  }catch(e){} }
@@ -1177,6 +1179,13 @@ _SOLO_DASH = r"""
    } else { _rpNavActive(null); }
    o.style.display=open?'block':'none';
    if(open && !_dLoaded) rpDLoad(); };
+ window.rpWa=function(open){ var o=document.getElementById('rp-wa-ov'); if(!o)return;
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     var f=document.getElementById('rp-wa-frame'); if(f && !f.getAttribute('src')){ f.setAttribute('src','/wa'); }
+     var a=document.querySelector('aside'); if(a){ var w=Math.round(a.getBoundingClientRect().width); o.style.left=(w>110?w:72)+'px'; }
+     _rpNavActive('rp-wa-nav');
+   } else { _rpNavActive(null); }
+   o.style.display=open?'block':'none'; };
  window.rpDLoad=function(){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
    _dStat('Trayendo pedidos de tu tienda…','#38bdf8');
    var qs=[]; if(_dDesde)qs.push('desde='+_dDesde); if(_dHasta)qs.push('hasta='+_dHasta);
@@ -3132,7 +3141,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-freeze-mp-wa3"})
+    return jsonify({"ok": True, "v": "2026-08-15-wa-panel"})
 
 
 @app.get("/pf-diag")
@@ -7163,7 +7172,7 @@ _WA_PAGE = """<!doctype html>
  <span class="num" id="num"></span>
  <button id="bTpl" style="display:none" onclick="openTpl()">Plantillas</button>
  <button id="bCfg" style="display:none" onclick="doDisc()">Desconectar</button>
- <button onclick="location.href='/'">&#8592; RealProfit</button>
+ <button onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
 <div class="lock" id="lock"><div class="lockcard" id="lockcard"></div></div>
@@ -7308,7 +7317,7 @@ function previewMedia(inp){
  var md=document.getElementById('modal');
  md.innerHTML='<div class="mh"><h3>Enviar archivo</h3><button class="x" onclick="cancelMedia()">&times;</button></div>'
   +'<div style="margin:12px 0">'+body+'</div>'
-  +'<input id="mcap" placeholder="Agregá un mensaje (opcional)" value="'+esc(cap)+'" style="width:100%;padding:12px 14px;border:1px solid #d0d7de;border-radius:10px;font-size:14px" onkeydown="if(event.key===\'Enter\')confirmMedia()">'
+  +'<input id="mcap" placeholder="Agregá un mensaje (opcional)" value="'+esc(cap)+'" style="width:100%;padding:12px 14px;border:1px solid #d0d7de;border-radius:10px;font-size:14px" onkeydown="if(event.key===\\'Enter\\')confirmMedia()">'
   +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px"><button class="btn sec" style="width:auto" onclick="cancelMedia()">Cancelar</button><button class="btn" style="width:auto" onclick="confirmMedia()">Enviar</button></div>';
  document.getElementById('ov').classList.add('on'); inp.value='';
 }
@@ -7341,8 +7350,8 @@ function audioBubble(m,side,mt,nm){
  var mic='<span class="mic"><svg viewBox="0 0 24 24" fill="#fff" width="11" height="11"><path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.9V21h2v-3.1A7 7 0 0019 11h-2z"/></svg></span>';
  var ini2=isOut?'&#183;':(((nm||'?').trim()[0]||'?').toUpperCase());
  var ava='<div class="vava" style="background:'+(isOut?'#12a150':'#128C7E')+'">'+ini2+mic+'</div>';
- var pl='<button class="vplay" onclick="waPlay(\''+id+'\',this)">'+playIco()+'</button>';
- var mid='<div class="vmid"><div class="vwave" onclick="waSeek(event,\''+id+'\')"><span class="dot"></span>'+bars+'</div><div class="vdur" id="'+id+'_d">0:00</div></div>';
+ var pl='<button class="vplay" onclick="waPlay(\\''+id+'\\',this)">'+playIco()+'</button>';
+ var mid='<div class="vmid"><div class="vwave" onclick="waSeek(event,\\''+id+'\\')"><span class="dot"></span>'+bars+'</div><div class="vdur" id="'+id+'_d">0:00</div></div>';
  var au='<audio id="'+id+'" src="/wa-media/'+m.media_id+'" preload="none"></audio>';
  return '<div class="b media '+side+'">'+au+'<div class="voice">'+(isOut?ava+pl+mid:pl+mid+ava)+'</div>'+mt+'</div>';
 }
