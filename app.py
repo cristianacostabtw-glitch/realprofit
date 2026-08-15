@@ -3058,7 +3058,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-14-nofreeze2"})
+    return jsonify({"ok": True, "v": "2026-08-14-cache-html"})
 
 
 @app.get("/pf-diag")
@@ -6205,37 +6205,64 @@ def pf_ads_progreso():
 
 
 # ---------------- Dashboard ----------------
+_PF_BASE = None       # pf.html leído + blob vacío inyectado (igual para todos) → cacheado en memoria
+_HOME_CACHE = {}      # (email, nofix) -> (etag, bytes_gzip, bytes_raw) → no re-arma ni re-comprime por request
+
+
+def _pf_html_base():
+    """pf.html con el blob vacío en <head>. Se lee del disco UNA sola vez (antes se leía 8.6MB por request)."""
+    global _PF_BASE
+    if _PF_BASE is None:
+        h = (RAIZ / "pf.html").read_text(encoding="utf-8")
+        blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
+        if "</head>" in h:
+            h = h.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
+        _PF_BASE = h
+    return _PF_BASE
+
+
 @app.get("/")
 def home():
     email = _user_actual()
     if not email:                       # sin login → pantalla de ingreso
         return Response(_LOGIN_PAGE, mimetype="text/html")
-    try:
-        html = (RAIZ / "pf.html").read_text(encoding="utf-8")
-    except Exception as e:
-        return Response(f"<p style='color:#fff;font-family:sans-serif;padding:20px'>"
-                        f"No se pudo cargar pf.html: {e}</p>", mimetype="text/html")
-    import json as _json
-    blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
-    # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
-    if "</head>" in html:
-        html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
-    # Caja de usuario abajo a la izquierda (email + cerrar sesión).
-    inicial = (email[0] if email else "?").upper()
-    userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
-               'onclick="window.location.assign(\'/logout\');return false;">'
-               '<span class="rp-ic" style="background:#137fec;color:#fff;font-weight:700;font-size:14px">'
-               + inicial + '</span>'
-               '<span class="rp-lbl"><span class="em">' + email + '</span>'
-               '<span style="color:#94a3b8;font-size:11px">Cerrar sesión &#8594;</span></span></a>')
-    # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
-    extra = _SOLO_DASH + userbox
-    if "</body>" in html:
-        html = html.replace("</body>", extra + "</body>", 1)
-    else:
-        html = html + extra
-    resp = Response(html, mimetype="text/html")
-    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    import gzip as _gz, hashlib as _hl
+    nofix = "1" if request.args.get("nofix") else "0"
+    key = (email, nofix)
+    ent = _HOME_CACHE.get(key)
+    if ent is None:
+        try:
+            base = _pf_html_base()
+        except Exception as e:
+            return Response("<p style='color:#fff;font-family:sans-serif;padding:20px'>"
+                            "No se pudo cargar pf.html: %s</p>" % e, mimetype="text/html")
+        inicial = (email[0] if email else "?").upper()
+        userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
+                   'onclick="window.location.assign(\'/logout\');return false;">'
+                   '<span class="rp-ic" style="background:#137fec;color:#fff;font-weight:700;font-size:14px">'
+                   + inicial + '</span>'
+                   '<span class="rp-lbl"><span class="em">' + email + '</span>'
+                   '<span style="color:#94a3b8;font-size:11px">Cerrar sesión &#8594;</span></span></a>')
+        # ?nofix=1 → app cruda (sin _SOLO_DASH), para aislar el freeze.
+        extra = userbox if nofix == "1" else (_SOLO_DASH + userbox)
+        html = base.replace("</body>", extra + "</body>", 1) if "</body>" in base else (base + extra)
+        raw = html.encode("utf-8")
+        etag = '"' + _hl.md5(raw).hexdigest() + '"'
+        ent = (etag, _gz.compress(raw, 5), raw)
+        _HOME_CACHE[key] = ent
+    etag, body_gz, body_raw = ent
+    # Si el navegador ya lo tiene (mismo ETag) → 304, no re-baja los 8.6MB.
+    if request.headers.get("If-None-Match") == etag:
+        r = Response(status=304)
+        r.headers["ETag"] = etag; r.headers["Cache-Control"] = "private, max-age=60"
+        return r
+    acc = "gzip" in (request.headers.get("Accept-Encoding") or "")
+    resp = Response(body_gz if acc else body_raw, mimetype="text/html")
+    if acc:
+        resp.headers["Content-Encoding"] = "gzip"
+    # CACHEABLE por el navegador 10 min → entrar de nuevo (desde MercadoPago, etc.) es INSTANTÁNEO.
+    resp.headers["Cache-Control"] = "private, max-age=60"
+    resp.headers["ETag"] = etag
     return resp
 
 
