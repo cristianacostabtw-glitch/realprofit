@@ -3482,7 +3482,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-usd-neg-adsestable"})
+    return jsonify({"ok": True, "v": "2026-08-16-fix-parpadeo-be-ri"})
 
 
 @app.get("/pf-diag")
@@ -6760,6 +6760,14 @@ def pf_periodo():
             r["tot_margen"] = r["margen"]
             r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
             r["tot_gan_por_venta"] = r["gan_por_venta"]
+            # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
+            # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
+            _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
+                    - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
+                    - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
+            _pre_ri = _pre - _iva_pag
+            r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
+            r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
