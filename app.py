@@ -1684,7 +1684,29 @@ _SOLO_DASH = r"""
       [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
     ];
     for(var s=0;s<slots.length;s++){ var card=cardByAny(slots[s][0]);
-      if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } } }
+      if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } }
+    // === IVA (Responsable Inscripto): 3 KPIs debajo de los 4 de Costos ===
+    var _ivaOld=document.getElementById('rp-iva3'); if(_ivaOld) _ivaOld.remove();
+    var _ref=cardByAny(['Costo producto','Productos']);
+    if(_ref && _ref.parentElement){
+      var _grid=_ref.parentElement, _F=0.21/1.21, _fact=_raw.facturado||0;
+      var _ivaDeb=_fact*_F;
+      var _baseCred=(_raw.costo_prod||0)+(_raw.envio_monto||0)+(_raw.mp_costo_real||0)+(_raw.tienda_monto||0);
+      var _ivaCred=_baseCred*_F, _ivaPag=_ivaDeb-_ivaCred;
+      var _wrap=document.createElement('div'); _wrap.id='rp-iva3'; _wrap.className=_grid.className; _wrap.style.marginTop='14px';
+      var _ivas=[['IVA Total','IVA de la facturación (21% contenido)',_ivaDeb,'#fbbf24','percent'],
+                 ['IVA a favor','Crédito: producto + envío + comisiones',_ivaCred,'#34d399','savings'],
+                 ['IVA a pagar','Total menos el IVA a favor',_ivaPag,'#fb7185','account_balance_wallet']];
+      for(var _i=0;_i<_ivas.length;_i++){
+        var _cl=_ref.cloneNode(true); _cl.style.display='';
+        setCard(_cl, _ivas[_i][0], money(_ivas[_i][2]||0), _ivas[_i][1]);
+        var _dv=_cl.querySelectorAll('div');
+        for(var _d=0;_d<_dv.length;_d++){ var _cd=_dv[_d].className||''; if(/font-bold/.test(_cd)&&/(text-2xl|text-xl)/.test(_cd)){ _dv[_d].style.color=_ivas[_i][3]; break; } }
+        var _ic=_cl.querySelector('.material-symbols-outlined'); if(_ic) _ic.textContent=_ivas[_i][4];
+        _wrap.appendChild(_cl);
+      }
+      _grid.parentElement.insertBefore(_wrap, _grid.nextSibling);
+    } }
   function setCard(card,label,val,sub){
     var sps=card.querySelectorAll('span'), lab=null;
     for(var i=0;i<sps.length;i++){ var cn=sps[i].className||''; if(/uppercase/.test(cn)&&/tracking/.test(cn)){ lab=sps[i]; break; } }
@@ -3394,7 +3416,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-envio-zonas-tn-robusto"})
+    return jsonify({"ok": True, "v": "2026-08-16-iva-kpis"})
 
 
 @app.get("/pf-diag")
