@@ -3321,7 +3321,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-cambiar-mp3"})
+    return jsonify({"ok": True, "v": "2026-08-15-cambiar-mp4-tn-revert"})
 
 
 @app.get("/pf-diag")
@@ -5301,10 +5301,6 @@ def _tn_orders_raw(email, desde, hasta):
         try:
             r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
                 "per_page": 200, "page": page,
-                # Solo los campos que usan el dashboard + últimas ventas + histórico (igual que Shopify).
-                # Sin esto, TN devuelve el pedido COMPLETO (enorme) y tarda mucho más por página.
-                "fields": "number,cancelled_at,payment_status,total,created_at,products,fulfillments,"
-                          "customer,shipping_address,contact_email,contact_phone,billing_phone,contact_name",
                 "created_at_min": desde + "T00:00:00-03:00",
                 "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
             lote = r.json() if r.content else []
