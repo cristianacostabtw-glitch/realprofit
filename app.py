@@ -3432,7 +3432,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-iva-ganancia-envfull"})
+    return jsonify({"ok": True, "v": "2026-08-16-iva-21-plano"})
 
 
 @app.get("/pf-diag")
@@ -6674,7 +6674,7 @@ def pf_periodo():
             r["tot_margen"] = r["margen"]
         # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
         r = blob["raw"]
-        _F = 0.21 / 1.21
+        _F = 0.21   # 21% plano (no ÷1,21)
         _fact = r.get("facturado", 0.0) or 0.0
         _iva_deb = _fact * _F
         _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
