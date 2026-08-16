@@ -422,6 +422,19 @@ _SOLO_DASH = r"""
    </div>
   </div>
 
+  <div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:14px;padding:18px 20px;margin-top:14px;display:flex;gap:15px;align-items:center">
+   <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#2a2208;border:1px solid #5a4a1e;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#fbbf24;font-size:22px">receipt_long</span></div>
+   <div style="flex:1;min-width:0">
+    <div style="font-weight:700;color:#f1f5f9;font-size:15px">Soy Responsable Inscripto (IVA 21%)</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Activalo si facturás con IVA. Muestra en el Dashboard 3 KPIs de IVA: <b style="color:#fbbf24">Total</b> (d&eacute;bito), <b style="color:#34d399">a favor</b> (cr&eacute;dito de producto+env&iacute;o+comisiones) y <b style="color:#fb7185">a pagar</b>. Si no lo sos, se ocultan.</div>
+   </div>
+   <label style="position:relative;display:inline-block;width:52px;height:30px;flex:none;cursor:pointer">
+    <input id="rp-c-ri" type="checkbox" style="opacity:0;width:0;height:0" onchange="var s=document.getElementById('rp-c-ri-s'); if(s)s.style.background=this.checked?'#137fec':'#2a3548'; var k=document.getElementById('rp-c-ri-k'); if(k)k.style.transform=this.checked?'translateX(22px)':'translateX(0)';">
+    <span id="rp-c-ri-s" style="position:absolute;inset:0;background:#2a3548;border-radius:30px;transition:.2s"></span>
+    <span id="rp-c-ri-k" style="position:absolute;height:24px;width:24px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s"></span>
+   </label>
+  </div>
+
   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:14px;flex-wrap:wrap;background:#0c1521;border:1px solid #1e2b3d;border-radius:14px;padding:16px 20px">
    <div><div style="color:#94a3b8;font-size:12px">Impuestos que sumamos por venta (aparte del neto de MP)</div><b id="rp-c-total" style="color:#34d399;font-size:24px;font-weight:800">0%</b></div>
    <div style="display:flex;gap:12px;align-items:center"><span id="rp-c-msg" style="font-size:12.5px;font-weight:600;display:none"></span><button id="rp-c-go" onclick="rpComisSave()" style="background:#137fec;border:none;color:#fff;border-radius:10px;padding:11px 26px;font-weight:700;font-size:13.5px;cursor:pointer">Guardar</button></div>
@@ -1491,10 +1504,12 @@ _SOLO_DASH = r"""
     // 1% tienda y 3,5% Ingresos Brutos: FIJOS y no editables (pedido del usuario).
     var fix=function(id,v){var el=document.getElementById(id); if(!el)return; el.value=v; el.readOnly=true; el.style.opacity='.65'; el.style.cursor='not-allowed'; el.oninput=null; el.title='Fijo, no editable';};
     fix('rp-c-tienda',1); fix('rp-c-iibb',3.5);
+    var ri=document.getElementById('rp-c-ri'); if(ri){ ri.checked=!!c.ri; var s=document.getElementById('rp-c-ri-s'); if(s)s.style.background=ri.checked?'#137fec':'#2a3548'; var k=document.getElementById('rp-c-ri-k'); if(k)k.style.transform=ri.checked?'translateX(22px)':'translateX(0)'; }
     rpComisTotal();
    }).catch(function(){ rpComisTotal(); }); }
  window.rpComisSave=function(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
-   var body={mp_comision:g('rp-c-mp'),mp_cuotas:g('rp-c-cuotas'),comision_tienda:g('rp-c-tienda'),iva:g('rp-c-iva'),ingresos_brutos:g('rp-c-iibb')};
+   var _ri=document.getElementById('rp-c-ri');
+   var body={mp_comision:g('rp-c-mp'),mp_cuotas:g('rp-c-cuotas'),comision_tienda:g('rp-c-tienda'),iva:g('rp-c-iva'),ingresos_brutos:g('rp-c-iibb'),ri:!!(_ri&&_ri.checked)};
    var go=document.getElementById('rp-c-go'),msg=document.getElementById('rp-c-msg'); if(go){go.disabled=true; go.textContent='Guardando...';}
    fetch('/pf-comisiones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#34d399'; msg.textContent='¡Guardado!'; setTimeout(function(){msg.style.display='none';},1500);} rpComisTotal(); }).catch(function(){ if(go){go.disabled=false; go.textContent='Guardar';} if(msg){msg.style.display='inline'; msg.style.color='#f87171'; msg.textContent='Error, probá de nuevo';} }); };
  function rpProdWarn(){ var warn=document.getElementById('rp-prod-warn'); if(!warn)return; var n=document.querySelectorAll('#rp-prod-body .rp-sincosto').length;
@@ -1687,7 +1702,7 @@ _SOLO_DASH = r"""
       if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } }
     // === IVA (Responsable Inscripto): fila propia de 3 KPIs debajo de la grilla de Costos ===
     var _ivaOld=document.getElementById('rp-iva3'); if(_ivaOld) _ivaOld.remove();
-    var _pc=cardByAny(['Costo producto','Productos']);
+    var _pc = _raw.ri ? cardByAny(['Costo producto','Productos']) : null;   // solo si es RI
     if(_pc){
       var _grid=_pc; for(var _g=0;_g<6 && _grid;_g++){ _grid=_grid.parentElement; if(_grid && /grid/.test(_grid.className||'')) break; }
       if(_grid && /grid/.test(_grid.className||'')){
@@ -3421,7 +3436,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-iva-kpis-fila"})
+    return jsonify({"ok": True, "v": "2026-08-16-iva-ri-toggle"})
 
 
 @app.get("/pf-diag")
@@ -6642,6 +6657,10 @@ def pf_periodo():
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
             blob = _blob_vacio()
+        try:
+            blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
+        except Exception:
+            pass
         # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
         spend = _meta_spend(email, desde, hasta)
         if spend:
@@ -6887,12 +6906,17 @@ def _comis_pct(email) -> float:
     return round(con_iva + c["ingresos_brutos"], 4)
 
 
+def _comis_ri(email) -> bool:
+    """True si el usuario marcó ser Responsable Inscripto (muestra los KPIs de IVA 21%)."""
+    return bool((_comis().get(email) or {}).get("ri"))
+
+
 @app.get("/pf-comisiones")
 def pf_comisiones():
     email = _user_actual()
     if not email:
-        return jsonify({"ok": True, "comis": {k: 0 for k in _COMIS_CAMPOS}, "pct": 0})
-    return jsonify({"ok": True, "comis": _comis_user(email), "pct": _comis_pct(email)})
+        return jsonify({"ok": True, "comis": {**{k: 0 for k in _COMIS_CAMPOS}, "ri": False}, "pct": 0})
+    return jsonify({"ok": True, "comis": {**_comis_user(email), "ri": _comis_ri(email)}, "pct": _comis_pct(email)})
 
 
 @app.post("/pf-comisiones")
@@ -6908,8 +6932,14 @@ def pf_guardar_comisiones():
             u[k] = float(data.get(k) or 0)
         except Exception:
             u[k] = 0.0
+    u["ri"] = bool(data.get("ri"))   # Responsable Inscripto → muestra KPIs de IVA 21%
     d[email] = u
     COMIS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:   # refrescar el dashboard al toque (el flag RI cambia los KPIs de IVA)
+        for k in [k for k in _PF_CACHE if k[0] == email]:
+            _PF_CACHE.pop(k, None)
+    except Exception:
+        pass
     return jsonify({"ok": True, "pct": _comis_pct(email)})
 
 
