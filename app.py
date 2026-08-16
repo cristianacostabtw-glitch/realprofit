@@ -2505,21 +2505,86 @@ def _mp_freeze_end(email):
 
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
 IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
-ENVIO_DOMICILIO = 8270  # promedio REAL de 50 envíos a domicilio (Andreani, total pagado ÷ 50)
-ENVIO_SUCURSAL = 5483   # promedio REAL de 50 envíos a sucursal (Andreani, total pagado ÷ 50)
 FULFILLMENT_ORDEN = 700  # costo de fulfillment por pedido (fijo)
 INSUMOS_ORDEN = 200      # costo de insumos/packaging por pedido (fijo)
 OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 900/pedido: fulfillment + insumos (aparte del envío)
 
+# === Costo de envío REAL por zona (Andreani, cuenta VisionPure, origen Suc. Merlo, CON descuento) ===
+# Cotizado 2026-08-15 en pymes.andreani.com. 4 zonas de tarifa. sucursal / domicilio en $.
+ENVIO_ZONAS = {
+    "amba":    {"sucursal": 4530, "domicilio": 7115},   # CABA + GBA + La Plata
+    "centro":  {"sucursal": 6082, "domicilio": 8001},   # Bs As interior, Córdoba, Santa Fe, E.Ríos, La Pampa
+    "cuyo":    {"sucursal": 6603, "domicilio": 8717},    # Cuyo, Norte, NEA, Neuquén, Río Negro
+    "extremo": {"sucursal": 7101, "domicilio": 9189},    # Salta, Jujuy, Chubut, Santa Cruz, T. del Fuego
+}
+# fallback (promedio ponderado nacional) si no se puede determinar la zona
+ENVIO_DOMICILIO = 7805
+ENVIO_SUCURSAL = 5539
 
-def _envio_costo(o) -> int:
-    """Costo de envío del pedido según sea domicilio o sucursal (promedios fijos).
-    Fallback cuando el pedido todavía no está en Envialo."""
+_ENV_ACC = str.maketrans("áéíóúüàèìòùÁÉÍÓÚÜÑñ", "aeiouuaeiouAEIOUUNn")
+def _env_norm(s):
+    return str(s or "").translate(_ENV_ACC).lower().strip()
+
+# provincia (nombre normalizado) -> zona. Buenos Aires se resuelve por CP aparte.
+_PROV_ZONA = {
+    "capital federal": "amba", "ciudad autonoma de buenos aires": "amba", "caba": "amba",
+    "ciudad de buenos aires": "amba", "capital": "amba", "c.a.b.a.": "amba",
+    "cordoba": "centro", "santa fe": "centro", "entre rios": "centro", "la pampa": "centro",
+    "mendoza": "cuyo", "san juan": "cuyo", "san luis": "cuyo", "tucuman": "cuyo",
+    "santiago del estero": "cuyo", "catamarca": "cuyo", "la rioja": "cuyo",
+    "misiones": "cuyo", "corrientes": "cuyo", "chaco": "cuyo", "formosa": "cuyo",
+    "neuquen": "cuyo", "rio negro": "cuyo",
+    "salta": "extremo", "jujuy": "extremo", "chubut": "extremo",
+    "santa cruz": "extremo", "tierra del fuego": "extremo",
+}
+# código ISO 3166-2 de 1 letra (TN a veces manda 'C','X'...). 'B' = Buenos Aires → por CP.
+_ISO_ZONA = {
+    "C": "amba", "X": "centro", "S": "centro", "E": "centro", "L": "centro",
+    "M": "cuyo", "J": "cuyo", "D": "cuyo", "T": "cuyo", "G": "cuyo", "K": "cuyo",
+    "F": "cuyo", "N": "cuyo", "W": "cuyo", "H": "cuyo", "P": "cuyo", "Q": "cuyo", "R": "cuyo",
+    "A": "extremo", "Y": "extremo", "U": "extremo", "Z": "extremo", "V": "extremo",
+}
+
+def _prov_cp(o):
+    """Provincia + CP del pedido, sirve tanto para la forma Shopify (shipping_address dict con
+    'province'/'zip') como para el pedido nativo de Tiendanube (varias ubicaciones posibles)."""
+    for src in (o.get("shipping_address"), o.get("billing_address")):
+        if isinstance(src, dict):
+            prov = src.get("province") or src.get("state") or ""
+            cp = src.get("zipcode") or src.get("zip") or src.get("postal_code") or ""
+            if prov or cp:
+                return prov, cp
+    prov = o.get("shipping_province") or o.get("province") or ""
+    cp = o.get("shipping_zipcode") or o.get("shipping_zip") or o.get("zip") or ""
+    return prov, cp
+
+def _envio_zona(o) -> str:
+    prov, cp = _prov_cp(o)
+    cp = "".join(ch for ch in str(cp) if ch.isdigit())
+    pn = _env_norm(prov)
+    code = str(prov).strip().upper()
+    is_bsas = code == "B" or pn in ("buenos aires", "provincia de buenos aires",
+                                    "pcia de buenos aires", "bs as", "bsas", "b")
+    if is_bsas:                                  # GBA (CP 1xxx) = AMBA ; interior = Centro
+        return "amba" if cp[:1] == "1" else "centro"
+    if len(code) == 1 and code in _ISO_ZONA:
+        return _ISO_ZONA[code]
+    z = _PROV_ZONA.get(pn)
+    if z:
+        return z
+    return "amba" if cp[:1] == "1" else "centro"   # último fallback por CP
+
+def _envio_suc(o) -> bool:
     sl = o.get("shipping_lines") or []
     txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in sl).lower()
-    if any(k in txt for k in ("sucursal", "pickup", "pick up", "retiro", "punto")):
-        return ENVIO_SUCURSAL
-    return ENVIO_DOMICILIO
+    return any(k in txt for k in ("sucursal", "pickup", "pick up", "pick-up", "retiro", "punto", "agenc", "hop"))
+
+def _envio_costo(o) -> int:
+    """Costo de envío REAL por zona Andreani (cuenta VisionPure, con descuento), según
+    provincia/CP del pedido y si es a sucursal o domicilio. Cubre Shopify y Tiendanube.
+    Fallback cuando el pedido todavía no está en Envialo (costo real)."""
+    z = ENVIO_ZONAS.get(_envio_zona(o)) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
+    return z["sucursal"] if _envio_suc(o) else z["domicilio"]
 
 
 ENVIALO_BASE = "https://www.envialo.com.ar/api/v1"
@@ -3321,7 +3386,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-revert-paralelo"})
+    return jsonify({"ok": True, "v": "2026-08-15-envio-zonas-andreani"})
 
 
 @app.get("/pf-diag")
@@ -5344,7 +5409,9 @@ def _tn_resumen(email, desde, hasta):
         ordenes += 1
         tot = float(o.get("total") or 0)
         fact += tot; cobr += tot
-        envio_monto += ENVIO_SUCURSAL if _tn_shipping(o).get("type") == "pickup" else ENVIO_DOMICILIO
+        _ez = ENVIO_ZONAS.get(_envio_zona(o)) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
+        _es_suc = _tn_shipping(o).get("type") == "pickup" or _envio_suc(o)
+        envio_monto += _ez["sucursal"] if _es_suc else _ez["domicilio"]
         if mp_conectado:
             lst = by_amt.get(round(tot))
             if lst:
