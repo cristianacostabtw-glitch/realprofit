@@ -1660,14 +1660,20 @@ _SOLO_DASH = r"""
   function _curBtn(){ var bs=document.querySelectorAll('button');   // el botón que TIENE un span "ARS"/"USD" visible
     for(var i=0;i<bs.length;i++){ if(bs[i].offsetParent!==null && _curSpan(bs[i])) return bs[i]; }
     return null; }
+  var _USFLAG="<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 26'><rect width='40' height='26' fill='#fff'/><g fill='#b22234'><rect width='40' height='2'/><rect y='4' width='40' height='2'/><rect y='8' width='40' height='2'/><rect y='12' width='40' height='2'/><rect y='16' width='40' height='2'/><rect y='20' width='40' height='2'/><rect y='24' width='40' height='2'/></g><rect width='18' height='14' fill='#3c3b6e'/></svg>";
+  function _setFlag(b){ var img=b?b.querySelector('img'):null; if(!img) return;
+    if(!img.__origAR && (img.src||'').indexOf('svg')<0) img.__origAR=img.src;   // guardar bandera AR original
+    var want=(window.__CUR==='USD')?('data:image/svg+xml,'+encodeURIComponent(_USFLAG)):(img.__origAR||img.src);
+    if(img.src!==want) img.src=want; }
   function hookCur(){ var b=_curBtn(); if(!b) return;
     if(!b.__curHook){ b.__curHook=true;
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation();
         window.__CUR=(window.__CUR==='USD')?'ARS':'USD';
-        var s=_curSpan(_curBtn()); if(s) s.textContent=window.__CUR;
+        var bb=_curBtn(); var s=_curSpan(bb); if(s) s.textContent=window.__CUR; _setFlag(bb);
         try{paint();}catch(e){} setTimeout(paint,60); setTimeout(paint,320); }, true); }
-    var sp=_curSpan(b);   // mantener el label sincronizado si React lo repinta
+    var sp=_curSpan(b);   // mantener el label + bandera sincronizados si React lo repinta
     if(sp && window.__CUR && sp.textContent!==window.__CUR) sp.textContent=window.__CUR;
+    _setFlag(b);
   }
   var _factEl=null;
   function fixFacturacion(){ if(!_raw) return;
@@ -3467,7 +3473,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle4"})
+    return jsonify({"ok": True, "v": "2026-08-16-usd-flag"})
 
 
 @app.get("/pf-diag")
