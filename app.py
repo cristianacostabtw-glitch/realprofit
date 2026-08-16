@@ -1646,7 +1646,7 @@ _SOLO_DASH = r"""
   // Encuentra el monto ($...) de una tarjeta KPI por el final de su etiqueta (ej 'ganancia','ticket prom') y lo setea.
   function _fixLeaf(suf, val){ suf=suf.toLowerCase(); var all=document.querySelectorAll('span,p,div');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
-      if(tx.length>22 || tx.toLowerCase().slice(-suf.length)!==suf) continue;
+      if(tx.length>44 || tx.toLowerCase().slice(-suf.length)!==suf) continue;
       if(e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
@@ -3467,7 +3467,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle3"})
+    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle4"})
 
 
 @app.get("/pf-diag")
