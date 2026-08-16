@@ -1655,12 +1655,11 @@ _SOLO_DASH = r"""
         if(/^\$\s?-?[\d.,]+$/.test(vt)){ if(dvs[q].textContent!==val) dvs[q].textContent=val; return; } } } }
   }
   // Selector de moneda del header (ARS/USD): botón de React con texto "ARS". Lo engancho para alternar y repintar.
-  function _curBtn(){ var bs=document.querySelectorAll('button');
-    for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\s+/g,'').trim();
-      if(t.length<=10 && /(ARS|USD)$/.test(t) && bs[i].offsetParent!==null) return bs[i]; }
-    return null; }
   function _curSpan(b){ if(!b) return null; var sp=b.querySelectorAll('span');
     for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').trim(); if(t==='ARS'||t==='USD') return sp[i]; } return null; }
+  function _curBtn(){ var bs=document.querySelectorAll('button');   // el botón que TIENE un span "ARS"/"USD" visible
+    for(var i=0;i<bs.length;i++){ if(bs[i].offsetParent!==null && _curSpan(bs[i])) return bs[i]; }
+    return null; }
   function hookCur(){ var b=_curBtn(); if(!b) return;
     if(!b.__curHook){ b.__curHook=true;
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation();
@@ -3468,7 +3467,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle2"})
+    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle3"})
 
 
 @app.get("/pf-diag")
