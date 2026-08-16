@@ -1608,7 +1608,7 @@ _SOLO_DASH = r"""
     fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
       if(j&&j.ok&&_raw){ _raw.recompras=j.recompras; _raw.fact_recompra=j.fact_recompra; try{paint();}catch(e){} setTimeout(paint,200); }
     }).catch(function(){ _recKey=''; }); }
-  function money(n){ try{ if(window.__CUR==='USD'&&window.__RATE){ return '$'+(n/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } return '$'+Math.round(n).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n); } }
+  function money(n){ try{ var neg=n<0, a=Math.abs(n), s; if(window.__CUR==='USD'&&window.__RATE){ s=(a/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } else { s=Math.round(a).toLocaleString('es-AR'); } return (neg?'-$':'$')+s; }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
     for(var i=0;i<all.length;i++){ if((all[i].textContent||'').trim()===label){ var box=all[i].parentElement; if(!box)continue;
       var v=box.nextElementSibling; while(v && !(/font-bold/.test(v.className||''))) v=v.nextElementSibling;
@@ -1641,7 +1641,7 @@ _SOLO_DASH = r"""
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
       var dvs=card.querySelectorAll('span,div');
       for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
-        if(/^\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
+        if(/^-?\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
     return null; }
   // Encuentra el monto ($...) de una tarjeta KPI por el final de su etiqueta (ej 'ganancia','ticket prom') y lo setea.
   function _fixLeaf(suf, val){ suf=suf.toLowerCase(); var all=document.querySelectorAll('span,p,div');
@@ -1652,7 +1652,7 @@ _SOLO_DASH = r"""
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
       var dvs=card.querySelectorAll('span,div');
       for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
-        if(/^\$\s?-?[\d.,]+$/.test(vt)){ if(dvs[q].textContent!==val) dvs[q].textContent=val; return; } } } }
+        if(/^-?\$\s?-?[\d.,]+$/.test(vt)){ if(dvs[q].textContent!==val) dvs[q].textContent=val; return; } } } }
   }
   // Selector de moneda del header (ARS/USD): botón de React con texto "ARS". Lo engancho para alternar y repintar.
   function _curSpan(b){ if(!b) return null; var sp=b.querySelectorAll('span');
@@ -1774,7 +1774,7 @@ _SOLO_DASH = r"""
     var ps=card.querySelectorAll('p'); if(ps.length){ var p=ps[ps.length-1]; if(p.textContent!==sub) p.textContent=sub; } }
   // ===== Modal de detalle de orden (al tocar una fila de "Últimas ventas") =====
   function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function fmt(n){ try{ if(window.__CUR==='USD'&&window.__RATE){ return '$'+((n||0)/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } return '$'+Math.round(n||0).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n||0); } }
+  function fmt(n){ try{ n=n||0; var neg=n<0, a=Math.abs(n), s; if(window.__CUR==='USD'&&window.__RATE){ s=(a/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } else { s=Math.round(a).toLocaleString('es-AR'); } return (neg?'-$':'$')+s; }catch(e){ return '$'+Math.round(n||0); } }
   function fechaTxt(f){ try{ var d=new Date(f); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return f||''; } }
   window.cerrarOrden=function(){ var ov=document.getElementById('rp-orden-ov'); if(ov) ov.style.display='none'; };
   var _ordCache={};   // num -> orden ya traída (reabrir es instantáneo)
@@ -3482,7 +3482,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-solo-todas"})
+    return jsonify({"ok": True, "v": "2026-08-16-usd-neg-adsestable"})
 
 
 @app.get("/pf-diag")
@@ -6010,10 +6010,24 @@ def _meta_spend(email, desde, hasta):
             # cuenta USD. Se puede fijar con la env DOLAR_ARS (número, 'blue' o 'cripto').
             if moneda == "USD" or es_owner:
                 spend *= _dolar_ars_vivo()
-            return spend
+            return _meta_spend_estable(email, desde, hasta, spend)
     except Exception:
         pass
-    return 0.0
+    return _meta_spend_estable(email, desde, hasta, 0.0)
+
+
+_META_SPEND_LAST = {}   # (email,desde,hasta) -> último gasto visto (el gasto solo se acumula)
+
+
+def _meta_spend_estable(email, desde, hasta, spend) -> float:
+    """El gasto de ADS de un período SOLO crece (se acumula durante el día). Evita el
+    'parpadeo' de la ganancia cuando Meta devuelve 0 o un valor más bajo por un instante:
+    devolvemos el máximo visto para ese período. Así la ganancia no salta de + a −."""
+    key = (email, desde, hasta)
+    prev = _META_SPEND_LAST.get(key, 0.0)
+    val = spend if spend > prev else prev
+    _META_SPEND_LAST[key] = val
+    return val
 
 
 _dolar_cache = {"ts": 0, "val": 0.0}
