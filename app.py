@@ -2563,20 +2563,28 @@ def _envio_zona(o) -> str:
     cp = "".join(ch for ch in str(cp) if ch.isdigit())
     pn = _env_norm(prov)
     code = str(prov).strip().upper()
-    is_bsas = code == "B" or pn in ("buenos aires", "provincia de buenos aires",
-                                    "pcia de buenos aires", "bs as", "bsas", "b")
-    if is_bsas:                                  # GBA (CP 1xxx) = AMBA ; interior = Centro
+    # CABA (nombre en cualquier variante)
+    if ("capital federal" in pn or "autonoma de buenos aires" in pn or "ciudad de buenos aires" in pn
+            or pn in ("caba", "capital", "c.a.b.a.") or code == "C"):
+        return "amba"
+    # Buenos Aires PROVINCIA → GBA (CP 1xxx) = AMBA ; interior = Centro
+    if code == "B" or "buenos aires" in pn or pn in ("bs as", "bsas", "pba"):
         return "amba" if cp[:1] == "1" else "centro"
+    # código ISO de 1 letra
     if len(code) == 1 and code in _ISO_ZONA:
         return _ISO_ZONA[code]
-    z = _PROV_ZONA.get(pn)
-    if z:
-        return z
+    # nombre de provincia por coincidencia (soporta nombres oficiales largos)
+    for k, z in _PROV_ZONA.items():
+        if k in ("capital federal", "ciudad autonoma de buenos aires", "caba",
+                 "ciudad de buenos aires", "capital", "c.a.b.a."):
+            continue
+        if k in pn:
+            return z
     return "amba" if cp[:1] == "1" else "centro"   # último fallback por CP
 
 def _envio_suc(o) -> bool:
-    sl = o.get("shipping_lines") or []
-    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in sl).lower()
+    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in (o.get("shipping_lines") or [])).lower()
+    txt += " " + (o.get("shipping_option") or "").lower()   # TN manda el método acá ("Envío a domicilio"/"sucursal")
     return any(k in txt for k in ("sucursal", "pickup", "pick up", "pick-up", "retiro", "punto", "agenc", "hop"))
 
 def _envio_costo(o) -> int:
@@ -3386,7 +3394,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-envio-zonas-andreani"})
+    return jsonify({"ok": True, "v": "2026-08-16-envio-zonas-tn-robusto"})
 
 
 @app.get("/pf-diag")
