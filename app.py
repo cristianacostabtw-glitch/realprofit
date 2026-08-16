@@ -1229,7 +1229,7 @@ _SOLO_DASH = r"""
    box.innerHTML='<div style="text-align:center;padding:34px;color:#8ba0bd;font-size:14px">Guardando tu historial y preparando el cambio&hellip;</div>';
    fetch('/pf-cambiar-mp?fecha='+encodeURIComponent(fecha),{method:'POST'}).then(function(r){return r.json();}).then(function(j){
      if(!j.ok){ _rpMpRender(); alert('No se pudo: '+(j.error||'error')); return; }
-     box.innerHTML='<div style="text-align:center;padding:20px 10px"><div style="width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#052e1c;font-size:30px">&#10003;</div><div style="font-size:18px;font-weight:800;margin-bottom:6px">Historial guardado ('+j.pagos+' pagos)</div><div style="color:#8ba0bd;font-size:13.5px;line-height:1.6;max-width:410px;margin:0 auto 20px">Congelado hasta el <b style="color:#e7eef8">'+_rpFmtD(j.congelado_hasta)+'</b>. Ahora conect&aacute; la cuenta NUEVA de MercadoPago.</div><a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="display:inline-block;background:#00b1ea;color:#062230;border-radius:10px;padding:13px 22px;font-weight:800;text-decoration:none">Conectar cuenta nueva &#8594;</a></div>';
+     box.innerHTML='<div style="text-align:center;padding:20px 10px"><div style="width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#052e1c;font-size:30px">&#10003;</div><div style="font-size:18px;font-weight:800;margin-bottom:6px">'+(j.reuso?'Historial ya guardado':'Historial guardado')+' ('+j.pagos+' pagos)</div>'+(j.reuso?'<div style="color:#7CE7A6;font-size:12px;margin-bottom:4px">No se volvi&oacute; a bajar (ya estaba congelado)</div>':'')+'<div style="color:#8ba0bd;font-size:13.5px;line-height:1.6;max-width:410px;margin:0 auto 20px">Congelado hasta el <b style="color:#e7eef8">'+_rpFmtD(j.congelado_hasta)+'</b>. Ahora conect&aacute; la cuenta NUEVA de MercadoPago.</div><a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="display:inline-block;background:#00b1ea;color:#062230;border-radius:10px;padding:13px 22px;font-weight:800;text-decoration:none">Conectar cuenta nueva &#8594;</a></div>';
    }).catch(function(){ _rpMpRender(); alert('Error de conexi&oacute;n'); });
  };
  window.rpDLoad=function(){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
@@ -2791,9 +2791,6 @@ def pf_cambiar_mp():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "error": "sin sesión"})
-    token = (_mp_tokens().get(email) or {}).get("access_token")
-    if not token:
-        return jsonify({"ok": False, "error": "No hay un MercadoPago conectado para congelar."})
     fecha = (request.args.get("fecha") or request.form.get("fecha") or "").strip()
     try:
         fd = _dt.date.fromisoformat(fecha)
@@ -2805,6 +2802,22 @@ def pf_cambiar_mp():
     if fd > hoy + _dt.timedelta(days=90):
         return jsonify({"ok": False, "error": "La fecha es demasiado lejana."})
     hasta = _dia_ant(fecha)   # el congelado cubre hasta el día anterior a la fecha de switch
+    # Anti-duplicado: si YA hay un congelado que cubre hasta esa fecha, NO se vuelve a bajar
+    # (no duplica y NO re-congela desde otra cuenta si ya cambiaste). Solo actualiza la fecha.
+    fr_prev = _mp_freeze_all().get(email)
+    ult_prev = max(((p.get("date_approved") or "")[:10] for p in fr_prev), default="") if fr_prev else ""
+    if fr_prev and ult_prev and ult_prev >= hasta:
+        sw = _mp_switch(); sw[email] = fecha; _mp_save_switch(sw)
+        _MP_COST_CACHE.clear()
+        try:
+            _MP_LISTA_CACHE.clear()
+        except Exception:
+            pass
+        return jsonify({"ok": True, "email": email, "pagos": len(fr_prev), "fecha": fecha,
+                        "congelado_hasta": hasta, "reuso": True})
+    token = (_mp_tokens().get(email) or {}).get("access_token")
+    if not token:
+        return jsonify({"ok": False, "error": "No hay un MercadoPago conectado para congelar."})
     fin = hasta + "T23:59:59.999-03:00"
     guardados, offset = [], 0
     try:
@@ -3308,7 +3321,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-cambiar-mp2"})
+    return jsonify({"ok": True, "v": "2026-08-15-cambiar-mp3"})
 
 
 @app.get("/pf-diag")
