@@ -418,7 +418,14 @@ _SOLO_DASH = r"""
    <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#10233a;border:1px solid #1c3f63;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:22px">local_shipping</span></div>
    <div style="flex:1;min-width:0">
     <div style="font-weight:700;color:#f1f5f9;font-size:15px">Env&iacute;o</div>
-    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa el <b style="color:#34d399">costo REAL</b> de cada env&iacute;o; si el pedido a&uacute;n no est&aacute; en Envialo, usa promedio (Domicilio $9.000 &middot; Sucursal $6.000).</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma <b style="color:#cbd5e1">$900/pedido</b> de fulfillment (armado $700 + insumos $200).</div>
+    <div style="margin-top:12px;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden;font-size:12px">
+     <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;background:#0e1a2b;color:#7db3f5;font-weight:700;padding:8px 12px"><span>Zona</span><span style="text-align:right">Sucursal</span><span style="text-align:right">Domicilio</span></div>
+     <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>AMBA (CABA+GBA+La Plata)</span><span style="text-align:right">$4.530</span><span style="text-align:right">$7.115</span></div>
+     <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>Centro/Litoral (Cba, SFe, ER, La Pampa)</span><span style="text-align:right">$6.082</span><span style="text-align:right">$8.001</span></div>
+     <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>Cuyo/Norte/Comahue</span><span style="text-align:right">$6.603</span><span style="text-align:right">$8.717</span></div>
+     <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>Extremos (Salta, Jujuy, Patagonia sur)</span><span style="text-align:right">$7.101</span><span style="text-align:right">$9.189</span></div>
+    </div>
    </div>
   </div>
 
@@ -1709,7 +1716,7 @@ _SOLO_DASH = r"""
       if(_grid && /grid/.test(_grid.className||'')){
         var _row=document.createElement('div'); _row.id='rp-iva3';
         _row.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px';
-        var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA de la facturación (21%)','percent'],
+        var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA contenido en la facturación','percent'],
                     ['IVA a favor',_raw.iva_favor,'#34d399','Crédito: producto + envío + comisiones','savings'],
                     ['IVA a pagar',_raw.iva_pagar,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
         for(var _i=0;_i<3;_i++){ var C=_cards[_i];
@@ -3432,7 +3439,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-iva-21-plano"})
+    return jsonify({"ok": True, "v": "2026-08-16-iva-121-envzonas-comis"})
 
 
 @app.get("/pf-diag")
@@ -6674,7 +6681,7 @@ def pf_periodo():
             r["tot_margen"] = r["margen"]
         # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
         r = blob["raw"]
-        _F = 0.21   # 21% plano (no ÷1,21)
+        _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
         _fact = r.get("facturado", 0.0) or 0.0
         _iva_deb = _fact * _F
         _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
