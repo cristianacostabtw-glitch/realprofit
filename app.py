@@ -1692,37 +1692,33 @@ _SOLO_DASH = r"""
     // SOLO la sección COSTOS: busco cada tarjeta por su etiqueta propia (nunca toca Finanzas).
     var viejo=document.getElementById('rp-costos4'); if(viejo) viejo.remove();
     var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);
+    var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment $900/pedido
     var slots=[
       [['Costo producto','Productos'],'Productos',_raw.costo_prod,'Costo de los productos vendidos'],
-      [['Comisiones','Envíos'],'Envíos',_raw.envio_monto,'Lo que pagás de envío'],
+      [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($900/pedido)'],
       [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)'],
       [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
     ];
     for(var s=0;s<slots.length;s++){ var card=cardByAny(slots[s][0]);
       if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } }
-    // === IVA (Responsable Inscripto): fila propia de 3 KPIs debajo de la grilla de Costos ===
+    // === IVA (Responsable Inscripto): fila propia de 3 KPIs (clonadas → diseño idéntico) ===
     var _ivaOld=document.getElementById('rp-iva3'); if(_ivaOld) _ivaOld.remove();
     var _pc = _raw.ri ? cardByAny(['Costo producto','Productos']) : null;   // solo si es RI
     if(_pc){
       var _grid=_pc; for(var _g=0;_g<6 && _grid;_g++){ _grid=_grid.parentElement; if(_grid && /grid/.test(_grid.className||'')) break; }
       if(_grid && /grid/.test(_grid.className||'')){
-        var _F=0.21/1.21, _fact=_raw.facturado||0, _ivaDeb=_fact*_F;
-        var _baseCred=(_raw.costo_prod||0)+(_raw.envio_monto||0)+(_raw.mp_costo_real||0)+(_raw.tienda_monto||0);
-        var _ivaCred=_baseCred*_F, _ivaPag=_ivaDeb-_ivaCred;
         var _row=document.createElement('div'); _row.id='rp-iva3';
-        _row.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px';
-        var _cards=[['IVA TOTAL',_ivaDeb,'#fbbf24','IVA de la facturación (21% contenido)','percent'],
-                    ['IVA A FAVOR',_ivaCred,'#34d399','Crédito: producto + envío + comisiones','savings'],
-                    ['IVA A PAGAR',_ivaPag,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
+        _row.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px';
+        var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA de la facturación (21%)','percent'],
+                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito: producto + envío + comisiones','savings'],
+                    ['IVA a pagar',_raw.iva_pagar,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
         for(var _i=0;_i<3;_i++){ var C=_cards[_i];
-          var _c=document.createElement('div');
-          _c.style.cssText='background:#0e1521;border:1px solid #1a2333;border-radius:16px;padding:16px 18px;display:flex;flex-direction:column';
-          _c.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between">'
-            +'<span class="material-symbols-outlined" style="width:32px;height:32px;border-radius:9px;background:#161f2e;color:'+C[2]+';display:flex;align-items:center;justify-content:center;font-size:18px">'+C[4]+'</span>'
-            +'<span style="color:#8493a8;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">'+C[0]+'</span></div>'
-            +'<div style="font-size:24px;font-weight:800;color:'+C[2]+';margin-top:12px;letter-spacing:-.5px">'+money(C[1]||0)+'</div>'
-            +'<div style="color:#8493a8;font-size:11.5px;margin-top:5px;line-height:1.35">'+C[3]+'</div>';
-          _row.appendChild(_c);
+          var _cl=_pc.cloneNode(true); _cl.style.display=''; _cl.style.height=''; _cl.style.minHeight='';
+          setCard(_cl, C[0], money(C[1]||0), C[3]);
+          var _dv=_cl.querySelectorAll('div');
+          for(var _d=0;_d<_dv.length;_d++){ var _cd=_dv[_d].className||''; if(/font-bold/.test(_cd)&&/(text-2xl|text-xl|text-3xl)/.test(_cd)){ _dv[_d].style.color=C[2]; break; } }
+          var _ic=_cl.querySelector('.material-symbols-outlined'); if(_ic){ _ic.textContent=C[4]; _ic.style.color=C[2]; }
+          _row.appendChild(_cl);
         }
         _grid.parentElement.insertBefore(_row, _grid.nextSibling);
       }
@@ -3436,7 +3432,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-iva-ri-toggle"})
+    return jsonify({"ok": True, "v": "2026-08-16-iva-ganancia-envfull"})
 
 
 @app.get("/pf-diag")
@@ -6676,6 +6672,26 @@ def pf_periodo():
             r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
             r["tot_ganancia"] = r["ganancia"]
             r["tot_margen"] = r["margen"]
+        # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
+        r = blob["raw"]
+        _F = 0.21 / 1.21
+        _fact = r.get("facturado", 0.0) or 0.0
+        _iva_deb = _fact * _F
+        _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
+                     + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
+        _iva_cred = _base_cred * _F
+        _iva_pag = _iva_deb - _iva_cred
+        r["iva_total"] = round(_iva_deb, 2)
+        r["iva_favor"] = round(_iva_cred, 2)
+        r["iva_pagar"] = round(_iva_pag, 2)
+        if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
+            _ord = r.get("ordenes", 0) or 0
+            r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
+            r["tot_ganancia"] = r["ganancia"]
+            r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
+            r["tot_margen"] = r["margen"]
+            r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
+            r["tot_gan_por_venta"] = r["gan_por_venta"]
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
