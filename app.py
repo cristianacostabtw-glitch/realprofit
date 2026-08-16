@@ -1956,7 +1956,16 @@ _SOLO_DASH = r"""
   function _esFuera(t){ for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0) return true; } return false; }
   function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
     for(var i=0;i<g.length;i++){ if(_esFuera(g[i].textContent||'') && !g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} try{ hookCur(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  // Oculta los chips de canal (Shopify / MercadoLibre / Tiendanube) y deja SOLO "Todas".
+  function sacarCanales(){ var bs=document.querySelectorAll('button'), todas=null;
+    for(var i=0;i<bs.length;i++){ if((bs[i].textContent||'').trim()==='Todas' && bs[i].offsetParent!==null){ todas=bs[i]; break; } }
+    if(!todas || !todas.parentElement) return;
+    var chips=todas.parentElement.querySelectorAll('button');
+    for(var j=0;j<chips.length;j++){ var t=(chips[j].textContent||'').replace(/\s+/g,' ').trim();
+      if(t==='Shopify'||t==='MercadoLibre'||t==='Mercado Libre'||t==='Tiendanube'||t==='TiendaNube'){
+        if(/text-primary|bg-primary/.test(chips[j].className||'')){ try{ todas.click(); }catch(e){} }   // estaba activo → paso a Todas
+        if(chips[j].style.display!=='none') chips[j].style.display='none'; } } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} try{ hookCur(); }catch(e){} try{ sacarCanales(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -3473,7 +3482,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-usd-flag"})
+    return jsonify({"ok": True, "v": "2026-08-16-solo-todas"})
 
 
 @app.get("/pf-diag")
