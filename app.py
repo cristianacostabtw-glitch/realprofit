@@ -1657,16 +1657,18 @@ _SOLO_DASH = r"""
   // Selector de moneda del header (ARS/USD): botón de React con texto "ARS". Lo engancho para alternar y repintar.
   function _curBtn(){ var bs=document.querySelectorAll('button');
     for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\s+/g,'').trim();
-      if((t==='ARS'||t==='USD') && bs[i].offsetParent!==null) return bs[i]; }
+      if(t.length<=10 && /(ARS|USD)$/.test(t) && bs[i].offsetParent!==null) return bs[i]; }
     return null; }
-  function hookCur(){ var b=_curBtn(); if(!b) return; var sp=b.querySelector('span')||b;
+  function _curSpan(b){ if(!b) return null; var sp=b.querySelectorAll('span');
+    for(var i=0;i<sp.length;i++){ var t=(sp[i].textContent||'').trim(); if(t==='ARS'||t==='USD') return sp[i]; } return null; }
+  function hookCur(){ var b=_curBtn(); if(!b) return;
     if(!b.__curHook){ b.__curHook=true;
       b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation();
         window.__CUR=(window.__CUR==='USD')?'ARS':'USD';
-        var s=(_curBtn()||{}).querySelector?_curBtn().querySelector('span'):null; if(s) s.textContent=window.__CUR;
+        var s=_curSpan(_curBtn()); if(s) s.textContent=window.__CUR;
         try{paint();}catch(e){} setTimeout(paint,60); setTimeout(paint,320); }, true); }
-    // mantener el label sincronizado si React lo repinta
-    if(sp && window.__CUR && (sp.textContent==='ARS'||sp.textContent==='USD') && sp.textContent!==window.__CUR) sp.textContent=window.__CUR;
+    var sp=_curSpan(b);   // mantener el label sincronizado si React lo repinta
+    if(sp && window.__CUR && sp.textContent!==window.__CUR) sp.textContent=window.__CUR;
   }
   var _factEl=null;
   function fixFacturacion(){ if(!_raw) return;
@@ -3466,7 +3468,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle"})
+    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle2"})
 
 
 @app.get("/pf-diag")
