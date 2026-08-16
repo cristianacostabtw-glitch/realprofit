@@ -3321,7 +3321,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-paralelo"})
+    return jsonify({"ok": True, "v": "2026-08-15-revert-paralelo"})
 
 
 @app.get("/pf-diag")
@@ -5324,20 +5324,9 @@ def _tn_resumen(email, desde, hasta):
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token") or not tk.get("store_id"):
         return None
-    # Pedidos de TN y pagos de MP EN PARALELO (son independientes) → no se suman los tiempos.
-    import concurrent.futures as _cf
-    with _cf.ThreadPoolExecutor(max_workers=2) as _ex:
-        _fo = _ex.submit(_tn_orders_raw, email, desde, hasta)
-        _fp = _ex.submit(_mp_pagos_lista, email, desde, hasta)
-        try:
-            orders = [o for o in (_fo.result() or []) if not o.get("cancelled_at")]
-        except Exception:
-            orders = []
-        try:
-            pagos = _fp.result()
-        except Exception:
-            pagos = None
+    orders = [o for o in _tn_orders_raw(email, desde, hasta) if not o.get("cancelled_at")]
     costos = (_costos().get(email) or {})
+    pagos = _mp_pagos_lista(email, desde, hasta)
     by_amt = {}
     for p in (pagos or []):
         by_amt.setdefault(p["amount"], []).append(p)
@@ -6543,30 +6532,16 @@ def pf_periodo():
         c = _PF_CACHE.get(key)
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
-        # Bajamos Shopify + Tiendanube + gasto de Meta EN PARALELO (no uno atrás del otro):
-        # el total pasa a ser el más lento, no la suma. Así carga fresco pero rápido.
-        import concurrent.futures as _cf
-        _has_shop = email in _shop_tokens()
-        with _cf.ThreadPoolExecutor(max_workers=3) as _ex:
-            _f_shop = _ex.submit(_shopify_resumen, email, desde, hasta) if _has_shop else None
-            _f_tn = _ex.submit(_tn_resumen, email, desde, hasta)
-            _f_sp = _ex.submit(_meta_spend, email, desde, hasta)
-            try:
-                blob = _f_shop.result() if _f_shop else None
-            except Exception:
-                blob = None
-            try:
-                tn_blob = _f_tn.result()
-            except Exception:
-                tn_blob = None
-            try:
-                spend = _f_sp.result()
-            except Exception:
-                spend = 0
+        blob = None
+        if email in _shop_tokens():
+            blob = _shopify_resumen(email, desde, hasta)
+        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
         if tn_blob:
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
             blob = _blob_vacio()
+        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
+        spend = _meta_spend(email, desde, hasta)
         if spend:
             r = blob["raw"]
             fact = r.get("facturado", 0.0)
