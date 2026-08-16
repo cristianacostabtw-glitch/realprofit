@@ -1603,10 +1603,12 @@ _SOLO_DASH = r"""
       } }catch(e){}
     return p; };
   // Recompras: se piden APARTE (el histórico es pesado y frenaba el dashboard). Se rellenan al llegar.
-  var _recKey='';
-  function pedirRecompras(d,h){ if(!d||!h) return; var k=d+'|'+h; if(k===_recKey) return; _recKey=k;
+  var _recKey='', _recCache={};   // 'desde|hasta' -> {r:cant, f:fact}. Persiste aunque /pf-periodo reemplace _raw (evita el parpadeo 1↔0).
+  function pedirRecompras(d,h){ if(!d||!h) return; var k=d+'|'+h;
+    if(_recCache[k]){ try{paint();}catch(e){} return; }   // ya lo tengo cacheado → paint lo reaplica solo
+    if(k===_recKey) return; _recKey=k;
     fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
-      if(j&&j.ok&&_raw){ _raw.recompras=j.recompras; _raw.fact_recompra=j.fact_recompra; try{paint();}catch(e){} setTimeout(paint,200); }
+      if(j&&j.ok){ _recCache[k]={r:(j.recompras||0), f:(j.fact_recompra||0)}; try{paint();}catch(e){} setTimeout(paint,200); }
     }).catch(function(){ _recKey=''; }); }
   function money(n){ try{ var neg=n<0, a=Math.abs(n), s; if(window.__CUR==='USD'&&window.__RATE){ s=(a/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } else { s=Math.round(a).toLocaleString('es-AR'); } return (neg?'-$':'$')+s; }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
@@ -1620,6 +1622,10 @@ _SOLO_DASH = r"""
     return 'Todas'; }
   function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
   function paint(){ if(!_raw)return;
+    // Recompras se piden aparte y _raw se reemplaza en cada poll de /pf-periodo → reaplico el valor cacheado
+    // ANTES de pintar, así Recompras + Facturación Recompra NO parpadean entre el valor real y 0.
+    var _pk=(_raw.desde||'')+'|'+(_raw.hasta||''), _rc=_recCache[_pk];
+    if(_rc){ _raw.recompras=_rc.r; _raw.fact_recompra=_rc.f; }
     // MercadoLibre no tiene ventas (todo es Shopify) → paso datos en CERO para no pintar los de Shopify.
     var meli=(_canalActivo()==='MercadoLibre'); var save=_raw; if(meli) _raw=_ceroRaw();
     try{ costos4(); }catch(e){}
@@ -3482,7 +3488,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-fix-parpadeo-be-ri"})
+    return jsonify({"ok": True, "v": "2026-08-16-recompras-estable-180d"})
 
 
 @app.get("/pf-diag")
@@ -5242,7 +5248,7 @@ def _tn_hist_orders(email, hasta):
     if c and (_t.time() - c[0] < 600):
         return c[1]
     try:
-        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=90)).isoformat()
+        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=180)).isoformat()
     except Exception:
         d0 = hasta
     hist = []
@@ -5271,7 +5277,7 @@ def _shop_hist_orders(email, hasta):
         return []
     shop, token = tk["shop"], tk["access_token"]
     try:
-        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=90)).isoformat()
+        d0 = (_dt.date.fromisoformat(hasta) - _dt.timedelta(days=180)).isoformat()
     except Exception:
         d0 = hasta
     hist = []
