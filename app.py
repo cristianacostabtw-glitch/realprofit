@@ -352,6 +352,7 @@ _SOLO_DASH = r"""
  </div>
 </div>
 <div id="rp-wa-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0b141a;display:none;overflow:hidden;transition:left .18s ease"><iframe id="rp-wa-frame" title="WhatsApp" style="width:100%;height:100%;border:0;display:block"></iframe></div>
+<div id="rp-mp-switch" style="position:fixed;inset:0;z-index:100003;background:rgba(4,8,14,.74);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpMpSwitchClose()"><div id="rp-mp-switch-box" style="background:#0e1a2e;border:1px solid #243352;border-radius:18px;width:min(560px,96vw);max-height:90vh;overflow:auto;padding:24px;color:#e7eef8"></div></div>
 <div id="rp-prod-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0a111e;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif">
  <div style="max-width:1120px;margin:0 auto;padding:26px 30px 60px">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
@@ -1007,7 +1008,7 @@ _SOLO_DASH = r"""
   PLAT.forEach(function(p){
    var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':'/desconectar-mp'; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else if((p.key==='shopify'&&window._rpTn)||(p.key==='tn'&&window._rpShop)){ var otra=(p.key==='shopify')?'Tiendanube':'Shopify'; right='<span style="display:inline-flex;align-items:center;gap:7px;background:#1c150c;border:1px solid #3d2e14;color:#e0a83b;border-radius:20px;padding:7px 13px;font-size:12px;font-weight:600">&#128274; Ya conectaste '+otra+'</span>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -1186,6 +1187,51 @@ _SOLO_DASH = r"""
      _rpNavActive('rp-wa-nav');
    } else { _rpNavActive(null); }
    o.style.display=open?'block':'none'; };
+ window._rpMpMode='ahora'; window._rpMpDate='';
+ function _rpYmd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+ function _rpShift(n){var d=new Date();d.setDate(d.getDate()+n);return _rpYmd(d);}
+ function _rpFmtD(v){if(!v)return'';var p=(''+v).split('-');return p[2]+'/'+p[1]+'/'+p[0];}
+ window.rpMpSwitchOpen=function(){ window._rpMpMode='ahora'; window._rpMpDate=''; _rpMpRender(); var m=document.getElementById('rp-mp-switch'); if(m)m.style.display='flex'; };
+ window.rpMpSwitchClose=function(){ var m=document.getElementById('rp-mp-switch'); if(m)m.style.display='none'; };
+ window.rpMpMode=function(mm){ window._rpMpMode=mm; if(mm==='fecha'&&!window._rpMpDate)window._rpMpDate=_rpShift(0); _rpMpRender(); };
+ window.rpMpDate=function(v){ window._rpMpDate=v; _rpMpSummary(); };
+ function _rpMpRender(){
+   var box=document.getElementById('rp-mp-switch-box'); if(!box)return;
+   var isF=window._rpMpMode==='fecha';
+   var sb='background:#13203a;border:1px solid #243352;border-radius:13px;padding:15px;margin-bottom:12px';
+   var ob='flex:1;min-width:150px;border:1px solid #243352;border-radius:11px;padding:12px;cursor:pointer;background:#0f1c33;font-size:13px';
+   var os=';border-color:#137fec;box-shadow:inset 0 0 0 1px #137fec;background:rgba(19,127,236,.08)';
+   box.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px"><h3 style="margin:0;font-size:20px">Cambiar de MercadoPago</h3><button onclick="rpMpSwitchClose()" style="background:0;border:0;color:#8ba0bd;font-size:24px;cursor:pointer;line-height:1">&times;</button></div>'
+    +'<p style="color:#8ba0bd;font-size:13px;margin:0 0 18px;line-height:1.5">Pas&aacute;s a una cuenta nueva <b>sin perder tu historial</b>.</p>'
+    +'<div style="'+sb+';border-color:rgba(37,211,102,.4);background:rgba(37,211,102,.06);display:flex;gap:13px"><div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;background:#25D366;color:#052e1c">&#10003;</div><div><div style="font-weight:700;font-size:14.5px;margin-bottom:3px">Guardamos tu historial actual</div><div style="color:#8ba0bd;font-size:12.5px;line-height:1.5">Los pagos hasta el cambio quedan <b style="color:#7CE7A6">congelados</b>. Tu ganancia hist&oacute;rica no se toca. Autom&aacute;tico.</div></div></div>'
+    +'<div style="'+sb+'"><div style="font-weight:700;font-size:14.5px;margin-bottom:10px">&#191;Desde qu&eacute; d&iacute;a usar el MP nuevo?</div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+        +'<div onclick="rpMpMode(\'ahora\')" style="'+ob+(isF?'':os)+'"><b>Ahora mismo</b><div style="color:#8ba0bd;font-size:11.5px;margin-top:2px">Desde este momento</div></div>'
+        +'<div onclick="rpMpMode(\'fecha\')" style="'+ob+(isF?os:'')+'">&#128197; <b>Elegir un d&iacute;a</b><div style="color:#8ba0bd;font-size:11.5px;margin-top:2px">Desde las 00:00 de ese d&iacute;a</div></div>'
+      +'</div>'
+      +(isF?'<div style="margin-top:11px"><label style="font-size:12px;color:#8ba0bd;display:block;margin-bottom:5px;font-weight:600">Costear con el MP nuevo desde las 00:00 del d&iacute;a</label><input type="date" min="'+_rpShift(-3)+'" max="'+_rpShift(90)+'" value="'+(window._rpMpDate||'')+'" onchange="rpMpDate(this.value)" style="background:#0f1c33;border:1px solid #243352;border-radius:9px;padding:11px 12px;color:#e7eef8;font-size:14px"><div style="font-size:11.5px;color:#8ba0bd;margin-top:7px">Hasta <b style="color:#cdd8ea">3 d&iacute;as para atr&aacute;s</b> o una fecha futura.</div></div>':'')
+    +'</div>'
+    +'<div id="rp-mp-summ"></div>'
+    +'<button onclick="rpMpConfirm()" style="width:100%;background:#00b1ea;color:#062230;border:0;border-radius:10px;padding:13px;font-weight:800;font-size:14px;cursor:pointer;margin-top:4px">Congelar y conectar cuenta nueva</button>';
+   _rpMpSummary();
+ }
+ function _rpMpSummary(){
+   var s=document.getElementById('rp-mp-summ'); if(!s)return;
+   var cuando=window._rpMpMode==='ahora'?'desde <b>este momento</b>':(window._rpMpDate?'desde las <b style="color:#25D366">00:00 del '+_rpFmtD(window._rpMpDate)+'</b>':'desde la fecha que elijas');
+   var warn=(window._rpMpMode==='fecha'&&!window._rpMpDate)?'<div style="font-size:12px;color:#f5b74e;margin-top:8px">&#9888; Eleg&iacute; una fecha.</div>':'';
+   s.innerHTML='<div style="background:#0c1526;border:1px dashed #2c3d5e;border-radius:12px;padding:14px;font-size:13px;color:#cdd8ea;line-height:1.6;margin:6px 0 16px">Todo lo <b>anterior</b> queda con el MP viejo (<b>congelado</b> &#9989;). De ah&iacute; en adelante &mdash; '+cuando+' &mdash; se costea con el <b>MP nuevo</b>.'+warn+'</div>';
+ }
+ window.rpMpConfirm=function(){
+   var fecha=window._rpMpMode==='ahora'?_rpShift(0):window._rpMpDate;
+   if(!fecha){ _rpMpSummary(); return; }
+   var box=document.getElementById('rp-mp-switch-box');
+   box.innerHTML='<div style="text-align:center;padding:34px;color:#8ba0bd;font-size:14px">Guardando tu historial y preparando el cambio&hellip;</div>';
+   fetch('/pf-cambiar-mp?fecha='+encodeURIComponent(fecha),{method:'POST'}).then(function(r){return r.json();}).then(function(j){
+     if(!j.ok){ _rpMpRender(); alert('No se pudo: '+(j.error||'error')); return; }
+     box.innerHTML='<div style="text-align:center;padding:20px 10px"><div style="width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#052e1c;font-size:30px">&#10003;</div><div style="font-size:18px;font-weight:800;margin-bottom:6px">Historial guardado ('+j.pagos+' pagos)</div><div style="color:#8ba0bd;font-size:13.5px;line-height:1.6;max-width:410px;margin:0 auto 20px">Congelado hasta el <b style="color:#e7eef8">'+_rpFmtD(j.congelado_hasta)+'</b>. Ahora conect&aacute; la cuenta NUEVA de MercadoPago.</div><a href="/conectar-mp" style="display:inline-block;background:#00b1ea;color:#062230;border-radius:10px;padding:13px 22px;font-weight:800;text-decoration:none">Conectar cuenta nueva &#8594;</a></div>';
+   }).catch(function(){ _rpMpRender(); alert('Error de conexi&oacute;n'); });
+ };
  window.rpDLoad=function(){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
    _dStat('Trayendo pedidos de tu tienda…','#38bdf8');
    var qs=[]; if(_dDesde)qs.push('desde='+_dDesde); if(_dHasta)qs.push('hasta='+_dHasta);
@@ -2412,6 +2458,51 @@ def _mp_freeze_slice(fr, desde, tope):
     return [p for p in fr if desde <= (p.get("date_approved") or "")[:10] <= tope]
 
 
+MP_SWITCH_FILE = DATA_DIR / "mp_switch.json"   # {email: "YYYY-MM-DD"} → desde ese día (00:00) se usa el MP NUEVO
+_MP_SWITCH_CACHE = None
+
+
+def _mp_switch() -> dict:
+    global _MP_SWITCH_CACHE
+    if _MP_SWITCH_CACHE is None:
+        try:
+            _MP_SWITCH_CACHE = _json.loads(MP_SWITCH_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            _MP_SWITCH_CACHE = {}
+    return _MP_SWITCH_CACHE
+
+
+def _mp_save_switch(d):
+    global _MP_SWITCH_CACHE
+    _MP_SWITCH_CACHE = d
+    MP_SWITCH_FILE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _dia_post(s):
+    try:
+        return (_dt.date.fromisoformat(s) + _dt.timedelta(days=1)).isoformat()
+    except Exception:
+        return s
+
+
+def _dia_ant(s):
+    try:
+        return (_dt.date.fromisoformat(s) - _dt.timedelta(days=1)).isoformat()
+    except Exception:
+        return s
+
+
+def _mp_freeze_end(email):
+    """Último día (inclusive) que se sirve del congelado para este email. None si no hay congelado.
+    Si hay una fecha de cambio de MP guardada → el congelado cubre hasta el día ANTERIOR a esa fecha."""
+    sw = _mp_switch().get(email)
+    if sw:
+        return _dia_ant(sw)
+    if _mp_freeze_all().get(email):
+        return FREEZE_END
+    return None
+
+
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
 IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
 ENVIO_DOMICILIO = 8270  # promedio REAL de 50 envíos a domicilio (Andreani, total pagado ÷ 50)
@@ -2553,9 +2644,10 @@ def _mp_costos(email, desde, hasta):
         return c[1]
     # Histórico (<= FREEZE_END) del congelado; nuevo (> FREEZE_END) en vivo desde MP.
     if fr:
-        _live_ini = _DIA_POST_FREEZE if desde <= FREEZE_END else desde
-        _run_live = hasta > FREEZE_END
-        _frozen = _mp_freeze_slice(fr, desde, min(hasta, FREEZE_END))
+        _fe = _mp_freeze_end(email) or FREEZE_END
+        _live_ini = _dia_post(_fe) if desde <= _fe else desde
+        _run_live = hasta > _fe
+        _frozen = _mp_freeze_slice(fr, desde, min(hasta, _fe))
     else:
         _live_ini = desde; _run_live = True; _frozen = []
     ini = _live_ini + "T00:00:00.000-03:00"
@@ -2689,6 +2781,81 @@ def pf_congelar_mp():
     except Exception:
         pass
     return jsonify({"ok": True, "email": email, "pagos": len(guardados), "hasta": hasta})
+
+
+@app.post("/pf-cambiar-mp")
+def pf_cambiar_mp():
+    """Cambio de cuenta de MercadoPago. Congela el histórico de la cuenta ACTUAL hasta el día
+    ANTERIOR a ?fecha y guarda la fecha de switch. Desde las 00:00 de ?fecha se costea con el MP
+    nuevo. Después el frontend redirige al OAuth (/conectar-mp) para conectar la cuenta nueva."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "sin sesión"})
+    token = (_mp_tokens().get(email) or {}).get("access_token")
+    if not token:
+        return jsonify({"ok": False, "error": "No hay un MercadoPago conectado para congelar."})
+    fecha = (request.args.get("fecha") or request.form.get("fecha") or "").strip()
+    try:
+        fd = _dt.date.fromisoformat(fecha)
+    except Exception:
+        return jsonify({"ok": False, "error": "Elegí una fecha válida."})
+    hoy = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date()
+    if fd < hoy - _dt.timedelta(days=3):
+        return jsonify({"ok": False, "error": "La fecha no puede ser más de 3 días para atrás."})
+    if fd > hoy + _dt.timedelta(days=90):
+        return jsonify({"ok": False, "error": "La fecha es demasiado lejana."})
+    hasta = _dia_ant(fecha)   # el congelado cubre hasta el día anterior a la fecha de switch
+    fin = hasta + "T23:59:59.999-03:00"
+    guardados, offset = [], 0
+    try:
+        while True:
+            r = requests.get("https://api.mercadopago.com/v1/payments/search",
+                             headers={"Authorization": "Bearer " + token},
+                             params={"sort": "date_approved", "criteria": "asc", "range": "date_approved",
+                                     "begin_date": "2020-01-01T00:00:00.000-03:00", "end_date": fin,
+                                     "status": "approved", "offset": offset, "limit": 100}, timeout=45)
+            if r.status_code >= 400:
+                return jsonify({"ok": False, "error": "MP HTTP %s" % r.status_code})
+            data = r.json(); res = data.get("results") or []
+            for p in res:
+                det = p.get("transaction_details") or {}
+                guardados.append({
+                    "date_approved": p.get("date_approved"),
+                    "transaction_amount": p.get("transaction_amount"),
+                    "transaction_details": {"net_received_amount": det.get("net_received_amount")},
+                    "fee_details": [{"type": f.get("type"), "amount": f.get("amount")} for f in (p.get("fee_details") or [])],
+                    "installments": p.get("installments"),
+                    "external_reference": p.get("external_reference"),
+                    "payment_method_id": p.get("payment_method_id"),
+                    "payment_type_id": p.get("payment_type_id"),
+                })
+            offset += 100
+            if offset >= (data.get("paging") or {}).get("total", 0) or not res:
+                break
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:140]})
+    global _MP_FREEZE_CACHE
+    allf = _mp_freeze_all(); allf[email] = guardados; _MP_FREEZE_CACHE = allf
+    try:
+        _MP_FREEZE_FILE.write_text(_json.dumps(allf, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        return jsonify({"ok": False, "error": "no se pudo guardar: %s" % str(e)[:100]})
+    sw = _mp_switch(); sw[email] = fecha; _mp_save_switch(sw)
+    _MP_COST_CACHE.clear()
+    try:
+        _MP_LISTA_CACHE.clear()
+    except Exception:
+        pass
+    return jsonify({"ok": True, "email": email, "pagos": len(guardados), "fecha": fecha, "congelado_hasta": hasta})
+
+
+@app.get("/pf-cambio-mp-estado")
+def pf_cambio_mp_estado():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    return jsonify({"ok": True, "switch": _mp_switch().get(email, ""),
+                    "conectado": bool((_mp_tokens().get(email) or {}).get("access_token"))})
 
 
 @app.get("/pf-congelado-estado")
@@ -3141,7 +3308,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-15-wa-panel"})
+    return jsonify({"ok": True, "v": "2026-08-15-cambiar-mp"})
 
 
 @app.get("/pf-diag")
@@ -4771,9 +4938,10 @@ def _mp_pagos_lista(email, desde, hasta):
         h2 = hasta
     # Histórico (<= FREEZE_END) del congelado; nuevo (> FREEZE_END) en vivo desde MP.
     if fr:
-        _live_ini = _DIA_POST_FREEZE if desde <= FREEZE_END else desde
-        _run_live = hasta > FREEZE_END
-        _frozen = _mp_freeze_slice(fr, desde, min(h2, FREEZE_END))
+        _fe = _mp_freeze_end(email) or FREEZE_END
+        _live_ini = _dia_post(_fe) if desde <= _fe else desde
+        _run_live = hasta > _fe
+        _frozen = _mp_freeze_slice(fr, desde, min(h2, _fe))
     else:
         _live_ini = desde; _run_live = True; _frozen = []
     ini = _live_ini + "T00:00:00.000-03:00"
