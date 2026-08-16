@@ -1599,7 +1599,7 @@ _SOLO_DASH = r"""
     try{ var u=(args[0]&&args[0].url)||args[0];
       if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
         p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
-          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
+          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS'; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
       } }catch(e){}
     return p; };
   // Recompras: se piden APARTE (el histórico es pesado y frenaba el dashboard). Se rellenan al llegar.
@@ -1608,7 +1608,7 @@ _SOLO_DASH = r"""
     fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
       if(j&&j.ok&&_raw){ _raw.recompras=j.recompras; _raw.fact_recompra=j.fact_recompra; try{paint();}catch(e){} setTimeout(paint,200); }
     }).catch(function(){ _recKey=''; }); }
-  function money(n){ try{ return '$'+Math.round(n).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n); } }
+  function money(n){ try{ if(window.__CUR==='USD'&&window.__RATE){ return '$'+(n/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } return '$'+Math.round(n).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
     for(var i=0;i<all.length;i++){ if((all[i].textContent||'').trim()===label){ var box=all[i].parentElement; if(!box)continue;
       var v=box.nextElementSibling; while(v && !(/font-bold/.test(v.className||''))) v=v.nextElementSibling;
@@ -1625,7 +1625,9 @@ _SOLO_DASH = r"""
     try{ costos4(); }catch(e){}
     try{ metricas(); }catch(e){}
     _raw=save;
-    try{ fixFacturacion(); }catch(e){} }
+    try{ fixFacturacion(); }catch(e){}
+    try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
+    try{ hookCur(); }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
@@ -1641,6 +1643,31 @@ _SOLO_DASH = r"""
       for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
         if(/^\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
     return null; }
+  // Encuentra el monto ($...) de una tarjeta KPI por el final de su etiqueta (ej 'ganancia','ticket prom') y lo setea.
+  function _fixLeaf(suf, val){ suf=suf.toLowerCase(); var all=document.querySelectorAll('span,p,div');
+    for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
+      if(tx.length>22 || tx.toLowerCase().slice(-suf.length)!==suf) continue;
+      if(e.offsetParent===null) continue;
+      var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
+      if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
+      var dvs=card.querySelectorAll('span,div');
+      for(var q=0;q<dvs.length;q++){ if(dvs[q].children.length===0){ var vt=(dvs[q].textContent||'').trim();
+        if(/^\$\s?-?[\d.,]+$/.test(vt)){ if(dvs[q].textContent!==val) dvs[q].textContent=val; return; } } } }
+  }
+  // Selector de moneda del header (ARS/USD): botón de React con texto "ARS". Lo engancho para alternar y repintar.
+  function _curBtn(){ var bs=document.querySelectorAll('button');
+    for(var i=0;i<bs.length;i++){ var t=(bs[i].textContent||'').replace(/\s+/g,'').trim();
+      if((t==='ARS'||t==='USD') && bs[i].offsetParent!==null) return bs[i]; }
+    return null; }
+  function hookCur(){ var b=_curBtn(); if(!b) return; var sp=b.querySelector('span')||b;
+    if(!b.__curHook){ b.__curHook=true;
+      b.addEventListener('click', function(ev){ ev.preventDefault(); ev.stopPropagation();
+        window.__CUR=(window.__CUR==='USD')?'ARS':'USD';
+        var s=(_curBtn()||{}).querySelector?_curBtn().querySelector('span'):null; if(s) s.textContent=window.__CUR;
+        try{paint();}catch(e){} setTimeout(paint,60); setTimeout(paint,320); }, true); }
+    // mantener el label sincronizado si React lo repinta
+    if(sp && window.__CUR && (sp.textContent==='ARS'||sp.textContent==='USD') && sp.textContent!==window.__CUR) sp.textContent=window.__CUR;
+  }
   var _factEl=null;
   function fixFacturacion(){ if(!_raw) return;
     if(_canalActivo()==='MercadoLibre') return;   // canal sin ventas → dejar el $0 nativo, no forzar
@@ -1740,7 +1767,7 @@ _SOLO_DASH = r"""
     var ps=card.querySelectorAll('p'); if(ps.length){ var p=ps[ps.length-1]; if(p.textContent!==sub) p.textContent=sub; } }
   // ===== Modal de detalle de orden (al tocar una fila de "Últimas ventas") =====
   function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function fmt(n){ try{ return '$'+Math.round(n||0).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n||0); } }
+  function fmt(n){ try{ if(window.__CUR==='USD'&&window.__RATE){ return '$'+((n||0)/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } return '$'+Math.round(n||0).toLocaleString('es-AR'); }catch(e){ return '$'+Math.round(n||0); } }
   function fechaTxt(f){ try{ var d=new Date(f); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return f||''; } }
   window.cerrarOrden=function(){ var ov=document.getElementById('rp-orden-ov'); if(ov) ov.style.display='none'; };
   var _ordCache={};   // num -> orden ya traída (reabrir es instantáneo)
@@ -1922,7 +1949,7 @@ _SOLO_DASH = r"""
   function _esFuera(t){ for(var j=0;j<_SECFUERA.length;j++){ if(t.indexOf(_SECFUERA[j])>=0) return true; } return false; }
   function sacarSecciones(){ var g=document.querySelectorAll('div.group.pt-3');
     for(var i=0;i<g.length;i++){ if(_esFuera(g[i].textContent||'') && !g[i].classList.contains('rp-oculto')) g[i].classList.add('rp-oculto'); } }
-  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
+  function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} try{ hookCur(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
@@ -3439,7 +3466,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-iva-121-envzonas-comis"})
+    return jsonify({"ok": True, "v": "2026-08-16-usd-toggle"})
 
 
 @app.get("/pf-diag")
@@ -6664,6 +6691,10 @@ def pf_periodo():
             blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
         except Exception:
             pass
+        try:
+            blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
+        except Exception:
+            blob["raw"]["dolar"] = 1200
         # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
         spend = _meta_spend(email, desde, hasta)
         if spend:
