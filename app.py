@@ -1685,27 +1685,32 @@ _SOLO_DASH = r"""
     ];
     for(var s=0;s<slots.length;s++){ var card=cardByAny(slots[s][0]);
       if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } }
-    // === IVA (Responsable Inscripto): 3 KPIs debajo de los 4 de Costos ===
+    // === IVA (Responsable Inscripto): fila propia de 3 KPIs debajo de la grilla de Costos ===
     var _ivaOld=document.getElementById('rp-iva3'); if(_ivaOld) _ivaOld.remove();
-    var _ref=cardByAny(['Costo producto','Productos']);
-    if(_ref && _ref.parentElement){
-      var _grid=_ref.parentElement, _F=0.21/1.21, _fact=_raw.facturado||0;
-      var _ivaDeb=_fact*_F;
-      var _baseCred=(_raw.costo_prod||0)+(_raw.envio_monto||0)+(_raw.mp_costo_real||0)+(_raw.tienda_monto||0);
-      var _ivaCred=_baseCred*_F, _ivaPag=_ivaDeb-_ivaCred;
-      var _wrap=document.createElement('div'); _wrap.id='rp-iva3'; _wrap.className=_grid.className; _wrap.style.marginTop='14px';
-      var _ivas=[['IVA Total','IVA de la facturación (21% contenido)',_ivaDeb,'#fbbf24','percent'],
-                 ['IVA a favor','Crédito: producto + envío + comisiones',_ivaCred,'#34d399','savings'],
-                 ['IVA a pagar','Total menos el IVA a favor',_ivaPag,'#fb7185','account_balance_wallet']];
-      for(var _i=0;_i<_ivas.length;_i++){
-        var _cl=_ref.cloneNode(true); _cl.style.display='';
-        setCard(_cl, _ivas[_i][0], money(_ivas[_i][2]||0), _ivas[_i][1]);
-        var _dv=_cl.querySelectorAll('div');
-        for(var _d=0;_d<_dv.length;_d++){ var _cd=_dv[_d].className||''; if(/font-bold/.test(_cd)&&/(text-2xl|text-xl)/.test(_cd)){ _dv[_d].style.color=_ivas[_i][3]; break; } }
-        var _ic=_cl.querySelector('.material-symbols-outlined'); if(_ic) _ic.textContent=_ivas[_i][4];
-        _wrap.appendChild(_cl);
+    var _pc=cardByAny(['Costo producto','Productos']);
+    if(_pc){
+      var _grid=_pc; for(var _g=0;_g<6 && _grid;_g++){ _grid=_grid.parentElement; if(_grid && /grid/.test(_grid.className||'')) break; }
+      if(_grid && /grid/.test(_grid.className||'')){
+        var _F=0.21/1.21, _fact=_raw.facturado||0, _ivaDeb=_fact*_F;
+        var _baseCred=(_raw.costo_prod||0)+(_raw.envio_monto||0)+(_raw.mp_costo_real||0)+(_raw.tienda_monto||0);
+        var _ivaCred=_baseCred*_F, _ivaPag=_ivaDeb-_ivaCred;
+        var _row=document.createElement('div'); _row.id='rp-iva3';
+        _row.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px';
+        var _cards=[['IVA TOTAL',_ivaDeb,'#fbbf24','IVA de la facturación (21% contenido)','percent'],
+                    ['IVA A FAVOR',_ivaCred,'#34d399','Crédito: producto + envío + comisiones','savings'],
+                    ['IVA A PAGAR',_ivaPag,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
+        for(var _i=0;_i<3;_i++){ var C=_cards[_i];
+          var _c=document.createElement('div');
+          _c.style.cssText='background:#0e1521;border:1px solid #1a2333;border-radius:16px;padding:16px 18px;display:flex;flex-direction:column';
+          _c.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between">'
+            +'<span class="material-symbols-outlined" style="width:32px;height:32px;border-radius:9px;background:#161f2e;color:'+C[2]+';display:flex;align-items:center;justify-content:center;font-size:18px">'+C[4]+'</span>'
+            +'<span style="color:#8493a8;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">'+C[0]+'</span></div>'
+            +'<div style="font-size:24px;font-weight:800;color:'+C[2]+';margin-top:12px;letter-spacing:-.5px">'+money(C[1]||0)+'</div>'
+            +'<div style="color:#8493a8;font-size:11.5px;margin-top:5px;line-height:1.35">'+C[3]+'</div>';
+          _row.appendChild(_c);
+        }
+        _grid.parentElement.insertBefore(_row, _grid.nextSibling);
       }
-      _grid.parentElement.insertBefore(_wrap, _grid.nextSibling);
     } }
   function setCard(card,label,val,sub){
     var sps=card.querySelectorAll('span'), lab=null;
@@ -3416,7 +3421,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-iva-kpis"})
+    return jsonify({"ok": True, "v": "2026-08-16-iva-kpis-fila"})
 
 
 @app.get("/pf-diag")
