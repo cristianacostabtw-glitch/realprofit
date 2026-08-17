@@ -3488,7 +3488,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-recompras-estable-180d"})
+    return jsonify({"ok": True, "v": "2026-08-16-wa-noleidos-badge"})
 
 
 @app.get("/pf-diag")
@@ -7653,10 +7653,11 @@ function renderApp(){
 }
 function loadChats(){
  get('/wa-chats').then(function(r){
-  if(!r.ok)return; CHATS=r.chats||[]; renderList();
+  if(!r.ok)return; CHATS=r.chats||[]; renderList(); updateTitle();
   if(SEL){ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0]; if(c)renderConv(c); }
  });
 }
+function updateTitle(){ var n=0; CHATS.forEach(function(c){ n+=(c.unread||0); }); document.title=(n>0?'('+n+') ':'')+'WhatsApp \\u2014 RealProfit'; }
 function renderList(){
  var q=(val('q')||'').toLowerCase();
  var box=document.getElementById('chats'); if(!box)return;
@@ -7666,10 +7667,10 @@ function renderList(){
   return '<div class="chat'+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
-   +'<div class="lt">'+esc(c.last||'')+'</div></div></div>';
+   +'<div class="lt">'+esc(c.last||'')+(c.unread>0?'<span style="float:right;background:#25D366;color:#fff;border-radius:11px;min-width:20px;height:20px;line-height:20px;text-align:center;font-size:12px;font-weight:700;padding:0 6px">'+c.unread+'</span>':'')+'</div></div></div>';
  }).join('');
 }
-function openChat(wid){ SEL=wid; var c=CHATS.filter(function(x){return x.wa_id==wid;})[0]; if(c)renderConv(c); renderList(); }
+function openChat(wid){ SEL=wid; var c=CHATS.filter(function(x){return x.wa_id==wid;})[0]; if(c){ c.unread=0; try{post('/wa-leido',{wa_id:wid});}catch(e){} renderConv(c); } renderList(); updateTitle(); }
 function lastInboundMins(c){
  var last=null; (c.messages||[]).forEach(function(m){ if(m.dir=='in')last=m.ts; });
  if(!last)return 99999;
@@ -7927,6 +7928,7 @@ def wa_webhook():
                     if media:
                         msg["media_id"] = media["id"]; msg["mime"] = media["mime"]; msg["filename"] = media["filename"]
                     conv["messages"].append(msg)
+                    conv["unread"] = conv.get("unread", 0) + 1   # contador de no leídos (badge 1/2/3)
                     conv["updated"] = _wa_now(); changed = True
                 for s in (val.get("statuses") or []):
                     sid = s.get("id"); st = s.get("status")
@@ -7958,9 +7960,25 @@ def wa_chats():
         last = msgs[-1] if msgs else {}
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
+                    "unread": conv.get("unread", 0),
                     "messages": msgs[-300:]})
     out.sort(key=lambda x: x.get("ts", ""), reverse=True)
     return jsonify({"ok": True, "chats": out})
+
+
+@app.post("/wa-leido")
+def wa_leido():
+    """Marca un chat como leído (pone unread=0). Lo llama la UI al abrir la conversación."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    wid = (request.form.get("wa_id") or "").strip()
+    chats = _wa_chats_all()
+    conv = (chats.get(email) or {}).get(wid)
+    if conv and conv.get("unread"):
+        conv["unread"] = 0
+        _wa_save_chats(chats)
+    return jsonify({"ok": True})
 
 
 @app.post("/wa-enviar")
