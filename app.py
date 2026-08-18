@@ -3499,7 +3499,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-17-drive-descarga-paralela"})
+    return jsonify({"ok": True, "v": "2026-08-17-drive-stream-timeout"})
 
 
 @app.get("/pf-diag")
@@ -6363,7 +6363,7 @@ def _ads_drive_listar(link):
              "mb": round(int(f.get("size") or 0) / 1048576) if f.get("size") else 0} for f in vids]
 
 
-def _ads_drive_bajar(link, dest_dir):
+def _ads_drive_bajar(link, dest_dir, on_prog=None):
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseDownload
     svc = build("drive", "v3", credentials=_ads_google_creds())
@@ -6374,20 +6374,28 @@ def _ads_drive_bajar(link, dest_dir):
     vids = [f for f in files if "video" in (f.get("mimeType") or "") or "image" in (f.get("mimeType") or "")
             or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"))]
     vids.sort(key=lambda f: f.get("name", ""))
-    # Bajar EN PARALELO (antes era de a uno = lentísimo con varios videos grandes).
+    # Descarga EN PARALELO por HTTP directo (streaming) — rápido y CON TIMEOUT para que NUNCA se cuelgue.
     import concurrent.futures as _cf
+    from google.auth.transport.requests import AuthorizedSession
     creds = _ads_google_creds()
+    _dl = {"n": 0}
+    _lk = threading.Lock()
 
     def _bajar_uno(f):
-        # cada thread arma su PROPIO service (googleapiclient no es thread-safe)
-        s = build("drive", "v3", credentials=creds)
+        sess = AuthorizedSession(creds)     # sesión propia por thread
         p = _os.path.join(dest_dir, f["name"])
-        req = s.files().get_media(fileId=f["id"])
-        with open(p, "wb") as fh:
-            dl = MediaIoBaseDownload(fh, req, chunksize=1024 * 1024 * 32)   # chunks grandes = menos round-trips
-            done = False
-            while not done:
-                _, done = dl.next_chunk()
+        url = "https://www.googleapis.com/drive/v3/files/%s?alt=media&supportsAllDrives=true" % f["id"]
+        # timeout=(conexión 15s, lectura 90s): si Google/Render se cuelga, TIRA ERROR en vez de quedar colgado
+        with sess.get(url, stream=True, timeout=(15, 90)) as r:
+            r.raise_for_status()
+            with open(p, "wb") as fh:
+                for chunk in r.iter_content(chunk_size=1024 * 1024 * 8):
+                    if chunk:
+                        fh.write(chunk)
+        with _lk:
+            _dl["n"] += 1
+            if on_prog:
+                on_prog(_dl["n"], len(vids))
         return p
 
     out = [None] * len(vids)
@@ -6433,7 +6441,8 @@ def _ads_run(job, params):
                 raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
         else:
             st["msg"] = "Bajando videos de Drive…"
-            rutas = _ads_drive_bajar(params.get("drive", ""), tmp)
+            rutas = _ads_drive_bajar(params.get("drive", ""), tmp,
+                                     on_prog=lambda k, t: st.update({"msg": "Bajando videos… %d/%d" % (k, t)}))
             if not rutas:
                 raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
         st["total"] = len(rutas) * 2 + 1 + n_conj
@@ -6565,6 +6574,27 @@ def pf_ads_diag():
     except Exception as e:
         out["crear_en_va1"] = "❌ FALLA: " + str(e)
     return jsonify(out)
+
+
+@app.get("/pf-ads-drive-test")
+def pf_ads_drive_test():
+    """Mide cuánto tarda en bajar los videos de un link de Drive (sin crear ads)."""
+    if not _user_actual():
+        return jsonify({"ok": False, "msg": "login"})
+    import tempfile, shutil, time as _t
+    link = request.args.get("link", "")
+    tmp = tempfile.mkdtemp(prefix="dltest_")
+    t0 = _t.time()
+    try:
+        rutas = _ads_drive_bajar(link, tmp)
+        dt = _t.time() - t0
+        mb = sum(_os.path.getsize(p) for p in rutas) / 1048576
+        return jsonify({"ok": True, "videos": len(rutas), "mb": round(mb, 1),
+                        "segundos": round(dt, 1), "mb_por_seg": round(mb / dt, 1) if dt else 0})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "segundos": round(_t.time() - t0, 1)})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 @app.get("/pf-ads-identidad")
