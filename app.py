@@ -3499,7 +3499,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-17-drive-stream-timeout"})
+    return jsonify({"ok": True, "v": "2026-08-18-ads-activos-sin-mejoras"})
 
 
 @app.get("/pf-diag")
@@ -6296,7 +6296,9 @@ def _ads_creative_payload(nombre, medio, cfg, ad):
     if cfg.get("ig"):
         oss["instagram_user_id"] = cfg["ig"]
     return {"name": nombre, "object_story_spec": oss,
-            "degrees_of_freedom_spec": {"creative_features_spec": {"site_extensions": {"enroll_status": "OPT_OUT"}}}}
+            "degrees_of_freedom_spec": {"creative_features_spec": {
+                "site_extensions": {"enroll_status": "OPT_OUT"},
+                "standard_enhancements": {"enroll_status": "OPT_OUT"}}}}
 
 
 def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None):
@@ -6424,7 +6426,9 @@ def _ads_run(job, params):
         cbo = (params.get("tipo") or "cbo") != "abo"
         presup = int(params.get("presupuesto") or cfg["presupuesto"])
         n_conj = max(1, min(20, int(params.get("conjuntos") or 1)))
-        estado = "ACTIVE" if params.get("estado") == "activa" else "PAUSED"
+        # Por defecto ACTIVA+programada: solo queda en PAUSA si el usuario elige explícitamente "pausada".
+        # (Antes, cualquier cosa que no fuera exactamente "activa" salía en pausa → los ads salían apagados.)
+        estado = "PAUSED" if params.get("estado") == "pausada" else "ACTIVE"
         angulo = (params.get("angulo") or "VARIOS").strip()
         ad = {"copy": (params.get("copy") or "").strip(), "titulo": (params.get("titulo") or "").strip(),
               "subtitulo": (params.get("subtitulo") or "").strip(), "url": (params.get("url") or "").strip()}
