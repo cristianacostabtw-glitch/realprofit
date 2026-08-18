@@ -2306,7 +2306,7 @@ _SOLO_DASH = r"""
   <div>
    <div class="card">
     <div class="ch"><div class="cn">1</div><div class="ct">Cuenta e identidad</div></div>
-    <div style="background:rgba(19,127,236,.1);border:1px solid #1e4f8a;border-radius:10px;padding:10px 13px;font-size:13px;font-weight:700;color:#bcd7f7;margin-bottom:12px">CP1 &mdash; NoxaLab &middot; CUENTA 1</div>
+    <select class="in" id="rpa-cuenta" onchange="rpaCuentaChange()" style="margin-bottom:12px;font-weight:700"></select>
     <div class="row"><div><span class="lb">P&aacute;gina</span><select class="in" id="rpa-page"></select></div>
      <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
     <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select></div>
@@ -2389,15 +2389,25 @@ _SOLO_DASH = r"""
  var _inited=false;
  function rpaInit(){ var d=new Date();d.setDate(d.getDate()+1);$('rpa-fecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
   $('rpa-fecha').addEventListener('change',rpaCalc);$('rpa-hora').addEventListener('change',rpaCalc);
-  fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){if(j&&j.cuentas&&j.cuentas[0]){var c0=j.cuentas[0];$('rpa-copy').value=c0.copy||'';if(!$('rpa-titulo').value)$('rpa-titulo').value=c0.titulo||'';if(!$('rpa-sub').value)$('rpa-sub').value=c0.subtitulo||'';}});
-  fetch('/pf-ads-identidad?cuenta=cp1').then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
+  fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){
+   var cs=(j&&j.cuentas)||[]; window._ADSCTAS=cs;
+   $('rpa-cuenta').innerHTML=opt(cs.map(function(c){return {v:c.key,t:c.nombre};}));
+   if(cs.length){ $('rpa-cuenta').value=cs[0].key; rpaCuentaChange(); }
+  });
+  rpaCalc();}
+ window.rpaCuentaChange=function(){
+  var k=($('rpa-cuenta')||{}).value||'cp1';
+  var c=(window._ADSCTAS||[]).filter(function(x){return x.key==k;})[0]||{};
+  $('rpa-copy').value=c.copy||''; if(c.titulo)$('rpa-titulo').value=c.titulo; if(c.subtitulo)$('rpa-sub').value=c.subtitulo;
+  if(c.presupuesto)$('rpa-presup').value=c.presupuesto; if(c.landing)$('rpa-url').value=c.landing;
+  fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
    $('rpa-pixel').innerHTML=opt(j.pixels.map(function(p){return {v:p.id,t:p.name};}));
    if(j.def){if(j.def.page)$('rpa-page').value=j.def.page;if(j.def.pixel)$('rpa-pixel').value=j.def.pixel;$('rpa-ig').value=j.def.ig||'';}});
-  fetch('/pf-ads-campanas?cuenta=cp1').then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
+  fetch('/pf-ads-campanas?cuenta='+k).then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
    $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
-  rpaCalc();}
+  rpaCalc();};
  window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');rpaCalc();};
  window.rpaCmp=function(m){CMP=m;$('rpa-cn').classList.toggle('on',m=='nueva');$('rpa-ce').classList.toggle('on',m=='exist');
   $('rpa-boxn').style.display=m=='nueva'?'block':'none';$('rpa-boxe').style.display=m=='exist'?'block':'none';
@@ -2434,8 +2444,9 @@ _SOLO_DASH = r"""
    $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class=\"vitem\"><div class=\"vi\">\u2713</div><div style=\"flex:1;color:#e2e8f0;font-weight:600\">'+v.name+'</div><div style=\"color:#5b6678;font-size:11px\">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style=\"color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px\">\u2705 '+VIDS+' creativos subidos.</div>';rpaCalc();
   }).catch(function(){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">error subiendo (probá de nuevo)</div>';VIDS=0;UPLOAD_ID='';rpaCalc();});};
  function schedTxt(){var f=$('rpa-fecha').value,h=$('rpa-hora').value||'05:00';if(!f)return h;var p=f.split('-');return p[2]+'/'+p[1]+' '+h;}
+ function _fechaCamp(){var f=($('rpa-fecha')||{}).value;if(f){var q=f.split('-');return parseInt(q[2],10)+'-'+parseInt(q[1],10);}var d=new Date();d.setDate(d.getDate()+1);return d.getDate()+'-'+(d.getMonth()+1);}
  window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
-  var cmpName=CMP=='nueva'?(( new Date().getDate())+'-'+(new Date().getMonth()+1)+' '+ang):((CMPS.find(function(c){return c.id==$('rpa-cmp').value;})||{}).name||'(existente)');
+  var cmpName=CMP=='nueva'?(_fechaCamp()+' '+ang):((CMPS.find(function(c){return c.id==$('rpa-cmp').value;})||{}).name||'(existente)');
   $('rpa-rcmp').textContent=cmpName;
   $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO':'ABO')+' $'+p);
   $('rpa-rconj').textContent=(CMP=='exist'&&CJ=='usar')?'usar 1':NCONJ;
@@ -2443,7 +2454,7 @@ _SOLO_DASH = r"""
   $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
   $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(VIDS*NCONJ);};
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
-  var body={cuenta:'cp1',drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
+  var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
@@ -3488,7 +3499,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-16-wa-noleidos-badge"})
+    return jsonify({"ok": True, "v": "2026-08-17-subidor-cuenta-selector-fecha"})
 
 
 @app.get("/pf-diag")
@@ -6443,7 +6454,15 @@ def _ads_run(job, params):
         # campaña
         st["done"] = len(rutas) * 2; st["msg"] = "Creando campaña…"
         now = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
-        fecha = "%d-%d" % (now.day, now.month)
+        # La fecha del NOMBRE = el día en que ARRANCA la campaña (5am), NO la de hoy: si el usuario
+        # eligió fecha, esa; si no, mañana (porque ya pasaron las 5am de hoy). Igual que _ads_start_5am.
+        _fsel = (params.get("fecha") or "").strip()
+        try:
+            _fd = (_dt.date.fromisoformat(_fsel) if _fsel else
+                   (now.date() if now.hour < 5 else (now + _dt.timedelta(days=1)).date()))
+        except Exception:
+            _fd = now.date() if now.hour < 5 else (now + _dt.timedelta(days=1)).date()
+        fecha = "%d-%d" % (_fd.day, _fd.month)
         if params.get("modo_campana") == "existente" and params.get("campaign_id"):
             campaign_id = params["campaign_id"]
         else:
@@ -6504,7 +6523,7 @@ def pf_ads_cuentas():
         except Exception:
             accesibles = set()
     cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
-           "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", "")}
+           "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""), "landing": v.get("landing", "")}
           for k, v in _ADS_CUENTAS.items()
           if (not accesibles) or str(v["ad_account"]) in accesibles]   # solo las que el token puede usar
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok)})
