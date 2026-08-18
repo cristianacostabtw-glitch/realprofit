@@ -3522,7 +3522,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-token-x-cuenta-rapido2"})
+    return jsonify({"ok": True, "v": "2026-08-18-fix-mejoras-obsoleto"})
 
 
 @app.get("/pf-diag")
@@ -6372,12 +6372,15 @@ def _ads_creative_payload(nombre, medio, cfg, ad):
         if medio.get("thumb"):
             vd["image_url"] = medio["thumb"]
         oss = {"page_id": cfg["page"], "video_data": vd}
+    creative = {"name": nombre, "object_story_spec": oss,
+                # Multianunciante OFF + sin mejoras automáticas. OJO: NO mandar "standard_enhancements"
+                # (Meta lo deprecó y RECHAZA la creación: "elige configurar funciones individuales").
+                "contextual_multi_ads": {"enroll_status": "OPT_OUT"},
+                "degrees_of_freedom_spec": {"creative_features_spec": {
+                    "site_extensions": {"enroll_status": "OPT_OUT"}}}}
     if cfg.get("ig"):
-        oss["instagram_user_id"] = cfg["ig"]
-    return {"name": nombre, "object_story_spec": oss,
-            "degrees_of_freedom_spec": {"creative_features_spec": {
-                "site_extensions": {"enroll_status": "OPT_OUT"},
-                "standard_enhancements": {"enroll_status": "OPT_OUT"}}}}
+        creative["instagram_user_id"] = cfg["ig"]   # el IG va al NIVEL del creativo, no dentro de object_story_spec
+    return creative
 
 
 def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None):
