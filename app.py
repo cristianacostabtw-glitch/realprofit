@@ -3522,7 +3522,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-fix-mejoras-obsoleto"})
+    return jsonify({"ok": True, "v": "2026-08-18-ads-paralelo"})
 
 
 @app.get("/pf-diag")
@@ -6547,7 +6547,8 @@ def _ads_run(job, params):
                 medio = {"kind": "image", "image_hash": _ads_subir_imagen(acct, ruta)}
             else:
                 vid = _ads_subir_video(acct, ruta)
-                medio = {"kind": "video", "video_id": vid, "thumb": _ads_thumb(vid)}  # miniatura rápida
+                # la miniatura se saca al CREAR el anuncio (no acá) para no frenar la subida
+                medio = {"kind": "video", "video_id": vid, "thumb": None}
             with _pl:
                 _pn["n"] += 1
                 st["done"] = _pn["n"]
@@ -6598,36 +6599,42 @@ def _ads_run(job, params):
         import time as _t
         total_ads = len(adsets) * len(medios)
 
-        # ads en cada conjunto (1 por video). Reintentamos si el video TODAVÍA se procesa en Meta
-        # (no esperamos el procesado completo antes, para que suba rápido).
-        creados = 0
-        for adset_id in adsets:
-            for i, medio in enumerate(medios, start=1):
-                st["msg"] = "Creando anuncio %d de %d…" % (creados + 1, total_ads)
-                _ultimo = None
-                for _intento in range(6):
-                    try:
-                        if medio.get("kind") == "video" and not medio.get("thumb"):
-                            medio["thumb"] = _ads_thumb(medio["video_id"])   # miniatura requerida: reintentá sacarla
-                        cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
-                        _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
-                                                 "creative": {"creative_id": cid}, "status": estado})
-                        break
-                    except Exception as _ex:
-                        _ultimo = _ex
-                        _m = str(_ex).lower()
-                        # errores de video-aún-procesándose → esperá un toque y reintentá
-                        if any(k in _m for k in ("proces", "process", "not ready", "todav", "still",
-                                                 "transcod", "prepar", "no está list", "no esta list")):
-                            st["msg"] = "Procesando video %d (Meta)…" % i
-                            _t.sleep(5 * (_intento + 1))
-                            continue
-                        raise
-                else:
-                    raise _ultimo
-                creados += 1
-                _pn["n"] += 1
-                st["done"] = _pn["n"]
+        # ads EN PARALELO (1 por video). La miniatura se saca acá y se reintenta si el video
+        # TODAVÍA se procesa en Meta (no esperamos el procesado completo antes, para que sea rápido).
+        _tok_ad = getattr(_ads_local, "token", None)      # token de la cuenta correcta, para los threads
+        tareas = [(a, i, m) for a in adsets for i, m in enumerate(medios, start=1)]
+
+        def _crear_ad(adset_id, i, medio):
+            _ads_local.token = _tok_ad                    # propagar el token a este thread (no cruzar cuentas)
+            _ultimo = None
+            for _intento in range(6):
+                try:
+                    if medio.get("kind") == "video" and not medio.get("thumb"):
+                        medio["thumb"] = _ads_thumb(medio["video_id"])   # miniatura requerida
+                    cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
+                    _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
+                                             "creative": {"creative_id": cid}, "status": estado})
+                    with _pl:
+                        _pn["n"] += 1
+                        st["done"] = _pn["n"]
+                        st["msg"] = "Creando anuncios… %d/%d" % (_pn["n"] - n, total_ads)
+                    return
+                except Exception as _ex:
+                    _ultimo = _ex
+                    _m = str(_ex).lower()
+                    # errores de video-aún-procesándose → esperá un toque y reintentá
+                    if any(k in _m for k in ("proces", "process", "not ready", "todav", "still",
+                                             "transcod", "prepar", "no está list", "no esta list")):
+                        _t.sleep(5 * (_intento + 1))
+                        continue
+                    raise
+            raise _ultimo
+
+        with _cf.ThreadPoolExecutor(max_workers=min(6, max(1, len(tareas)))) as _ex2:
+            _fs = [_ex2.submit(_crear_ad, a, i, m) for (a, i, m) in tareas]
+            for _f in _cf.as_completed(_fs):
+                _f.result()                               # propaga la excepción si alguno falló
+        creados = len(tareas)
         st["done"] = st["total"]
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
                        "tipo": "CBO" if cbo else "ABO",
