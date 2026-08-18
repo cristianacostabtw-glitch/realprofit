@@ -81,6 +81,28 @@ def _mp_save_token(key, data) -> None:
 # ---------------- Meta (Facebook / Instagram Ads) OAuth ----------------
 META_SECRETS = RAIZ / "meta_secrets.json"     # App ID + App Secret (dueño de la app)
 META_TOKENS = DATA_DIR / "meta_tokens.json"   # tokens por usuario (persistente)
+ADS_LASTCFG = DATA_DIR / "ads_lastcfg.json"   # última config del subidor (título/subtexto/copy/url/presupuesto) por usuario+cuenta
+
+
+def _ads_lastcfg_all():
+    try:
+        return _json.loads(ADS_LASTCFG.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _ads_lastcfg_get(email, cuenta):
+    return _ads_lastcfg_all().get("%s|%s" % (email or "", (cuenta or "").lower())) or {}
+
+
+def _ads_lastcfg_set(email, cuenta, cfg):
+    try:
+        d = _ads_lastcfg_all()
+        d["%s|%s" % (email or "", (cuenta or "").lower())] = {
+            k: (cfg.get(k) or "") for k in ("titulo", "subtitulo", "copy", "url", "presupuesto")}
+        ADS_LASTCFG.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    except Exception:
+        pass
 META_API = "v21.0"
 
 
@@ -2404,7 +2426,8 @@ _SOLO_DASH = r"""
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
    $('rpa-pixel').innerHTML=opt(j.pixels.map(function(p){return {v:p.id,t:p.name};}));
-   if(j.def){if(j.def.page)$('rpa-page').value=j.def.page;if(j.def.pixel)$('rpa-pixel').value=j.def.pixel;$('rpa-ig').value=j.def.ig||'';}});
+   if(j.def){if(j.def.page)$('rpa-page').value=j.def.page;if(j.def.pixel)$('rpa-pixel').value=j.def.pixel;$('rpa-ig').value=j.def.ig||'';}
+   if(j.ultimo){var u=j.ultimo;if(u.copy)$('rpa-copy').value=u.copy;if(u.titulo)$('rpa-titulo').value=u.titulo;if(u.subtitulo)$('rpa-sub').value=u.subtitulo;if(u.url)$('rpa-url').value=u.url;if(u.presupuesto)$('rpa-presup').value=u.presupuesto;rpaCalc();}});
   fetch('/pf-ads-campanas?cuenta='+k).then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
    $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
   rpaCalc();};
@@ -3499,7 +3522,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-ads-activos-sin-mejoras"})
+    return jsonify({"ok": True, "v": "2026-08-18-recuerda-config"})
 
 
 @app.get("/pf-diag")
@@ -6636,7 +6659,8 @@ def pf_ads_identidad():
             pass
         pages.insert(0, {"id": cfg["page"], "name": nm or "Página conectada"})
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages,
-                    "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")}})
+                    "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
+                    "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
 
 
 @app.get("/pf-ads-campanas")
@@ -6735,6 +6759,7 @@ def pf_ads_lanzar():
     import uuid
     job = uuid.uuid4().hex[:12]
     data["_token"] = _ads_token()   # token del usuario logueado AHORA (request) → el thread usa este, no el de otra cuenta
+    _ads_lastcfg_set(_user_actual(), data.get("cuenta"), data)   # recordar la config para la próxima subida
     _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
     threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
     return jsonify({"ok": True, "job": job})
