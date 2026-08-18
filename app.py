@@ -3522,7 +3522,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-token-x-cuenta-rapido"})
+    return jsonify({"ok": True, "v": "2026-08-18-token-x-cuenta-rapido2"})
 
 
 @app.get("/pf-diag")
@@ -6684,6 +6684,36 @@ def pf_ads_diag():
             pass
     except Exception as e:
         out["crear_en_va1"] = "❌ FALLA: " + str(e)
+    return jsonify(out)
+
+
+@app.get("/pf-ads-diag-cuenta")
+def pf_ads_diag_cuenta():
+    """Prueba el resolver POR CUENTA: elige el token que puede usar la cuenta pedida y crea+borra
+    una campaña de prueba EN ESA cuenta. Así confirmo que cada cuenta usa su token correcto."""
+    if not _user_actual():
+        return jsonify({"ok": False, "msg": "entrá a RealProfit primero"})
+    ck = request.args.get("cuenta") or "cp1"
+    cfg = _ADS_CUENTAS.get(ck)
+    if not cfg:
+        return jsonify({"ok": False, "msg": "cuenta desconocida"})
+    tok = _ads_token_para_cuenta(ck)
+    out = {"ok": True, "cuenta": ck, "ad_account": cfg["ad_account"],
+           "token_elegido": (tok[-10:] if tok else None)}
+    _prev = getattr(_ads_local, "token", None)
+    _ads_local.token = tok            # forzar el token elegido en este request
+    try:
+        cid = _ads_crear(cfg["ad_account"], "campaigns",
+                         _ads_camp_payload("ZZZ DIAG BORRAR", True, 5, "PAUSED"))
+        out["crear"] = "✅ FUNCIONA (" + cid + ")"
+        try:
+            _ads_call("DELETE", cid)
+        except Exception:
+            pass
+    except Exception as e:
+        out["crear"] = "❌ FALLA: " + str(e)
+    finally:
+        _ads_local.token = _prev
     return jsonify(out)
 
 
