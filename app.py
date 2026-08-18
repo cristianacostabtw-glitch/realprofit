@@ -3499,7 +3499,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-17-subidor-cuenta-selector-fecha"})
+    return jsonify({"ok": True, "v": "2026-08-17-drive-descarga-paralela"})
 
 
 @app.get("/pf-diag")
@@ -6374,17 +6374,28 @@ def _ads_drive_bajar(link, dest_dir):
     vids = [f for f in files if "video" in (f.get("mimeType") or "") or "image" in (f.get("mimeType") or "")
             or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"))]
     vids.sort(key=lambda f: f.get("name", ""))
-    out = []
-    for f in vids:
+    # Bajar EN PARALELO (antes era de a uno = lentísimo con varios videos grandes).
+    import concurrent.futures as _cf
+    creds = _ads_google_creds()
+
+    def _bajar_uno(f):
+        # cada thread arma su PROPIO service (googleapiclient no es thread-safe)
+        s = build("drive", "v3", credentials=creds)
         p = _os.path.join(dest_dir, f["name"])
-        req = svc.files().get_media(fileId=f["id"])
+        req = s.files().get_media(fileId=f["id"])
         with open(p, "wb") as fh:
-            dl = MediaIoBaseDownload(fh, req, chunksize=1024 * 1024 * 8)
+            dl = MediaIoBaseDownload(fh, req, chunksize=1024 * 1024 * 32)   # chunks grandes = menos round-trips
             done = False
             while not done:
                 _, done = dl.next_chunk()
-        out.append(p)
-    return out
+        return p
+
+    out = [None] * len(vids)
+    with _cf.ThreadPoolExecutor(max_workers=min(8, max(1, len(vids)))) as _ex:
+        futs = {_ex.submit(_bajar_uno, f): i for i, f in enumerate(vids)}
+        for fut in _cf.as_completed(futs):
+            out[futs[fut]] = fut.result()
+    return [p for p in out if p]
 
 
 def _ads_run(job, params):
