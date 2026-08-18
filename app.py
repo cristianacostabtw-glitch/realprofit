@@ -6529,6 +6529,33 @@ def pf_ads_cuentas():
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok)})
 
 
+@app.get("/pf-ads-diag")
+def pf_ads_diag():
+    """Diagnóstico: qué token está usando RealProfit y si PUEDE CREAR en VA1 (crea+borra una
+    campaña de prueba con el MISMO token del subidor). Para destrabar el error de permisos."""
+    if not _user_actual():
+        return jsonify({"ok": False, "msg": "entrá a RealProfit primero"})
+    tok = _ads_token()
+    out = {"ok": True, "token_final": (tok[-10:] if tok else None), "token_len": len(tok or "")}
+    try:
+        aa = _ads_call("GET", "me/adaccounts", params={"fields": "account_id,name", "limit": 200})
+        out["cuentas_que_ve"] = [(a.get("account_id"), a.get("name")) for a in aa.get("data", [])][:15]
+        out["ve_va1"] = any(str(a.get("account_id")) == "964010428983612" for a in aa.get("data", []))
+    except Exception as e:
+        out["adaccounts_error"] = str(e)
+    try:
+        cid = _ads_crear("964010428983612", "campaigns",
+                         _ads_camp_payload("ZZZ DIAG BORRAR", True, 5, "PAUSED"))
+        out["crear_en_va1"] = "✅ FUNCIONA (" + cid + ")"
+        try:
+            _ads_call("DELETE", cid)
+        except Exception:
+            pass
+    except Exception as e:
+        out["crear_en_va1"] = "❌ FALLA: " + str(e)
+    return jsonify(out)
+
+
 @app.get("/pf-ads-identidad")
 def pf_ads_identidad():
     """Página / IG / pixel VINCULADOS a la cuenta (para los desplegables)."""
