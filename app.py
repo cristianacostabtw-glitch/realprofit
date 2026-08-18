@@ -1385,22 +1385,55 @@ _SOLO_DASH = r"""
  window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; } };
  window.rpDCloseSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m)m.style.display='none'; };
  var _dSeg=[];
+ function _dSegChip(ok,color){ return ok?'<span style="color:'+color+';font-weight:800">✓</span>':'<span style="color:#3a4757">—</span>'; }
+ function _dSegRender(){ var res=document.getElementById('rp-d-segres'); if(!res)return;
+   var r={ambos:0,solo_tn:0,solo_wpp:0,nada:0}; _dSeg.forEach(function(o){ if(o.tn&&o.wpp)r.ambos++; else if(o.tn)r.solo_tn++; else if(o.wpp)r.solo_wpp++; else r.nada++; });
+   var filas=_dSeg.map(function(o){ var tpl=(o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—');
+     var st=!o.wa_id?' <span style="color:#fb7185;font-size:10px">sin tel</span>':'';
+     return '<tr><td style="padding:8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td>'
+       +'<td style="padding:8px;border-top:1px solid #141c2a">'+_dEsc(o.nombre||'')+st+'</td>'
+       +'<td style="padding:8px;border-top:1px solid #141c2a;color:#8493a8;font-size:11px">'+_dEsc(tpl)+'</td>'
+       +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.tn,'#5aa2f5')+'</td>'
+       +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.wpp,'#34d399')+'</td></tr>'; }).join('');
+   var al='';
+   if(r.ambos>0) al+='<div style="color:#f0b429;font-size:12px;margin-bottom:4px">⚠ '+r.ambos+' ya enviados por WhatsApp Y TiendaNube — se descartan, no se repiten.</div>';
+   if(r.solo_tn>0) al+='<div style="color:#5aa2f5;font-size:12px;margin-bottom:4px">🔵 '+r.solo_tn+' ya en TiendaNube, falta WhatsApp.</div>';
+   if(r.solo_wpp>0) al+='<div style="color:#34d399;font-size:12px;margin-bottom:4px">🟢 '+r.solo_wpp+' ya por WhatsApp, falta TiendaNube.</div>';
+   var b='display:inline-flex;align-items:center;gap:6px;border-radius:10px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;border:none';
+   res.innerHTML='<div style="background:#0b111c;border:1px solid #1a2333;border-radius:12px;overflow:hidden">'
+     +'<div style="padding:11px 14px;color:#e7edf5;font-size:13px;font-weight:700;border-bottom:1px solid #1a2333">✅ '+_dSeg.length+' pedidos leídos'+(r.nada?(' · '+r.nada+' listos para enviar'):'')+'</div>'
+     +(al?('<div style="padding:11px 14px;border-bottom:1px solid #1a2333">'+al+'</div>'):'')
+     +'<div style="overflow-x:auto;max-height:330px"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr>'
+     +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Pedido</th>'
+     +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Cliente</th>'
+     +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Plantilla</th>'
+     +'<th style="text-align:center;padding:8px;color:#5aa2f5;font-size:10px;text-transform:uppercase">TN</th>'
+     +'<th style="text-align:center;padding:8px;color:#34d399;font-size:10px;text-transform:uppercase">WPP</th></tr></thead><tbody>'+filas+'</tbody></table></div>'
+     +'<div style="padding:12px 14px;display:flex;gap:9px;flex-wrap:wrap;border-top:1px solid #1a2333">'
+       +'<button onclick="rpDSeg(\'wpp\')" style="'+b+';background:linear-gradient(160deg,#1f8f4e,#166b3a);color:#dcfce7">🟢 Enviar por WPP</button>'
+       +'<button onclick="rpDSeg(\'tn\')" style="'+b+';background:linear-gradient(160deg,#2563a8,#1c4a80);color:#dbeafe">🔵 Enviar por TN</button>'
+       +'<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'
+     +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
-   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento)…</div>';
+   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento) y sincronizando con TiendaNube…</div>';
    var fd=new FormData(); fd.append('pdf',f);
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
-     _dSeg=j.pedidos;
-     var filas=_dSeg.map(function(o){ return '<tr><td style="padding:9px 8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td><td style="padding:9px 8px;border-top:1px solid #141c2a">'+_dEsc(o.nombre||'')+'</td><td style="padding:9px 8px;border-top:1px solid #141c2a;color:#8493a8;font-family:ui-monospace,monospace;font-size:12px">'+_dEsc(o.track||'')+'</td></tr>'; }).join('');
-     res.innerHTML='<div style="background:#0b111c;border:1px solid #1a2333;border-radius:12px;overflow:hidden"><div style="padding:11px 14px;color:#e7edf5;font-size:13px;font-weight:700;border-bottom:1px solid #1a2333">✅ '+_dSeg.length+' pedidos leídos</div>'
-       +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr><th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Pedido</th><th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Cliente</th><th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Seguimiento</th></tr></thead><tbody>'+filas+'</tbody></table></div>'
-       +'<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid #1a2333"><span style="color:#5b6b82;font-size:11.5px">Al enviar, tu tienda le manda el mail con el tracking al cliente.</span><button onclick="rpDEnviarSeg()" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(160deg,#b23a55,#8f2c44);border:1px solid #a23650;color:#ffe0e7;border-radius:10px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer">Enviar '+_dSeg.length+' seguimientos</button></div></div>';
+     _dSeg=j.pedidos; _dSegRender();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
- window.rpDEnviarSeg=function(){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
-   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Enviando seguimientos y avisando a tu tienda…</div>';
-   fetch('/pf-despachos-seg-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:_dSeg})}).then(function(r){return r.json();}).then(function(j){
-     if(j&&j.ok){ res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">📲 '+(j.enviados||0)+' seguimientos enviados — la tienda le avisó por mail a cada cliente.</div>'; _dLoaded=false; rpDLoad(); setTimeout(rpDCloseSeg,1600); }
-     else res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>';
+ window.rpDSeg=function(canal){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
+   var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
+   var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?'TiendaNube':'los dos canales');
+   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando por '+lbl+'… (no cierres esto)</div>';
+   fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:_dSeg})}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
+     function mark(ch){ _dSeg.forEach(function(o){ if(ch=='wpp'&&o.wa_id&&!o.wpp)o.wpp=true; if(ch=='tn'&&o.order_id&&o.fo_id&&!o.tn)o.tn=true; }); }
+     var msg='';
+     if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; mark('tn'); mark('wpp');
+       msg='🔵 TN '+(t.enviados||0)+' cargados'+(t.saltados?(' ('+t.saltados+' ya estaban)'):'')+' · 🟢 WPP '+(w.enviados||0)+' enviados'+(w.saltados?(' ('+w.saltados+' ya estaban)'):''); }
+     else { mark(canal); msg=(canal=='wpp'?'🟢 WhatsApp ':'🔵 TiendaNube ')+(j.enviados||0)+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); }
+     _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+res.innerHTML;
+     _dLoaded=false; rpDLoad();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error de conexión.</div>'; }); };
  // ===================== FACTURACIÓN =====================
  var _fRows=[], _fFilter='todas', _fPage=1, _fSel={}, _fPer=50, _fAutoOn=false;
@@ -3522,7 +3555,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-zip-descargas"})
+    return jsonify({"ok": True, "v": "2026-08-18-seguimientos-wpp-tn"})
 
 
 @app.get("/pf-diag")
@@ -5111,21 +5144,303 @@ def pf_despachos_sku_descargar():
                      download_name="etiquetas-con-sku.pdf", mimetype="application/pdf")
 
 
+# ---------- Seguimientos (Despachos): leer PDF Andreani + enviar por WhatsApp y/o TiendaNube ----------
+_WA_SEG_ENV = DATA_DIR / "wa_seg_enviado.json"    # {email: {pedido: ts}} — anti-duplicado de WhatsApp
+
+
+def _wa_seg_all() -> dict:
+    try:
+        return _json.loads(_WA_SEG_ENV.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _wa_seg_marcar(email, pedido) -> None:
+    d = _wa_seg_all(); d.setdefault(email, {})[str(pedido)] = _wa_now()
+    _WA_SEG_ENV.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+
+def _seg_e164(tel: str) -> str:
+    import re
+    d = re.sub(r"\D", "", tel or "").lstrip("0")
+    if d.startswith("15"):
+        d = d[2:]
+    if not d.startswith("54"):
+        d = "54" + d
+    if d.startswith("54") and not d.startswith("549"):
+        d = "549" + d[2:]
+    return d
+
+
+def _seg_unidades(o: dict) -> int:
+    return sum(int(p.get("quantity") or 0) for p in (o.get("products") or []) if (p.get("sku") or "").strip())
+
+
+def _seg_presentacion(u: int) -> str:
+    d60, d30 = u // 2, u % 2
+    combo = []
+    if d60:
+        combo.append("%d spray%s de 60ml" % (d60, "s" if d60 > 1 else ""))
+    if d30:
+        combo.append("%d spray%s de 30ml" % (d30, "s" if d30 > 1 else ""))
+    return "%s, o %d sprays de 30ml" % (" + ".join(combo), u)
+
+
+def _seg_tel_real(o: dict) -> str:
+    sa = o.get("shipping_address") or {}
+    cust = o.get("customer") or {}
+    import re
+    for p in (sa.get("phone"), o.get("contact_phone"), o.get("billing_phone"), cust.get("phone")):
+        p = (p or "").strip()
+        if p and not p.lower().startswith("no inform") and re.sub(r"\D", "", p):
+            return p
+    return ""
+
+
+def _seg_leer_pdf(fp) -> list:
+    """Saca de cada etiqueta de Andreani: N° Interno (pedido) + N° de seguimiento. Igual que el Mac."""
+    import fitz, re
+    doc = fitz.open(fp)
+    out, vistos = [], set()
+    for pg in doc:
+        t = pg.get_text()
+        ped = re.search(r"N[°ºo]?\s*Interno\s*:\s*#?\s*(\d+)", t) or re.search(r"\bId:\s*#?\s*(\d+)", t, re.I)
+        seg = re.search(r"seguimiento:\s*(\d+)", t, re.I) or re.search(r"\b(3600\d{9,13})\b", t)
+        if not (seg and ped):
+            continue
+        num = ped.group(1)
+        if num in vistos:
+            continue
+        vistos.add(num)
+        dest = re.search(r"Destinatario:\s*(.+)", t)
+        out.append({"pedido": num, "seguimiento": seg.group(1),
+                    "dest": dest.group(1).strip() if dest else ""})
+    doc.close()
+    return out
+
+
+def _seg_tn_store(email):
+    tk = _tn_tokens().get(email)
+    if tk and tk.get("access_token") and tk.get("store_id"):
+        return tk["store_id"], _tn_headers(tk["access_token"])
+    return None, None
+
+
+def _seg_mapa_orders(store, hdr, numeros) -> dict:
+    """number(str) → order dict, barriendo los pedidos recientes hasta encontrar todos los del PDF."""
+    faltan = set(str(n) for n in numeros)
+    mapa = {}
+    page = 1
+    while page <= 15 and faltan:
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 50, "page": page, "sort": "-id",
+                "fields": ("id,number,customer,total,fulfillments,products,"
+                           "shipping_status,contact_phone,billing_phone,shipping_address")}, timeout=40)
+            lote = r.json() if r.status_code == 200 else []
+        except Exception:
+            lote = []
+        if not isinstance(lote, list) or not lote:
+            break
+        for o in lote:
+            num = str(o.get("number"))
+            if num in faltan:
+                mapa[num] = o
+                faltan.discard(num)
+        if len(lote) < 50:
+            break
+        page += 1
+    return mapa
+
+
+def _seg_estado_tn(o: dict) -> bool:
+    """¿El pedido YA tiene el tracking cargado/despachado en TiendaNube?"""
+    if (o.get("shipping_status") or "") == "shipped":
+        return True
+    ff = o.get("fulfillments") or []
+    if ff and isinstance(ff, list):
+        st = str(ff[0].get("status") or "").upper()
+        if st in ("DISPATCHED", "SHIPPED", "READY_FOR_PICKUP", "DELIVERED"):
+            return True
+    return False
+
+
+def _seg_filas(email, store, hdr):
+    """Devuelve (pedidos, mapa_orders) con el estado por canal (TN / WhatsApp) de cada uno."""
+    pass  # (se arma dentro de los endpoints con los items del PDF)
+
+
 @app.post("/pf-despachos-seg-leer")
 def pf_despachos_seg_leer():
-    """Lee el PDF de Andreani → N° Interno + seguimiento de cada pedido.
-    Pendiente de calibrar con un PDF real → por ahora informa."""
-    if not _user_actual():
+    """Lee el PDF de Andreani → pedido + seguimiento, matchea con TiendaNube (cliente, unidades,
+    teléfono) y calcula el estado POR CANAL: ya cargado en TN / ya enviado por WhatsApp."""
+    if not (email := _user_actual()):
         return jsonify({"ok": False}), 401
-    return jsonify({"ok": False, "msg": "la lectura del PDF se está calibrando con un rótulo real de Andreani"})
+    f = request.files.get("pdf") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "subí el PDF de Andreani"})
+    store, hdr = _seg_tn_store(email)
+    if not store:
+        return jsonify({"ok": False, "msg": "conectá tu TiendaNube en Integraciones"})
+    import tempfile
+    tmp = tempfile.mktemp(suffix=".pdf")
+    f.save(tmp)
+    try:
+        items = _seg_leer_pdf(tmp)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude leer el PDF (%s)" % (str(e)[:80])})
+    finally:
+        try:
+            _os.remove(tmp)
+        except Exception:
+            pass
+    if not items:
+        return jsonify({"ok": False, "msg": "no encontré etiquetas (N° Interno + seguimiento) en ese PDF"})
+    mapa = _seg_mapa_orders(store, hdr, [it["pedido"] for it in items])
+    wpp_env = _wa_seg_all().get(email, {})
+    pedidos = []
+    n_tn = n_wpp = n_ambos = n_falta = 0
+    for it in items:
+        o = mapa.get(it["pedido"]) or {}
+        cust = o.get("customer") or {}
+        nombre = cust.get("name") or it.get("dest", "")
+        ff = o.get("fulfillments") or []
+        fo_id = ff[0].get("id") if ff else None
+        es_suc = (((ff[0].get("shipping") or {}).get("type")) == "pickup") if ff else False
+        u = _seg_unidades(o) if o else 0
+        tel = _seg_tel_real(o) if o else ""
+        tn_ok = _seg_estado_tn(o) if o else False
+        wpp_ok = bool(wpp_env.get(str(it["pedido"])))
+        match = bool(o.get("id") and fo_id)
+        pedidos.append({
+            "num": it["pedido"], "nombre": nombre, "track": it["seguimiento"],
+            "url": "https://www.andreani.com/envio/%s" % it["seguimiento"],
+            "wa_id": _seg_e164(tel) if tel else "", "unidades": u,
+            "order_id": o.get("id"), "fo_id": fo_id, "es_sucursal": es_suc,
+            "tn": tn_ok, "wpp": wpp_ok, "match": match,
+        })
+        if tn_ok and wpp_ok:
+            n_ambos += 1
+        elif tn_ok:
+            n_tn += 1
+        elif wpp_ok:
+            n_wpp += 1
+        else:
+            n_falta += 1
+    return jsonify({"ok": True, "pedidos": pedidos,
+                    "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
+                                "solo_wpp": n_wpp, "ninguno": n_falta}})
+
+
+def _seg_enviar_wpp(email, pedidos) -> dict:
+    """Manda el seguimiento por WhatsApp (template por unidades). Salta los ya enviados por WPP."""
+    c = _wa_conf(email)
+    if not c:
+        return {"ok": False, "msg": "WhatsApp no conectado", "enviados": 0}
+    wpp_env = _wa_seg_all().get(email, {})
+    chats = _wa_chats_all()
+    env = salt = fail = 0
+    errores = []
+    for p in pedidos:
+        num = str(p.get("num"))
+        if wpp_env.get(num):
+            salt += 1
+            continue
+        wa = (p.get("wa_id") or "").strip()
+        if not wa:
+            fail += 1
+            errores.append({"num": num, "msg": "sin teléfono"})
+            continue
+        n = (p.get("nombre") or "cliente").split()[0]
+        link = p.get("url") or ""
+        u = int(p.get("unidades") or 0)
+        if u >= 2:
+            name = "seguimiento_despacho_combo"
+            params = [n, num, link, _seg_presentacion(u)]
+        else:
+            name = "seguimiento_despacho"
+            params = [n, num, link]
+        tpl = {"name": name, "language": {"code": "es_AR"},
+               "components": [{"type": "body", "parameters": [{"type": "text", "text": str(x)} for x in params]}]}
+        try:
+            r = requests.post("%s/%s/messages" % (WA_GRAPH, c["phone_id"]),
+                              headers={"Authorization": "Bearer " + c["token"]},
+                              json={"messaging_product": "whatsapp", "to": wa, "type": "template", "template": tpl},
+                              timeout=25)
+            j = r.json()
+        except Exception as e:
+            fail += 1; errores.append({"num": num, "msg": str(e)[:80]}); continue
+        if r.status_code >= 400:
+            fail += 1; errores.append({"num": num, "msg": (j.get("error") or {}).get("message", "error")[:80]}); continue
+        mid = (j.get("messages") or [{}])[0].get("id", "")
+        conv = chats.setdefault(email, {}).setdefault(wa, {"name": p.get("nombre") or wa, "messages": []})
+        conv["messages"].append({"dir": "out", "text": "[seguimiento #%s]" % num, "ts": _wa_now(),
+                                 "type": "template", "id": mid, "status": "sent"})
+        conv["updated"] = _wa_now()
+        _wa_seg_marcar(email, num)
+        env += 1
+    _wa_save_chats(chats)
+    return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
+
+
+def _seg_enviar_tn(email, pedidos) -> dict:
+    """Carga el tracking en TiendaNube (PATCH fulfillment-order + notify). Salta los ya cargados."""
+    store, hdr0 = _seg_tn_store(email)
+    if not store:
+        return {"ok": False, "msg": "TiendaNube no conectado", "enviados": 0}
+    H = {**hdr0, "Content-Type": "application/json"}
+    base = "%s/%s/orders" % (TN_API, store)
+    env = salt = fail = 0
+    errores = []
+    for p in pedidos:
+        num = str(p.get("num"))
+        if p.get("tn"):
+            salt += 1
+            continue
+        if not (p.get("order_id") and p.get("fo_id")):
+            fail += 1; errores.append({"num": num, "msg": "no está en TiendaNube"}); continue
+        estado = "READY_FOR_PICKUP" if p.get("es_sucursal") else "DISPATCHED"
+        body = {"status": estado, "tracking_info": {
+            "code": p.get("track"), "url": p.get("url"), "notify_customer": True}}
+        url = "%s/%s/fulfillment-orders/%s" % (base, p["order_id"], p["fo_id"])
+        try:
+            rr = requests.patch(url, headers=H, data=_json.dumps(body), timeout=30)
+            if rr.status_code in (200, 201, 204):
+                env += 1
+            else:
+                fail += 1; errores.append({"num": num, "msg": "%s: %s" % (rr.status_code, str(rr.text)[:80])})
+        except Exception as e:
+            fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
+    return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
 @app.post("/pf-despachos-seg-enviar")
 def pf_despachos_seg_enviar():
-    """Carga el tracking en la tienda (Shopify/TN) y notifica al cliente por mail."""
-    if not _user_actual():
+    """Carga el tracking en TiendaNube y le avisa al cliente por mail (solo los que faltan en TN)."""
+    if not (email := _user_actual()):
         return jsonify({"ok": False}), 401
-    return jsonify({"ok": False, "msg": "el envío de seguimiento se conecta en el próximo paso"})
+    pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
+    return jsonify(_seg_enviar_tn(email, pedidos))
+
+
+@app.post("/pf-despachos-seg-wpp")
+def pf_despachos_seg_wpp():
+    """Manda el seguimiento por WhatsApp con el template por unidades (solo los que faltan en WPP)."""
+    if not (email := _user_actual()):
+        return jsonify({"ok": False}), 401
+    pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
+    return jsonify(_seg_enviar_wpp(email, pedidos))
+
+
+@app.post("/pf-despachos-seg-todos")
+def pf_despachos_seg_todos():
+    """Envía por los DOS canales (TiendaNube + WhatsApp), cada uno salteando lo que ya está hecho."""
+    if not (email := _user_actual()):
+        return jsonify({"ok": False}), 401
+    pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
+    rtn = _seg_enviar_tn(email, pedidos)
+    rwpp = _seg_enviar_wpp(email, pedidos)
+    return jsonify({"ok": True, "tn": rtn, "wpp": rwpp})
 
 
 _MP_LISTA_CACHE = {}   # {(email,desde,hasta): (ts, out)} — pagos de MP, cache 60s: se pide en varias secciones
