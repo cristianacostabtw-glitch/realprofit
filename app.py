@@ -3522,7 +3522,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-recuerda-config"})
+    return jsonify({"ok": True, "v": "2026-08-18-token-x-cuenta-rapido"})
 
 
 @app.get("/pf-diag")
@@ -6177,6 +6177,62 @@ def _ads_token():
     return _os.getenv("META_TOKEN") or ""
 
 
+_ADS_TOKACCT = {}   # cache: (token[-14:], ad_account) -> bool (si ese token puede USAR esa cuenta)
+
+
+def _ads_token_usa_cuenta(tok, acct):
+    """¿Ese token puede administrar la cuenta publicitaria act_<acct>? (cacheado)."""
+    if not tok or not acct:
+        return False
+    ck = (tok[-14:], str(acct))
+    if ck in _ADS_TOKACCT:
+        return _ADS_TOKACCT[ck]
+    ok = False
+    try:
+        r = requests.get("%s/act_%s" % (_ADS_API, acct),
+                         params={"fields": "account_status,user_tasks", "access_token": tok}, timeout=20)
+        j = r.json() if r.content else {}
+        # tiene la cuenta Y permiso para anunciar (no solo verla)
+        ok = (r.status_code < 400 and j.get("id") and
+              ("ADVERTISE" in (j.get("user_tasks") or []) or "MANAGE" in (j.get("user_tasks") or [])))
+    except Exception:
+        ok = False
+    _ADS_TOKACCT[ck] = ok
+    return ok
+
+
+def _ads_token_para_cuenta(cuenta_key):
+    """Devuelve el token que REALMENTE puede usar la cuenta seleccionada (no el de quien esté logueado).
+    Prueba: token del usuario logueado → todos los tokens guardados → env META_TOKEN. El primero que
+    tenga permiso de ADVERTISE/MANAGE sobre esa cuenta publicitaria gana. Así nunca se cruzan cuentas."""
+    cfg = _ADS_CUENTAS.get(cuenta_key or "")
+    acct = cfg["ad_account"] if cfg else None
+    cands = []
+    try:
+        email = _user_actual()
+    except Exception:
+        email = None
+    toks = _meta_tokens()
+    if email and (toks.get(email) or {}).get("access_token"):
+        cands.append(toks[email]["access_token"])
+    for v in toks.values():
+        if isinstance(v, dict) and v.get("access_token"):
+            cands.append(v["access_token"])
+    env = _os.getenv("META_TOKEN") or ""
+    if env:
+        cands.append(env)
+    vistos = set()
+    if acct:
+        for t in cands:
+            if t in vistos:
+                continue
+            vistos.add(t)
+            if _ads_token_usa_cuenta(t, acct):
+                return t
+    # ninguno matchea la cuenta (o cuenta desconocida) → comportamiento viejo
+    return _ads_token()
+
+
 def _ads_call(method, path, data=None, files=None, params=None):
     p = dict(params or {}); p["access_token"] = _ads_token()
     r = requests.request(method, "%s/%s" % (_ADS_API, path), data=data, files=files, params=p, timeout=120)
@@ -6472,11 +6528,15 @@ def _ads_run(job, params):
                                      on_prog=lambda k, t: st.update({"msg": "Bajando videos… %d/%d" % (k, t)}))
             if not rutas:
                 raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
-        st["total"] = len(rutas) * 2 + 1 + n_conj
+        n = len(rutas)
+        _adsets_prev = 1 if (modo_conj == "usar" and src) else n_conj
+        # barra completa desde el arranque = subir videos (n) + crear anuncios (n × conjuntos). Solo avanza.
+        st["total"] = n + n * _adsets_prev; st["done"] = 0
 
-        # subir + procesar videos EN PARALELO (mucho más rápido que uno por uno)
+        # subir videos EN PARALELO. NO esperamos el procesado completo de Meta (eso tardaba minutos):
+        # Meta acepta crear el anuncio con el video procesándose, y si no está listo reintentamos abajo.
         import concurrent.futures as _cf
-        medios = [None] * len(rutas)
+        medios = [None] * n
         _pl = threading.Lock(); _pn = {"n": 0}
 
         def _prep(idx, ruta):
@@ -6484,22 +6544,21 @@ def _ads_run(job, params):
                 medio = {"kind": "image", "image_hash": _ads_subir_imagen(acct, ruta)}
             else:
                 vid = _ads_subir_video(acct, ruta)
-                _ads_video_ready(vid)
-                medio = {"kind": "video", "video_id": vid, "thumb": _ads_thumb(vid)}
+                medio = {"kind": "video", "video_id": vid, "thumb": _ads_thumb(vid)}  # miniatura rápida
             with _pl:
-                _pn["n"] += 2
+                _pn["n"] += 1
                 st["done"] = _pn["n"]
-                st["msg"] = "Creativos listos %d/%d…" % (_pn["n"] // 2, len(rutas))
+                st["msg"] = "Subiendo videos %d/%d…" % (_pn["n"], n)
             return idx, medio
 
-        with _cf.ThreadPoolExecutor(max_workers=min(6, max(1, len(rutas)))) as _ex:
+        with _cf.ThreadPoolExecutor(max_workers=min(8, max(1, n))) as _ex:
             _futs = [_ex.submit(_prep, i, r) for i, r in enumerate(rutas)]
             for _f in _cf.as_completed(_futs):
                 _idx, _m = _f.result()
                 medios[_idx] = _m
 
         # campaña
-        st["done"] = len(rutas) * 2; st["msg"] = "Creando campaña…"
+        st["msg"] = "Creando campaña…"
         now = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
         # La fecha del NOMBRE = el día en que ARRANCA la campaña (5am), NO la de hoy: si el usuario
         # eligió fecha, esa; si no, mañana (porque ya pasaron las 5am de hoy). Igual que _ads_start_5am.
@@ -6524,7 +6583,6 @@ def _ads_run(job, params):
             n_conj = 1
         else:
             for c in range(n_conj):
-                st["done"] = len(rutas) * 2 + 1 + c
                 st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj)
                 nombre_conj = base if n_conj == 1 else ("%s %d" % (base, c + 1))
                 if modo_conj == "dup" and src:              # copia la config de un conjunto existente
@@ -6533,14 +6591,40 @@ def _ads_run(job, params):
                     adsets.append(_ads_crear(acct, "adsets",
                                              _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado, start)))
 
-        # ads en cada conjunto (1 por video)
+        # 2ª parte de la barra = crear los anuncios (la fase más lenta).
+        import time as _t
+        total_ads = len(adsets) * len(medios)
+
+        # ads en cada conjunto (1 por video). Reintentamos si el video TODAVÍA se procesa en Meta
+        # (no esperamos el procesado completo antes, para que suba rápido).
         creados = 0
         for adset_id in adsets:
             for i, medio in enumerate(medios, start=1):
-                cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
-                _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
-                                         "creative": {"creative_id": cid}, "status": estado})
+                st["msg"] = "Creando anuncio %d de %d…" % (creados + 1, total_ads)
+                _ultimo = None
+                for _intento in range(6):
+                    try:
+                        if medio.get("kind") == "video" and not medio.get("thumb"):
+                            medio["thumb"] = _ads_thumb(medio["video_id"])   # miniatura requerida: reintentá sacarla
+                        cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
+                        _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
+                                                 "creative": {"creative_id": cid}, "status": estado})
+                        break
+                    except Exception as _ex:
+                        _ultimo = _ex
+                        _m = str(_ex).lower()
+                        # errores de video-aún-procesándose → esperá un toque y reintentá
+                        if any(k in _m for k in ("proces", "process", "not ready", "todav", "still",
+                                                 "transcod", "prepar", "no está list", "no esta list")):
+                            st["msg"] = "Procesando video %d (Meta)…" % i
+                            _t.sleep(5 * (_intento + 1))
+                            continue
+                        raise
+                else:
+                    raise _ultimo
                 creados += 1
+                _pn["n"] += 1
+                st["done"] = _pn["n"]
         st["done"] = st["total"]
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
                        "tipo": "CBO" if cbo else "ABO",
@@ -6758,7 +6842,7 @@ def pf_ads_lanzar():
         return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
     import uuid
     job = uuid.uuid4().hex[:12]
-    data["_token"] = _ads_token()   # token del usuario logueado AHORA (request) → el thread usa este, no el de otra cuenta
+    data["_token"] = _ads_token_para_cuenta(data.get("cuenta"))   # token que REALMENTE puede usar la cuenta elegida (no cruza cuentas)
     _ads_lastcfg_set(_user_actual(), data.get("cuenta"), data)   # recordar la config para la próxima subida
     _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
     threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
