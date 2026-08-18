@@ -2342,9 +2342,9 @@ _SOLO_DASH = r"""
       <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar</button></div>
     </div>
     <div id="rpa-srcarch" style="display:none">
-     <span class="lb">Sub&iacute; tus videos o fotos (.mp4 / .mov / .jpg / .png)</span>
-     <input class="in" id="rpa-file" type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp" multiple style="width:100%;box-sizing:border-box;padding:9px" onchange="rpaSubir()">
-     <div style="color:#5b6678;font-size:11.5px;margin-top:6px">Pod&eacute;s elegir varios de una. Se suben directo desde tu compu.</div>
+     <span class="lb">Sub&iacute; tus videos, fotos o el .ZIP de Drive</span>
+     <input class="in" id="rpa-file" type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.zip,application/zip,application/x-zip-compressed" multiple style="width:100%;box-sizing:border-box;padding:9px" onchange="rpaSubir()">
+     <div style="color:#5b6678;font-size:11.5px;margin-top:6px">Pod&eacute;s elegir varios de una, o subir el <b>.zip</b> que te baja Google Drive (lo descomprimo solo y saco los videos).</div>
     </div>
     <div id="rpa-vids"></div>
    </div>
@@ -3522,7 +3522,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-ads-paralelo"})
+    return jsonify({"ok": True, "v": "2026-08-18-zip-descargas"})
 
 
 @app.get("/pf-diag")
@@ -6850,22 +6850,60 @@ def pf_ads_drive_listar():
 def pf_ads_subir():
     if not _user_actual():
         return jsonify({"ok": False}), 401
-    import tempfile, uuid
+    import tempfile, uuid, zipfile, shutil as _sh
     files = request.files.getlist("videos")
     if not files:
         return jsonify({"ok": False, "msg": "elegí al menos un video"}), 400
     up_id = uuid.uuid4().hex[:12]
     d = tempfile.mkdtemp(prefix="adsup_")
-    vids = []
+    EXT = (".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")
+
+    def _destino_unico(base):
+        dest = _os.path.join(d, base); k = 1
+        while _os.path.exists(dest):
+            dest = _os.path.join(d, "%d_%s" % (k, base)); k += 1
+        return dest
+
     for f in files:
-        name = _os.path.basename(f.filename or "video.mp4")
-        if not name.lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")):
-            continue
-        ruta = _os.path.join(d, name)
-        f.save(ruta)
-        vids.append({"name": name, "mb": round(_os.path.getsize(ruta) / 1048576)})
+        fn = (f.filename or "")
+        if fn.lower().endswith(".zip"):
+            # ZIP (ej: la carpeta entera bajada de Drive) → descomprimir SOLO los videos/fotos,
+            # aplanando subcarpetas internas. Streaming directo, sin pasos de más = rápido.
+            zp = _os.path.join(d, "_paquete.zip")
+            f.save(zp)
+            try:
+                with zipfile.ZipFile(zp) as z:
+                    for zi in z.infolist():
+                        if zi.is_dir():
+                            continue
+                        base = _os.path.basename(zi.filename)
+                        if not base or base.startswith(".") or "__MACOSX" in zi.filename:
+                            continue
+                        if not base.lower().endswith(EXT):
+                            continue
+                        with z.open(zi) as src, open(_destino_unico(base), "wb") as out:
+                            _sh.copyfileobj(src, out, 1024 * 1024 * 4)
+            except zipfile.BadZipFile:
+                return jsonify({"ok": False, "msg": "ese .zip está dañado o no lo pude abrir"}), 400
+            finally:
+                try:
+                    _os.remove(zp)
+                except Exception:
+                    pass
+        else:
+            name = _os.path.basename(fn or "video.mp4")
+            if not name.lower().endswith(EXT):
+                continue
+            f.save(_destino_unico(name))
+
+    # juntar TODO lo que quedó en la carpeta (sueltos + los que salieron del zip), en orden
+    vids = []
+    for name in sorted(_os.listdir(d)):
+        p = _os.path.join(d, name)
+        if _os.path.isfile(p) and name.lower().endswith(EXT):
+            vids.append({"name": name, "mb": round(_os.path.getsize(p) / 1048576)})
     if not vids:
-        return jsonify({"ok": False, "msg": "esos archivos no son videos ni fotos (.mp4/.mov/.jpg/.png)"}), 400
+        return jsonify({"ok": False, "msg": "no encontré videos ni fotos (.mp4/.mov/.jpg/.png), ni sueltos ni dentro del zip"}), 400
     vids.sort(key=lambda v: v["name"])
     _ADS_UPLOADS[up_id] = d
     return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
