@@ -3555,7 +3555,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-fix-token-thread-video"})
+    return jsonify({"ok": True, "v": "2026-08-19-fix-oom-upload"})
 
 
 @app.get("/pf-diag")
@@ -6872,7 +6872,9 @@ def _ads_run(job, params):
                 st["msg"] = "Subiendo videos %d/%d…" % (_pn["n"], n)
             return idx, medio
 
-        with _cf.ThreadPoolExecutor(max_workers=min(8, max(1, n))) as _ex:
+        # OJO memoria: cada upload a Meta buffea el video entero en RAM. Con el plan de 512MB,
+        # 6 en paralelo revientan (OOM → Render reinicia → 502). Max 2 a la vez = ~120MB, entra.
+        with _cf.ThreadPoolExecutor(max_workers=min(2, max(1, n))) as _ex:
             _futs = [_ex.submit(_prep, i, r) for i, r in enumerate(rutas)]
             for _f in _cf.as_completed(_futs):
                 _idx, _m = _f.result()
