@@ -3555,7 +3555,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-18-seguimientos-wpp-tn"})
+    return jsonify({"ok": True, "v": "2026-08-19-fix-token-thread-video"})
 
 
 @app.get("/pf-diag")
@@ -6856,8 +6856,10 @@ def _ads_run(job, params):
         import concurrent.futures as _cf
         medios = [None] * n
         _pl = threading.Lock(); _pn = {"n": 0}
+        _tok_prep = getattr(_ads_local, "token", None)     # token de la cuenta correcta, para los threads
 
         def _prep(idx, ruta):
+            _ads_local.token = _tok_prep                   # propagar el token a este thread (subir video a la cuenta correcta)
             if _ads_es_imagen(ruta):
                 medio = {"kind": "image", "image_hash": _ads_subir_imagen(acct, ruta)}
             else:
