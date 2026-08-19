@@ -3555,7 +3555,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-fix-oom-upload"})
+    return jsonify({"ok": True, "v": "2026-08-19-fix-sched-pasado"})
 
 
 @app.get("/pf-diag")
@@ -6631,14 +6631,25 @@ def _ads_start_5am():
 
 
 def _ads_sched(params):
-    """start_time desde el día/hora que eligió el usuario; si no, 5am por defecto."""
+    """start_time del día/hora elegido; si no, próximo 5am. NUNCA en el pasado: si el horario ya
+    venció (ej: lanzás 7am para el slot de 5am de hoy), lo empuja al día siguiente. Así Meta no crea
+    los anuncios APAGADOS por un horario vencido."""
     f = (params.get("fecha") or "").strip()
     h = (params.get("hora") or "05:00").strip()
+    if len(h) != 5:
+        h = "05:00"
+    ahora = _dt.datetime.utcnow() - _dt.timedelta(hours=3)          # hora AR
     if f:
-        if len(h) != 5:
-            h = "05:00"
-        return "%sT%s:00-03:00" % (f, h)
-    return _ads_start_5am()
+        try:
+            y, mo, da = (int(x) for x in f.split("-"))
+            dt = _dt.datetime(y, mo, da, int(h[:2]), int(h[3:5]))
+        except Exception:
+            return _ads_start_5am()
+    else:
+        dt = ahora.replace(hour=5, minute=0, second=0, microsecond=0)
+    while dt <= ahora + _dt.timedelta(minutes=5):                   # ya pasó → al día siguiente
+        dt += _dt.timedelta(days=1)
+    return dt.strftime("%Y-%m-%dT%H:%M:00-03:00")
 
 
 def _ads_camp_payload(nombre, cbo, presup, status):
@@ -6883,12 +6894,10 @@ def _ads_run(job, params):
         # campaña
         st["msg"] = "Creando campaña…"
         now = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
-        # La fecha del NOMBRE = el día en que ARRANCA la campaña (5am), NO la de hoy: si el usuario
-        # eligió fecha, esa; si no, mañana (porque ya pasaron las 5am de hoy). Igual que _ads_start_5am.
-        _fsel = (params.get("fecha") or "").strip()
+        # La fecha del NOMBRE = el día REAL en que arranca (sale de `start`, que ya se corrigió a
+        # futuro en _ads_sched). Así el nombre nunca dice un día vencido.
         try:
-            _fd = (_dt.date.fromisoformat(_fsel) if _fsel else
-                   (now.date() if now.hour < 5 else (now + _dt.timedelta(days=1)).date()))
+            _fd = _dt.date.fromisoformat(start[:10])
         except Exception:
             _fd = now.date() if now.hour < 5 else (now + _dt.timedelta(days=1)).date()
         fecha = "%d-%d" % (_fd.day, _fd.month)
