@@ -3572,7 +3572,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-ads-encendidos"})
+    return jsonify({"ok": True, "v": "2026-08-19-ads-aprobacion"})
 
 
 @app.get("/pf-diag")
@@ -7008,30 +7008,45 @@ def _ads_run(job, params):
         # procesaba (no esperamos el procesado antes, para que la subida sea rápida). Pasada final:
         # re-activa SOLO los que quedaron pausados/con-issues, cuando el procesado ya terminó. Así
         # salen ENCENDIDOS (programados) y no apagados. (El worker de gunicorn ya no tiene timeout.)
+        needs_appr = False
         if estado == "ACTIVE":
             st["msg"] = "Encendiendo anuncios…"
+
+            def _es_aprob(a):
+                for it in (a.get("issues_info") or []):
+                    t = ((it.get("error_summary") or "") + " " + (it.get("error_message") or "")).lower()
+                    if "aprob" in t or "usuarios de confianza" in t or "circulaci" in t:
+                        return True
+                return False
+
             for _r in range(6):
-                _t.sleep(12)
+                _t.sleep(10)
                 try:
                     _q = _ads_call("GET", campaign_id,
-                                   params={"fields": "ads.limit(80){id,status,effective_status}"})
+                                   params={"fields": "ads.limit(80){id,status,effective_status,issues_info}"})
                     _lst = (_q.get("ads") or {}).get("data", [])
                 except Exception:
                     _lst = []
-                _pend = [a["id"] for a in _lst
+                _pend = [a for a in _lst
                          if a.get("status") != "ACTIVE" or a.get("effective_status") == "WITH_ISSUES"]
+                # Meta pide aprobación de admin (publicar por API/System User): la API NO lo destraba,
+                # lo tiene que aprobar un humano. No reintentamos al pepe: avisamos y salimos.
+                if any(_es_aprob(a) for a in _pend):
+                    needs_appr = True
+                    break
                 if _lst and not _pend:
                     break
-                for _aid in _pend:
+                for a in _pend:                                  # re-encender los que Meta pausó (video procesándose)
                     try:
-                        _ads_call("POST", _aid, data={"status": "ACTIVE"})
+                        _ads_call("POST", a["id"], data={"status": "ACTIVE"})
                     except Exception:
                         pass
         st["done"] = st["total"]
+        _est_txt = ("⚠ APROBÁ los anuncios en Meta (te pidió aprobación de admin — revisá tu email/notificaciones)"
+                    if needs_appr else ("Programada 5 AM" if estado == "ACTIVE" else "Pausada"))
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
-                       "tipo": "CBO" if cbo else "ABO",
-                       "estado": "Programada 5 AM" if estado == "ACTIVE" else "Pausada"}
-        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s) (%s)." % (creados, n_conj, st["stats"]["estado"])
+                       "tipo": "CBO" if cbo else "ABO", "estado": _est_txt, "needs_approval": needs_appr}
+        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s" % (creados, n_conj, _est_txt)
         st["listo"] = True
     except Exception as e:
         st["error"] = str(e); st["listo"] = True
