@@ -2405,6 +2405,7 @@ _SOLO_DASH = r"""
     <div id="rpa-cjcant" class="row" style="align-items:flex-end">
      <div><span class="lb" id="rpa-cantlb">Cantidad de conjuntos</span><div class="step"><button class="b" onclick="rpaConj(-1)">&ndash;</button><b id="rpa-nconj">1</b><button class="b" onclick="rpaConj(1)">+</button></div></div>
      <div><span class="lb">Ads por conjunto</span><div style="background:#0a1322;border:1px solid #22324a;border-radius:10px;padding:11px 13px;font-size:13.5px;color:#8fb3e0;font-weight:700">= tus <span id="rpa-adsx">0</span> videos</div></div></div>
+    <label class="sw" id="rpa-repwrap" onclick="rpaRep()" style="margin-top:13px"><span class="tk" id="rpa-reptk"><i></i></span><span style="font-size:13.5px;font-weight:700">Repartir videos entre conjuntos <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(por orden: los primeros al 1&ordm;, y as&iacute;)</span></span></label>
     <div class="hint" id="rpa-cjhint">Cada conjunto lleva 1 anuncio por video.</div>
    </div>
    <div class="card">
@@ -2435,7 +2436,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
 (function(){
- var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='';
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false;
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
@@ -2478,6 +2479,7 @@ _SOLO_DASH = r"""
   $('rpa-cjhint').innerHTML=(m=='usar')?'Los anuncios se agregan al conjunto elegido (no crea uno nuevo).':(m=='dup')?'Agrega un conjunto con la misma config del elegido + tus videos.':'Cada conjunto lleva 1 anuncio por video.';
   if(m=='usar')NCONJ=1;rpaCalc();};
  window.rpaConj=function(d){NCONJ=Math.max(1,Math.min(20,NCONJ+d));$('rpa-nconj').textContent=NCONJ;rpaCalc();};
+ window.rpaRep=function(){REPARTIR=!REPARTIR;var t=$('rpa-reptk');if(t)t.classList.toggle('on',REPARTIR);rpaCalc();};
  window.rpaEstado=function(){EST=EST=='activa'?'pausada':'activa';$('rpa-tk').classList.toggle('on',EST=='activa');
   $('rpa-estlb').textContent=EST=='activa'?'Programada (se activa sola el día/hora)':'Pausada (para revisar antes)';
   $('rpa-progbox').style.display=EST=='activa'?'flex':'none';rpaCalc();};
@@ -2508,11 +2510,15 @@ _SOLO_DASH = r"""
   $('rpa-rconj').textContent=(CMP=='exist'&&CJ=='usar')?'usar 1':NCONJ;
   $('rpa-rvids').textContent=VIDS;$('rpa-adsx').textContent=VIDS;
   $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
-  $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(VIDS*NCONJ);};
+  var rep=REPARTIR&&NCONJ>1&&CMP=='nueva';
+  $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(rep?VIDS:(VIDS*NCONJ));
+  var rw=$('rpa-repwrap');if(rw)rw.style.display=(CMP=='nueva'&&NCONJ>1)?'flex':'none';
+  if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi)hi.innerHTML=rep?('Repartir: tus '+VIDS+' videos se dividen por orden entre los '+NCONJ+' conjuntos.'):('Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).');}
+  $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;};
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,presupuesto:$('rpa-presup').value,
-   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   var go=$('rpa-go');go.disabled=true;go.textContent='Lanzando…';var pr=$('rpa-prog'),bar=$('rpa-bar'),msg=$('rpa-msg');pr.style.display='block';
@@ -3555,7 +3561,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-fix-sched-pasado"})
+    return jsonify({"ok": True, "v": "2026-08-19-repartir-conjuntos"})
 
 
 @app.get("/pf-diag")
@@ -6438,7 +6444,7 @@ _ADS_UPLOADS = {}   # upload_id -> carpeta temporal con los videos que subió el
 # Cuentas configuradas (CP1/NoxaLab). Extensible a más cuentas.
 _ADS_CUENTAS = {
     "cp1": {
-        "nombre": "CP1 — NoxaLab", "ad_account": "1913715339273327",
+        "nombre": "CP1 — NoxaLab", "ad_account": "1913715339273327", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab 💪", "subtitulo": "Ultimas unidades", "presupuesto": 35,
@@ -6454,7 +6460,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "va1": {
-        "nombre": "VA1 — VisionPure", "ad_account": "964010428983612",
+        "nombre": "VA1 — VisionPure", "ad_account": "964010428983612", "token_env": "META_TOKEN_VA1",
         "page": "1105184446002428", "pixel": "1237139148560920", "ig": "17841471399362397",  # IG @visionpure.argentina
         "landing": "https://tryvisionpure.shop/productos/visionpure-recupera-la-nitidez-que-perdiste-con-los-anos2/",
         "titulo": "Recuperá la nitidez que perdiste con los años", "subtitulo": "Envío gratis hoy", "presupuesto": 35,
@@ -6523,6 +6529,12 @@ def _ads_token_para_cuenta(cuenta_key):
     cfg = _ADS_CUENTAS.get(cuenta_key or "")
     acct = cfg["ad_account"] if cfg else None
     cands = []
+    # 0) Token DEDICADO de la cuenta (System User que nunca vence, seteado por env). Va PRIMERO
+    #    para que cada cuenta use SIEMPRE el suyo y nunca dependa del token de quien esté logueado.
+    if cfg and cfg.get("token_env"):
+        dedic = _os.getenv(cfg["token_env"]) or ""
+        if dedic:
+            cands.append(dedic)
     try:
         email = _user_actual()
     except Exception:
@@ -6930,7 +6942,18 @@ def _ads_run(job, params):
         # ads EN PARALELO (1 por video). La miniatura se saca acá y se reintenta si el video
         # TODAVÍA se procesa en Meta (no esperamos el procesado completo antes, para que sea rápido).
         _tok_ad = getattr(_ads_local, "token", None)      # token de la cuenta correcta, para los threads
-        tareas = [(a, i, m) for a in adsets for i, m in enumerate(medios, start=1)]
+        if params.get("repartir") and len(adsets) > 1:
+            # REPARTIR: dividir los videos por ORDEN en bloques, uno por conjunto
+            # (cada video va a UN solo conjunto: los primeros al 1º, y así). Total ads = nº de videos.
+            import math as _math_rep
+            _per = max(1, _math_rep.ceil(len(medios) / len(adsets)))
+            tareas = []
+            for _ci, _a in enumerate(adsets):
+                for i, m in enumerate(medios[_ci * _per:(_ci + 1) * _per], start=1):
+                    tareas.append((_a, i, m))
+        else:
+            tareas = [(a, i, m) for a in adsets for i, m in enumerate(medios, start=1)]
+        total_ads = len(tareas)   # total REAL (con repartir = nº de videos, no videos×conjuntos)
 
         def _crear_ad(adset_id, i, medio):
             _ads_local.token = _tok_ad                    # propagar el token a este thread (no cruzar cuentas)
