@@ -3572,7 +3572,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-repartir-por-video"})
+    return jsonify({"ok": True, "v": "2026-08-19-ads-encendidos"})
 
 
 @app.get("/pf-diag")
@@ -7004,6 +7004,29 @@ def _ads_run(job, params):
             for _f in _cf.as_completed(_fs):
                 _f.result()                               # propaga la excepción si alguno falló
         creados = len(tareas)
+        # ENCENDER LOS ADS: Meta a veces crea los ads PAUSED/WITH_ISSUES porque el video TODAVÍA se
+        # procesaba (no esperamos el procesado antes, para que la subida sea rápida). Pasada final:
+        # re-activa SOLO los que quedaron pausados/con-issues, cuando el procesado ya terminó. Así
+        # salen ENCENDIDOS (programados) y no apagados. (El worker de gunicorn ya no tiene timeout.)
+        if estado == "ACTIVE":
+            st["msg"] = "Encendiendo anuncios…"
+            for _r in range(6):
+                _t.sleep(12)
+                try:
+                    _q = _ads_call("GET", campaign_id,
+                                   params={"fields": "ads.limit(80){id,status,effective_status}"})
+                    _lst = (_q.get("ads") or {}).get("data", [])
+                except Exception:
+                    _lst = []
+                _pend = [a["id"] for a in _lst
+                         if a.get("status") != "ACTIVE" or a.get("effective_status") == "WITH_ISSUES"]
+                if _lst and not _pend:
+                    break
+                for _aid in _pend:
+                    try:
+                        _ads_call("POST", _aid, data={"status": "ACTIVE"})
+                    except Exception:
+                        pass
         st["done"] = st["total"]
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
                        "tipo": "CBO" if cbo else "ABO",
