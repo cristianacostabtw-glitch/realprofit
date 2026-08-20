@@ -3572,7 +3572,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-ads-aprobacion"})
+    return jsonify({"ok": True, "v": "2026-08-19-anti-cuelgue"})
 
 
 @app.get("/pf-diag")
@@ -7019,14 +7019,19 @@ def _ads_run(job, params):
                         return True
                 return False
 
+            _fails = 0
             for _r in range(6):
                 _t.sleep(10)
                 try:
                     _q = _ads_call("GET", campaign_id,
                                    params={"fields": "ads.limit(80){id,status,effective_status,issues_info}"})
                     _lst = (_q.get("ads") or {}).get("data", [])
+                    _fails = 0
                 except Exception:
-                    _lst = []
+                    _fails += 1
+                    if _fails >= 2:            # Meta nos limita (rate limit): NO colgamos el job, salimos
+                        break
+                    continue
                 _pend = [a for a in _lst
                          if a.get("status") != "ACTIVE" or a.get("effective_status") == "WITH_ISSUES"]
                 # Meta pide aprobación de admin (publicar por API/System User): la API NO lo destraba,
