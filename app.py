@@ -2436,7 +2436,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
 (function(){
- var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false;
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados';
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
@@ -2478,8 +2478,19 @@ _SOLO_DASH = r"""
   $('rpa-cjlb').textContent=m=='usar'?'Conjunto al que sumar los ads':'Copiar la config de';
   $('rpa-cjhint').innerHTML=(m=='usar')?'Los anuncios se agregan al conjunto elegido (no crea uno nuevo).':(m=='dup')?'Agrega un conjunto con la misma config del elegido + tus videos.':'Cada conjunto lleva 1 anuncio por video.';
   if(m=='usar')NCONJ=1;rpaCalc();};
- window.rpaConj=function(d){NCONJ=Math.max(1,Math.min(20,NCONJ+d));$('rpa-nconj').textContent=NCONJ;rpaCalc();};
- window.rpaRep=function(){REPARTIR=!REPARTIR;var t=$('rpa-reptk');if(t)t.classList.toggle('on',REPARTIR);rpaCalc();};
+ window.rpaConj=function(d){NCONJ=Math.max(1,Math.min(20,NCONJ+d));$('rpa-nconj').textContent=NCONJ;for(var i=0;i<RMAP.length;i++){if(RMAP[i]>NCONJ)RMAP[i]=NCONJ;}renderVids(VMSG);rpaCalc();};
+ window.rpaRep=function(){REPARTIR=!REPARTIR;var t=$('rpa-reptk');if(t)t.classList.toggle('on',REPARTIR);renderVids(VMSG);rpaCalc();};
+ window.rpaSetR=function(i,v){RMAP[i]=parseInt(v,10);rpaCalc();};
+ function renderVids(msg){VMSG=msg||VMSG;var el=$('rpa-vids');if(!el)return;
+  var rep=REPARTIR&&NCONJ>1&&CMP=='nueva';var per=Math.max(1,Math.ceil(VLIST.length/Math.max(1,NCONJ)));
+  var h=VLIST.map(function(v,i){var sel='';
+   if(rep){var def=(RMAP[i]&&RMAP[i]<=NCONJ)?RMAP[i]:Math.min(NCONJ,Math.floor(i/per)+1);RMAP[i]=def;
+    var o='';for(var c=1;c<=NCONJ;c++){o+='<option value="'+c+'"'+(c==def?' selected':'')+'>Conj '+c+'</option>';}
+    sel='<select onchange="rpaSetR('+i+',this.value)" style="background:#0a1322;border:1px solid #22324a;border-radius:8px;color:#8fb3e0;font-weight:700;font-size:12px;padding:5px 7px;margin-left:8px">'+o+'</select>';}
+   return '<div class="vitem"><div class="vi">✓</div><div style="flex:1;color:#e2e8f0;font-weight:600">'+v.name+'</div>'+sel+'<div style="color:#5b6678;font-size:11px;margin-left:8px">'+(v.mb?v.mb+'MB':'')+'</div></div>';
+  }).join('');
+  h+='<div style="color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px">✅ '+VLIST.length+' creativos '+(rep?'— elegí el conjunto de cada uno':VMSG)+'.</div>';
+  el.innerHTML=h;}
  window.rpaEstado=function(){EST=EST=='activa'?'pausada':'activa';$('rpa-tk').classList.toggle('on',EST=='activa');
   $('rpa-estlb').textContent=EST=='activa'?'Programada (se activa sola el día/hora)':'Pausada (para revisar antes)';
   $('rpa-progbox').style.display=EST=='activa'?'flex':'none';rpaCalc();};
@@ -2489,7 +2500,7 @@ _SOLO_DASH = r"""
    b.textContent='Buscar videos';b.disabled=false;
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style="color:#fb7185;font-size:12.5px;margin-top:10px">'+((j&&j.msg)||'no pude leer el Drive')+'</div>';VIDS=0;rpaCalc();return;}
    VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
-   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class="vitem"><div class="vi">✓</div><div style="flex:1;color:#e2e8f0;font-weight:600">'+v.name+'</div><div style="color:#5b6678;font-size:11px">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style="color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px">✅ '+VIDS+' creativos ubicados en orden.</div>';rpaCalc();
+   VLIST=j.videos;RMAP=[];renderVids('ubicados en orden');rpaCalc();
   }).catch(function(){b.textContent='Buscar videos';b.disabled=false;});};
  window.rpaFuente=function(f){ $('rpa-fdrive').classList.toggle('on',f=='drive');$('rpa-farch').classList.toggle('on',f=='arch');
   $('rpa-srcdrive').style.display=f=='drive'?'block':'none';$('rpa-srcarch').style.display=f=='arch'?'block':'none';rpaReset();};
@@ -2499,7 +2510,7 @@ _SOLO_DASH = r"""
   fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">'+((j&&j.msg)||'no pude subir')+'</div>';VIDS=0;UPLOAD_ID='';rpaCalc();return;}
    UPLOAD_ID=j.upload_id;VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
-   $('rpa-vids').innerHTML=j.videos.map(function(v){return '<div class=\"vitem\"><div class=\"vi\">\u2713</div><div style=\"flex:1;color:#e2e8f0;font-weight:600\">'+v.name+'</div><div style=\"color:#5b6678;font-size:11px\">'+(v.mb?v.mb+'MB':'')+'</div></div>';}).join('')+'<div style=\"color:#34d399;font-size:12.5px;font-weight:700;margin-top:8px\">\u2705 '+VIDS+' creativos subidos.</div>';rpaCalc();
+   VLIST=j.videos;RMAP=[];renderVids('subidos');rpaCalc();
   }).catch(function(){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">error subiendo (probá de nuevo)</div>';VIDS=0;UPLOAD_ID='';rpaCalc();});};
  function schedTxt(){var f=$('rpa-fecha').value,h=$('rpa-hora').value||'05:00';if(!f)return h;var p=f.split('-');return p[2]+'/'+p[1]+' '+h;}
  function _fechaCamp(){var f=($('rpa-fecha')||{}).value;if(f){var q=f.split('-');return parseInt(q[2],10)+'-'+parseInt(q[1],10);}var d=new Date();d.setDate(d.getDate()+1);return d.getDate()+'-'+(d.getMonth()+1);}
@@ -2513,12 +2524,12 @@ _SOLO_DASH = r"""
   var rep=REPARTIR&&NCONJ>1&&CMP=='nueva';
   $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(rep?VIDS:(VIDS*NCONJ));
   var rw=$('rpa-repwrap');if(rw)rw.style.display=(CMP=='nueva'&&NCONJ>1)?'flex':'none';
-  if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi)hi.innerHTML=rep?('Repartir: tus '+VIDS+' videos se dividen por orden entre los '+NCONJ+' conjuntos.'):('Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).');}
+  if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi){if(rep){var cnt=[],k;for(k=1;k<=NCONJ;k++)cnt[k]=0;for(k=0;k<VLIST.length;k++){var cc=RMAP[k]||1;cnt[cc]=(cnt[cc]||0)+1;}var pp=[];for(k=1;k<=NCONJ;k++)pp.push('C'+k+': '+(cnt[k]||0));hi.innerHTML='Repartir — '+pp.join(' · ')+'  (elegí en cada video).';}else hi.innerHTML='Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).';}}
   $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;};
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,presupuesto:$('rpa-presup').value,
-   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   var go=$('rpa-go');go.disabled=true;go.textContent='Lanzando…';var pr=$('rpa-prog'),bar=$('rpa-bar'),msg=$('rpa-msg');pr.style.display='block';
@@ -3561,7 +3572,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-repartir-conjuntos"})
+    return jsonify({"ok": True, "v": "2026-08-19-repartir-por-video"})
 
 
 @app.get("/pf-diag")
@@ -6943,14 +6954,21 @@ def _ads_run(job, params):
         # TODAVÍA se procesa en Meta (no esperamos el procesado completo antes, para que sea rápido).
         _tok_ad = getattr(_ads_local, "token", None)      # token de la cuenta correcta, para los threads
         if params.get("repartir") and len(adsets) > 1:
-            # REPARTIR: dividir los videos por ORDEN en bloques, uno por conjunto
-            # (cada video va a UN solo conjunto: los primeros al 1º, y así). Total ads = nº de videos.
+            # REPARTIR: cada video va a UN conjunto. Si viene reparto_map (la elección por video del
+            # usuario, cuántos en cada conjunto), lo respeta; si no, reparte por orden en bloques parejos.
+            rmap = params.get("reparto_map") or []
             import math as _math_rep
             _per = max(1, _math_rep.ceil(len(medios) / len(adsets)))
             tareas = []
-            for _ci, _a in enumerate(adsets):
-                for i, m in enumerate(medios[_ci * _per:(_ci + 1) * _per], start=1):
-                    tareas.append((_a, i, m))
+            _cont = {}
+            for _vi, m in enumerate(medios):
+                try:
+                    _c = int(rmap[_vi]) if (_vi < len(rmap) and rmap[_vi]) else (_vi // _per + 1)
+                except Exception:
+                    _c = _vi // _per + 1
+                _c = max(1, min(len(adsets), _c))          # clamp al rango de conjuntos
+                _cont[_c] = _cont.get(_c, 0) + 1
+                tareas.append((adsets[_c - 1], _cont[_c], m))
         else:
             tareas = [(a, i, m) for a in adsets for i, m in enumerate(medios, start=1)]
         total_ads = len(tareas)   # total REAL (con repartir = nº de videos, no videos×conjuntos)
