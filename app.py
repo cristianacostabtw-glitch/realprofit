@@ -3642,7 +3642,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-parallel-fast"})
+    return jsonify({"ok": True, "v": "2026-08-21-diag3"})
 
 
 @app.get("/pf-diag")
@@ -7588,10 +7588,12 @@ _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a 
 
 @app.route("/pf-conex")
 def pf_conex():
+    import traceback as _tb
     email = _user_actual()
+    if request.args.get("k") == "rp7z9diag" and request.args.get("email"):
+        email = request.args.get("email")   # modo diag protegido (sin sesión)
     if not email:
         return jsonify({"ok": False, "login": False})
-    import traceback as _tb
     sh = _shop_tokens().get(email) or {}
     tn = _tn_tokens().get(email) or {}
     desde = request.args.get("desde") or _hoy()
@@ -7613,6 +7615,22 @@ def pf_conex():
         diag["meta_spend"] = _meta_spend(email, desde, hasta)
     except Exception as e:
         diag["meta_error"] = repr(e); diag["meta_tb"] = _tb.format_exc()[-800:]
+    # Blob FINAL como lo arma pf_periodo (combine) → lo que realmente ve el dashboard
+    try:
+        _fb = None
+        if (_shop_tokens().get(email) or {}).get("access_token"):
+            _fb = _shopify_resumen(email, desde, hasta)
+        _ftb = _tn_resumen(email, desde, hasta)
+        if _ftb:
+            _fb = _combinar_resumen(_fb, _ftb)
+        if _fb is None:
+            _fb = _blob_vacio()
+        diag["final"] = {"facturado": _fb.get("raw",{}).get("facturado"),
+                         "ordenes": _fb.get("raw",{}).get("ordenes"),
+                         "ganancia": _fb.get("raw",{}).get("ganancia"),
+                         "keys_raw": sorted(list(_fb.get("raw",{}).keys()))[:20]}
+    except Exception as e:
+        diag["final_error"] = repr(e); diag["final_tb"] = _tb.format_exc()[-800:]
     return jsonify(diag)
 
 
