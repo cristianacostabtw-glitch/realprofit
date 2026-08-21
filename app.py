@@ -3642,7 +3642,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-logos-hardcode"})
+    return jsonify({"ok": True, "v": "2026-08-21-diag-conex"})
 
 
 @app.get("/pf-diag")
@@ -7585,6 +7585,25 @@ _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a 
 
 
 @app.get("/pf-periodo")
+
+@app.route("/pf-conex")
+def pf_conex():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "login": False})
+    sh = _shop_tokens().get(email) or {}
+    tn = _tn_tokens().get(email) or {}
+    return jsonify({
+        "ok": True, "email": email,
+        "shopify_conectado": bool(sh.get("access_token")),
+        "shop": sh.get("shop"),
+        "tn_conectado": bool(tn.get("access_token") and tn.get("store_id")),
+        "tn_store": tn.get("store_id"),
+        "claves_shopify": list(_shop_tokens().keys()),
+        "claves_tn": list(_tn_tokens().keys()),
+    })
+
+
 def pf_periodo():
     email = _user_actual()
     desde = request.args.get("desde") or _hoy()
