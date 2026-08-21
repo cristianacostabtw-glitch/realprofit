@@ -8375,6 +8375,107 @@ def _wa_now():
     return (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ───────────────────────── BOT / auto-respondedor (cerebro Claude) ─────────────────────────
+# El cerebro vive en agente_ia.py. Se activa SOLO por cuenta (conf["bot"]=True) — así queda
+# gateado a VisionPure y apagado para el resto. Arranca DESACTIVADO por defecto.
+
+def _wa_bot_media(conf, media_id):
+    """Descarga un media de WhatsApp (imagen/comprobante) → (bytes, mime) o (None, '')."""
+    try:
+        r = requests.get("%s/%s" % (WA_GRAPH, media_id), params={"access_token": conf["token"]}, timeout=20)
+        if r.status_code >= 400:
+            return None, ""
+        j = r.json(); url = j.get("url"); mime = j.get("mime_type", "") or ""
+        rr = requests.get(url, headers={"Authorization": "Bearer " + conf["token"]}, timeout=40)
+        if rr.status_code >= 400:
+            return None, ""
+        return rr.content, (rr.headers.get("Content-Type") or mime or "image/jpeg")
+    except Exception:
+        return None, ""
+
+
+def _wa_bot_send(conf, wid, text):
+    """Manda un texto por la Graph API. Devuelve (ok, msg_id, err)."""
+    try:
+        r = requests.post("%s/%s/messages" % (WA_GRAPH, conf["phone_id"]),
+                          headers={"Authorization": "Bearer " + conf["token"]},
+                          json={"messaging_product": "whatsapp", "to": wid, "type": "text", "text": {"body": text}},
+                          timeout=20)
+        j = r.json()
+        if r.status_code >= 400:
+            return False, "", (j.get("error") or {}).get("message", "error %s" % r.status_code)
+        return True, (j.get("messages") or [{}])[0].get("id", ""), ""
+    except Exception as e:
+        return False, "", str(e)[:120]
+
+
+def _wa_bot_run(email, conf, wid, chats):
+    """Corre el cerebro sobre la conversación wid y (si corresponde) responde solo.
+    Anti-doble-respuesta por id del último entrante. Nunca lanza."""
+    try:
+        import agente_ia
+    except Exception:
+        return
+    conv = (chats.get(email) or {}).get(wid)
+    if not conv:
+        return
+    msgs = conv.get("messages", [])
+    # último mensaje ENTRANTE
+    last_in = None
+    for m in reversed(msgs):
+        if m.get("dir") == "in":
+            last_in = m; break
+    if not last_in:
+        return
+    lin_id = last_in.get("id") or ""
+    if lin_id and conv.get("bot_last_in") == lin_id:
+        return  # ya lo procesamos (re-entrega de Meta o segundo webhook)
+    conv["bot_last_in"] = lin_id  # marco YA y guardo, para que un reintento de Meta lo vea y no duplique
+    _wa_save_chats(chats)
+
+    # Audio/voz: el cerebro no puede escucharlo → lo derivo a un humano (no respondo mal).
+    if last_in.get("type") in ("audio", "voice"):
+        conv["bot_nota"] = "🎤 Llegó un audio — te lo dejo para que lo escuches vos"
+        _wa_save_chats(chats)
+        return
+
+    # Historial legible (últimos 40) para el cerebro.
+    hist = []
+    for m in msgs[-40:]:
+        t = (m.get("text") or "").strip()
+        if not t and m.get("type") in ("image", "video", "document", "sticker"):
+            t = "[%s]" % m.get("type")
+        hist.append({"dir": m.get("dir"), "texto": t})
+
+    # Imagen del último entrante (comprobante/foto) → visión.
+    imagenes = []
+    if last_in.get("type") == "image" and last_in.get("media_id"):
+        data, mime = _wa_bot_media(conf, last_in["media_id"])
+        if data:
+            imagenes.append((data, mime))
+
+    d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
+                          extra_instr=conf.get("bot_instr", ""))
+    conv["bot_motivo"] = d.get("motivo", ""); conv["bot_cat"] = d.get("categoria", "")
+
+    if d.get("responder") and (d.get("mensaje") or "").strip():
+        msg = d["mensaje"].strip()
+        if conf.get("bot_mode", "auto") == "draft":
+            conv["bot_draft"] = msg  # deja el borrador listo para que el humano lo mande
+            conv["bot_nota"] = "📝 Borrador del bot listo"
+        else:
+            ok, mid, err = _wa_bot_send(conf, wid, msg)
+            if ok:
+                conv["messages"].append({"dir": "out", "text": msg, "ts": _wa_now(),
+                                         "type": "text", "id": mid, "status": "sent", "by": "bot"})
+                conv["updated"] = _wa_now(); conv.pop("bot_nota", None)
+            else:
+                conv["bot_nota"] = "⚠️ El bot quiso responder pero falló el envío: " + (err or "?")
+    elif d.get("escalar"):
+        conv["bot_nota"] = "⚠️ El bot lo derivó a vos" + (": " + d["motivo"] if d.get("motivo") else "")
+    _wa_save_chats(chats)
+
+
 _WA_PAGE = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -8489,7 +8590,7 @@ _WA_PAGE = """<!doctype html>
  .lock{display:none;position:fixed;inset:56px 0 0 0;z-index:30;align-items:flex-start;justify-content:center;overflow:auto;background:rgba(6,20,14,.36)}
  body.locked .lock{display:flex}
  body.locked #app{filter:blur(7px) brightness(.82);pointer-events:none;user-select:none}
- body.locked #bTpl,body.locked #bCfg{display:none!important}
+ body.locked #bTpl,body.locked #bCfg,body.locked #bBot{display:none!important}
  body.locked #num{opacity:.45}
  .lockcard{background:#fff;border-radius:18px;padding:30px 28px;max-width:468px;width:92%;margin:min(6vh,56px) 0;box-shadow:0 24px 70px rgba(0,0,0,.34)}
  .lockbadge{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#25D366,#0a7d3c);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 8px 22px rgba(37,211,102,.35)}
@@ -8499,6 +8600,7 @@ _WA_PAGE = """<!doctype html>
 <div class="top">
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
  <span class="num" id="num"></span>
+ <button id="bBot" style="display:none" onclick="openBot()">&#129302; Bot</button>
  <button id="bTpl" style="display:none" onclick="openTpl()">Plantillas</button>
  <button id="bCfg" style="display:none" onclick="doDisc()">Desconectar</button>
  <button onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
@@ -8508,7 +8610,7 @@ _WA_PAGE = """<!doctype html>
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 <div class="lightbox" id="lb" onclick="this.classList.remove('on')"><img alt=""></div>
 <script>
-var EST=null, CHATS=[], SEL=null, POLL=null;
+var EST=null, CHATS=[], SEL=null, POLL=null, BOTON=false;
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function hhmm(ts){ if(!ts)return''; var p=(''+ts).split(' ')[1]||''; return p.slice(0,5); }
 function ini(n){ n=(n||'?').trim(); return (n[0]||'?').toUpperCase(); }
@@ -8560,6 +8662,7 @@ function val(id){ return (document.getElementById(id)||{}).value||''; }
 function renderApp(){
  document.getElementById('num').textContent=EST.numero?('&#128241; '+EST.numero):'';
  document.getElementById('num').innerHTML=EST.numero?('&#128241; '+esc(EST.numero)):'';
+ document.getElementById('bBot').style.display='';
  document.getElementById('bTpl').style.display='';
  document.getElementById('bCfg').style.display='';
  var app=document.getElementById('app');
@@ -8729,6 +8832,57 @@ function sendTpl(name,lang,nvars){
 }
 function closeOv(){ document.getElementById('ov').classList.remove('on'); }
 document.getElementById('ov').addEventListener('click',function(e){ if(e.target.id=='ov')closeOv(); });
+
+// ── Bot / auto-respondedor ──
+function openBot(){
+ var ov=document.getElementById('ov'), md=document.getElementById('modal');
+ md.innerHTML='<div class="mh"><h3>&#129302; Bot &#8212; Auto-respondedor</h3><button class="x" onclick="closeOv()">&times;</button></div><div id="botbox">Cargando&#8230;</div>';
+ ov.classList.add('on');
+ get('/wa-bot-config').then(function(c){ renderBot(c); });
+}
+function renderBot(c){
+ var box=document.getElementById('botbox'); if(!box)return;
+ BOTON=!!c.bot;
+ var warn='';
+ if(!c.key_ok){ warn='<div class="msgline msgbad" style="margin-bottom:10px">&#9888; Falta la ANTHROPIC_API_KEY en el servidor (Render &#8594; Environment). Hasta cargarla, el bot no puede pensar.</div>'; }
+ box.innerHTML=warn
+  +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+  +'<label style="font-weight:700">Auto-respondedor</label>'
+  +'<button id="botTgl" onclick="toggleBot()" style="border:0;border-radius:20px;padding:7px 16px;font-weight:700;cursor:pointer;color:#fff;background:'+(BOTON?'#25D366':'#94a3b8')+'">'+(BOTON?'ENCENDIDO':'APAGADO')+'</button>'
+  +'<span id="botTglTxt" style="font-size:12px;color:#667781">'+(BOTON?'está respondiendo solo':'apagado, no responde')+'</span></div>'
+  +'<div class="fld" style="margin-bottom:10px"><label>Modo</label><select id="botMode" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="auto"'+(c.mode!='draft'?' selected':'')+'>Auto-enviar (responde solo)</option><option value="draft"'+(c.mode=='draft'?' selected':'')+'>Borrador (lo escribe, lo mandás vos)</option></select></div>'
+  +'<div class="fld"><label>Instrucciones para el bot (su cerebro)</label>'
+  +'<textarea id="botInstr" rows="6" style="width:100%;font-family:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="Escribile indicaciones para que se entiendan. Ej: si preguntan por envío a Córdoba, decí 3-5 días. No ofrezcas descuentos. Si mandan un audio, avisá que ya lo escuchás.">'+esc(c.instr||'')+'</textarea>'
+  +'<small style="color:#667781">Lo que pongas acá se le suma al cerebro y lo respeta en cada respuesta. Así lo vas afinando.</small></div>'
+  +'<button class="btn" onclick="saveBot()" style="margin-top:6px">Guardar</button>'
+  +'<div id="botMsg" style="margin-top:8px"></div>'
+  +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
+  +'<div style="font-weight:700;margin-bottom:4px">&#129514; Probador (no manda nada)</div>'
+  +'<div style="font-size:12px;color:#667781;margin-bottom:6px">Escribí un mensaje como si fueras un cliente y mirá qué contestaría.</div>'
+  +'<input id="botTest" placeholder="ej: hola, cuánto sale? es para mi mamá" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px">'
+  +'<button class="btn" onclick="probarBot()">Probar</button>'
+  +'<div id="botTestOut" style="margin-top:10px"></div>';
+}
+function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); b.textContent=BOTON?'ENCENDIDO':'APAGADO'; b.style.background=BOTON?'#25D366':'#94a3b8'; var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; }
+function saveBot(){
+ post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),instr:document.getElementById('botInstr').value}).then(function(r){
+  document.getElementById('botMsg').innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado'+(r.bot?' &#8212; bot ENCENDIDO':' &#8212; bot apagado')+'</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
+ });
+}
+function probarBot(){
+ var t=val('botTest'); if(!t)return;
+ var out=document.getElementById('botTestOut'); out.innerHTML='Pensando&#8230;';
+ post('/wa-bot-probar',{text:t}).then(function(r){
+  if(!r.ok){ out.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'; return; }
+  var d=r.d||{};
+  var head=d.responder?'<span style="color:#128C7E;font-weight:700">&#10003; Responder&#237;a</span>':(d.escalar?'<span style="color:#c0392b;font-weight:700">&#9888; Te lo derivar&#237;a</span>':'<span style="color:#667781;font-weight:700">&#8212; No responder&#237;a</span>');
+  out.innerHTML='<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#f7faf9">'
+   +'<div style="margin-bottom:6px">'+head+' <span style="font-size:11px;color:#667781">('+esc(d.categoria||'')+')</span></div>'
+   +(d.mensaje?'<div style="background:var(--out);border-radius:8px;padding:8px;white-space:pre-wrap;font-size:13px">'+esc(d.mensaje)+'</div>':'')
+   +(d.motivo?'<div style="font-size:11px;color:#667781;margin-top:6px"><b>Por qu&#233;:</b> '+esc(d.motivo)+'</div>':'')
+   +'</div>';
+ });
+}
 boot();
 </script>
 </body></html>"""
@@ -8808,7 +8962,7 @@ def wa_webhook():
     raw = request.get_data()
     data = request.get_json(force=True, silent=True) or {}
     try:
-        chats = _wa_chats_all(); changed = False; fwd = set()
+        chats = _wa_chats_all(); changed = False; fwd = set(); bot_jobs = {}
         for entry in data.get("entry", []):
             for ch in entry.get("changes", []):
                 val = ch.get("value") or {}
@@ -8848,6 +9002,8 @@ def wa_webhook():
                     conv["messages"].append(msg)
                     conv["unread"] = conv.get("unread", 0) + 1   # contador de no leídos (badge 1/2/3)
                     conv["updated"] = _wa_now(); changed = True
+                    if cf.get("bot"):                            # cuenta con auto-respondedor prendido
+                        bot_jobs[(em, wid)] = cf
                 for s in (val.get("statuses") or []):
                     sid = s.get("id"); st = s.get("status")
                     for conv in emap.values():
@@ -8859,6 +9015,12 @@ def wa_webhook():
         for u in fwd:
             try:
                 requests.post(u, data=raw, headers={"Content-Type": "application/json"}, timeout=4)
+            except Exception:
+                pass
+        # Auto-respondedor: corre el cerebro para las cuentas con el bot prendido (VisionPure).
+        for (em, wid), cf in bot_jobs.items():
+            try:
+                _wa_bot_run(em, cf, wid, chats)
             except Exception:
                 pass
     except Exception:
@@ -8897,6 +9059,63 @@ def wa_leido():
         conv["unread"] = 0
         _wa_save_chats(chats)
     return jsonify({"ok": True})
+
+
+@app.get("/wa-bot-config")
+def wa_bot_config_get():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    c = _wa_conf(email) or {}
+    try:
+        import agente_ia
+        key_ok = agente_ia.disponible()
+    except Exception:
+        key_ok = False
+    return jsonify({"ok": True, "bot": bool(c.get("bot")), "mode": c.get("bot_mode", "auto"),
+                    "instr": c.get("bot_instr", ""), "key_ok": key_ok,
+                    "conectado": bool(c.get("token") and c.get("phone_id"))})
+
+
+@app.post("/wa-bot-config")
+def wa_bot_config_set():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    toks = _wa_tokens()
+    c = toks.get(email)
+    if not c:
+        return jsonify({"ok": False, "msg": "WhatsApp no conectado"})
+    if "bot" in request.form:
+        c["bot"] = request.form.get("bot") in ("1", "true", "on", "True")
+    if "mode" in request.form:
+        c["bot_mode"] = "draft" if request.form.get("mode") == "draft" else "auto"
+    if "instr" in request.form:
+        c["bot_instr"] = (request.form.get("instr") or "")[:6000]
+    _wa_save_tokens(toks)
+    return jsonify({"ok": True, "bot": bool(c.get("bot")), "mode": c.get("bot_mode", "auto")})
+
+
+@app.post("/wa-bot-probar")
+def wa_bot_probar():
+    """Probador: le tirás un mensaje de cliente y devuelve qué DECIDIRÍA el bot, sin enviar nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    c = _wa_conf(email) or {}
+    txt = (request.form.get("text") or "").strip()
+    nombre = (request.form.get("nombre") or "").strip()
+    if not txt:
+        return jsonify({"ok": False, "msg": "escribí un mensaje de prueba"})
+    try:
+        import agente_ia
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "cerebro no disponible: " + str(e)[:80]})
+    if not agente_ia.disponible():
+        return jsonify({"ok": False, "msg": "Falta ANTHROPIC_API_KEY en el servidor (Render → Environment)"})
+    hist = [{"dir": "in", "texto": txt}]
+    d = agente_ia.decidir(hist, nombre=nombre, extra_instr=c.get("bot_instr", ""))
+    return jsonify({"ok": True, "d": d})
 
 
 @app.post("/wa-enviar")
