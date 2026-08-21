@@ -3637,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-carga-instant"})
+    return jsonify({"ok": True, "v": "2026-08-21-carga-instant2"})
 
 
 @app.get("/pf-diag")
@@ -7616,10 +7616,19 @@ def pf_chk():
         if _tkn.get("access_token") and _tkn.get("store_id"):
             _cn.append("tn")
         out["canales"] = _cn
-        sb = _shopify_resumen(email, desde, hasta) if "shopify" in _cn else None
-        tb = _tn_resumen(email, desde, hasta)
+        import time as _tm
+        t0=_tm.time(); sb = _shopify_resumen(email, desde, hasta) if "shopify" in _cn else None; out["t_shopify"]=round(_tm.time()-t0,2)
+        t0=_tm.time(); tb = _tn_resumen(email, desde, hasta); out["t_tn"]=round(_tm.time()-t0,2)
         out["shopify_ordenes"] = int((sb or {}).get("raw", {}).get("ordenes", 0) or 0)
         out["tn_ordenes"] = int((tb or {}).get("raw", {}).get("ordenes", 0) or 0)
+        try:
+            t0=_tm.time(); out["meta_spend"]=_meta_spend(email, desde, hasta); out["t_meta"]=round(_tm.time()-t0,2)
+        except Exception as e:
+            out["meta_err"]=repr(e)
+        try:
+            t0=_tm.time(); out["dolar"]=_dolar_ars_vivo(); out["t_dolar"]=round(_tm.time()-t0,2)
+        except Exception as e:
+            out["dolar_err"]=repr(e)
     except Exception as e:
         out["err"] = repr(e)
     return jsonify(out)
