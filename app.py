@@ -3642,7 +3642,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-revert-ok"})
+    return jsonify({"ok": True, "v": "2026-08-21-parallel-fast"})
 
 
 @app.get("/pf-diag")
@@ -7632,12 +7632,32 @@ def pf_periodo():
         c = _PF_CACHE.get(key)
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
-        blob = None
-        sh_blob = None
-        if email in _shop_tokens():
-            sh_blob = _shopify_resumen(email, desde, hasta)
-            blob = sh_blob
-        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
+        # Shopify + Tiendanube + Meta + dólar EN PARALELO (no una atrás de otra) → carga al toque.
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        _has_sh = email in _shop_tokens()
+        sh_blob = None; tn_blob = None; _spend_pre = 0; _dolar_pre = 1200
+        with _TPE(max_workers=4) as _ex:
+            _f_sh = _ex.submit(_shopify_resumen, email, desde, hasta) if _has_sh else None
+            _f_tn = _ex.submit(_tn_resumen, email, desde, hasta)
+            _f_me = _ex.submit(_meta_spend, email, desde, hasta)
+            _f_do = _ex.submit(_dolar_ars_vivo)
+            try:
+                sh_blob = _f_sh.result() if _f_sh else None
+            except Exception:
+                sh_blob = None
+            try:
+                tn_blob = _f_tn.result()
+            except Exception:
+                tn_blob = None
+            try:
+                _spend_pre = _f_me.result()
+            except Exception:
+                _spend_pre = 0
+            try:
+                _dolar_pre = round((_f_do.result() or 1200), 2)
+            except Exception:
+                _dolar_pre = 1200
+        blob = sh_blob
         if tn_blob:
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
@@ -7646,13 +7666,10 @@ def pf_periodo():
             blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
         except Exception:
             pass
-        try:
-            blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
-        except Exception:
-            blob["raw"]["dolar"] = 1200
+        blob["raw"]["dolar"] = _dolar_pre
         try:
             # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
-            spend = _meta_spend(email, desde, hasta)
+            spend = _spend_pre
             if spend:
                 r = blob["raw"]
                 fact = r.get("facturado", 0.0)
