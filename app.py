@@ -2072,11 +2072,6 @@ _SOLO_DASH = r"""
     var sel='img[src*="'+SIG+'"]';                       // los 16 <img> del icono Shopify
     var chip='button:has(> img[src*="'+SIG+'"])';        // el chip de canal (único botón con el icono como hijo directo)
     var noNotif='#mfy_toasts{display:none!important}';   // sin notificaciones de venta arriba a la derecha
-    if(window._rpShop===true && window._rpTn===true){                 // LAS 2 conectadas: ícono Shopify (el original) + ícono Tiendanube + texto "2 tiendas"
-      stEl.textContent=noNotif
-        +chip+'{font-size:0!important}'                               // oculta el texto "Shopify" del chip
-        +chip+'::before{content:""!important;display:inline-block!important;width:17px;height:17px;vertical-align:middle;margin-left:5px;background:url("'+TN_URI+'") center/contain no-repeat!important}'
-        +chip+'::after{content:"2 tiendas"!important;font-size:12px!important;margin-left:6px}'; return; }
     if(window._rpShop===true){ stEl.textContent=noNotif; return; }   // Shopify: icono + texto originales
     if(window._rpTn===true){                                          // Tiendanube: ícono Y texto por CSS (no se toca React)
       stEl.textContent=noNotif
@@ -3642,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-diag3"})
+    return jsonify({"ok": True, "v": "2026-08-20-2tiendas-juntas"})
 
 
 @app.get("/pf-diag")
@@ -7585,61 +7580,6 @@ _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a 
 
 
 @app.get("/pf-periodo")
-
-@app.route("/pf-conex")
-def pf_conex():
-    import traceback as _tb
-    email = _user_actual()
-    if request.args.get("k") == "rp7z9diag" and request.args.get("email"):
-        email = request.args.get("email")   # modo diag protegido (sin sesión)
-    if not email:
-        return jsonify({"ok": False, "login": False})
-    sh = _shop_tokens().get(email) or {}
-    tn = _tn_tokens().get(email) or {}
-    desde = request.args.get("desde") or _hoy()
-    hasta = request.args.get("hasta") or desde
-    diag = {"ok": True, "email": email, "desde": desde, "hasta": hasta,
-        "shopify_conectado": bool(sh.get("access_token")), "shop": sh.get("shop"),
-        "tn_conectado": bool(tn.get("access_token") and tn.get("store_id")), "tn_store": tn.get("store_id")}
-    try:
-        sb = _shopify_resumen(email, desde, hasta)
-        diag["shopify_resumen"] = ("None" if sb is None else {"ordenes": sb.get("raw",{}).get("ordenes"), "facturado": sb.get("raw",{}).get("facturado")})
-    except Exception as e:
-        diag["shopify_error"] = repr(e); diag["shopify_tb"] = _tb.format_exc()[-600:]
-    try:
-        tbb = _tn_resumen(email, desde, hasta)
-        diag["tn_resumen"] = ("None" if tbb is None else {"ordenes": tbb.get("raw",{}).get("ordenes"), "facturado": tbb.get("raw",{}).get("facturado")})
-    except Exception as e:
-        diag["tn_error"] = repr(e); diag["tn_tb"] = _tb.format_exc()[-600:]
-    try:
-        diag["meta_spend"] = _meta_spend(email, desde, hasta)
-    except Exception as e:
-        diag["meta_error"] = repr(e); diag["meta_tb"] = _tb.format_exc()[-800:]
-    # Blob FINAL como lo arma pf_periodo (combine) → lo que realmente ve el dashboard
-    try:
-        _fb = None
-        if (_shop_tokens().get(email) or {}).get("access_token"):
-            _fb = _shopify_resumen(email, desde, hasta)
-        _ftb = _tn_resumen(email, desde, hasta)
-        if _ftb:
-            _fb = _combinar_resumen(_fb, _ftb)
-        if _fb is None:
-            _fb = _blob_vacio()
-        diag["final"] = {"facturado": _fb.get("raw",{}).get("facturado"),
-                         "ordenes": _fb.get("raw",{}).get("ordenes"),
-                         "ganancia": _fb.get("raw",{}).get("ganancia"),
-                         "keys_raw": sorted(list(_fb.get("raw",{}).keys()))[:20]}
-    except Exception as e:
-        diag["final_error"] = repr(e); diag["final_tb"] = _tb.format_exc()[-800:]
-    return jsonify(diag)
-
-
-def _app_log(msg):
-    try:
-        print("[RP]", msg, flush=True)
-    except Exception:
-        pass
-
 def pf_periodo():
     email = _user_actual()
     desde = request.args.get("desde") or _hoy()
@@ -7650,32 +7590,10 @@ def pf_periodo():
         c = _PF_CACHE.get(key)
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
-        # Shopify + Tiendanube + Meta + dólar EN PARALELO (no una atrás de otra) → carga al toque.
-        from concurrent.futures import ThreadPoolExecutor as _TPE
-        _has_sh = email in _shop_tokens()
-        sh_blob = None; tn_blob = None; _spend_pre = 0; _dolar_pre = 1200
-        with _TPE(max_workers=4) as _ex:
-            _f_sh = _ex.submit(_shopify_resumen, email, desde, hasta) if _has_sh else None
-            _f_tn = _ex.submit(_tn_resumen, email, desde, hasta)
-            _f_me = _ex.submit(_meta_spend, email, desde, hasta)
-            _f_do = _ex.submit(_dolar_ars_vivo)
-            try:
-                sh_blob = _f_sh.result() if _f_sh else None
-            except Exception:
-                sh_blob = None
-            try:
-                tn_blob = _f_tn.result()
-            except Exception:
-                tn_blob = None
-            try:
-                _spend_pre = _f_me.result()
-            except Exception:
-                _spend_pre = 0
-            try:
-                _dolar_pre = round((_f_do.result() or 1200), 2)
-            except Exception:
-                _dolar_pre = 1200
-        blob = sh_blob
+        blob = None
+        if email in _shop_tokens():
+            blob = _shopify_resumen(email, desde, hasta)
+        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
         if tn_blob:
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
@@ -7684,53 +7602,53 @@ def pf_periodo():
             blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
         except Exception:
             pass
-        blob["raw"]["dolar"] = _dolar_pre
         try:
-            # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
-            spend = _spend_pre
-            if spend:
-                r = blob["raw"]
-                fact = r.get("facturado", 0.0)
-                ordenes = r.get("ordenes", 0)
-                r["publi_ars"] = round(spend, 2)
-                r["publi_cuenta"] = round(spend, 2)
-                r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
-                r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
-                r["roas"] = round(fact / spend, 2) if spend else 0.0
-                r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
-                r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
-                r["tot_ganancia"] = r["ganancia"]
-                r["tot_margen"] = r["margen"]
-            # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
+            blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
+        except Exception:
+            blob["raw"]["dolar"] = 1200
+        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
+        spend = _meta_spend(email, desde, hasta)
+        if spend:
             r = blob["raw"]
-            _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
-            _fact = r.get("facturado", 0.0) or 0.0
-            _iva_deb = _fact * _F
-            _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
-                         + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
-            _iva_cred = _base_cred * _F
-            _iva_pag = _iva_deb - _iva_cred
-            r["iva_total"] = round(_iva_deb, 2)
-            r["iva_favor"] = round(_iva_cred, 2)
-            r["iva_pagar"] = round(_iva_pag, 2)
-            if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
-                _ord = r.get("ordenes", 0) or 0
-                r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
-                r["tot_ganancia"] = r["ganancia"]
-                r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
-                r["tot_margen"] = r["margen"]
-                r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
-                r["tot_gan_por_venta"] = r["gan_por_venta"]
-                # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
-                # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
-                _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
-                        - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
-                        - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
-                _pre_ri = _pre - _iva_pag
-                r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
-                r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
-        except Exception as _e:
-            _app_log("pf_periodo post-combine fallo: "+repr(_e))
+            fact = r.get("facturado", 0.0)
+            ordenes = r.get("ordenes", 0)
+            r["publi_ars"] = round(spend, 2)
+            r["publi_cuenta"] = round(spend, 2)
+            r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+            r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
+            r["roas"] = round(fact / spend, 2) if spend else 0.0
+            r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+            r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
+            r["tot_ganancia"] = r["ganancia"]
+            r["tot_margen"] = r["margen"]
+        # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
+        r = blob["raw"]
+        _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
+        _fact = r.get("facturado", 0.0) or 0.0
+        _iva_deb = _fact * _F
+        _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
+                     + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
+        _iva_cred = _base_cred * _F
+        _iva_pag = _iva_deb - _iva_cred
+        r["iva_total"] = round(_iva_deb, 2)
+        r["iva_favor"] = round(_iva_cred, 2)
+        r["iva_pagar"] = round(_iva_pag, 2)
+        if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
+            _ord = r.get("ordenes", 0) or 0
+            r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
+            r["tot_ganancia"] = r["ganancia"]
+            r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
+            r["tot_margen"] = r["margen"]
+            r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
+            r["tot_gan_por_venta"] = r["gan_por_venta"]
+            # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
+            # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
+            _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
+                    - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
+                    - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
+            _pre_ri = _pre - _iva_pag
+            r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
+            r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
