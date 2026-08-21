@@ -3642,7 +3642,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-diag2"})
+    return jsonify({"ok": True, "v": "2026-08-21-fix-metaspend"})
 
 
 @app.get("/pf-diag")
@@ -7609,8 +7609,18 @@ def pf_conex():
         diag["tn_resumen"] = ("None" if tbb is None else {"ordenes": tbb.get("raw",{}).get("ordenes"), "facturado": tbb.get("raw",{}).get("facturado")})
     except Exception as e:
         diag["tn_error"] = repr(e); diag["tn_tb"] = _tb.format_exc()[-600:]
+    try:
+        diag["meta_spend"] = _meta_spend(email, desde, hasta)
+    except Exception as e:
+        diag["meta_error"] = repr(e); diag["meta_tb"] = _tb.format_exc()[-800:]
     return jsonify(diag)
 
+
+def _app_log(msg):
+    try:
+        print("[RP]", msg, flush=True)
+    except Exception:
+        pass
 
 def pf_periodo():
     email = _user_actual()
@@ -7650,49 +7660,52 @@ def pf_periodo():
             blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
         except Exception:
             blob["raw"]["dolar"] = 1200
-        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
-        spend = _meta_spend(email, desde, hasta)
-        if spend:
+        try:
+            # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
+            spend = _meta_spend(email, desde, hasta)
+            if spend:
+                r = blob["raw"]
+                fact = r.get("facturado", 0.0)
+                ordenes = r.get("ordenes", 0)
+                r["publi_ars"] = round(spend, 2)
+                r["publi_cuenta"] = round(spend, 2)
+                r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+                r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
+                r["roas"] = round(fact / spend, 2) if spend else 0.0
+                r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+                r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
+                r["tot_ganancia"] = r["ganancia"]
+                r["tot_margen"] = r["margen"]
+            # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
             r = blob["raw"]
-            fact = r.get("facturado", 0.0)
-            ordenes = r.get("ordenes", 0)
-            r["publi_ars"] = round(spend, 2)
-            r["publi_cuenta"] = round(spend, 2)
-            r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
-            r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
-            r["roas"] = round(fact / spend, 2) if spend else 0.0
-            r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
-            r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
-            r["tot_ganancia"] = r["ganancia"]
-            r["tot_margen"] = r["margen"]
-        # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
-        r = blob["raw"]
-        _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
-        _fact = r.get("facturado", 0.0) or 0.0
-        _iva_deb = _fact * _F
-        _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
-                     + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
-        _iva_cred = _base_cred * _F
-        _iva_pag = _iva_deb - _iva_cred
-        r["iva_total"] = round(_iva_deb, 2)
-        r["iva_favor"] = round(_iva_cred, 2)
-        r["iva_pagar"] = round(_iva_pag, 2)
-        if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
-            _ord = r.get("ordenes", 0) or 0
-            r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
-            r["tot_ganancia"] = r["ganancia"]
-            r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
-            r["tot_margen"] = r["margen"]
-            r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
-            r["tot_gan_por_venta"] = r["gan_por_venta"]
-            # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
-            # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
-            _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
-                    - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
-                    - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
-            _pre_ri = _pre - _iva_pag
-            r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
-            r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
+            _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
+            _fact = r.get("facturado", 0.0) or 0.0
+            _iva_deb = _fact * _F
+            _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
+                         + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
+            _iva_cred = _base_cred * _F
+            _iva_pag = _iva_deb - _iva_cred
+            r["iva_total"] = round(_iva_deb, 2)
+            r["iva_favor"] = round(_iva_cred, 2)
+            r["iva_pagar"] = round(_iva_pag, 2)
+            if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
+                _ord = r.get("ordenes", 0) or 0
+                r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
+                r["tot_ganancia"] = r["ganancia"]
+                r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
+                r["tot_margen"] = r["margen"]
+                r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
+                r["tot_gan_por_venta"] = r["gan_por_venta"]
+                # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
+                # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
+                _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
+                        - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
+                        - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
+                _pre_ri = _pre - _iva_pag
+                r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
+                r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
+        except Exception as _e:
+            _app_log("pf_periodo post-combine fallo: "+repr(_e))
         _PF_CACHE[key] = (now, blob)
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
