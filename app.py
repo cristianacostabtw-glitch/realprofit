@@ -2236,10 +2236,15 @@ _SOLO_DASH = r"""
  window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ tstk('Sumado al stock'); rpStkLoad(); }); };
  window.rpStkEditToggle=function(id){ var e=$('corr-'+id); if(!e)return; var vis=(e.style.display==='flex'); e.style.display=vis?'none':'flex'; if(!vis){var inp=$('corrin-'+id); if(inp){inp.focus();inp.select();}} };
  window.rpStkGuardar=function(pid){ var el=$('corrin-'+sid(pid)); if(!el)return; var n=Math.max(0,Math.round(+el.value||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ tstk('Stock corregido a '+n); rpStkLoad(); }); };
- window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[]; if(!cat.length){ alert('Conectá tu tienda para traer los productos.'); return; }
-   var nombre=prompt('Producto (pegá parte del nombre):'); if(!nombre)return; var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0]; if(!m){ alert('No encontré ese producto.'); return; }
-   var unidad=prompt('Unidad (potes / sprays / u):','u')||'u'; var stock=parseInt(prompt('Stock actual que tenés hoy en depósito:','0')||'0',10)||0;
-   fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:m.id,nombre:m.nombre,sku:m.sku,unidad:unidad,stock:stock,costo:m.costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); }); };
+ window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[];
+   var nombre=prompt('Nombre del producto (ej: VisionPure 60ml):'); if(!nombre)return; nombre=nombre.trim(); if(!nombre)return;
+   var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0];
+   var unidad=prompt('Unidad (potes / sprays / u):','u')||'u';
+   var stock=parseInt((prompt('Stock actual que tenés hoy en depósito:','0')||'0').replace(/\D/g,''),10)||0;
+   var pid,nom,sku,costo;
+   if(m){ pid=m.id; nom=m.nombre; sku=m.sku||''; costo=m.costo||0; }
+   else { pid='manual-'+Date.now(); nom=nombre; sku=''; costo=parseFloat((prompt('Costo por unidad (opcional):','0')||'0').replace(',','.'))||0; }
+   fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,nombre:nom,sku:sku,unidad:unidad,stock:stock,costo:costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); }); };
 })();
 </script>
 </div>
@@ -3572,7 +3577,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-19-anti-cuelgue"})
+    return jsonify({"ok": True, "v": "2026-08-20-stock-manual"})
 
 
 @app.get("/pf-diag")
