@@ -7210,7 +7210,7 @@ html.mfy-ready #root{opacity:1;transition:opacity .15s ease}
    else an.innerHTML=pre+"Invertís "+pctAds.toFixed(1)+"% de la facturación en ads. Para escalar, trabajá en mejorar el ticket promedio ("+money(TK)+") con upsells o combos. ROAS objetivo para escalar con confianza: 3x."; } }
 
  // ---- Últimas ventas (órdenes reales) ----
- var TN_LOGO="",ML_LOGO="";
+ var TN_LOGO="",ML_LOGO="",SH_LOGO="";
  function fmtFecha(s){ if(!s)return""; var d=new Date(s); if(isNaN(d))return s; var ar=new Date(d.getTime()-3*3600*1000);
   var mes=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; var p=function(n){return(n<10?"0":"")+n;};
   return ar.getUTCDate()+" "+mes[ar.getUTCMonth()]+", "+p(ar.getUTCHours())+":"+p(ar.getUTCMinutes()); }
@@ -7247,7 +7247,7 @@ html.mfy-ready #root{opacity:1;transition:opacity .15s ease}
    while(num&&num.parentElement!==row) num=num.parentElement;
    if(num&&num.nextSibling) row.insertBefore(box,num.nextSibling); else row.appendChild(box); }
   function chip(logo,n,alt){ return '<span style="display:inline-flex;align-items:center;gap:4px"><img src="'+logo+'" alt="'+alt+'" style="width:17px;height:17px;object-fit:contain;flex:none"><span style="font-size:15px;font-weight:700;color:#cbd5e1" class="tabular-nums">'+n+'</span></span>'; }
-  var html=""; if(TN_LOGO)html+=chip(TN_LOGO,d.ordenes,"tiendanube"); if(ML_LOGO)html+=chip(ML_LOGO,d.meli_ventas,"mercadolibre");
+  var C=(d.canales||[]),html=""; if(C.length){ if(C.indexOf("shopify")>=0&&SH_LOGO)html+=chip(SH_LOGO,d.shopify_ordenes!=null?d.shopify_ordenes:d.ordenes,"shopify"); if(C.indexOf("tn")>=0&&TN_LOGO)html+=chip(TN_LOGO,d.tn_ordenes!=null?d.tn_ordenes:d.ordenes,"tiendanube"); if(C.indexOf("meli")>=0&&ML_LOGO)html+=chip(ML_LOGO,d.meli_ventas,"mercadolibre"); } else { if(TN_LOGO)html+=chip(TN_LOGO,d.ordenes,"tiendanube"); if(ML_LOGO)html+=chip(ML_LOGO,d.meli_ventas,"mercadolibre"); }
   box.innerHTML=html;
  }
  function fillMarketing(mk){
@@ -7363,7 +7363,7 @@ html.mfy-ready #root{opacity:1;transition:opacity .15s ease}
  function fillAll(d,prod,ords){ var M=maps(d);
   if(d.desde&&d.hasta) updateDateLabel(d.desde,d.hasta);   // el label SIEMPRE refleja el rango real de los datos
   var t=document.querySelector('img[alt="tiendanube"]'); if(t)TN_LOGO=t.src;
-  var mi=document.querySelector('img[alt="mercadolibre"]'); if(mi)ML_LOGO=mi.src;
+  var mi=document.querySelector('img[alt="mercadolibre"]'); if(mi)ML_LOGO=mi.src; var _sh=document.querySelector('img[alt="shopify"]'); if(_sh)SH_LOGO=_sh.src;
   document.querySelectorAll(".pf-dashfilter").forEach(function(p){ var f=p.getAttribute("data-filter");
    if(M[f])fillPanel(p,M[f]);
    if(f==="todas")fillVentasCanales(p,d);
