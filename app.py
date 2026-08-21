@@ -2238,12 +2238,22 @@ _SOLO_DASH = r"""
  window.rpStkEditToggle=function(id){ var e=$('corr-'+id); if(!e)return; var vis=(e.style.display==='flex'); e.style.display=vis?'none':'flex'; if(!vis){var inp=$('corrin-'+id); if(inp){inp.focus();inp.select();}} };
  window.rpStkGuardar=function(pid){ var el=$('corrin-'+sid(pid)); if(!el)return; var n=Math.max(0,Math.round(+el.value||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ tstk('Stock corregido a '+n); rpStkLoad(); }); };
  window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[];
-   var nombre=prompt('Nombre del producto (ej: VisionPure 60ml):'); if(!nombre)return; nombre=nombre.trim(); if(!nombre)return;
+   var nombre=prompt('Nombre del producto (ej: VisionPure):'); if(!nombre)return; nombre=nombre.trim(); if(!nombre)return;
    var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0];
+   if(m && confirm('¿Este producto se DIVIDE en 30ml y 60ml (par/impar)?\n\nSí = crea 2 tarjetas (30ml y 60ml) que toman las VENTAS REALES de la tienda y las reparten:\n2u = 1x60ml · 1u = 1x30ml · 3u = 1x60 + 1x30.')){
+     var un=prompt('Unidad (frascos / sprays):','frascos')||'frascos';
+     var s30=parseInt((prompt('Stock de 30ml que tenés hoy:','0')||'0').replace(/\D/g,''),10)||0;
+     var s60=parseInt((prompt('Stock de 60ml que tenés hoy:','0')||'0').replace(/\D/g,''),10)||0;
+     var post=function(b){return fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});};
+     post({pid:String(m.id)+':30',nombre:nombre+' 30ml',sku:(m.sku||'')+'-30',unidad:un,stock:s30,costo:m.costo||0,link_pid:String(m.id),split:'30'})
+       .then(function(){ return post({pid:String(m.id)+':60',nombre:nombre+' 60ml',sku:(m.sku||'')+'-60',unidad:un,stock:s60,costo:m.costo||0,link_pid:String(m.id),split:'60'}); })
+       .then(function(){ tstk('Dividido en 30ml y 60ml'); rpStkLoad(); });
+     return;
+   }
    var unidad=prompt('Unidad (potes / sprays / u):','u')||'u';
    var stock=parseInt((prompt('Stock actual que tenés hoy en depósito:','0')||'0').replace(/\D/g,''),10)||0;
    var pid,nom,sku,costo;
-   if(m){ pid=m.id; nom=m.nombre; sku=m.sku||''; costo=m.costo||0; }
+   if(m){ pid=String(m.id); nom=m.nombre; sku=m.sku||''; costo=m.costo||0; }
    else { pid='manual-'+Date.now(); nom=nombre; sku=''; costo=parseFloat((prompt('Costo por unidad (opcional):','0')||'0').replace(',','.'))||0; }
    fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,nombre:nom,sku:sku,unidad:unidad,stock:stock,costo:costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); }); };
 })();
@@ -3317,7 +3327,16 @@ def _stock_sync(email):
     orders = _stock_orders(email, 90)
     changed = False
     for o in orders:
-        deltas = {pid: q for pid, q in o["pid_qty"].items() if pid in prods and q > 0}
+        deltas = {}
+        for _pid, _p in prods.items():
+            _lp, _sp = _p.get("link_pid"), _p.get("split")
+            if _lp and _sp:                                   # producto dividido 30/60 (par/impar)
+                _base = o["pid_qty"].get(_lp, 0)
+                _q = (_base // 2) if _sp == "60" else (_base % 2)
+            else:
+                _q = o["pid_qty"].get(_pid, 0)
+            if _q > 0:
+                deltas[_pid] = _q
         if not deltas:
             continue
         entry = ledE.get(o["key"])
@@ -3338,23 +3357,29 @@ def _stock_sync(email):
     return prods, orders
 
 
-def _stock_seed(email, pid):
+def _stock_seed(email, pid, link_pid=None):
     """Al empezar a trackear un producto, marca los pedidos ACTUALES como ya procesados
-    (no retro-descuenta el histórico; solo cuentan las ventas NUEVAS)."""
+    (no retro-descuenta el histórico; solo cuentan las ventas NUEVAS). Para productos divididos
+    30/60 se seedea por el producto REAL (link_pid)."""
+    match = link_pid or pid
     led = _stk_read(STOCK_LEDGER, {}); ledE = led.get(email) or {}
     for o in _stock_orders(email, 120):
-        if pid in o["pid_qty"] and o["key"] not in ledE:
+        if match in o["pid_qty"] and o["key"] not in ledE:
             ledE[o["key"]] = {"delta": {}, "estado": "seed"}
     led[email] = ledE; _stk_write(STOCK_LEDGER, led)
 
 
-def _stock_metrics(email, pid, orders):
+def _stock_metrics(email, pid, orders, split=None, link_pid=None):
     hoy = _dt.datetime.utcnow().date()
     dias = {}
     for o in orders:
         if o["estado"] != "paid":
             continue
-        q = o["pid_qty"].get(pid, 0)
+        if split and link_pid:
+            base = o["pid_qty"].get(link_pid, 0)          # cantidad del producto REAL en ese pedido
+            q = (base // 2) if split == "60" else (base % 2)   # par/impar: 60ml=÷2, 30ml=resto impar
+        else:
+            q = o["pid_qty"].get(pid, 0)
         if not q:
             continue
         try:
@@ -3385,12 +3410,13 @@ def pf_stock():
     ped = (_stk_read(STOCK_PEDIDOS, {}).get(email) or [])
     out = []
     for pid, p in prods.items():
-        m = _stock_metrics(email, pid, orders)
+        m = _stock_metrics(email, pid, orders, split=p.get("split"), link_pid=p.get("link_pid"))
         pend = [x for x in ped if x.get("pid") == pid and x.get("estado") == "proceso"]
         out.append({"id": pid, "nombre": p.get("nombre", ""), "unidad": p.get("unidad", "u"),
                     "stock": int(p.get("stock", 0)), "costo": float(p.get("costo", 0)),
                     "sku": p.get("sku", ""), "ventas14": m["ventas14"], "d7": m["d7"],
-                    "d14": m["d14"], "rate": m["rate"], "pendientes": pend})
+                    "d14": m["d14"], "rate": m["rate"], "pendientes": pend,
+                    "split": p.get("split", ""), "link_pid": p.get("link_pid", "")})
     return jsonify({"ok": True, "productos": out})
 
 
@@ -3436,10 +3462,12 @@ def pf_stock_set():
                   "unidad": d.get("unidad") or prev.get("unidad", "u"),
                   "stock": int(d.get("stock", prev.get("stock", 0))),
                   "costo": float(d.get("costo", prev.get("costo", 0))),
-                  "sku": d.get("sku") or prev.get("sku", "")}
+                  "sku": d.get("sku") or prev.get("sku", ""),
+                  "link_pid": d.get("link_pid") or prev.get("link_pid", ""),
+                  "split": d.get("split") or prev.get("split", "")}
     st[email] = prods; _stk_write(STOCK_FILE, st)
     if nuevo:
-        _stock_seed(email, pid)
+        _stock_seed(email, pid, d.get("link_pid"))
     return jsonify({"ok": True})
 
 
@@ -3591,7 +3619,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-stock-borrar2"})
+    return jsonify({"ok": True, "v": "2026-08-20-stock-split"})
 
 
 @app.get("/pf-diag")
