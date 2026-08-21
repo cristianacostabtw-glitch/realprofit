@@ -3642,7 +3642,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-diag-conex"})
+    return jsonify({"ok": True, "v": "2026-08-21-diag2"})
 
 
 @app.get("/pf-diag")
@@ -7591,17 +7591,25 @@ def pf_conex():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "login": False})
+    import traceback as _tb
     sh = _shop_tokens().get(email) or {}
     tn = _tn_tokens().get(email) or {}
-    return jsonify({
-        "ok": True, "email": email,
-        "shopify_conectado": bool(sh.get("access_token")),
-        "shop": sh.get("shop"),
-        "tn_conectado": bool(tn.get("access_token") and tn.get("store_id")),
-        "tn_store": tn.get("store_id"),
-        "claves_shopify": list(_shop_tokens().keys()),
-        "claves_tn": list(_tn_tokens().keys()),
-    })
+    desde = request.args.get("desde") or _hoy()
+    hasta = request.args.get("hasta") or desde
+    diag = {"ok": True, "email": email, "desde": desde, "hasta": hasta,
+        "shopify_conectado": bool(sh.get("access_token")), "shop": sh.get("shop"),
+        "tn_conectado": bool(tn.get("access_token") and tn.get("store_id")), "tn_store": tn.get("store_id")}
+    try:
+        sb = _shopify_resumen(email, desde, hasta)
+        diag["shopify_resumen"] = ("None" if sb is None else {"ordenes": sb.get("raw",{}).get("ordenes"), "facturado": sb.get("raw",{}).get("facturado")})
+    except Exception as e:
+        diag["shopify_error"] = repr(e); diag["shopify_tb"] = _tb.format_exc()[-600:]
+    try:
+        tbb = _tn_resumen(email, desde, hasta)
+        diag["tn_resumen"] = ("None" if tbb is None else {"ordenes": tbb.get("raw",{}).get("ordenes"), "facturado": tbb.get("raw",{}).get("facturado")})
+    except Exception as e:
+        diag["tn_error"] = repr(e); diag["tn_tb"] = _tb.format_exc()[-600:]
+    return jsonify(diag)
 
 
 def pf_periodo():
