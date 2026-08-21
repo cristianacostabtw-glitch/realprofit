@@ -3637,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-escalafy-snapshot"})
+    return jsonify({"ok": True, "v": "2026-08-21-snap-iconos"})
 
 
 @app.get("/pf-diag")
@@ -7610,13 +7610,27 @@ def pf_periodo():
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
         blob = None
+        sh_blob = None
         if email in _shop_tokens():
-            blob = _shopify_resumen(email, desde, hasta)
+            sh_blob = _shopify_resumen(email, desde, hasta)
+            blob = sh_blob
         tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
         if tn_blob:
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
             blob = _blob_vacio()
+        try:   # iconos por canal CONECTADO (Ventas KPI) - NUNCA puede romper el dashboard
+            _cn = []
+            if (_shop_tokens().get(email) or {}).get("access_token"):
+                _cn.append("shopify")
+            _tkn = _tn_tokens().get(email) or {}
+            if _tkn.get("access_token") and _tkn.get("store_id"):
+                _cn.append("tn")
+            blob["raw"]["canales"] = _cn
+            blob["raw"]["shopify_ordenes"] = int((sh_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
+            blob["raw"]["tn_ordenes"] = int((tn_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
+        except Exception:
+            pass
         try:
             blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
         except Exception:
