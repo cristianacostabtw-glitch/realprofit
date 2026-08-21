@@ -3637,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-snap-iconos"})
+    return jsonify({"ok": True, "v": "2026-08-21-sku-por-tienda"})
 
 
 @app.get("/pf-diag")
@@ -5035,7 +5035,7 @@ def _sku_label_nombre(texto):
 
 
 def _sku_pedidos_map(email):
-    """{nº pedido → {'nom': destinatario, 'items': [(sku_key, cantidad, nombre_prod)]}} de las
+    """{nº pedido → [ {'nom','items','tienda'}, ... ] } (lista: el mismo nº puede estar en las 2 tiendas) de las
     tiendas conectadas (Shopify + Tiendanube). Trae los PRODUCTOS de cada pedido para calcular
     el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO."""
     mapa = {}
@@ -5061,7 +5061,7 @@ def _sku_pedidos_map(email):
                         nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
                     items.append(("tn:%s" % p.get("product_id"), int(p.get("quantity") or 0), nm or ""))
                 nom = ((o.get("shipping_address") or {}).get("name") or o.get("contact_name") or "")
-                mapa[str(o.get("number"))] = {"nom": nom, "items": items}
+                mapa.setdefault(str(o.get("number")), []).append({"nom": nom, "items": items, "tienda": "tn"})
             if len(d) < 200:
                 break
     # --- Shopify (sku_key = '<product_id>') ---
@@ -5081,7 +5081,7 @@ def _sku_pedidos_map(email):
                 sa = o.get("shipping_address") or {}
                 cu = o.get("customer") or {}
                 nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
-                mapa[num] = {"nom": nom, "items": items}
+                mapa.setdefault(num, []).append({"nom": nom, "items": items, "tienda": "shopify"})
         except Exception:
             pass
     return mapa
@@ -5162,13 +5162,18 @@ def _sku_run(job, data, email):
             texto = pg.get_text()
             nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
             ped = _sku_pedido(texto, nuevo)
-            ent = mapa.get(str(ped)) if ped else None
-            if not ent:
+            cands = mapa.get(str(ped)) if ped else None
+            if not cands:
                 sin_pedido += 1
                 detalle.append({"pedido": ped or "?", "sku": ""})
                 orden.append(((999999, 0, ""), i)); continue
-            # Verificación por NOMBRE: si el nº matchea pero el destinatario no → no estampo.
-            if not _sku_nombre_coincide(_sku_label_nombre(texto), ent.get("nom", "")):
+            # POR TIENDA: el mismo nº puede existir en Shopify Y Tiendanube → elijo por NOMBRE del destinatario.
+            _lnom = _sku_label_nombre(texto)
+            ent = None
+            for _c in cands:
+                if _sku_nombre_coincide(_lnom, _c.get("nom", "")):
+                    ent = _c; break
+            if ent is None:
                 conflicto += 1
                 detalle.append({"pedido": ped or "?", "sku": "", "conflicto": True})
                 orden.append(((999998, 0, ""), i)); continue
