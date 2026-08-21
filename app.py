@@ -2210,7 +2210,7 @@ _SOLO_DASH = r"""
      '<div class="note">Poné cuántas unidades vas a pedir. Queda <b>en proceso</b> &mdash; no suma al stock todavía.</div>'+
      '<div class="card pedir"><div class="pedir-row"><div class="field"><div class="l">Unidades a pedir ('+u+')</div><input id="ped-'+id+'" class="f big" type="number" placeholder="0" oninput="rpStkHint(\''+p.id+'\')"></div><button class="btn btn-b" onclick="rpStkPedir(\''+p.id+'\')">Pedir</button></div>'+
        '<div class="hint" id="hint-'+id+'">Usá la proyección de arriba para saber cuánto pedir.</div>'+
-       '<div class="corr"><a onclick="rpStkEditToggle(\''+id+'\')">&#9998; Corregir stock (si te confundiste o hubo rotura/ajuste)</a>'+
+       '<div class="corr"><a onclick="rpStkEditToggle(\''+id+'\')">&#9998; Corregir stock (si te confundiste o hubo rotura/ajuste)</a><a onclick="rpStkBorrar(\''+p.id+'\')" style="color:var(--crit);cursor:pointer;font-size:12.5px;margin-left:16px;font-weight:600">&#128465;&#65039; Quitar producto</a>'+
        '<div id="corr-'+id+'" style="display:none;margin-top:10px;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12px;color:var(--ink2)">Stock real:</span><input id="corrin-'+id+'" class="f sm" type="number" value="'+p.stock+'" style="width:110px"><button class="btn btn-b" style="padding:9px 15px;font-size:13px" onclick="rpStkGuardar(\''+p.id+'\')">Guardar</button><a onclick="rpStkEditToggle(\''+id+'\')" style="color:var(--ink3);cursor:pointer;font-size:12px;margin-left:2px">cancelar</a></div></div>'+
      '</div>'+
      '<div class="sec"><span class="bb"></span><h2>En proceso</h2><span class="x">'+(pend.length?(pend.length+' pedido'+(pend.length>1?'s':'')):'')+'</span></div>'+
@@ -2234,7 +2234,7 @@ _SOLO_DASH = r"""
  window.rpStkPedir=function(pid){ var q=Math.max(0,Math.round(+($('ped-'+sid(pid))||{}).value||0)); if(q<=0)return;
    fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ tstk('Pedido registrado en proceso'); rpStkLoad(); }); };
  window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ tstk('Sumado al stock'); rpStkLoad(); }); };
- window.rpStkBorrar=function(pid){ var p=prod(pid); var nm=(p&&p.nombre)||'este producto'; if(!confirm('¿Borrar "'+nm+'" del stock? No se puede deshacer.'))return; fetch('/pf-stock-del',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid})}).then(function(r){return r.json();}).then(function(){ tstk('Producto eliminado'); rpStkLoad(); }); };
+ window.rpStkBorrar=function(pid){ if(!confirm('¿Quitar este producto del stock? No se puede deshacer.'))return; fetch('/pf-stock-del',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:String(pid)})}).then(function(r){return r.json();}).then(function(){ tstk('Producto eliminado'); rpStkLoad(); }).catch(function(){ tstk('No se pudo eliminar'); }); };
  window.rpStkEditToggle=function(id){ var e=$('corr-'+id); if(!e)return; var vis=(e.style.display==='flex'); e.style.display=vis?'none':'flex'; if(!vis){var inp=$('corrin-'+id); if(inp){inp.focus();inp.select();}} };
  window.rpStkGuardar=function(pid){ var el=$('corrin-'+sid(pid)); if(!el)return; var n=Math.max(0,Math.round(+el.value||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ tstk('Stock corregido a '+n); rpStkLoad(); }); };
  window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[];
@@ -3591,7 +3591,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-stock-borrar"})
+    return jsonify({"ok": True, "v": "2026-08-20-stock-borrar2"})
 
 
 @app.get("/pf-diag")
