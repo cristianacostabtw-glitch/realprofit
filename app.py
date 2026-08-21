@@ -563,6 +563,7 @@ _SOLO_DASH = r"""
    <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Enviar seguimiento</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Sub&iacute; el PDF de Andreani: leemos el <b style="color:#cbd5e1">N&deg; Interno + seguimiento</b>, te lo mostramos y al enviar le avisamos a tu tienda (Shopify/Tiendanube) &mdash; al cliente le llega el mail con el tracking.</div></div>
    <button onclick="rpDCloseSeg()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
   </div>
+  <div id="rp-dseg-tienda" style="display:none;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap"></div>
   <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:34px 18px;text-align:center;cursor:pointer"><input type="file" accept="application/pdf" style="display:none" onchange="rpDUpSeg(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Arrastr&aacute; el PDF o hac&eacute; clic para elegirlo</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">Leemos cada r&oacute;tulo y cargamos el seguimiento</div></label>
   <div id="rp-d-segres" style="margin-top:14px"></div>
  </div>
@@ -1392,9 +1393,17 @@ _SOLO_DASH = r"""
      },400);
    }).catch(function(e){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
  // ---- Modal Enviar seguimiento ----
- window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; } };
+ window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; }
+   _dSegTienda=(_dTienda&&_dTienda!=='todas')?_dTienda:(_dTiendas[0]||'tn'); _dSeg=[]; rpDSegTiendaRender(); };
+ window.rpDSegTiendaRender=function(){ var c=document.getElementById('rp-dseg-tienda'); if(!c)return;
+   if(!_dTiendas||_dTiendas.length<2){ c.style.display='none'; c.innerHTML=''; return; }
+   var lab={shopify:'🛍️ Shopify', tn:'🟦 TiendaNube'};
+   c.style.display='flex';
+   c.innerHTML='<span style="color:#5b6b82;font-size:12px;font-weight:600">Tienda:</span>'+_dTiendas.map(function(t){var on=t===_dSegTienda;return '<button onclick="rpDSegStore(\''+t+'\')" style="background:'+(on?'#16233a':'#0b111c')+';border:1px solid '+(on?'#2f4a6b':'#1a2333')+';color:'+(on?'#8fbdf5':'#c7d2e0')+';border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer">'+(lab[t]||t)+'</button>';}).join('');
+ };
+ window.rpDSegStore=function(t){ _dSegTienda=t; _dSeg=[]; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; rpDSegTiendaRender(); };
  window.rpDCloseSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m)m.style.display='none'; };
- var _dSeg=[];
+ var _dSeg=[], _dSegTienda='tn';
  function _dSegChip(ok,color){ return ok?'<span style="color:'+color+';font-weight:800">✓</span>':'<span style="color:#3a4757">—</span>'; }
  function _dSegRender(){ var res=document.getElementById('rp-d-segres'); if(!res)return;
    var r={ambos:0,solo_tn:0,solo_wpp:0,nada:0}; _dSeg.forEach(function(o){ if(o.tn&&o.wpp)r.ambos++; else if(o.tn)r.solo_tn++; else if(o.wpp)r.solo_wpp++; else r.nada++; });
@@ -1421,27 +1430,27 @@ _SOLO_DASH = r"""
      +'<th style="text-align:center;padding:8px;color:#34d399;font-size:10px;text-transform:uppercase">WPP</th></tr></thead><tbody>'+filas+'</tbody></table></div>'
      +'<div style="padding:12px 14px;display:flex;gap:9px;flex-wrap:wrap;border-top:1px solid #1a2333">'
        +'<button onclick="rpDSeg(\'wpp\')" style="'+b+';background:linear-gradient(160deg,#1f8f4e,#166b3a);color:#dcfce7">🟢 Enviar por WPP</button>'
-       +'<button onclick="rpDSeg(\'tn\')" style="'+b+';background:linear-gradient(160deg,#2563a8,#1c4a80);color:#dbeafe">🔵 Enviar por TN</button>'
+       +'<button onclick="rpDSeg(\'tn\')" style="'+b+';background:linear-gradient(160deg,#2563a8,#1c4a80);color:#dbeafe">'+(_dSegTienda==='shopify'?'🛍️ Enviar por Shopify':'🔵 Enviar por TN')+'</button>'
        +'<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'
      +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
    res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento) y sincronizando con TiendaNube…</div>';
-   var fd=new FormData(); fd.append('pdf',f);
+   var fd=new FormData(); fd.append('pdf',f); fd.append('tienda',_dSegTienda||'tn');
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
      _dSeg=j.pedidos; _dSegRender();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
  window.rpDSeg=function(canal){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
-   var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?'TiendaNube':'los dos canales');
+   var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
    res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando por '+lbl+'… (no cierres esto)</div>';
    fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:_dSeg})}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
-     function mark(ch){ _dSeg.forEach(function(o){ if(ch=='wpp'&&o.wa_id&&!o.wpp)o.wpp=true; if(ch=='tn'&&o.order_id&&o.fo_id&&!o.tn)o.tn=true; }); }
+     function mark(ch){ _dSeg.forEach(function(o){ if(ch=='wpp'&&o.wa_id&&!o.wpp)o.wpp=true; if(ch=='tn'&&o.order_id&&!o.tn)o.tn=true; }); }
      var msg='';
      if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; mark('tn'); mark('wpp');
        msg='🔵 TN '+(t.enviados||0)+' cargados'+(t.saltados?(' ('+t.saltados+' ya estaban)'):'')+' · 🟢 WPP '+(w.enviados||0)+' enviados'+(w.saltados?(' ('+w.saltados+' ya estaban)'):''); }
-     else { mark(canal); msg=(canal=='wpp'?'🟢 WhatsApp ':'🔵 TiendaNube ')+(j.enviados||0)+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); }
+     else { mark(canal); msg=(canal=='wpp'?'🟢 WhatsApp ':(_dSegTienda==='shopify'?'🛍️ Shopify ':'🔵 TiendaNube '))+(j.enviados||0)+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); }
      _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+res.innerHTML;
      _dLoaded=false; rpDLoad();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error de conexión.</div>'; }); };
@@ -3629,7 +3638,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-despachos-tienda"})
+    return jsonify({"ok": True, "v": "2026-08-20-seg-shopify"})
 
 
 @app.get("/pf-diag")
@@ -5346,9 +5355,99 @@ def _seg_estado_tn(o: dict) -> bool:
     return False
 
 
-def _seg_filas(email, store, hdr):
-    """Devuelve (pedidos, mapa_orders) con el estado por canal (TN / WhatsApp) de cada uno."""
-    pass  # (se arma dentro de los endpoints con los items del PDF)
+def _seg_shop_conn(email):
+    tk = _shop_tokens().get(email) or {}
+    return (tk.get("shop"), tk.get("access_token")) if (tk.get("shop") and tk.get("access_token")) else (None, None)
+
+
+def _seg_mapa_orders_shopify(email, numeros) -> dict:
+    """number(str) → order dict de Shopify, para los pedidos del PDF (250 más recientes)."""
+    shop, atok = _seg_shop_conn(email)
+    if not shop:
+        return {}
+    want = set(str(n) for n in numeros)
+    H = {"X-Shopify-Access-Token": atok}
+    base = "https://%s/admin/api/2026-07" % shop
+    mapa = {}
+    since = 0
+    for _ in range(4):                      # hasta ~1000 pedidos recientes
+        try:
+            r = requests.get("%s/orders.json" % base, headers=H, params={
+                "status": "any", "limit": 250, "order": "id asc" if since else "id desc",
+                "since_id": since or None,
+                "fields": ("id,name,order_number,customer,phone,line_items,fulfillment_status,"
+                           "shipping_address,email,contact_email,shipping_lines")}, timeout=40)
+            lote = r.json().get("orders", []) if r.status_code == 200 else []
+        except Exception:
+            lote = []
+        if not lote:
+            break
+        for o in lote:
+            num = str(o.get("order_number"))
+            if num in want:
+                mapa[num] = o
+        if len(want - set(mapa)) == 0 or len(lote) < 250:
+            break
+        since = max(x.get("id", 0) for x in lote)
+    return mapa
+
+
+def _seg_shop_tel(o):
+    sa = o.get("shipping_address") or {}
+    cust = o.get("customer") or {}
+    for p in (sa.get("phone"), o.get("phone"), cust.get("phone")):
+        p = (p or "").strip()
+        if p and re.sub(r"\D", "", p):
+            return p
+    return ""
+
+
+def _seg_enviar_shopify(email, pedidos) -> dict:
+    """Crea el fulfillment en Shopify con el tracking de Andreani + avisa al cliente (mail/SMS).
+    Salta los ya despachados. Usa fulfillmentCreateV2 (merchant-managed)."""
+    shop, atok = _seg_shop_conn(email)
+    if not shop:
+        return {"ok": False, "msg": "Shopify no conectado", "enviados": 0}
+    H = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
+    base = "https://%s/admin/api/2026-07" % shop
+    gql = "%s/graphql.json" % base
+    mut = ("mutation($f:FulfillmentV2Input!){fulfillmentCreateV2(fulfillment:$f){"
+           "fulfillment{id status} userErrors{field message}}}")
+    env = salt = fail = 0
+    errores = []
+    for p in pedidos:
+        num = str(p.get("num"))
+        if p.get("tn"):                     # "tn" = ya despachado en la tienda (reusa el flag)
+            salt += 1
+            continue
+        oid = p.get("order_id")
+        if not oid:
+            fail += 1; errores.append({"num": num, "msg": "no está en Shopify"}); continue
+        try:
+            rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=30)
+            fos = rr.json().get("fulfillment_orders", []) if rr.status_code == 200 else []
+        except Exception as e:
+            fail += 1; errores.append({"num": num, "msg": str(e)[:80]}); continue
+        fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
+        if not fo:
+            salt += 1; continue             # ya despachado / sin ítems por cumplir
+        variables = {"f": {
+            "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
+            "notifyCustomer": True,
+            "trackingInfo": {"company": "Andreani", "number": p.get("track"), "url": p.get("url")}}}
+        try:
+            gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
+            j = gr.json() if gr.content else {}
+            res = ((j.get("data") or {}).get("fulfillmentCreateV2") or {})
+            ue = res.get("userErrors") or []
+            if res.get("fulfillment") and not ue:
+                env += 1
+            else:
+                fail += 1
+                errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:90]})
+        except Exception as e:
+            fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
+    return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
 @app.post("/pf-despachos-seg-leer")
@@ -5360,9 +5459,16 @@ def pf_despachos_seg_leer():
     f = request.files.get("pdf") or (next(iter(request.files.values())) if request.files else None)
     if not f:
         return jsonify({"ok": False, "msg": "subí el PDF de Andreani"})
-    store, hdr = _seg_tn_store(email)
-    if not store:
-        return jsonify({"ok": False, "msg": "conectá tu TiendaNube en Integraciones"})
+    tienda = (request.form.get("tienda") or "tn").strip()
+    if tienda == "shopify":
+        _sh, _at = _seg_shop_conn(email)
+        if not _sh:
+            return jsonify({"ok": False, "msg": "conectá tu Shopify en Integraciones"})
+        store = hdr = None
+    else:
+        store, hdr = _seg_tn_store(email)
+        if not store:
+            return jsonify({"ok": False, "msg": "conectá tu TiendaNube en Integraciones"})
     import tempfile
     tmp = tempfile.mktemp(suffix=".pdf")
     f.save(tmp)
@@ -5377,28 +5483,42 @@ def pf_despachos_seg_leer():
             pass
     if not items:
         return jsonify({"ok": False, "msg": "no encontré etiquetas (N° Interno + seguimiento) en ese PDF"})
-    mapa = _seg_mapa_orders(store, hdr, [it["pedido"] for it in items])
+    nums = [it["pedido"] for it in items]
+    mapa = _seg_mapa_orders_shopify(email, nums) if tienda == "shopify" else _seg_mapa_orders(store, hdr, nums)
     wpp_env = _wa_seg_all().get(email, {})
     pedidos = []
     n_tn = n_wpp = n_ambos = n_falta = 0
     for it in items:
         o = mapa.get(it["pedido"]) or {}
-        cust = o.get("customer") or {}
-        nombre = cust.get("name") or it.get("dest", "")
-        ff = o.get("fulfillments") or []
-        fo_id = ff[0].get("id") if ff else None
-        es_suc = (((ff[0].get("shipping") or {}).get("type")) == "pickup") if ff else False
-        u = _seg_unidades(o) if o else 0
-        tel = _seg_tel_real(o) if o else ""
-        tn_ok = _seg_estado_tn(o) if o else False
+        if tienda == "shopify":
+            cust = o.get("customer") or {}
+            _st = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).lower()
+            nombre = (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()
+                      or (o.get("shipping_address") or {}).get("name") or it.get("dest", ""))
+            u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
+            tel = _seg_shop_tel(o)
+            tn_ok = (o.get("fulfillment_status") == "fulfilled")   # ya despachado en Shopify
+            es_suc = ("sucursal" in _st or "hop" in _st or "punto" in _st)
+            oid = o.get("id"); fo_id = None
+            match = bool(oid)
+        else:
+            cust = o.get("customer") or {}
+            nombre = cust.get("name") or it.get("dest", "")
+            ff = o.get("fulfillments") or []
+            fo_id = ff[0].get("id") if ff else None
+            es_suc = (((ff[0].get("shipping") or {}).get("type")) == "pickup") if ff else False
+            u = _seg_unidades(o) if o else 0
+            tel = _seg_tel_real(o) if o else ""
+            tn_ok = _seg_estado_tn(o) if o else False
+            oid = o.get("id")
+            match = bool(oid and fo_id)
         wpp_ok = bool(wpp_env.get(str(it["pedido"])))
-        match = bool(o.get("id") and fo_id)
         pedidos.append({
             "num": it["pedido"], "nombre": nombre, "track": it["seguimiento"],
             "url": "https://www.andreani.com/envio/%s" % it["seguimiento"],
             "wa_id": _seg_e164(tel) if tel else "", "unidades": u,
-            "order_id": o.get("id"), "fo_id": fo_id, "es_sucursal": es_suc,
-            "tn": tn_ok, "wpp": wpp_ok, "match": match,
+            "order_id": oid, "fo_id": fo_id, "es_sucursal": es_suc,
+            "tn": tn_ok, "wpp": wpp_ok, "match": match, "tienda": tienda,
         })
         if tn_ok and wpp_ok:
             n_ambos += 1
@@ -5408,7 +5528,7 @@ def pf_despachos_seg_leer():
             n_wpp += 1
         else:
             n_falta += 1
-    return jsonify({"ok": True, "pedidos": pedidos,
+    return jsonify({"ok": True, "pedidos": pedidos, "tienda": tienda,
                     "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
                                 "solo_wpp": n_wpp, "ninguno": n_falta}})
 
@@ -5501,7 +5621,8 @@ def pf_despachos_seg_enviar():
     if not (email := _user_actual()):
         return jsonify({"ok": False}), 401
     pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
-    return jsonify(_seg_enviar_tn(email, pedidos))
+    es_shop = any(p.get("tienda") == "shopify" for p in pedidos)   # ruteo por tienda: no mezcla
+    return jsonify(_seg_enviar_shopify(email, pedidos) if es_shop else _seg_enviar_tn(email, pedidos))
 
 
 @app.post("/pf-despachos-seg-wpp")
@@ -5519,7 +5640,8 @@ def pf_despachos_seg_todos():
     if not (email := _user_actual()):
         return jsonify({"ok": False}), 401
     pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
-    rtn = _seg_enviar_tn(email, pedidos)
+    es_shop = any(p.get("tienda") == "shopify" for p in pedidos)
+    rtn = _seg_enviar_shopify(email, pedidos) if es_shop else _seg_enviar_tn(email, pedidos)
     rwpp = _seg_enviar_wpp(email, pedidos)
     return jsonify({"ok": True, "tn": rtn, "wpp": rwpp})
 
