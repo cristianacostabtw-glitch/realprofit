@@ -2193,7 +2193,7 @@ _SOLO_DASH = r"""
    var pend=(p.pendientes||[]);
    var plist = pend.length? pend.map(function(o){return '<div class="card prow"><span class="tx"><div class="q">'+o.qty.toLocaleString('es-AR')+' '+u+'<span class="badge">en proceso</span></div><div class="d">Pedido '+esc(o.fecha)+' &middot; '+ars(o.qty*(p.costo||0))+'</div></span><button class="btn-dep" onclick="rpStkDep(\''+o.id+'\')">Poner en depósito</button></div>';}).join('') : '<div class="empty">No hay pedidos en proceso.</div>';
    return '<div class="card hero" style="--hc:'+s.c+';--hpb:'+s.pb+'">'+
-       '<div class="htop"><span class="hnm">'+esc(p.nombre)+'</span>'+(p.sku?'<span class="sku">'+esc(p.sku)+'</span>':'')+'<span class="pill"><span class="dot"></span>'+s.lb+'</span></div>'+
+       '<div class="htop"><span class="hnm">'+esc(p.nombre)+'</span>'+(p.sku?'<span class="sku">'+esc(p.sku)+'</span>':'')+'<span class="pill"><span class="dot"></span>'+s.lb+'</span><a onclick="rpStkBorrar(\''+p.id+'\')" title="Eliminar producto del stock" style="margin-left:10px;color:var(--crit);cursor:pointer;font-size:20px;font-weight:800;line-height:1;text-decoration:none;flex:none">&times;</a></div>'+
        '<div class="hmid"><div class="num">'+p.stock.toLocaleString('es-AR')+'<span class="u">'+u+' en depósito</span></div>'+
          '<div class="days"><div class="n"><b>'+d+'</b> días</div><div class="l">te alcanza a este ritmo</div></div></div>'+
        '<div class="cov"><div class="covbar"><b style="width:'+cov+'%"></b><s style="left:50%"></s></div><div class="covlb"><span>0</span><span>10 días &middot; sano</span><span>20+</span></div></div>'+
@@ -2234,6 +2234,7 @@ _SOLO_DASH = r"""
  window.rpStkPedir=function(pid){ var q=Math.max(0,Math.round(+($('ped-'+sid(pid))||{}).value||0)); if(q<=0)return;
    fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ tstk('Pedido registrado en proceso'); rpStkLoad(); }); };
  window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ tstk('Sumado al stock'); rpStkLoad(); }); };
+ window.rpStkBorrar=function(pid){ var p=prod(pid); var nm=(p&&p.nombre)||'este producto'; if(!confirm('¿Borrar "'+nm+'" del stock? No se puede deshacer.'))return; fetch('/pf-stock-del',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid})}).then(function(r){return r.json();}).then(function(){ tstk('Producto eliminado'); rpStkLoad(); }); };
  window.rpStkEditToggle=function(id){ var e=$('corr-'+id); if(!e)return; var vis=(e.style.display==='flex'); e.style.display=vis?'none':'flex'; if(!vis){var inp=$('corrin-'+id); if(inp){inp.focus();inp.select();}} };
  window.rpStkGuardar=function(pid){ var el=$('corrin-'+sid(pid)); if(!el)return; var n=Math.max(0,Math.round(+el.value||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ tstk('Stock corregido a '+n); rpStkLoad(); }); };
  window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[];
@@ -3442,6 +3443,19 @@ def pf_stock_set():
     return jsonify({"ok": True})
 
 
+@app.post("/pf-stock-del")
+def pf_stock_del():
+    """Elimina un producto del stock (la tarjeta). No toca la tienda, solo el tracking de stock."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    pid = str((request.get_json(silent=True) or {}).get("pid") or "").strip()
+    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+    if pid in prods:
+        del prods[pid]; st[email] = prods; _stk_write(STOCK_FILE, st)
+    return jsonify({"ok": True})
+
+
 @app.post("/pf-stock-pedir")
 def pf_stock_pedir():
     email = _user_actual()
@@ -3577,7 +3591,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-stock-manual"})
+    return jsonify({"ok": True, "v": "2026-08-20-stock-borrar"})
 
 
 @app.get("/pf-diag")
