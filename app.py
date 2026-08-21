@@ -513,6 +513,7 @@ _SOLO_DASH = r"""
    </div>
    <div style="flex:1;min-width:170px;display:flex;align-items:center;gap:9px;background:#0b111c;border:1px solid #1a2333;border-radius:11px;padding:0 13px"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:18px">search</span><input id="rp-d-q" oninput="rpDRender()" placeholder="Buscar pedido, cliente, localidad&hellip;" style="flex:1;border:0;background:transparent;color:#f1f5f9;padding:10px 0;font-size:13.5px;outline:none"></div>
   </div>
+  <div id="rp-d-tiendas" style="display:none;align-items:center;gap:8px;margin-bottom:10px"></div>
 
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:8px">
    <label style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="rp-d-all" onclick="rpDAll(this)" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">Todas</label>
@@ -1207,7 +1208,7 @@ _SOLO_DASH = r"""
  window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
 
  // ===================== DESPACHOS =====================
- var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false;
+ var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false, _dTienda='todas', _dTiendas=[];
  var _DCOL=['#5aa2f5','#34d399','#f0b429','#a78bfa','#fb7185','#38bdf8','#f472b6'];
  function _dEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
  function _dFmt(n){ try{return '$'+Math.round(n||0).toLocaleString('es-AR');}catch(e){return '$'+Math.round(n||0);} }
@@ -1281,7 +1282,7 @@ _SOLO_DASH = r"""
      if(b)b.style.opacity='';
      if(!j||!j.ok){ _dStat('No se pudo cargar.', '#fb7185'); return; }
      if(j.shopify===false){ _dRows=[]; _dLoaded=true; rpDRender(); _dStat('Conectá tu tienda (Shopify) en Integraciones para ver los despachos.', '#f0b429'); return; }
-     _dRows=j.rows||[]; _dLoaded=true;
+     _dRows=j.rows||[]; _dLoaded=true; _dTiendas=j.tiendas||[]; rpDTiendasRender();
      var R=j.resumen||{};
      [['empaquetar',R.empaquetar],['exportada',R.exportada],['enviada',R.enviada],['todas',R.todas]].forEach(function(x){
        var e1=document.getElementById('rp-d-n-'+x[0]), e2=document.getElementById('rp-d-m-'+x[0]);
@@ -1289,8 +1290,17 @@ _SOLO_DASH = r"""
      });
      rpDRender(); _dStat('');
    }).catch(function(){ if(b)b.style.opacity=''; _dStat('Error de conexión.', '#fb7185'); }); };
+ window.rpDTiendasRender=function(){ var c=document.getElementById('rp-d-tiendas'); if(!c)return;
+   if(!_dTiendas||_dTiendas.length<2){ c.style.display='none'; c.innerHTML=''; _dTienda='todas'; return; }
+   var lab={shopify:'🛍️ Shopify', tn:'🟦 TiendaNube', meli:'🟨 MercadoLibre'};
+   var opts=[['todas','Todas']].concat(_dTiendas.map(function(t){return [t,lab[t]||t];}));
+   c.style.display='flex';
+   c.innerHTML='<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Tienda:</span>'+opts.map(function(o){var on=o[0]===_dTienda;return '<button onclick="rpDStore(\''+o[0]+'\')" style="background:'+(on?'#16233a':'#0b111c')+';border:1px solid '+(on?'#2f4a6b':'#1a2333')+';color:'+(on?'#8fbdf5':'#c7d2e0')+';border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">'+o[1]+'</button>';}).join('');
+ };
+ window.rpDStore=function(t){ _dTienda=t; rpDTiendasRender(); rpDRender(); };
  window.rpDVisibles=function(){ var q=((document.getElementById('rp-d-q')||{}).value||'').toLowerCase().trim();
    var base=_dFilt==='todas'?_dRows:_dRows.filter(function(r){return r.estado===_dFilt;});
+   if(_dTienda!=='todas') base=base.filter(function(r){return (r.tienda||'')===_dTienda;});
    if(!q) return base;
    return base.filter(function(r){ return (r.num+' '+r.nombre+' '+r.localidad+' '+r.cp).toLowerCase().indexOf(q)>=0; }); };
  window.rpDRender=function(){ var rows=rpDVisibles(), tb=document.getElementById('rp-d-body'); if(!tb)return;
@@ -1305,7 +1315,7 @@ _SOLO_DASH = r"""
      var w = r.incompleta ? ' <span title="Dirección incompleta" style="color:#fb7185;font-size:12px;cursor:help">⚠</span>' : '';
      return '<tr onmouseover="this.style.background=&#39;#0d1622&#39;" onmouseout="this.style.background=&#39;&#39;">'
        +'<td style="'+td+';width:36px"><input type="checkbox" class="rp-d-chk" value="'+_dEsc(r.num)+'" onclick="rpDCnt()" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer"></td>'
-       +'<td style="'+td+';color:#cbd5e1;font-weight:700">#'+_dEsc(r.num)+w+'</td>'
+       +'<td style="'+td+';color:#cbd5e1;font-weight:700">#'+_dEsc(r.num)+w+(_dTiendas.length>=2?' <span style="font-size:9.5px;color:#5b6b82;font-weight:700;letter-spacing:.5px">'+(r.tienda==='shopify'?'SH':(r.tienda==='tn'?'TN':(r.tienda==='meli'?'ML':'')))+'</span>':'')+'</td>'
        +'<td style="'+td+'"><span style="display:inline-flex;align-items:center;gap:9px"><span style="width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#fff;background:'+_dColor(r.nombre)+'">'+_dEsc(_dIni(r.nombre))+'</span>'+_dEsc(r.nombre)+'</span></td>'
        +'<td style="'+td+'">'+env+est+'</td>'
        +'<td style="'+td+';color:#8493a8">'+_dEsc(r.localidad)+'</td>'
@@ -1342,7 +1352,7 @@ _SOLO_DASH = r"""
     .catch(function(){ _dStat('Error de conexión.', '#fb7185'); }); };
  window.rpDExcel=function(){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá los pedidos para el Excel.', '#fb7185'); return; }
    _dStat('⏳ Generando Excel Andreani…','#a78bfa');
-   fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel})})
+   fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,tienda:_dTienda})})
     .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';}); return r.blob(); })
     .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Andreani.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
       // al exportar, los pasa a "Exportadas"
@@ -3619,7 +3629,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-stock-split"})
+    return jsonify({"ok": True, "v": "2026-08-20-despachos-tienda"})
 
 
 @app.get("/pf-diag")
@@ -4037,7 +4047,7 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 incompleta = (not es_suc) and (not calle or not cp or not tel)
                 estado = st.get(num) or "empaquetar"
                 out.append({
-                    "num": num, "nombre": (nombre or "").strip(),
+                    "tienda": "tn", "num": num, "nombre": (nombre or "").strip(),
                     "tipo": "sucursal" if es_suc else "domicilio",
                     "localidad": localidad, "cp": cp, "provincia": prov, "unidades": unidades,
                     "total": round(float(o.get("total") or 0), 2),
@@ -4099,7 +4109,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None):
         incompleta = (not suc) and (not sa.get("address1") or not cp or not tel)
         estado = st.get(num) or "empaquetar"   # exportada / enviada / (default) empaquetar
         out.append({
-            "num": num, "nombre": nombre.strip(), "tipo": "sucursal" if suc else "domicilio",
+            "tienda": "shopify", "num": num, "nombre": nombre.strip(), "tipo": "sucursal" if suc else "domicilio",
             "localidad": localidad, "cp": cp, "provincia": prov, "unidades": unidades,
             "total": round(float(o.get("total_price") or o.get("current_total_price") or 0), 2),
             "tel": tel, "dni": _dni_de(o), "fecha": o.get("created_at") or "",
@@ -4126,7 +4136,13 @@ def pf_despachos_list():
     def _suma(lst):
         return round(sum(r["total"] for r in lst), 2)
     grp = {e: [r for r in rows if r["estado"] == e] for e in ("empaquetar", "exportada", "enviada")}
-    return jsonify({"ok": True, "shopify": True, "rows": rows,
+    tiendas = []                                     # qué tiendas hay conectadas (para el selector: solo si son 2+)
+    if (_shop_tokens().get(email) or {}).get("access_token"):
+        tiendas.append("shopify")
+    _tktn = _tn_tokens().get(email) or {}
+    if _tktn.get("access_token") and _tktn.get("store_id"):
+        tiendas.append("tn")
+    return jsonify({"ok": True, "shopify": True, "rows": rows, "tiendas": tiendas,
                     "resumen": {
                         "empaquetar": {"n": len(grp["empaquetar"]), "monto": _suma(grp["empaquetar"])},
                         "exportada": {"n": len(grp["exportada"]), "monto": _suma(grp["exportada"])},
@@ -4792,10 +4808,11 @@ def pf_despachos_excel():
         return jsonify({"ok": False}), 401
     data = request.get_json(silent=True) or {}
     nums = set(str(n) for n in (data.get("nums") or []))
+    tienda = (data.get("tienda") or "todas").strip()   # filtro por tienda: no mezclar Shopify/TN (mismos nºs)
     if not nums:
         return jsonify({"ok": False, "msg": "sin pedidos"}), 400
     rows = _despachos_orders(email) or []
-    sel = [r for r in rows if r["num"] in nums]
+    sel = [r for r in rows if str(r["num"]) in nums and (tienda == "todas" or r.get("tienda") == tienda)]
     if not sel:
         return jsonify({"ok": False, "msg": "no encontré esos pedidos"}), 404
     tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
