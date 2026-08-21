@@ -2072,6 +2072,11 @@ _SOLO_DASH = r"""
     var sel='img[src*="'+SIG+'"]';                       // los 16 <img> del icono Shopify
     var chip='button:has(> img[src*="'+SIG+'"])';        // el chip de canal (único botón con el icono como hijo directo)
     var noNotif='#mfy_toasts{display:none!important}';   // sin notificaciones de venta arriba a la derecha
+    if(window._rpShop===true && window._rpTn===true){                 // LAS 2 conectadas: ícono Shopify (el original) + ícono Tiendanube + texto "2 tiendas"
+      stEl.textContent=noNotif
+        +chip+'{font-size:0!important}'                               // oculta el texto "Shopify" del chip
+        +chip+'::before{content:""!important;display:inline-block!important;width:17px;height:17px;vertical-align:middle;margin-left:5px;background:url("'+TN_URI+'") center/contain no-repeat!important}'
+        +chip+'::after{content:"2 tiendas"!important;font-size:12px!important;margin-left:6px}'; return; }
     if(window._rpShop===true){ stEl.textContent=noNotif; return; }   // Shopify: icono + texto originales
     if(window._rpTn===true){                                          // Tiendanube: ícono Y texto por CSS (no se toca React)
       stEl.textContent=noNotif
@@ -3637,7 +3642,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-2tiendas-juntas"})
+    return jsonify({"ok": True, "v": "2026-08-20-dash-2iconos"})
 
 
 @app.get("/pf-diag")
