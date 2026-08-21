@@ -3637,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-carga-instant2"})
+    return jsonify({"ok": True, "v": "2026-08-20-2tiendas-juntas"})
 
 
 @app.get("/pf-diag")
@@ -7546,7 +7546,7 @@ def home():
         return Response(f"<p style='color:#fff;font-family:sans-serif;padding:20px'>"
                         f"No se pudo cargar pf.html: {e}</p>", mimetype="text/html")
     import json as _json
-    blob = _json.dumps(_load_last_blob(email) or _blob_vacio(), ensure_ascii=False)   # últimos datos = carga al toque
+    blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
     # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
     if "</head>" in html:
         html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
@@ -7578,62 +7578,8 @@ def home():
 # ---------------- Endpoints en blanco (para que no rompa nada) ----------------
 _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
 
-_LAST_BLOB = DATA_DIR / "last_blob.json"   # último dashboard de HOY por usuario → home() lo inyecta = carga al toque
-def _save_last_blob(email, blob):
-    try:
-        d = {}
-        if _LAST_BLOB.exists():
-            d = _json.loads(_LAST_BLOB.read_text(encoding="utf-8"))
-        d[str(email)] = blob
-        _LAST_BLOB.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
-def _load_last_blob(email):
-    try:
-        d = _json.loads(_LAST_BLOB.read_text(encoding="utf-8"))
-        return d.get(str(email))
-    except Exception:
-        return None
-
 
 @app.get("/pf-periodo")
-
-@app.route("/pf-chk")
-def pf_chk():
-    if request.args.get("k") != "rp7z9chk":
-        return jsonify({"ok": False}), 403
-    email = request.args.get("email") or _user_actual()
-    if not email:
-        return jsonify({"ok": False})
-    desde = request.args.get("desde") or _hoy()
-    hasta = request.args.get("hasta") or desde
-    out = {"ok": True, "email": email}
-    try:
-        _cn = []
-        if (_shop_tokens().get(email) or {}).get("access_token"):
-            _cn.append("shopify")
-        _tkn = _tn_tokens().get(email) or {}
-        if _tkn.get("access_token") and _tkn.get("store_id"):
-            _cn.append("tn")
-        out["canales"] = _cn
-        import time as _tm
-        t0=_tm.time(); sb = _shopify_resumen(email, desde, hasta) if "shopify" in _cn else None; out["t_shopify"]=round(_tm.time()-t0,2)
-        t0=_tm.time(); tb = _tn_resumen(email, desde, hasta); out["t_tn"]=round(_tm.time()-t0,2)
-        out["shopify_ordenes"] = int((sb or {}).get("raw", {}).get("ordenes", 0) or 0)
-        out["tn_ordenes"] = int((tb or {}).get("raw", {}).get("ordenes", 0) or 0)
-        try:
-            t0=_tm.time(); out["meta_spend"]=_meta_spend(email, desde, hasta); out["t_meta"]=round(_tm.time()-t0,2)
-        except Exception as e:
-            out["meta_err"]=repr(e)
-        try:
-            t0=_tm.time(); out["dolar"]=_dolar_ars_vivo(); out["t_dolar"]=round(_tm.time()-t0,2)
-        except Exception as e:
-            out["dolar_err"]=repr(e)
-    except Exception as e:
-        out["err"] = repr(e)
-    return jsonify(out)
-
-
 def pf_periodo():
     email = _user_actual()
     desde = request.args.get("desde") or _hoy()
@@ -7645,27 +7591,13 @@ def pf_periodo():
         if c and (now - c[0]).total_seconds() < 60:
             return jsonify({"ok": True, **c[1]})
         blob = None
-        sh_blob = None
         if email in _shop_tokens():
-            sh_blob = _shopify_resumen(email, desde, hasta)
-            blob = sh_blob
+            blob = _shopify_resumen(email, desde, hasta)
         tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
         if tn_blob:
             blob = _combinar_resumen(blob, tn_blob)
         if blob is None:
             blob = _blob_vacio()
-        try:   # iconos por canal CONECTADO (Ventas KPI) — nunca puede romper el dashboard
-            _cn = []
-            if (_shop_tokens().get(email) or {}).get("access_token"):
-                _cn.append("shopify")
-            _tkn = _tn_tokens().get(email) or {}
-            if _tkn.get("access_token") and _tkn.get("store_id"):
-                _cn.append("tn")
-            blob["raw"]["canales"] = _cn
-            blob["raw"]["shopify_ordenes"] = int((sh_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
-            blob["raw"]["tn_ordenes"] = int((tn_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
-        except Exception:
-            pass
         try:
             blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
         except Exception:
@@ -7718,8 +7650,6 @@ def pf_periodo():
             r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
             r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
         _PF_CACHE[key] = (now, blob)
-        if desde == hasta == _hoy():
-            _save_last_blob(email, blob)   # snapshot de HOY para carga instantánea
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
 
