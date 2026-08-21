@@ -3637,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-2tiendas-juntas"})
+    return jsonify({"ok": True, "v": "2026-08-21-escalafy-snapshot"})
 
 
 @app.get("/pf-diag")
@@ -7546,7 +7546,10 @@ def home():
         return Response(f"<p style='color:#fff;font-family:sans-serif;padding:20px'>"
                         f"No se pudo cargar pf.html: {e}</p>", mimetype="text/html")
     import json as _json
-    blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
+    try:
+        blob = _json.dumps(_load_last_blob(email) or _blob_vacio(), ensure_ascii=False)   # ultimos datos guardados = carga al toque
+    except Exception:
+        blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
     # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
     if "</head>" in html:
         html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
@@ -7577,6 +7580,22 @@ def home():
 
 # ---------------- Endpoints en blanco (para que no rompa nada) ----------------
 _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
+
+_LAST_BLOB = DATA_DIR / "last_blob.json"   # ULTIMO dashboard de HOY por usuario -> home() lo inyecta = carga instantanea (estilo Escalafy)
+def _save_last_blob(email, blob):
+    try:
+        d = {}
+        if _LAST_BLOB.exists():
+            d = _json.loads(_LAST_BLOB.read_text(encoding="utf-8"))
+        d[str(email)] = blob
+        _LAST_BLOB.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+def _load_last_blob(email):
+    try:
+        return _json.loads(_LAST_BLOB.read_text(encoding="utf-8")).get(str(email))
+    except Exception:
+        return None
 
 
 @app.get("/pf-periodo")
@@ -7650,6 +7669,11 @@ def pf_periodo():
             r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
             r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
         _PF_CACHE[key] = (now, blob)
+        try:
+            if desde == hasta == _hoy():
+                _save_last_blob(email, blob)   # snapshot de HOY para carga instantanea
+        except Exception:
+            pass
         return jsonify({"ok": True, **blob})
     return jsonify({"ok": True, **_blob_vacio()})
 
