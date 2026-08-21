@@ -1053,7 +1053,6 @@ _SOLO_DASH = r"""
    var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
    else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
-   else if((p.key==='shopify'&&window._rpTn)||(p.key==='tn'&&window._rpShop)){ var otra=(p.key==='shopify')?'Tiendanube':'Shopify'; right='<span style="display:inline-flex;align-items:center;gap:7px;background:#1c150c;border:1px solid #3d2e14;color:#e0a83b;border-radius:20px;padding:7px 13px;font-size:12px;font-weight:600">&#128274; Ya conectaste '+otra+'</span>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
@@ -3638,7 +3637,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-20-seg-shopify"})
+    return jsonify({"ok": True, "v": "2026-08-20-2tiendas-juntas"})
 
 
 @app.get("/pf-diag")
