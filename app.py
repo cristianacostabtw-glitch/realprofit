@@ -1410,7 +1410,7 @@ _SOLO_DASH = r"""
    var filas=_dSeg.map(function(o){ var tpl=(o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—');
      var st=!o.wa_id?' <span style="color:#fb7185;font-size:10px">sin tel</span>':'';
      return '<tr><td style="padding:8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td>'
-       +'<td style="padding:8px;border-top:1px solid #141c2a">'+_dEsc(o.nombre||'')+st+'</td>'
+       +'<td style="padding:8px;border-top:1px solid #141c2a;color:#e7edf5">'+_dEsc(o.nombre||'')+st+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;color:#8493a8;font-size:11px">'+_dEsc(tpl)+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.tn,'#5aa2f5')+'</td>'
        +(_dSegWppOn?('<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.wpp,'#34d399')+'</td>'):'')+'</tr>'; }).join('');
@@ -3665,7 +3665,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-ocultar-wpp"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-nombre-visible"})
 
 
 @app.get("/pf-diag")
