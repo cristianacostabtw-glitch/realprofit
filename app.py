@@ -3665,7 +3665,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-solo-codigo"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-shopify-por-tracking"})
 
 
 @app.get("/pf-diag")
@@ -5482,7 +5482,7 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
         return {}
     H = {"X-Shopify-Access-Token": atok}
     base = "https://%s/admin/api/2026-07" % shop
-    flds = ("id,name,order_number,customer,phone,line_items,fulfillment_status,"
+    flds = ("id,name,order_number,customer,phone,line_items,fulfillment_status,fulfillments,"
             "shipping_address,email,contact_email,shipping_lines")
     mapa = {}
     for n in list(dict.fromkeys(str(x) for x in numeros))[:120]:
@@ -5645,7 +5645,8 @@ def pf_despachos_seg_leer():
                           or (o.get("shipping_address") or {}).get("name") or it.get("dest", ""))
                 u = sum(int(float(li.get("quantity") or 0)) for li in (o.get("line_items") or []))
                 tel = _seg_shop_tel(o)
-                tn_ok = (o.get("fulfillment_status") == "fulfilled")   # ya despachado en Shopify
+                # "ya hecho" = YA tiene tracking cargado (NO solo "preparado"): preparado sin tracking → falta enviar
+                tn_ok = any((f.get("tracking_number") for f in (o.get("fulfillments") or [])))
                 es_suc = _txt_es_sucursal(_st)                          # misma regla central (no substring)
                 oid = o.get("id"); fo_id = None
                 match = bool(oid)
