@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-costo-x6-par-impar"})
+    return jsonify({"ok": True, "v": "2026-08-22-sku-x6-par-impar"})
 
 
 @app.get("/pf-diag")
@@ -3930,17 +3930,18 @@ def _sku_calc(cfg, u: int) -> str:
         s = (str(m.get(str(int(u))) or "")).strip()
         if s:
             return s
-        # Cantidad no definida en el mapa → la COMPONGO desde las unidades base ya configuradas.
-        # Ej VisionPure: 1='30ML', 2='60ML' (60ml = 2x30ml) → 6 = 3x60ML = 'X3 60ML' (no 'x6').
-        u1 = (str(m.get("1") or "")).strip()      # unidad simple (ej 30ML)
-        u2 = (str(m.get("2") or "")).strip()      # doble (ej 60ML = 2 unidades)
+        # Cantidad no definida en el mapa (típico q>=5, ej x6) → la COMPONGO par/impar con las
+        # unidades base ya configuradas, MISMA lógica y formato que q1-q4.
+        # Ej VisionPure: 1='30ML', 2='60ML' → x6 = 3x60ML = '3 60ML' (no 'x6', no 'X3 1 60ML').
+        u1 = re.sub(r"^[xX]?\s*\d+\s*", "", str(m.get("1") or "").strip()).strip()  # '1 30ML'->'30ML'
+        u2 = re.sub(r"^[xX]?\s*\d+\s*", "", str(m.get("2") or "").strip()).strip()  # '1 60ML'->'60ML'
         if u2 and int(u) >= 2:
-            pares, resto = divmod(int(u), 2)
+            c60, c30 = divmod(int(u), 2)          # 60ml = u//2, 30ml = resto (par/impar)
             partes = []
-            if pares:
-                partes.append((("X%d " % pares) + u2) if pares > 1 else u2)
-            if resto and u1:
-                partes.append(u1)
+            if c60:
+                partes.append("%d %s" % (c60, u2))     # ej '3 60ML'
+            if c30 and u1:
+                partes.append("%d %s" % (c30, u1))     # ej '1 30ML'
             if partes:
                 return " + ".join(partes)
         return "x%d" % u                           # sin unidades base → último recurso
