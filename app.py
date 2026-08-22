@@ -3663,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-sku-compone-cantidades"})
+    return jsonify({"ok": True, "v": "2026-08-22-calle-en-apartamento"})
 
 
 @app.get("/pf-diag")
@@ -4956,33 +4956,34 @@ def pf_despachos_excel():
                 ws_suc.cell(r_suc, c, v)
             r_suc += 1
         else:
-            # Número: primero el campo REAL de la orden (TiendaNube lo trae aparte). Solo si no
-            # viene (Shopify mete todo en 'address1') lo parseo del texto de la calle.
+            # Calle/Número REALES de la orden (TN los trae aparte; Shopify mete calle+número en address1).
             calle = str(r.get("calle") or "").strip()
             numero = str(r.get("numero") or "").strip()
-            if not numero:
-                calle, numero = _calle_num(calle)
-            extra = r.get("extra") or ""
+            extra = str(r.get("extra") or "").strip()      # Shopify address2 / TN piso
             depto = ""
-            if not str(numero).strip() and extra:
-                # RealProfit a veces mete el número (o la dirección) en 'extra' → recuperarlo
-                m = _re_and.search(r"\b(\d{1,6})\b", str(extra))
-                if m:
-                    numero = m.group(1)
-                    if len(str(calle).strip()) <= 3:
-                        pre = _re_and.sub(r"^(calle|av\.?|avenida)\s+", "",
-                                          str(extra)[:m.start()].strip(), flags=_re_and.I).strip()
-                        if pre:
-                            calle = pre
-                    extra = ""
-            else:
-                depto, extra = extra, ""
-            # Limpieza para Andreani (rechaza /, -, símbolos) en TODOS los campos de texto.
+            _PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto",
+                   "s/n", "sn", "sin numero", "sin número")
+            calle_ph = (calle.lower() in _PH) or (len(_re_and.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", calle)) < 3)
+            # CLIENTE que puso la calle REAL en "Apartamento/local" y algo genérico ("Casa") en Dirección
+            # (caso real #1099). Usamos el apartamento como calle. NO inventamos: es el dato del cliente.
+            if calle_ph and extra and _re_and.search(r"[A-Za-zÁÉÍÓÚÑ]", extra):
+                mx = _re_and.search(r"(\d{1,6})", extra)
+                if mx and mx.start() > 0:
+                    calle = extra[:mx.start()].strip(" ,.-") or extra
+                    if not numero:
+                        numero = mx.group(1)
+                else:
+                    calle = extra
+                extra = ""
+            if not numero:                                 # Shopify: partir "Calle Grecia 1036"
+                calle, numero = _calle_num(calle)
+            # Limpieza Andreani (rechaza /, -, símbolos) + número SOLO dígitos.
             calle = _and_txt(calle); extra = _and_txt(extra); depto = _and_txt(depto)
-            numero = _and_num_limpio(numero)                 # SOLO dígitos (nunca 'S/N' ni '-')
-            if not numero:                                   # sin numeración real → 0 (NO inventamos calle;
-                numero = "0"                                 # el pedido va con su calle/localidad/CP reales)
-                faltantes.append(str(r["num"]))              # solo para AVISARTE cuáles fueron sin número
+            numero = _and_num_limpio(numero)
+            if not numero:                                 # sin numeración real → 0 (NO inventamos la calle)
+                numero = "0"; faltantes.append(str(r["num"]))
+            if extra:                                      # lo que quede en el apartamento → Departamento
+                depto, extra = extra, ""
             pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
                     email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
