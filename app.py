@@ -2794,15 +2794,13 @@ def _envio_zona(o) -> str:
             return z
     return "amba" if cp[:1] == "1" else "centro"   # último fallback por CP
 
-def _envio_suc(o) -> bool:
-    """MISMA regla que el export: por defecto domicilio; sucursal solo con señal explícita
-    (palabra entera, no substring — 'hop' NO cuenta dentro de 'shop'); si dice 'domicilio' nunca
-    es sucursal. Así el costo estimado nunca confunde domicilio con sucursal."""
+def _txt_es_sucursal(txt) -> bool:
+    """ÚNICA fuente de verdad para clasificar sucursal por el TEXTO del método de envío.
+    Regla conservadora: por DEFECTO domicilio. Sucursal solo con señal explícita como PALABRA
+    ENTERA (no substring: 'hop' NO cuenta dentro de 'shop'). Si el texto dice 'domicilio' →
+    NUNCA sucursal. Así jamás flipeamos un domicilio a sucursal."""
     import re
-    if o.get("shipping_pickup_type") == "pickup":
-        return True
-    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in (o.get("shipping_lines") or [])).lower()
-    txt += " " + (o.get("shipping_option") or "").lower()   # TN manda el método acá ("Envío a domicilio"/"sucursal")
+    txt = (txt or "").lower()
     if not txt.strip():
         return False
     if re.search(r"\b(a\s+)?domicilio\b|\bhome\s*deliver|\benv[ií]o\s+a\s+casa\b", txt):
@@ -2811,6 +2809,15 @@ def _envio_suc(o) -> bool:
         r"\bsucursal\b|\bpick\s*-?\s*up\b|\bpickup\b|\bretir[oa]\b|\bagencia\b|"
         r"\bpunto\s+(de\s+)?retiro\b|\bpunto\s+andreani\b|\bhop\b|\bcorreo\s+arg\w*\s+sucursal\b",
         txt))
+
+
+def _envio_suc(o) -> bool:
+    """Costo: usa la MISMA regla que el export. Pickup explícito de TN, o el texto del método."""
+    if o.get("shipping_pickup_type") == "pickup":
+        return True
+    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in (o.get("shipping_lines") or []))
+    txt += " " + (o.get("shipping_option") or "")   # TN manda el método acá ("Envío a domicilio"/"Punto de retiro")
+    return _txt_es_sucursal(txt)
 
 def _envio_costo(o) -> int:
     """Costo de envío REAL por zona Andreani (cuenta VisionPure, con descuento), según
@@ -3650,7 +3657,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-andreani-numero-real"})
+    return jsonify({"ok": True, "v": "2026-08-21-andreani-suc-no-inventa"})
 
 
 @app.get("/pf-diag")
@@ -3945,22 +3952,10 @@ def pf_sku_set():
 
 
 def _es_sucursal_ship(o) -> bool:
-    """¿El pedido es a SUCURSAL/punto de retiro? Regla conservadora: por DEFECTO domicilio.
-    Solo es sucursal si el método de envío dice explícitamente pickup/sucursal/retiro/HOP
-    como PALABRA ENTERA (no substring: 'hop' NO matchea dentro de 'shop'). Si el método menciona
-    'domicilio' NUNCA es sucursal. Así jamás flipeamos un domicilio a sucursal por error."""
+    """Shopify: sucursal por el texto del método de envío (misma regla central, nunca flipea)."""
     sl = o.get("shipping_lines") or []
-    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in sl).lower()
-    if not txt.strip():
-        return False
-    # Si el envío es explícitamente a domicilio → domicilio, sí o sí.
-    if _re_and.search(r"\b(a\s+)?domicilio\b|\bhome\s*deliver|\benv[ií]o\s+a\s+casa\b", txt):
-        return False
-    # Señales POSITIVAS de sucursal, como palabra entera.
-    return bool(_re_and.search(
-        r"\bsucursal\b|\bpick\s*-?\s*up\b|\bpickup\b|\bretir[oa]\b|\bagencia\b|"
-        r"\bpunto\s+(de\s+)?retiro\b|\bpunto\s+andreani\b|\bhop\b|\bcorreo\s+arg\w*\s+sucursal\b",
-        txt))
+    txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in sl)
+    return _txt_es_sucursal(txt)
 
 
 def _dni_de(o) -> str:
@@ -4067,9 +4062,11 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 if unidades == 0:                       # ebook-only → no se despacha
                     continue
                 sh = _tn_shipping(o)
-                # Sucursal SOLO si TiendaNube lo marca explícito como pickup (campo del pedido o del
-                # envío). Por defecto domicilio → nunca flipeamos un domicilio a sucursal.
-                es_suc = (o.get("shipping_pickup_type") == "pickup") or (sh.get("type") == "pickup")
+                # Sucursal si TiendaNube lo marca pickup (campo del pedido/envío) O si el método dice
+                # sucursal/"Punto de retiro" (texto, misma regla central). Por defecto domicilio →
+                # nunca flipeamos un domicilio a sucursal (si el método dice 'domicilio', gana domicilio).
+                es_suc = ((o.get("shipping_pickup_type") == "pickup") or (sh.get("type") == "pickup")
+                          or _txt_es_sucursal((o.get("shipping_option") or "") + " " + _tn_suc_nombre(sh)))
                 sa = o.get("shipping_address") or {}
                 cust = o.get("customer") or {}
                 nombre = (sa.get("name") or o.get("contact_name") or cust.get("name") or "—")
@@ -4884,6 +4881,7 @@ def pf_despachos_excel():
     cpidx, sucs = _and_cfg(wb)   # lista oficial de la propia plantilla (sucursales + Prov/Loc/CP)
     r_dom = r_suc = 3
     faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
+    revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
     for r in sel:
         nom, ape = _split_nombre(r["nombre"])
         valor = int(round(r["total"]))
@@ -4902,9 +4900,14 @@ def pf_despachos_excel():
                 except Exception:
                     live = None
                 if live:
-                    of = live
+                    of, conf = live, True
+            if not conf or not of:
+                # No pudimos mapear a una sucursal OFICIAL de Andreani con confianza → NO inventamos
+                # una sucursal cualquiera (mandaría el paquete a otro lado). Lo marcamos para revisar.
+                revisar.append(str(r["num"]))
+                continue
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
-                    email, tel_cod, tel_num, of or suc_raw]
+                    email, tel_cod, tel_num, of]
             for c, v in enumerate(vals, start=1):
                 ws_suc.cell(r_suc, c, v)
             r_suc += 1
@@ -4940,12 +4943,16 @@ def pf_despachos_excel():
             for c, v in enumerate(vals, start=1):
                 ws_dom.cell(r_dom, c, v)
             r_dom += 1
-    if faltantes:
+    if faltantes or revisar:
         wb.close()
-        lst = ", ".join("#" + n for n in faltantes)
-        return jsonify({"ok": False, "msg": "Estos pedidos a domicilio no tienen NÚMERO de calle "
-                        "(Andreani lo exige): " + lst + ". Completá el número en la tienda (o pedíselo "
-                        "al cliente) y reintentá. Los demás están listos: destildá estos y generá el Excel."}), 400
+        partes = []
+        if faltantes:
+            partes.append("Sin NÚMERO de calle (Andreani lo exige): " + ", ".join("#" + n for n in faltantes))
+        if revisar:
+            partes.append("Sucursal que no pude resolver al nombre oficial de Andreani (no la invento para "
+                          "no mandarlo a otra sucursal): " + ", ".join("#" + n for n in revisar))
+        return jsonify({"ok": False, "msg": " · ".join(partes) + ". Completá esos datos en la tienda "
+                        "(o destildá esos pedidos) y generá el Excel con el resto."}), 400
     import io
     buf = io.BytesIO()
     wb.save(buf)
