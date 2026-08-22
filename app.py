@@ -3663,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-calle-en-apartamento"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-shopify-tracking-update"})
 
 
 @app.get("/pf-diag")
@@ -5514,8 +5514,10 @@ def _seg_shop_tel(o):
 
 
 def _seg_enviar_shopify(email, pedidos) -> dict:
-    """Crea el fulfillment en Shopify con el tracking de Andreani + avisa al cliente (mail/SMS).
-    Salta los ya despachados. Usa fulfillmentCreateV2 (merchant-managed)."""
+    """Carga el tracking de Andreani en Shopify + avisa al cliente por mail. Doble vía:
+    (1) si hay fulfillment order ABIERTO → fulfillmentCreate (crea el fulfillment con tracking);
+    (2) si la orden YA está preparada (fulfillment creado a mano/app, sin tracking) →
+        fulfillmentTrackingInfoUpdate al fulfillment existente. Salta los que ya tienen ese tracking."""
     shop, atok = _seg_shop_conn(email)
     if not shop:
         return {"ok": False, "msg": "Shopify no conectado", "enviados": 0}
@@ -5543,25 +5545,54 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
         except Exception as e:
             fail += 1; errores.append({"num": num, "msg": str(e)[:160]}); continue
         fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
-        if not fo:
-            estados = ",".join(str(f.get("status")) for f in fos) or "sin fulfillment orders"
-            fail += 1; errores.append({"num": num, "msg": "sin FO abierto (estados: %s)" % estados}); continue
-        variables = {"f": {
-            "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
-            "notifyCustomer": True,
-            "trackingInfo": {"company": "Andreani", "number": p.get("track"), "url": p.get("url")}}}
+        if fo:
+            # VÍA 1: hay fulfillment order ABIERTO → crear el fulfillment con el tracking + avisar.
+            variables = {"f": {
+                "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
+                "notifyCustomer": True,
+                "trackingInfo": {"company": "Andreani", "number": p.get("track"), "url": p.get("url")}}}
+            try:
+                gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
+                j = gr.json() if gr.content else {}
+                res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
+                ue = res.get("userErrors") or []
+                if res.get("fulfillment") and not ue:
+                    env += 1
+                else:
+                    fail += 1; errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
+            except Exception as e:
+                fail += 1; errores.append({"num": num, "msg": str(e)[:120]})
+            continue
+        # VÍA 2: no hay FO abierto → la orden YA tiene fulfillment (creado a mano, "Preparado", SIN tracking).
+        # Le actualizamos el tracking al fulfillment existente y avisamos al cliente.
         try:
-            gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
+            fr = requests.get("%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=30)
+            fus = fr.json().get("fulfillments", []) if fr.status_code == 200 else []
+        except Exception as e:
+            fail += 1; errores.append({"num": num, "msg": "fulfillments: " + str(e)[:120]}); continue
+        cand = [f for f in fus if str(f.get("status") or "").lower() in ("success", "pending", "open", "")]
+        ff = next((f for f in cand if not f.get("tracking_number")), None) or (cand[-1] if cand else None)
+        if not ff:
+            estados = ",".join(str(f.get("status")) for f in fos) or "ninguno"
+            fail += 1; errores.append({"num": num, "msg": "sin fulfillment ni FO abierto (FO: %s)" % estados}); continue
+        if str(ff.get("tracking_number") or "") == str(p.get("track") or ""):
+            salt += 1; continue                      # ya tiene ESTE tracking cargado
+        gid = "gid://shopify/Fulfillment/%s" % ff["id"]
+        mut2 = ("mutation($fid:ID!,$t:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate("
+                "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
+                "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
+        v2 = {"fid": gid, "t": {"company": "Andreani", "number": p.get("track"), "url": p.get("url")}}
+        try:
+            gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=40)
             j = gr.json() if gr.content else {}
-            res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
+            res = ((j.get("data") or {}).get("fulfillmentTrackingInfoUpdate") or {})
             ue = res.get("userErrors") or []
             if res.get("fulfillment") and not ue:
                 env += 1
             else:
-                fail += 1
-                errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
+                fail += 1; errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
         except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
+            fail += 1; errores.append({"num": num, "msg": str(e)[:120]})
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
