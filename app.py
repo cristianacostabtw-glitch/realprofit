@@ -3659,7 +3659,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-abo-bid-en-conjunto"})
+    return jsonify({"ok": True, "v": "2026-08-21-seg-shopify-fulfillmentcreate"})
 
 
 @app.get("/pf-diag")
@@ -5480,8 +5480,9 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
     H = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
     base = "https://%s/admin/api/2026-07" % shop
     gql = "%s/graphql.json" % base
-    mut = ("mutation($f:FulfillmentV2Input!){fulfillmentCreateV2(fulfillment:$f){"
-           "fulfillment{id status} userErrors{field message}}}")
+    # fulfillmentCreate (fulfillmentCreateV2 quedó DEPRECADO). Mismo input, nombre nuevo.
+    mut = ("mutation($f:FulfillmentInput!){fulfillmentCreate(fulfillment:$f){"
+           "fulfillment{id status trackingInfo{company number url}} userErrors{field message}}}")
     env = salt = fail = 0
     errores = []
     for p in pedidos:
@@ -5507,7 +5508,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
         try:
             gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
             j = gr.json() if gr.content else {}
-            res = ((j.get("data") or {}).get("fulfillmentCreateV2") or {})
+            res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
             ue = res.get("userErrors") or []
             if res.get("fulfillment") and not ue:
                 env += 1
@@ -5567,7 +5568,7 @@ def pf_despachos_seg_leer():
             u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
             tel = _seg_shop_tel(o)
             tn_ok = (o.get("fulfillment_status") == "fulfilled")   # ya despachado en Shopify
-            es_suc = ("sucursal" in _st or "hop" in _st or "punto" in _st)
+            es_suc = _txt_es_sucursal(_st)                          # misma regla central (no substring)
             oid = o.get("id"); fo_id = None
             match = bool(oid)
         else:
