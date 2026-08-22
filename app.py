@@ -3663,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-leer-error-visible"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-msg-real-y-busca-por-nombre"})
 
 
 @app.get("/pf-diag")
@@ -5472,34 +5472,29 @@ def _seg_shop_conn(email):
 
 
 def _seg_mapa_orders_shopify(email, numeros) -> dict:
-    """number(str) → order dict de Shopify, para los pedidos del PDF (250 más recientes)."""
+    """number(str) → order dict de Shopify. Busca CADA pedido por NOMBRE (rápido y exacto),
+    en vez de escanear miles de órdenes (que se colgaba/timeouteaba)."""
     shop, atok = _seg_shop_conn(email)
     if not shop:
         return {}
-    want = set(str(n) for n in numeros)
     H = {"X-Shopify-Access-Token": atok}
     base = "https://%s/admin/api/2026-07" % shop
+    flds = ("id,name,order_number,customer,phone,line_items,fulfillment_status,"
+            "shipping_address,email,contact_email,shipping_lines")
     mapa = {}
-    since = 0
-    for _ in range(4):                      # hasta ~1000 pedidos recientes
-        try:
-            r = requests.get("%s/orders.json" % base, headers=H, params={
-                "status": "any", "limit": 250, "order": "id asc" if since else "id desc",
-                "since_id": since or None,
-                "fields": ("id,name,order_number,customer,phone,line_items,fulfillment_status,"
-                           "shipping_address,email,contact_email,shipping_lines")}, timeout=40)
-            lote = r.json().get("orders", []) if r.status_code == 200 else []
-        except Exception:
-            lote = []
-        if not lote:
-            break
-        for o in lote:
-            num = str(o.get("order_number"))
-            if num in want:
-                mapa[num] = o
-        if len(want - set(mapa)) == 0 or len(lote) < 250:
-            break
-        since = max(x.get("id", 0) for x in lote)
+    for n in list(dict.fromkeys(str(x) for x in numeros))[:120]:
+        for q in ("#" + n, n):                 # Shopify busca por 'name' (con o sin #)
+            try:
+                r = requests.get("%s/orders.json" % base, headers=H,
+                                 params={"status": "any", "name": q, "limit": 5, "fields": flds}, timeout=15)
+                lote = r.json().get("orders", []) if r.status_code == 200 else []
+            except Exception:
+                lote = []
+            hit = next((o for o in lote if str(o.get("order_number")) == n
+                        or str(o.get("name", "")).lstrip("#") == n), None)
+            if hit:
+                mapa[n] = hit
+                break
     return mapa
 
 
@@ -5682,6 +5677,42 @@ def pf_despachos_seg_leer():
                                 "solo_wpp": n_wpp, "ninguno": n_falta}})
 
 
+_WA_TPL_CACHE = {}
+
+
+def _wa_tpl_body(conf, name):
+    """Trae el TEXTO (cuerpo) de una plantilla de WhatsApp desde Meta, cacheado."""
+    waba = (conf or {}).get("waba_id"); tok = (conf or {}).get("token")
+    if not waba or not tok:
+        return ""
+    ck = (str(waba), name)
+    if ck in _WA_TPL_CACHE:
+        return _WA_TPL_CACHE[ck]
+    body = ""
+    try:
+        r = requests.get("%s/%s/message_templates" % (WA_GRAPH, waba),
+                         params={"limit": 100, "access_token": tok}, timeout=15)
+        for t in (r.json().get("data", []) if r.status_code == 200 else []):
+            if t.get("name") == name:
+                for comp in t.get("components", []):
+                    if comp.get("type") == "BODY":
+                        body = comp.get("text", "")
+                break
+    except Exception:
+        body = ""
+    _WA_TPL_CACHE[ck] = body
+    return body
+
+
+def _wa_tpl_render(body, params):
+    """Reemplaza {{1}},{{2}}… por los params → el mensaje REAL que vio el cliente."""
+    import re as _r
+    def _rep(m):
+        i = int(m.group(1)) - 1
+        return str(params[i]) if 0 <= i < len(params) else m.group(0)
+    return _r.sub(r"\{\{(\d+)\}\}", _rep, body or "")
+
+
 def _seg_enviar_wpp(email, pedidos) -> dict:
     """Manda el seguimiento por WhatsApp (template por unidades). Salta los ya enviados por WPP."""
     c = _wa_conf(email)
@@ -5723,8 +5754,9 @@ def _seg_enviar_wpp(email, pedidos) -> dict:
         if r.status_code >= 400:
             fail += 1; errores.append({"num": num, "msg": (j.get("error") or {}).get("message", "error")[:80]}); continue
         mid = (j.get("messages") or [{}])[0].get("id", "")
+        disp = _wa_tpl_render(_wa_tpl_body(c, name), params) or ("📦 Seguimiento de tu pedido #%s: %s" % (num, link))
         conv = chats.setdefault(email, {}).setdefault(wa, {"name": p.get("nombre") or wa, "messages": []})
-        conv["messages"].append({"dir": "out", "text": "[seguimiento #%s]" % num, "ts": _wa_now(),
+        conv["messages"].append({"dir": "out", "text": disp, "ts": _wa_now(),
                                  "type": "template", "id": mid, "status": "sent"})
         conv["updated"] = _wa_now()
         _wa_seg_marcar(email, num)
