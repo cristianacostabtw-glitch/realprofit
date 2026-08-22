@@ -1434,7 +1434,8 @@ _SOLO_DASH = r"""
        +'<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'
      +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
-   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento) y sincronizando con TiendaNube…</div>';
+   var _tn=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
+   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento) y sincronizando con '+_tn+'…</div>';
    var fd=new FormData(); fd.append('pdf',f); fd.append('tienda',_dSegTienda||'tn');
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
@@ -3663,7 +3664,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-msg-real-y-busca-por-nombre"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-leer-full-wrap"})
 
 
 @app.get("/pf-diag")
@@ -5629,49 +5630,52 @@ def pf_despachos_seg_leer():
         mapa = _seg_mapa_orders_shopify(email, nums) if tienda == "shopify" else _seg_mapa_orders(store, hdr, nums)
     except Exception as e:
         return jsonify({"ok": False, "msg": "error buscando pedidos en %s (%s: %s)" % (tienda, type(e).__name__, str(e)[:150])})
-    wpp_env = _wa_seg_all().get(email, {})
-    pedidos = []
-    n_tn = n_wpp = n_ambos = n_falta = 0
-    for it in items:
-        o = mapa.get(it["pedido"]) or {}
-        if tienda == "shopify":
-            cust = o.get("customer") or {}
-            _st = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).lower()
-            nombre = (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()
-                      or (o.get("shipping_address") or {}).get("name") or it.get("dest", ""))
-            u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
-            tel = _seg_shop_tel(o)
-            tn_ok = (o.get("fulfillment_status") == "fulfilled")   # ya despachado en Shopify
-            es_suc = _txt_es_sucursal(_st)                          # misma regla central (no substring)
-            oid = o.get("id"); fo_id = None
-            match = bool(oid)
-        else:
-            cust = o.get("customer") or {}
-            nombre = cust.get("name") or it.get("dest", "")
-            ff = o.get("fulfillments") or []
-            fo_id = ff[0].get("id") if ff else None
-            es_suc = (((ff[0].get("shipping") or {}).get("type")) == "pickup") if ff else False
-            u = _seg_unidades(o) if o else 0
-            tel = _seg_tel_real(o) if o else ""
-            tn_ok = _seg_estado_tn(o) if o else False
-            oid = o.get("id")
-            match = bool(oid and fo_id)
-        wpp_ok = bool(wpp_env.get(str(it["pedido"])))
-        pedidos.append({
-            "num": it["pedido"], "nombre": nombre, "track": it["seguimiento"],
-            "url": "https://www.andreani.com/envio/%s" % it["seguimiento"],
-            "wa_id": _seg_e164(tel) if tel else "", "unidades": u,
-            "order_id": oid, "fo_id": fo_id, "es_sucursal": es_suc,
-            "tn": tn_ok, "wpp": wpp_ok, "match": match, "tienda": tienda,
-        })
-        if tn_ok and wpp_ok:
-            n_ambos += 1
-        elif tn_ok:
-            n_tn += 1
-        elif wpp_ok:
-            n_wpp += 1
-        else:
-            n_falta += 1
+    try:
+        wpp_env = _wa_seg_all().get(email, {})
+        pedidos = []
+        n_tn = n_wpp = n_ambos = n_falta = 0
+        for it in items:
+            o = mapa.get(it["pedido"]) or {}
+            if tienda == "shopify":
+                cust = o.get("customer") or {}
+                _st = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).lower()
+                nombre = (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()
+                          or (o.get("shipping_address") or {}).get("name") or it.get("dest", ""))
+                u = sum(int(float(li.get("quantity") or 0)) for li in (o.get("line_items") or []))
+                tel = _seg_shop_tel(o)
+                tn_ok = (o.get("fulfillment_status") == "fulfilled")   # ya despachado en Shopify
+                es_suc = _txt_es_sucursal(_st)                          # misma regla central (no substring)
+                oid = o.get("id"); fo_id = None
+                match = bool(oid)
+            else:
+                cust = o.get("customer") or {}
+                nombre = cust.get("name") or it.get("dest", "")
+                ff = o.get("fulfillments") or []
+                fo_id = ff[0].get("id") if ff else None
+                es_suc = (((ff[0].get("shipping") or {}).get("type")) == "pickup") if ff else False
+                u = _seg_unidades(o) if o else 0
+                tel = _seg_tel_real(o) if o else ""
+                tn_ok = _seg_estado_tn(o) if o else False
+                oid = o.get("id")
+                match = bool(oid and fo_id)
+            wpp_ok = bool(wpp_env.get(str(it["pedido"])))
+            pedidos.append({
+                "num": it["pedido"], "nombre": nombre, "track": it["seguimiento"],
+                "url": "https://www.andreani.com/envio/%s" % it["seguimiento"],
+                "wa_id": _seg_e164(tel) if tel else "", "unidades": u,
+                "order_id": oid, "fo_id": fo_id, "es_sucursal": es_suc,
+                "tn": tn_ok, "wpp": wpp_ok, "match": match, "tienda": tienda,
+            })
+            if tn_ok and wpp_ok:
+                n_ambos += 1
+            elif tn_ok:
+                n_tn += 1
+            elif wpp_ok:
+                n_wpp += 1
+            else:
+                n_falta += 1
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "error armando la lista (%s: %s)" % (type(e).__name__, str(e)[:180])})
     return jsonify({"ok": True, "pedidos": pedidos, "tienda": tienda,
                     "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
                                 "solo_wpp": n_wpp, "ninguno": n_falta}})
