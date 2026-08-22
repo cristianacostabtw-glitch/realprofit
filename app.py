@@ -3666,7 +3666,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-probar1-pendiente"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-shopify-paralelo"})
 
 
 @app.get("/pf-diag")
@@ -5526,72 +5526,76 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
     # fulfillmentCreate (fulfillmentCreateV2 quedó DEPRECADO). Mismo input, nombre nuevo.
     mut = ("mutation($f:FulfillmentInput!){fulfillmentCreate(fulfillment:$f){"
            "fulfillment{id status trackingInfo{company number url}} userErrors{field message}}}")
-    env = salt = fail = 0
-    errores = []
-    for p in pedidos:
+    mut2 = ("mutation($fid:ID!,$t:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate("
+            "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
+            "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
+
+    def _one(p):
+        """Procesa UN pedido → ('env'|'salt'|'fail', error|None). Thread-safe (sin estado compartido)."""
         num = str(p.get("num"))
-        if p.get("tn"):                     # "tn" = ya despachado en la tienda (reusa el flag)
-            salt += 1
-            continue
+        if p.get("tn"):                     # ya tiene el tracking cargado
+            return ("salt", None)
         oid = p.get("order_id")
         if not oid:
-            fail += 1; errores.append({"num": num, "msg": "no está en Shopify"}); continue
+            return ("fail", {"num": num, "msg": "no está en Shopify"})
         try:
             rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=30)
-            if rr.status_code != 200:       # 401/403 (permiso/scope) o 404 → NO lo escondo como salteado
-                fail += 1; errores.append({"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])}); continue
+            if rr.status_code != 200:
+                return ("fail", {"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])})
             fos = rr.json().get("fulfillment_orders", [])
         except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": str(e)[:160]}); continue
+            return ("fail", {"num": num, "msg": str(e)[:160]})
         fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
         if fo:
-            # VÍA 1: hay fulfillment order ABIERTO → crear el fulfillment con el tracking + avisar.
+            # VÍA 1: fulfillment order ABIERTO → crear el fulfillment con el tracking + avisar.
             variables = {"f": {
                 "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
                 "notifyCustomer": True,
-                "trackingInfo": {"company": "Andreani", "number": p.get("track")}}}   # solo el código; Shopify arma el link de Andreani
+                "trackingInfo": {"company": "Andreani", "number": p.get("track")}}}
             try:
                 gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
                 j = gr.json() if gr.content else {}
                 res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
                 ue = res.get("userErrors") or []
                 if res.get("fulfillment") and not ue:
-                    env += 1
-                else:
-                    fail += 1; errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
+                    return ("env", None)
+                return ("fail", {"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
             except Exception as e:
-                fail += 1; errores.append({"num": num, "msg": str(e)[:120]})
-            continue
-        # VÍA 2: no hay FO abierto → la orden YA tiene fulfillment (creado a mano, "Preparado", SIN tracking).
-        # Le actualizamos el tracking al fulfillment existente y avisamos al cliente.
+                return ("fail", {"num": num, "msg": str(e)[:120]})
+        # VÍA 2: sin FO abierto → la orden YA está preparada → actualizar tracking del fulfillment existente + avisar.
         try:
             fr = requests.get("%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=30)
             fus = fr.json().get("fulfillments", []) if fr.status_code == 200 else []
         except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": "fulfillments: " + str(e)[:120]}); continue
+            return ("fail", {"num": num, "msg": "fulfillments: " + str(e)[:120]})
         cand = [f for f in fus if str(f.get("status") or "").lower() in ("success", "pending", "open", "")]
         ff = next((f for f in cand if not f.get("tracking_number")), None) or (cand[-1] if cand else None)
         if not ff:
             estados = ",".join(str(f.get("status")) for f in fos) or "ninguno"
-            fail += 1; errores.append({"num": num, "msg": "sin fulfillment ni FO abierto (FO: %s)" % estados}); continue
+            return ("fail", {"num": num, "msg": "sin fulfillment ni FO abierto (FO: %s)" % estados})
         if str(ff.get("tracking_number") or "") == str(p.get("track") or ""):
-            salt += 1; continue                      # ya tiene ESTE tracking cargado
-        gid = "gid://shopify/Fulfillment/%s" % ff["id"]
-        mut2 = ("mutation($fid:ID!,$t:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate("
-                "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
-                "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
-        v2 = {"fid": gid, "t": {"company": "Andreani", "number": p.get("track")}}   # solo el código; Shopify arma el link
+            return ("salt", None)
+        v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": {"company": "Andreani", "number": p.get("track")}}
         try:
             gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=40)
             j = gr.json() if gr.content else {}
             res = ((j.get("data") or {}).get("fulfillmentTrackingInfoUpdate") or {})
             ue = res.get("userErrors") or []
             if res.get("fulfillment") and not ue:
-                env += 1
-            else:
-                fail += 1; errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
+                return ("env", None)
+            return ("fail", {"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
         except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": str(e)[:120]})
+            return ("fail", {"num": num, "msg": str(e)[:120]})
+
+    from concurrent.futures import ThreadPoolExecutor
+    env = salt = fail = 0; errores = []
+    with ThreadPoolExecutor(max_workers=6) as ex:   # en paralelo → ~6x más rápido
+        for k, err in ex.map(_one, pedidos):
+            if k == "env": env += 1
+            elif k == "salt": salt += 1
+            else:
+                fail += 1
+                if err: errores.append(err)
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
