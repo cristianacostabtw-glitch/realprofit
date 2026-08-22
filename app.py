@@ -1458,13 +1458,13 @@ _SOLO_DASH = r"""
    fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:lote})}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
      var errs=(j.errores||(j.tn&&j.tn.errores)||[]);
-     if(errs.length){ res.innerHTML='<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ Error real de Shopify (pedido #'+(errs[0].num||'')+'):</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>'+res.innerHTML; }
+     var errBox = errs.length ? ('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ Error real de Shopify (pedido #'+(errs[0].num||'')+'):</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>') : '';
      function mark(ch){ _dSeg.forEach(function(o){ if(ch=='wpp'&&o.wa_id&&!o.wpp)o.wpp=true; if(ch=='tn'&&o.order_id&&!o.tn)o.tn=true; }); }
      var msg='';
      if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; mark('tn'); mark('wpp');
        msg='🔵 TN '+(t.enviados||0)+' cargados'+(t.saltados?(' ('+t.saltados+' ya estaban)'):'')+' · 🟢 WPP '+(w.enviados||0)+' enviados'+(w.saltados?(' ('+w.saltados+' ya estaban)'):''); }
      else { mark(canal); msg=(canal=='wpp'?'🟢 WhatsApp ':(_dSegTienda==='shopify'?'🛍️ Shopify ':'🔵 TiendaNube '))+(j.enviados||0)+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); }
-     _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+res.innerHTML;
+     _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+errBox+res.innerHTML;
      _dLoaded=false; rpDLoad();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error de conexión.</div>'; }); };
  // ===================== FACTURACIÓN =====================
@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-solo-pendientes"})
+    return jsonify({"ok": True, "v": "2026-08-22-error-visible-fix"})
 
 
 @app.get("/pf-diag")
