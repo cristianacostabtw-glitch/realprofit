@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-error-visible-fix"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-sin-tope-120"})
 
 
 @app.get("/pf-diag")
@@ -5492,8 +5492,9 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     base = "https://%s/admin/api/2026-07" % shop
     flds = ("id,name,order_number,customer,phone,line_items,fulfillment_status,fulfillments,"
             "shipping_address,email,contact_email,shipping_lines")
-    mapa = {}
-    for n in list(dict.fromkeys(str(x) for x in numeros))[:120]:
+    unicos = list(dict.fromkeys(str(x) for x in numeros))  # SIN tope: se buscan TODOS
+
+    def _buscar(n):
         for q in ("#" + n, n):                 # Shopify busca por 'name' (con o sin #)
             try:
                 r = requests.get("%s/orders.json" % base, headers=H,
@@ -5504,8 +5505,15 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             hit = next((o for o in lote if str(o.get("order_number")) == n
                         or str(o.get("name", "")).lstrip("#") == n), None)
             if hit:
+                return n, hit
+        return n, None
+
+    mapa = {}
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for n, hit in ex.map(_buscar, unicos):
+            if hit:
                 mapa[n] = hit
-                break
     return mapa
 
 
