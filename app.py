@@ -2420,7 +2420,7 @@ _SOLO_DASH = r"""
     <div class="seg" style="margin-bottom:14px"><div class="s on" id="rpa-cn" onclick="rpaCmp('nueva')">Campa&ntilde;a nueva</div><div class="s" id="rpa-ce" onclick="rpaCmp('exist')">Usar una existente</div></div>
     <div id="rpa-boxn">
      <div class="row"><div><span class="lb">&Aacute;ngulo (nombre)</span><input class="in" id="rpa-ang" value="UGC RENOVACION" oninput="rpaCalc()"></div>
-      <div><span class="lb">Presupuesto diario</span><input class="in" id="rpa-presup" value="35" oninput="rpaCalc()"></div></div>
+      <div><span class="lb" id="rpa-presuplb">Presupuesto diario</span><input class="in" id="rpa-presup" value="35" oninput="rpaCalc()"></div></div>
      <span class="lb" style="margin-top:13px">Presupuesto a nivel</span>
      <div class="seg"><div class="s on" id="rpa-tc" onclick="rpaTipo('cbo')">CBO<small>en la campa&ntilde;a</small></div><div class="s" id="rpa-ta" onclick="rpaTipo('abo')">ABO<small>por conjunto</small></div></div>
      <label class="sw" id="rpa-sharewrap" onclick="rpaShare()" style="margin-top:13px;display:none"><span class="tk" id="rpa-sharetk"><i></i></span><span style="font-size:13.5px;font-weight:700">Compartir presupuesto entre conjuntos <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(hasta 20% entre s&iacute;, opci&oacute;n de Meta). Apagado = cada conjunto gasta lo suyo (mejor para testear)</span></span></label>
@@ -2500,7 +2500,7 @@ _SOLO_DASH = r"""
   fetch('/pf-ads-campanas?cuenta='+k).then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
    $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
   rpaCalc();};
- window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');rpaCalc();};
+ window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');$('rpa-presuplb').textContent=(t=='abo'?'Presupuesto diario por conjunto':'Presupuesto diario');rpaCalc();};
  window.rpaShare=function(){SHARE=!SHARE;$('rpa-sharetk').classList.toggle('on',SHARE);};
  window.rpaCmp=function(m){CMP=m;$('rpa-cn').classList.toggle('on',m=='nueva');$('rpa-ce').classList.toggle('on',m=='exist');
   $('rpa-boxn').style.display=m=='nueva'?'block':'none';$('rpa-boxe').style.display=m=='exist'?'block':'none';
@@ -2553,7 +2553,7 @@ _SOLO_DASH = r"""
  window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
   var cmpName=CMP=='nueva'?(_fechaCamp()+' '+ang):((CMPS.find(function(c){return c.id==$('rpa-cmp').value;})||{}).name||'(existente)');
   $('rpa-rcmp').textContent=cmpName;
-  $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO':'ABO')+' $'+p);
+  $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO $'+p:'ABO $'+p+'/conjunto')+(TIPO=='abo'&&SHARE?' · comparte 20%':''));
   $('rpa-rconj').textContent=(CMP=='exist'&&CJ=='usar')?'usar 1':NCONJ;
   $('rpa-rvids').textContent=VIDS;$('rpa-adsx').textContent=VIDS;
   $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
@@ -3659,7 +3659,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-abo-budget-sharing"})
+    return jsonify({"ok": True, "v": "2026-08-21-abo-bid-en-conjunto"})
 
 
 @app.get("/pf-diag")
@@ -6932,12 +6932,13 @@ def _ads_sched(params):
 
 def _ads_camp_payload(nombre, cbo, presup, status, budget_sharing=False):
     p = {"name": nombre, "objective": "OUTCOME_SALES", "special_ad_categories": [],
-         "buying_type": "AUCTION", "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "status": status}
+         "buying_type": "AUCTION", "status": status}
     if cbo:
         p["daily_budget"] = int(presup) * 100
+        p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"   # CBO: la estrategia de puja va en la campaña (que tiene presupuesto)
     else:
-        # ABO: el presupuesto va en cada conjunto. Meta EXIGE declarar si los conjuntos comparten
-        # presupuesto (hasta 20% entre ellos). True = compartir · False = cada uno lo suyo.
+        # ABO: el presupuesto y la estrategia de puja van en cada CONJUNTO, NO en la campaña
+        # (sin presupuesto de campaña, Meta rechaza el bid_strategy acá). Solo declaramos el compartir.
         p["is_adset_budget_sharing_enabled"] = bool(budget_sharing)
     return p
 
@@ -6953,6 +6954,7 @@ def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=No
          "status": status}
     if not cbo:
         p["daily_budget"] = int(presup) * 100        # ABO: presupuesto por conjunto
+        p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"  # ABO: la estrategia de puja va en el conjunto
     if status == "ACTIVE":
         p["start_time"] = start or _ads_start_5am()
     return p
@@ -7017,6 +7019,7 @@ def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None)
         p["pacing_type"] = s["pacing_type"]
     if s.get("daily_budget"):
         p["daily_budget"] = s["daily_budget"]        # ABO: copia el presupuesto del conjunto
+        p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"  # ABO: la estrategia de puja va en el conjunto
     if status == "ACTIVE":
         p["start_time"] = start or _ads_start_5am()
     return _ads_crear(acct, "adsets", p)
