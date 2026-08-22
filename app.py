@@ -3663,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-shopify-tracking-update"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-leer-error-visible"})
 
 
 @app.get("/pf-diag")
@@ -5630,7 +5630,10 @@ def pf_despachos_seg_leer():
     if not items:
         return jsonify({"ok": False, "msg": "no encontré etiquetas (N° Interno + seguimiento) en ese PDF"})
     nums = [it["pedido"] for it in items]
-    mapa = _seg_mapa_orders_shopify(email, nums) if tienda == "shopify" else _seg_mapa_orders(store, hdr, nums)
+    try:
+        mapa = _seg_mapa_orders_shopify(email, nums) if tienda == "shopify" else _seg_mapa_orders(store, hdr, nums)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "error buscando pedidos en %s (%s: %s)" % (tienda, type(e).__name__, str(e)[:150])})
     wpp_env = _wa_seg_all().get(email, {})
     pedidos = []
     n_tn = n_wpp = n_ambos = n_falta = 0
