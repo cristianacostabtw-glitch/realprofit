@@ -1402,7 +1402,7 @@ _SOLO_DASH = r"""
  };
  window.rpDSegStore=function(t){ _dSegTienda=t; _dSeg=[]; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; rpDSegTiendaRender(); };
  window.rpDCloseSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m)m.style.display='none'; };
- var _dSeg=[], _dSegTienda='tn';
+ var _dSeg=[], _dSegTienda='tn', _dSegWppOn=true;
  function _dSegChip(ok,color){ return ok?'<span style="color:'+color+';font-weight:800">✓</span>':'<span style="color:#3a4757">—</span>'; }
  function _dSegRender(){ var res=document.getElementById('rp-d-segres'); if(!res)return;
    var STORE=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
@@ -1413,10 +1413,10 @@ _SOLO_DASH = r"""
        +'<td style="padding:8px;border-top:1px solid #141c2a">'+_dEsc(o.nombre||'')+st+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;color:#8493a8;font-size:11px">'+_dEsc(tpl)+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.tn,'#5aa2f5')+'</td>'
-       +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.wpp,'#34d399')+'</td></tr>'; }).join('');
+       +(_dSegWppOn?('<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.wpp,'#34d399')+'</td>'):'')+'</tr>'; }).join('');
    var al='';
    if(r.ambos>0) al+='<div style="color:#f0b429;font-size:12px;margin-bottom:4px">⚠ '+r.ambos+' ya enviados por WhatsApp Y '+STORE+' — se descartan, no se repiten.</div>';
-   if(r.solo_tn>0) al+='<div style="color:#5aa2f5;font-size:12px;margin-bottom:4px">🔵 '+r.solo_tn+' ya en '+STORE+', falta WhatsApp.</div>';
+   if(r.solo_tn>0) al+='<div style="color:#5aa2f5;font-size:12px;margin-bottom:4px">🔵 '+r.solo_tn+' ya en '+STORE+(_dSegWppOn?', falta WhatsApp':'')+'.</div>';
    if(r.solo_wpp>0) al+='<div style="color:#34d399;font-size:12px;margin-bottom:4px">🟢 '+r.solo_wpp+' ya por WhatsApp, falta '+STORE+'.</div>';
    var b='display:inline-flex;align-items:center;gap:6px;border-radius:10px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;border:none';
    res.innerHTML='<div style="background:#0b111c;border:1px solid #1a2333;border-radius:12px;overflow:hidden">'
@@ -1427,12 +1427,12 @@ _SOLO_DASH = r"""
      +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Cliente</th>'
      +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Plantilla</th>'
      +'<th style="text-align:center;padding:8px;color:#5aa2f5;font-size:10px;text-transform:uppercase">'+(_dSegTienda==='shopify'?'Shopify':'TN')+'</th>'
-     +'<th style="text-align:center;padding:8px;color:#34d399;font-size:10px;text-transform:uppercase">WPP</th></tr></thead><tbody>'+filas+'</tbody></table></div>'
+     +(_dSegWppOn?'<th style="text-align:center;padding:8px;color:#34d399;font-size:10px;text-transform:uppercase">WPP</th>':'')+'</tr></thead><tbody>'+filas+'</tbody></table></div>'
      +'<div style="padding:12px 14px;display:flex;gap:9px;flex-wrap:wrap;border-top:1px solid #1a2333">'
-       +'<button onclick="rpDSeg(\'wpp\')" style="'+b+';background:linear-gradient(160deg,#1f8f4e,#166b3a);color:#dcfce7">🟢 Enviar por WPP</button>'
+       +(_dSegWppOn?('<button onclick="rpDSeg(\'wpp\')" style="'+b+';background:linear-gradient(160deg,#1f8f4e,#166b3a);color:#dcfce7">🟢 Enviar por WPP</button>'):'')
        +'<button onclick="rpDSeg(\'tn\')" style="'+b+';background:linear-gradient(160deg,#2563a8,#1c4a80);color:#dbeafe">'+(_dSegTienda==='shopify'?'🛍️ Enviar por Shopify':'🔵 Enviar por TN')+'</button>'
        +'<button onclick="rpDSeg(\'tn\',true)" style="'+b+';background:#3a2d0e;color:#fde68a;border:1px solid #6b551c">🧪 Probar 1</button>'
-       +'<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'
+       +(_dSegWppOn?('<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'):'')
      +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
    var _tn=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
@@ -1440,7 +1440,7 @@ _SOLO_DASH = r"""
    var fd=new FormData(); fd.append('pdf',f); fd.append('tienda',_dSegTienda||'tn');
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
-     _dSeg=j.pedidos; _dSegRender();
+     _dSeg=j.pedidos; _dSegWppOn=(j.wpp_on!==false); _dSegRender();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
  window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
@@ -3665,7 +3665,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-labels-tienda"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-ocultar-wpp"})
 
 
 @app.get("/pf-diag")
@@ -5678,7 +5678,9 @@ def pf_despachos_seg_leer():
                 n_falta += 1
     except Exception as e:
         return jsonify({"ok": False, "msg": "error armando la lista (%s: %s)" % (type(e).__name__, str(e)[:180])})
-    return jsonify({"ok": True, "pedidos": pedidos, "tienda": tienda,
+    _wc = _wa_conf(email) or {}
+    wpp_on = bool(_wc.get("token") and _wc.get("phone_id"))   # ¿hay WhatsApp conectado en esta cuenta?
+    return jsonify({"ok": True, "pedidos": pedidos, "tienda": tienda, "wpp_on": wpp_on,
                     "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
                                 "solo_wpp": n_wpp, "ninguno": n_falta}})
 
