@@ -1407,7 +1407,8 @@ _SOLO_DASH = r"""
  function _dSegRender(){ var res=document.getElementById('rp-d-segres'); if(!res)return;
    var STORE=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
    var r={ambos:0,solo_tn:0,solo_wpp:0,nada:0}; _dSeg.forEach(function(o){ if(o.tn&&o.wpp)r.ambos++; else if(o.tn)r.solo_tn++; else if(o.wpp)r.solo_wpp++; else r.nada++; });
-   var filas=_dSeg.map(function(o){ var tpl=(o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—');
+   var _vis=_dSeg.filter(function(o){ return !o.tn || (_dSegWppOn && !o.wpp); });   // en la tabla, SOLO las que faltan
+   var filas=_vis.map(function(o){ var tpl=(o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—');
      var st=!o.wa_id?' <span style="color:#fb7185;font-size:10px">sin tel</span>':'';
      return '<tr><td style="padding:8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;color:#e7edf5">'+_dEsc(o.nombre||'')+st+'</td>'
@@ -1445,8 +1446,14 @@ _SOLO_DASH = r"""
  window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
-   var _pend=_dSeg.filter(function(o){return !o.tn&&!o.wpp;});   // los que FALTAN (no hechos aún)
-   var lote=solo1?[(_pend[0]||_dSeg[0])]:_dSeg;                   // Probar 1 = el primero que falta
+   // Mandar SOLO los pendientes del canal (no re-intentar los ya hechos):
+   var _pendStore=_dSeg.filter(function(o){return !o.tn;});       // faltan en la tienda
+   var _pendWpp=_dSeg.filter(function(o){return !o.wpp;});        // faltan en WhatsApp
+   var lote;
+   if(solo1){ lote=[((canal=='wpp'?_pendWpp:_pendStore)[0]||_dSeg[0])]; }
+   else if(canal=='wpp'){ lote=_pendWpp; }
+   else if(canal=='tn'){ lote=_pendStore; }
+   else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
    res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+(solo1?('PROBANDO con 1 pedido (#'+(lote[0]&&lote[0].num)+')'):('Enviando '+lote.length))+' por '+lbl+'… (no cierres esto)</div>';
    fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:lote})}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
@@ -3666,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-shopify-paralelo"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-solo-pendientes"})
 
 
 @app.get("/pf-diag")
