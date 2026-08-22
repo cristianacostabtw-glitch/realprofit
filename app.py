@@ -1405,6 +1405,7 @@ _SOLO_DASH = r"""
  var _dSeg=[], _dSegTienda='tn';
  function _dSegChip(ok,color){ return ok?'<span style="color:'+color+';font-weight:800">✓</span>':'<span style="color:#3a4757">—</span>'; }
  function _dSegRender(){ var res=document.getElementById('rp-d-segres'); if(!res)return;
+   var STORE=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
    var r={ambos:0,solo_tn:0,solo_wpp:0,nada:0}; _dSeg.forEach(function(o){ if(o.tn&&o.wpp)r.ambos++; else if(o.tn)r.solo_tn++; else if(o.wpp)r.solo_wpp++; else r.nada++; });
    var filas=_dSeg.map(function(o){ var tpl=(o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—');
      var st=!o.wa_id?' <span style="color:#fb7185;font-size:10px">sin tel</span>':'';
@@ -1414,9 +1415,9 @@ _SOLO_DASH = r"""
        +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.tn,'#5aa2f5')+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.wpp,'#34d399')+'</td></tr>'; }).join('');
    var al='';
-   if(r.ambos>0) al+='<div style="color:#f0b429;font-size:12px;margin-bottom:4px">⚠ '+r.ambos+' ya enviados por WhatsApp Y TiendaNube — se descartan, no se repiten.</div>';
-   if(r.solo_tn>0) al+='<div style="color:#5aa2f5;font-size:12px;margin-bottom:4px">🔵 '+r.solo_tn+' ya en TiendaNube, falta WhatsApp.</div>';
-   if(r.solo_wpp>0) al+='<div style="color:#34d399;font-size:12px;margin-bottom:4px">🟢 '+r.solo_wpp+' ya por WhatsApp, falta TiendaNube.</div>';
+   if(r.ambos>0) al+='<div style="color:#f0b429;font-size:12px;margin-bottom:4px">⚠ '+r.ambos+' ya enviados por WhatsApp Y '+STORE+' — se descartan, no se repiten.</div>';
+   if(r.solo_tn>0) al+='<div style="color:#5aa2f5;font-size:12px;margin-bottom:4px">🔵 '+r.solo_tn+' ya en '+STORE+', falta WhatsApp.</div>';
+   if(r.solo_wpp>0) al+='<div style="color:#34d399;font-size:12px;margin-bottom:4px">🟢 '+r.solo_wpp+' ya por WhatsApp, falta '+STORE+'.</div>';
    var b='display:inline-flex;align-items:center;gap:6px;border-radius:10px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;border:none';
    res.innerHTML='<div style="background:#0b111c;border:1px solid #1a2333;border-radius:12px;overflow:hidden">'
      +'<div style="padding:11px 14px;color:#e7edf5;font-size:13px;font-weight:700;border-bottom:1px solid #1a2333">✅ '+_dSeg.length+' pedidos leídos'+(r.nada?(' · '+r.nada+' listos para enviar'):'')+'</div>'
@@ -1425,7 +1426,7 @@ _SOLO_DASH = r"""
      +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Pedido</th>'
      +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Cliente</th>'
      +'<th style="text-align:left;padding:8px;color:#5b6b82;font-size:10px;text-transform:uppercase">Plantilla</th>'
-     +'<th style="text-align:center;padding:8px;color:#5aa2f5;font-size:10px;text-transform:uppercase">TN</th>'
+     +'<th style="text-align:center;padding:8px;color:#5aa2f5;font-size:10px;text-transform:uppercase">'+(_dSegTienda==='shopify'?'Shopify':'TN')+'</th>'
      +'<th style="text-align:center;padding:8px;color:#34d399;font-size:10px;text-transform:uppercase">WPP</th></tr></thead><tbody>'+filas+'</tbody></table></div>'
      +'<div style="padding:12px 14px;display:flex;gap:9px;flex-wrap:wrap;border-top:1px solid #1a2333">'
        +'<button onclick="rpDSeg(\'wpp\')" style="'+b+';background:linear-gradient(160deg,#1f8f4e,#166b3a);color:#dcfce7">🟢 Enviar por WPP</button>'
@@ -3664,7 +3665,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-fix-import-re"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-labels-tienda"})
 
 
 @app.get("/pf-diag")
