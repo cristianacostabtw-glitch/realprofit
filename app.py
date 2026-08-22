@@ -2423,6 +2423,7 @@ _SOLO_DASH = r"""
       <div><span class="lb">Presupuesto diario</span><input class="in" id="rpa-presup" value="35" oninput="rpaCalc()"></div></div>
      <span class="lb" style="margin-top:13px">Presupuesto a nivel</span>
      <div class="seg"><div class="s on" id="rpa-tc" onclick="rpaTipo('cbo')">CBO<small>en la campa&ntilde;a</small></div><div class="s" id="rpa-ta" onclick="rpaTipo('abo')">ABO<small>por conjunto</small></div></div>
+     <label class="sw" id="rpa-sharewrap" onclick="rpaShare()" style="margin-top:13px;display:none"><span class="tk" id="rpa-sharetk"><i></i></span><span style="font-size:13.5px;font-weight:700">Compartir presupuesto entre conjuntos <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(hasta 20% entre s&iacute;, opci&oacute;n de Meta). Apagado = cada conjunto gasta lo suyo (mejor para testear)</span></span></label>
     </div>
     <div id="rpa-boxe" style="display:none">
      <span class="lb">Eleg&iacute; la campa&ntilde;a <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(solo activas)</span></span>
@@ -2470,7 +2471,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
 (function(){
- var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados';
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados',SHARE=false;
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
@@ -2499,7 +2500,8 @@ _SOLO_DASH = r"""
   fetch('/pf-ads-campanas?cuenta='+k).then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
    $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
   rpaCalc();};
- window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');rpaCalc();};
+ window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');rpaCalc();};
+ window.rpaShare=function(){SHARE=!SHARE;$('rpa-sharetk').classList.toggle('on',SHARE);};
  window.rpaCmp=function(m){CMP=m;$('rpa-cn').classList.toggle('on',m=='nueva');$('rpa-ce').classList.toggle('on',m=='exist');
   $('rpa-boxn').style.display=m=='nueva'?'block':'none';$('rpa-boxe').style.display=m=='exist'?'block':'none';
   $('rpa-cjmodo').style.display=m=='exist'?'flex':'none';$('rpa-cjctx').textContent=m=='exist'?'en la campaña elegida':'';
@@ -2562,7 +2564,7 @@ _SOLO_DASH = r"""
   $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;};
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
-   modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,presupuesto:$('rpa-presup').value,
+   modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
@@ -3657,7 +3659,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-andreani-suc-no-inventa"})
+    return jsonify({"ok": True, "v": "2026-08-21-abo-budget-sharing"})
 
 
 @app.get("/pf-diag")
@@ -6928,11 +6930,15 @@ def _ads_sched(params):
     return dt.strftime("%Y-%m-%dT%H:%M:00-03:00")
 
 
-def _ads_camp_payload(nombre, cbo, presup, status):
+def _ads_camp_payload(nombre, cbo, presup, status, budget_sharing=False):
     p = {"name": nombre, "objective": "OUTCOME_SALES", "special_ad_categories": [],
          "buying_type": "AUCTION", "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "status": status}
     if cbo:
         p["daily_budget"] = int(presup) * 100
+    else:
+        # ABO: el presupuesto va en cada conjunto. Meta EXIGE declarar si los conjuntos comparten
+        # presupuesto (hasta 20% entre ellos). True = compartir · False = cada uno lo suyo.
+        p["is_adset_budget_sharing_enabled"] = bool(budget_sharing)
     return p
 
 
@@ -7108,6 +7114,7 @@ def _ads_run(job, params):
             cfg["ig"] = (params.get("ig") or "").strip()
         acct, pixel = cfg["ad_account"], cfg["pixel"]
         cbo = (params.get("tipo") or "cbo") != "abo"
+        budget_sharing = bool(params.get("budget_sharing"))   # solo aplica en ABO (compartir 20%)
         presup = int(params.get("presupuesto") or cfg["presupuesto"])
         n_conj = max(1, min(20, int(params.get("conjuntos") or 1)))
         # Por defecto ACTIVA+programada: solo queda en PAUSA si el usuario elige explícitamente "pausada".
@@ -7181,7 +7188,7 @@ def _ads_run(job, params):
             campaign_id = params["campaign_id"]
         else:
             campaign_id = _ads_crear(acct, "campaigns",
-                                     _ads_camp_payload("%s %s" % (fecha, angulo), cbo, presup, estado))
+                                     _ads_camp_payload("%s %s" % (fecha, angulo), cbo, presup, estado, budget_sharing))
 
         # determinar los CONJUNTOS destino
         base = (params.get("conjunto_nombre") or "CONJUNTO").strip() or "CONJUNTO"
