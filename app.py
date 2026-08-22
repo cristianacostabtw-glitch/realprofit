@@ -2795,9 +2795,22 @@ def _envio_zona(o) -> str:
     return "amba" if cp[:1] == "1" else "centro"   # último fallback por CP
 
 def _envio_suc(o) -> bool:
+    """MISMA regla que el export: por defecto domicilio; sucursal solo con señal explícita
+    (palabra entera, no substring — 'hop' NO cuenta dentro de 'shop'); si dice 'domicilio' nunca
+    es sucursal. Así el costo estimado nunca confunde domicilio con sucursal."""
+    import re
+    if o.get("shipping_pickup_type") == "pickup":
+        return True
     txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in (o.get("shipping_lines") or [])).lower()
     txt += " " + (o.get("shipping_option") or "").lower()   # TN manda el método acá ("Envío a domicilio"/"sucursal")
-    return any(k in txt for k in ("sucursal", "pickup", "pick up", "pick-up", "retiro", "punto", "agenc", "hop"))
+    if not txt.strip():
+        return False
+    if re.search(r"\b(a\s+)?domicilio\b|\bhome\s*deliver|\benv[ií]o\s+a\s+casa\b", txt):
+        return False
+    return bool(re.search(
+        r"\bsucursal\b|\bpick\s*-?\s*up\b|\bpickup\b|\bretir[oa]\b|\bagencia\b|"
+        r"\bpunto\s+(de\s+)?retiro\b|\bpunto\s+andreani\b|\bhop\b|\bcorreo\s+arg\w*\s+sucursal\b",
+        txt))
 
 def _envio_costo(o) -> int:
     """Costo de envío REAL por zona Andreani (cuenta VisionPure, con descuento), según
@@ -3637,7 +3650,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-sku-por-tienda"})
+    return jsonify({"ok": True, "v": "2026-08-21-andreani-nunca-flip"})
 
 
 @app.get("/pf-diag")
@@ -3932,9 +3945,22 @@ def pf_sku_set():
 
 
 def _es_sucursal_ship(o) -> bool:
+    """¿El pedido es a SUCURSAL/punto de retiro? Regla conservadora: por DEFECTO domicilio.
+    Solo es sucursal si el método de envío dice explícitamente pickup/sucursal/retiro/HOP
+    como PALABRA ENTERA (no substring: 'hop' NO matchea dentro de 'shop'). Si el método menciona
+    'domicilio' NUNCA es sucursal. Así jamás flipeamos un domicilio a sucursal por error."""
     sl = o.get("shipping_lines") or []
     txt = " ".join(((s.get("title") or "") + " " + (s.get("code") or "")) for s in sl).lower()
-    return any(k in txt for k in _SUC_KEYS)
+    if not txt.strip():
+        return False
+    # Si el envío es explícitamente a domicilio → domicilio, sí o sí.
+    if _re_and.search(r"\b(a\s+)?domicilio\b|\bhome\s*deliver|\benv[ií]o\s+a\s+casa\b", txt):
+        return False
+    # Señales POSITIVAS de sucursal, como palabra entera.
+    return bool(_re_and.search(
+        r"\bsucursal\b|\bpick\s*-?\s*up\b|\bpickup\b|\bretir[oa]\b|\bagencia\b|"
+        r"\bpunto\s+(de\s+)?retiro\b|\bpunto\s+andreani\b|\bhop\b|\bcorreo\s+arg\w*\s+sucursal\b",
+        txt))
 
 
 def _dni_de(o) -> str:
@@ -4041,7 +4067,9 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 if unidades == 0:                       # ebook-only → no se despacha
                     continue
                 sh = _tn_shipping(o)
-                es_suc = sh.get("type") == "pickup"
+                # Sucursal SOLO si TiendaNube lo marca explícito como pickup (campo del pedido o del
+                # envío). Por defecto domicilio → nunca flipeamos un domicilio a sucursal.
+                es_suc = (o.get("shipping_pickup_type") == "pickup") or (sh.get("type") == "pickup")
                 sa = o.get("shipping_address") or {}
                 cust = o.get("customer") or {}
                 nombre = (sa.get("name") or o.get("contact_name") or cust.get("name") or "—")
@@ -4685,6 +4713,16 @@ def _calle_num(dir_):
     return d, ""
 
 
+def _and_calle_limpia(s):
+    """Andreani RECHAZA caracteres como '/' en Calle. Dejamos letras (con acentos/ñ), números,
+    espacios y . ° - ; el resto (/, \\, #, |, etc.) lo pasamos a espacio. No inventa nada:
+    solo saca lo que Andreani no acepta."""
+    s = str(s or "")
+    s = _re_and.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ .\-]", " ", s)
+    s = _re_and.sub(r"\s+", " ", s).strip(" -.")
+    return s
+
+
 # ===== Resolvedor Andreani: sucursal exacta + Prov/Loc/CP oficial (sin login, endpoints públicos) =====
 import re as _re_and
 import unicodedata as _ud_and
@@ -4843,6 +4881,7 @@ def pf_despachos_excel():
     PESO = 1000
     cpidx, sucs = _and_cfg(wb)   # lista oficial de la propia plantilla (sucursales + Prov/Loc/CP)
     r_dom = r_suc = 3
+    faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
     for r in sel:
         nom, ape = _split_nombre(r["nombre"])
         valor = int(round(r["total"]))
@@ -4884,12 +4923,22 @@ def pf_despachos_excel():
                     extra = ""
             else:
                 depto, extra = extra, ""
+            calle = _and_calle_limpia(calle)                 # Andreani rechaza '/' y otros → limpiar
+            if not str(numero).strip():                      # sin número: NO inventamos, lo marcamos
+                faltantes.append(str(r["num"]))
+                continue
             pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
                     email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
             for c, v in enumerate(vals, start=1):
                 ws_dom.cell(r_dom, c, v)
             r_dom += 1
+    if faltantes:
+        wb.close()
+        lst = ", ".join("#" + n for n in faltantes)
+        return jsonify({"ok": False, "msg": "Estos pedidos a domicilio no tienen NÚMERO de calle "
+                        "(Andreani lo exige): " + lst + ". Completá el número en la tienda (o pedíselo "
+                        "al cliente) y reintentá. Los demás están listos: destildá estos y generá el Excel."}), 400
     import io
     buf = io.BytesIO()
     wb.save(buf)
