@@ -3663,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-andreani-excel-limpio-total"})
+    return jsonify({"ok": True, "v": "2026-08-22-sku-compone-cantidades"})
 
 
 @app.get("/pf-diag")
@@ -3918,7 +3918,22 @@ def _sku_calc(cfg, u: int) -> str:
     t, b, m = c["tipo"], (c["base"] or "").strip(), (c.get("map") or {})
     if t == "variable":
         s = (str(m.get(str(int(u))) or "")).strip()
-        return s if s else ("x%d" % u)            # cantidad sin definir → xN
+        if s:
+            return s
+        # Cantidad no definida en el mapa → la COMPONGO desde las unidades base ya configuradas.
+        # Ej VisionPure: 1='30ML', 2='60ML' (60ml = 2x30ml) → 6 = 3x60ML = 'X3 60ML' (no 'x6').
+        u1 = (str(m.get("1") or "")).strip()      # unidad simple (ej 30ML)
+        u2 = (str(m.get("2") or "")).strip()      # doble (ej 60ML = 2 unidades)
+        if u2 and int(u) >= 2:
+            pares, resto = divmod(int(u), 2)
+            partes = []
+            if pares:
+                partes.append((("X%d " % pares) + u2) if pares > 1 else u2)
+            if resto and u1:
+                partes.append(u1)
+            if partes:
+                return " + ".join(partes)
+        return "x%d" % u                           # sin unidades base → último recurso
     if t == "fijo":
         return b
     # unitario: 'xN base' (ej 'x2 Pote')
