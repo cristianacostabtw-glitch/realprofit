@@ -1445,8 +1445,9 @@ _SOLO_DASH = r"""
  window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
-   var lote=solo1?_dSeg.slice(0,1):_dSeg;
-   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+(solo1?'PROBANDO con 1 pedido':'Enviando '+lote.length)+' por '+lbl+'… (no cierres esto)</div>';
+   var _pend=_dSeg.filter(function(o){return !o.tn&&!o.wpp;});   // los que FALTAN (no hechos aún)
+   var lote=solo1?[(_pend[0]||_dSeg[0])]:_dSeg;                   // Probar 1 = el primero que falta
+   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+(solo1?('PROBANDO con 1 pedido (#'+(lote[0]&&lote[0].num)+')'):('Enviando '+lote.length))+' por '+lbl+'… (no cierres esto)</div>';
    fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:lote})}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
      var errs=(j.errores||(j.tn&&j.tn.errores)||[]);
@@ -3665,7 +3666,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-shopify-por-tracking"})
+    return jsonify({"ok": True, "v": "2026-08-22-probar1-pendiente"})
 
 
 @app.get("/pf-diag")
