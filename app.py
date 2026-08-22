@@ -3650,7 +3650,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-andreani-nunca-flip"})
+    return jsonify({"ok": True, "v": "2026-08-21-andreani-numero-real"})
 
 
 @app.get("/pf-diag")
@@ -4073,7 +4073,9 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 sa = o.get("shipping_address") or {}
                 cust = o.get("customer") or {}
                 nombre = (sa.get("name") or o.get("contact_name") or cust.get("name") or "—")
-                calle = (str(sa.get("address") or "").strip() + " " + str(sa.get("number") or "").strip()).strip()
+                # TiendaNube trae calle y número en campos SEPARADOS → los uso tal cual (no adivino).
+                calle = str(sa.get("address") or "").strip()
+                numero = str(sa.get("number") or "").strip()
                 floor = str(sa.get("floor") or "").strip()
                 localidad = (sa.get("locality") or sa.get("city") or "").strip()
                 cp = str(sa.get("zipcode") or "").strip()
@@ -4089,7 +4091,7 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                     "total": round(float(o.get("total") or 0), 2),
                     "tel": tel, "dni": dni, "fecha": o.get("created_at") or o.get("completed_at") or "",
                     "email": o.get("contact_email") or (cust.get("email") or ""),
-                    "suc_nombre": _tn_suc_nombre(sh), "calle": calle, "extra": floor,
+                    "suc_nombre": _tn_suc_nombre(sh), "calle": calle, "numero": numero, "extra": floor,
                     "incompleta": incompleta, "estado": estado,
                 })
             if len(lote) < 200:
@@ -4907,7 +4909,12 @@ def pf_despachos_excel():
                 ws_suc.cell(r_suc, c, v)
             r_suc += 1
         else:
-            calle, numero = _calle_num(r.get("calle"))
+            # Número: primero el campo REAL de la orden (TiendaNube lo trae aparte). Solo si no
+            # viene (Shopify mete todo en 'address1') lo parseo del texto de la calle.
+            calle = str(r.get("calle") or "").strip()
+            numero = str(r.get("numero") or "").strip()
+            if not numero:
+                calle, numero = _calle_num(calle)
             extra = r.get("extra") or ""
             depto = ""
             if not str(numero).strip() and extra:
