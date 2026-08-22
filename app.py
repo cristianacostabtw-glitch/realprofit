@@ -3665,7 +3665,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-nombre-visible"})
+    return jsonify({"ok": True, "v": "2026-08-22-seg-solo-codigo"})
 
 
 @app.get("/pf-diag")
@@ -5548,7 +5548,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             variables = {"f": {
                 "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
                 "notifyCustomer": True,
-                "trackingInfo": {"company": "Andreani", "number": p.get("track"), "url": p.get("url")}}}
+                "trackingInfo": {"company": "Andreani", "number": p.get("track")}}}   # solo el código; Shopify arma el link de Andreani
             try:
                 gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
                 j = gr.json() if gr.content else {}
@@ -5579,7 +5579,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
         mut2 = ("mutation($fid:ID!,$t:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate("
                 "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
                 "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
-        v2 = {"fid": gid, "t": {"company": "Andreani", "number": p.get("track"), "url": p.get("url")}}
+        v2 = {"fid": gid, "t": {"company": "Andreani", "number": p.get("track")}}   # solo el código; Shopify arma el link
         try:
             gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=40)
             j = gr.json() if gr.content else {}
