@@ -3663,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-seg-shopify-probar1-error"})
+    return jsonify({"ok": True, "v": "2026-08-22-andreani-excel-limpio-total"})
 
 
 @app.get("/pf-diag")
@@ -4718,14 +4718,36 @@ def _calle_num(dir_):
     return d, ""
 
 
-def _and_calle_limpia(s):
-    """Andreani RECHAZA caracteres como '/' en Calle. Dejamos letras (con acentos/ñ), números,
-    espacios y . ° - ; el resto (/, \\, #, |, etc.) lo pasamos a espacio. No inventa nada:
-    solo saca lo que Andreani no acepta."""
-    s = str(s or "")
-    s = _re_and.sub(r"[^0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ .\-]", " ", s)
-    s = _re_and.sub(r"\s+", " ", s).strip(" -.")
-    return s
+_AND_GRAVE = {"à": "á", "è": "é", "ì": "í", "ò": "ó", "ù": "ú", "À": "Á", "È": "É", "Ì": "Í",
+              "Ò": "Ó", "Ù": "Ú", "â": "a", "ê": "e", "î": "i", "ô": "o", "û": "u",
+              "ä": "a", "ë": "e", "ï": "i", "ö": "o", "ã": "a", "õ": "o", "ç": "c", "Ç": "C"}
+_AND_OK = set("0123456789 .")
+
+
+def _and_txt(s):
+    """Limpia un campo de TEXTO para Andreani (Calle, Piso, Depto, Nombre, Apellido, Observaciones).
+    Andreani rechaza símbolos como '/' y '-'. Dejamos letras (con acentos ESPAÑOLES), números,
+    espacio y punto; normalizamos acentos raros (ù→ú); el resto (/, -, #, |, etc.) → espacio.
+    NO inventa: solo saca lo que Andreani no acepta. No cambia el sentido del dato."""
+    s = "".join(_AND_GRAVE.get(ch, ch) for ch in str(s or ""))
+    out = []
+    for ch in s:
+        if ch.isalpha() and (ch.isascii() or ch in "áéíóúñüÁÉÍÓÚÑÜ"):
+            out.append(ch)
+        elif ch in _AND_OK:
+            out.append(ch)
+        else:
+            out.append(" ")
+    return _re_and.sub(r"\s+", " ", "".join(out)).strip(" .")
+
+
+def _and_num_limpio(s):
+    """Número de calle para Andreani: SOLO dígitos (rechaza 'S/N', '-', letras). Sin dígitos → ''. """
+    return _re_and.sub(r"\D", "", str(s or ""))
+
+
+def _and_calle_limpia(s):   # compat: alias del limpiador de texto
+    return _and_txt(s)
 
 
 # ===== Resolvedor Andreani: sucursal exacta + Prov/Loc/CP oficial (sin login, endpoints públicos) =====
@@ -4890,6 +4912,7 @@ def pf_despachos_excel():
     revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
     for r in sel:
         nom, ape = _split_nombre(r["nombre"])
+        nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
         valor = int(round(r["total"]))
         peso = PESO
         dni = str(r.get("dni") or "").strip() or "00000000"   # Andreani exige DNI
@@ -4939,26 +4962,25 @@ def pf_despachos_excel():
                     extra = ""
             else:
                 depto, extra = extra, ""
-            calle = _and_calle_limpia(calle)                 # Andreani rechaza '/' y otros → limpiar
-            if not str(numero).strip():                      # sin número: NO inventamos, lo marcamos
-                faltantes.append(str(r["num"]))
-                continue
+            # Limpieza para Andreani (rechaza /, -, símbolos) en TODOS los campos de texto.
+            calle = _and_txt(calle); extra = _and_txt(extra); depto = _and_txt(depto)
+            numero = _and_num_limpio(numero)                 # SOLO dígitos (nunca 'S/N' ni '-')
+            if not numero:                                   # sin numeración real → 0 (NO inventamos calle;
+                numero = "0"                                 # el pedido va con su calle/localidad/CP reales)
+                faltantes.append(str(r["num"]))              # solo para AVISARTE cuáles fueron sin número
             pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
                     email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
             for c, v in enumerate(vals, start=1):
                 ws_dom.cell(r_dom, c, v)
             r_dom += 1
-    if faltantes or revisar:
+    # Los domicilios sin número van con "0" (Andreani exige numérico) → NO bloquean el Excel.
+    # Solo frenamos si una SUCURSAL no se pudo mapear al nombre oficial (mandaría a otra sucursal).
+    if revisar:
         wb.close()
-        partes = []
-        if faltantes:
-            partes.append("Sin NÚMERO de calle (Andreani lo exige): " + ", ".join("#" + n for n in faltantes))
-        if revisar:
-            partes.append("Sucursal que no pude resolver al nombre oficial de Andreani (no la invento para "
-                          "no mandarlo a otra sucursal): " + ", ".join("#" + n for n in revisar))
-        return jsonify({"ok": False, "msg": " · ".join(partes) + ". Completá esos datos en la tienda "
-                        "(o destildá esos pedidos) y generá el Excel con el resto."}), 400
+        return jsonify({"ok": False, "msg": "No pude resolver la SUCURSAL oficial de Andreani de: "
+                        + ", ".join("#" + n for n in revisar) + " (no la invento para no mandarla a otra "
+                        "sucursal). Revisá esos pedidos o destildalos y generá el Excel con el resto."}), 400
     import io
     buf = io.BytesIO()
     wb.save(buf)
