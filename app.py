@@ -1430,6 +1430,7 @@ _SOLO_DASH = r"""
      +'<div style="padding:12px 14px;display:flex;gap:9px;flex-wrap:wrap;border-top:1px solid #1a2333">'
        +'<button onclick="rpDSeg(\'wpp\')" style="'+b+';background:linear-gradient(160deg,#1f8f4e,#166b3a);color:#dcfce7">🟢 Enviar por WPP</button>'
        +'<button onclick="rpDSeg(\'tn\')" style="'+b+';background:linear-gradient(160deg,#2563a8,#1c4a80);color:#dbeafe">'+(_dSegTienda==='shopify'?'🛍️ Enviar por Shopify':'🔵 Enviar por TN')+'</button>'
+       +'<button onclick="rpDSeg(\'tn\',true)" style="'+b+';background:#3a2d0e;color:#fde68a;border:1px solid #6b551c">🧪 Probar 1</button>'
        +'<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'
      +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
@@ -1439,12 +1440,15 @@ _SOLO_DASH = r"""
      if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
      _dSeg=j.pedidos; _dSegRender();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
- window.rpDSeg=function(canal){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
+ window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
-   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando por '+lbl+'… (no cierres esto)</div>';
-   fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:_dSeg})}).then(function(r){return r.json();}).then(function(j){
+   var lote=solo1?_dSeg.slice(0,1):_dSeg;
+   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+(solo1?'PROBANDO con 1 pedido':'Enviando '+lote.length)+' por '+lbl+'… (no cierres esto)</div>';
+   fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:lote})}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
+     var errs=(j.errores||(j.tn&&j.tn.errores)||[]);
+     if(errs.length){ res.innerHTML='<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ Error real de Shopify (pedido #'+(errs[0].num||'')+'):</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>'+res.innerHTML; }
      function mark(ch){ _dSeg.forEach(function(o){ if(ch=='wpp'&&o.wa_id&&!o.wpp)o.wpp=true; if(ch=='tn'&&o.order_id&&!o.tn)o.tn=true; }); }
      var msg='';
      if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; mark('tn'); mark('wpp');
@@ -3659,7 +3663,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-21-seg-shopify-fulfillmentcreate"})
+    return jsonify({"ok": True, "v": "2026-08-21-seg-shopify-probar1-error"})
 
 
 @app.get("/pf-diag")
@@ -5495,12 +5499,15 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             fail += 1; errores.append({"num": num, "msg": "no está en Shopify"}); continue
         try:
             rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=30)
-            fos = rr.json().get("fulfillment_orders", []) if rr.status_code == 200 else []
+            if rr.status_code != 200:       # 401/403 (permiso/scope) o 404 → NO lo escondo como salteado
+                fail += 1; errores.append({"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])}); continue
+            fos = rr.json().get("fulfillment_orders", [])
         except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": str(e)[:80]}); continue
+            fail += 1; errores.append({"num": num, "msg": str(e)[:160]}); continue
         fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
         if not fo:
-            salt += 1; continue             # ya despachado / sin ítems por cumplir
+            estados = ",".join(str(f.get("status")) for f in fos) or "sin fulfillment orders"
+            fail += 1; errores.append({"num": num, "msg": "sin FO abierto (estados: %s)" % estados}); continue
         variables = {"f": {
             "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
             "notifyCustomer": True,
@@ -5514,7 +5521,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
                 env += 1
             else:
                 fail += 1
-                errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:90]})
+                errores.append({"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
         except Exception as e:
             fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
