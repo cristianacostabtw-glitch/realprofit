@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-sin-tope-120"})
+    return jsonify({"ok": True, "v": "2026-08-22-costo-x6-par-impar"})
 
 
 @app.get("/pf-diag")
@@ -7923,8 +7923,10 @@ def _costos() -> dict:
 
 def _costo_qty(cost, qty) -> float:
     """Costo de `qty` unidades.
-    - VARIABLE: costo guardado como dict {'1':c1,'2':c2,'3':c3,'4':c4} (costo por cantidad).
-      Usa el de esa cantidad exacta; si no está (5+), usa el unitario ('1') × cantidad.
+    - VARIABLE: costo guardado como dict {'1':c1,'2':c2,'3':c3,'4':c4}. Es un producto que se
+      arma como 30ml/60ml por PAR/IMPAR (q1=1x30ml, q2=1x60ml, q3=1x30+1x60, q4=2x60ml).
+      Usa el costo exacto de esa cantidad si está cargado (>0); si no (típico q>=5, ej. x6),
+      DESCOMPONE igual que el stock: 60ml = q//2, 30ml = q%2. Así x6 = 3x60ml (NO 6x30ml).
     - UNITARIO/FIJO (número plano): costo*qty (backward-compatible)."""
     if not cost:
         return 0.0
@@ -7932,10 +7934,17 @@ def _costo_qty(cost, qty) -> float:
         q = int(qty or 0)
     except Exception:
         q = 0
+    if q <= 0:
+        return 0.0
     if isinstance(cost, dict):
-        if str(q) in cost:
-            return float(cost.get(str(q)) or 0)
-        return float(cost.get("1") or 0) * q     # cantidad no definida → unitario × cantidad
+        exacto = float(cost.get(str(q)) or 0)
+        if exacto > 0:
+            return exacto
+        c30 = float(cost.get("1") or 0)          # costo de 1x30ml
+        c60 = float(cost.get("2") or 0)          # costo de 1x60ml
+        if c60 > 0:                              # producto 30/60 → par/impar
+            return (q // 2) * c60 + (q % 2) * c30
+        return c30 * q                           # sin 60ml cargado → unitario × cantidad
     try:
         return float(cost) * q
     except Exception:
