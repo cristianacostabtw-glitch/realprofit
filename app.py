@@ -3664,7 +3664,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-seg-leer-full-wrap"})
+    return jsonify({"ok": True, "v": "2026-08-22-fix-import-re"})
 
 
 @app.get("/pf-diag")
@@ -4768,6 +4768,7 @@ def _and_calle_limpia(s):   # compat: alias del limpiador de texto
 
 # ===== Resolvedor Andreani: sucursal exacta + Prov/Loc/CP oficial (sin login, endpoints públicos) =====
 import re as _re_and
+import re   # 're' suelto lo usan varias funciones (seg/shopify) → disponible a nivel módulo
 import unicodedata as _ud_and
 
 _AND_CFG = {"cpidx": None, "sucs": None}
