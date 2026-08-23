@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-diag-apt"})
+    return jsonify({"ok": True, "v": "2026-08-23-dom-apt-recover"})
 
 
 @app.get("/pf-diag")
@@ -4939,6 +4939,43 @@ def _and_suc_live(zeny, cp):
     return None
 
 
+_AND_DOM_PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto", "s/n", "sn",
+               "sin numero", "sin número", "local", "plata baja", "planta baja", "pb")
+
+
+def _and_letters(s):
+    return _re_and.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", str(s or ""))
+
+
+def _and_domicilio(calle, numero, extra):
+    """Devuelve (calle, numero, depto) para la fila de domicilio. Recupera el número (y la calle real)
+    del Apartamento (address2) cuando el cliente lo cargó ahí — caso muy común. NO inventa: si no hay
+    altura en ningún lado, numero queda '' (el generador lo pone en '0' y lo marca para revisar)."""
+    calle = str(calle or "").strip()
+    numero = str(numero or "").strip()
+    extra = str(extra or "").strip()
+    calle_ph = calle.lower() in _AND_DOM_PH
+    # "Calle 60" / "Calle 39" / "17 n" sola = nombre de calle numerada (NO es la altura) → altura del apto
+    _num_sola = bool(_re_and.match(r"^\d{1,4}\s*(n|n°|nº|bis)?\s*$",
+                                   _re_and.sub(r"^\s*(calle|av\.?|avenida)\s+", "", calle, flags=_re_and.I).strip(),
+                                   _re_and.I))
+    if not numero and not _num_sola:                 # 1) número pegado en la calle ("Grecia 1036")
+        c2, n2 = _calle_num(calle)
+        if n2:
+            calle, numero = c2, n2
+    if not numero and extra:                         # 2) el número (y a veces la calle) está en el Apartamento
+        mx = _re_and.search(r"\d{1,6}", extra)
+        if mx:
+            numero = mx.group(0)
+            apt_calle = _re_and.sub(r"^(calle|av\.?|avenida)\s+", "", extra[:mx.start()].strip(" ,.-"), flags=_re_and.I).strip()
+            if calle_ph and len(_and_letters(apt_calle)) >= 3:   # la calle real estaba en el apartamento
+                calle = apt_calle
+            extra = extra[mx.end():].strip(" ,.-")
+    if calle_ph and len(_and_letters(calle)) < 3 and len(_and_letters(extra)) >= 3:
+        calle = extra; extra = ""                    # 3) calle placeholder y el apto trae la calle (sin número)
+    return _and_txt(calle), _and_num_limpio(numero), _and_txt(extra)
+
+
 @app.post("/pf-despachos-excel")
 def pf_despachos_excel():
     """Genera el Excel de carga masiva de Andreani (2 hojas: A domicilio / A sucursal)
@@ -5013,36 +5050,13 @@ def pf_despachos_excel():
             r_suc += 1
         else:
             # Calle/Número REALES de la orden (TN los trae aparte; Shopify mete calle+número en address1).
-            calle = str(r.get("calle") or "").strip()
-            numero = str(r.get("numero") or "").strip()
-            extra = str(r.get("extra") or "").strip()      # Shopify address2 / TN piso
-            depto = ""
-            _PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto",
-                   "s/n", "sn", "sin numero", "sin número")
-            calle_ph = (calle.lower() in _PH) or (len(_re_and.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", calle)) < 3)
-            # CLIENTE que puso la calle REAL en "Apartamento/local" y algo genérico ("Casa") en Dirección
-            # (caso real #1099). Usamos el apartamento como calle. NO inventamos: es el dato del cliente.
-            if calle_ph and extra and _re_and.search(r"[A-Za-zÁÉÍÓÚÑ]", extra):
-                mx = _re_and.search(r"(\d{1,6})", extra)
-                if mx and mx.start() > 0:
-                    calle = extra[:mx.start()].strip(" ,.-") or extra
-                    if not numero:
-                        numero = mx.group(1)
-                else:
-                    calle = extra
-                extra = ""
-            if not numero:                                 # Shopify: partir "Calle Grecia 1036"
-                calle, numero = _calle_num(calle)
-            # Limpieza Andreani (rechaza /, -, símbolos) + número SOLO dígitos.
-            calle = _and_txt(calle); extra = _and_txt(extra); depto = _and_txt(depto)
-            numero = _and_num_limpio(numero)
-            if not numero:                                 # sin numeración real → 0 (NO inventamos la calle)
+            # Calle/Número REALES: recupera el número (y la calle) del Apartamento si el cliente lo puso ahí.
+            calle, numero, depto = _and_domicilio(r.get("calle"), r.get("numero"), r.get("extra"))
+            if not numero:                                 # sin numeración real en ningún lado → 0 (NO inventa)
                 numero = "0"; faltantes.append(str(r["num"]))
-            if extra:                                      # lo que quede en el apartamento → Departamento
-                depto, extra = extra, ""
             pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
-                    email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
+                    email, tel_cod, tel_num, calle, numero, "", depto, pcl, ""]
             for c, v in enumerate(vals, start=1):
                 ws_dom.cell(r_dom, c, v)
             r_dom += 1
@@ -9628,27 +9642,11 @@ def pf_diag_excel():
                 ws_suc.cell(r_suc, c, v)
             r_suc += 1
         else:
-            calle = str(r.get("calle") or "").strip(); numero = ""; extra = str(r.get("extra") or "").strip(); depto = ""
-            _PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto", "s/n", "sn", "sin numero", "sin número")
-            calle_ph = (calle.lower() in _PH) or (len(_re_and.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", calle)) < 3)
-            if calle_ph and extra and _re_and.search(r"[A-Za-zÁÉÍÓÚÑ]", extra):
-                mx = _re_and.search(r"(\d{1,6})", extra)
-                if mx and mx.start() > 0:
-                    calle = extra[:mx.start()].strip(" ,.-") or extra
-                    if not numero:
-                        numero = mx.group(1)
-                else:
-                    calle = extra
-                extra = ""
-            if not numero:
-                calle, numero = _calle_num(calle)
-            calle = _and_txt(calle); extra = _and_txt(extra); depto = _and_txt(depto); numero = _and_num_limpio(numero)
+            calle, numero, depto = _and_domicilio(r.get("calle"), r.get("numero"), r.get("extra"))
             if not numero:
                 numero = "0"; faltantes.append(str(r["num"]))
-            if extra:
-                depto, extra = extra, ""
             pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
-            vals = [None, PESO, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni, email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
+            vals = [None, PESO, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni, email, tel_cod, tel_num, calle, numero, "", depto, pcl, ""]
             for c, v in enumerate(vals, start=1):
                 ws_dom.cell(r_dom, c, v)
             r_dom += 1
