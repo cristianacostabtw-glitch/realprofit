@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-resol"})
+    return jsonify({"ok": True, "v": "2026-08-23-excluir"})
 
 
 @app.get("/pf-diag")
@@ -9604,6 +9604,8 @@ def pf_diag_excel():
                 continue
             if any(f.get("tracking_number") for f in (o.get("fulfillments") or [])):
                 continue                                         # ya despachado (tiene tracking)
+            if str(n) in excluir:
+                continue                                         # ya tiene etiqueta buena para reusar
             sa = o.get("shipping_address") or {}; cust = o.get("customer") or {}
             nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip()) or "—")
             sel.append({"num": str(n), "nombre": nombre.strip(),
@@ -9622,6 +9624,7 @@ def pf_diag_excel():
     ALTO, ANCHO, PROF, PESO = 15, 12, 10, 1000
     cpidx, sucs = _and_cfg(wb)
     incluir = set(x.strip() for x in (request.args.get("incluir") or "").split(",") if x.strip())
+    excluir = set(x.strip() for x in (request.args.get("excluir") or "").split(",") if x.strip())
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
