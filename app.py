@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-wa-secciones"})
+    return jsonify({"ok": True, "v": "2026-08-23-suc-fix-v2+diagfull"})
 
 
 @app.get("/pf-diag")
@@ -4843,21 +4843,47 @@ def _and_mid(zeny):
     return (m.group(1) if m else _re_and.sub(r".*?[-–]\s*", "", str(zeny))).strip()
 
 
+def _and_partes(s):
+    """Ciudad (antes del paréntesis) y detalle (dentro del paréntesis) del método del cliente.
+    Ej 'ANDREANI SUCURSAL - San Martin (Mendoza)' → ({SAN,MARTIN}, {MENDOZA})."""
+    m = _re_and.search(r"[-–]\s*(.*?)\s*(?:\((.*)\))?\s*$", str(s))
+    if m:
+        return set(_and_toks(m.group(1))), set(_and_toks(m.group(2) or ""))
+    return set(_and_toks(s)), set()
+
+
+def _and_partes_of(o):
+    """Ciudad y detalle de una sucursal OFICIAL de la plantilla ('CIUDAD (CALLE/PROV)')."""
+    m = _re_and.search(r"^(.*?)\s*\((.*)\)\s*$", str(o))
+    if m:
+        return set(_and_toks(m.group(1))), set(_and_toks(m.group(2)))
+    return set(_and_toks(o)), set()
+
+
 def _and_suc_excel(zeny, sucs):
+    """Mapea la sucursal/HOP que eligió el cliente al nombre OFICIAL de Andreani.
+    Incluye el paréntesis (provincia/detalle) en la búsqueda y le da peso fuerte a que la
+    CIUDAD del cliente coincida con la ciudad oficial → así jamás cruza de ciudad/provincia
+    (evita el caso 'San Martín (Mendoza)' → 'Corrientes (San Martín)')."""
     es_hop = "HOP" in str(zeny).upper()
-    q = set(_and_toks(_and_mid(zeny)))
+    ccity, cdet = _and_partes(zeny)
+    q = ccity | cdet
     qn = {w for w in q if w.isdigit()}
     qw = {w for w in q if not w.isdigit() and len(w) >= 4}
+    ccity_w = {w for w in ccity if not w.isdigit()}
     best, bs, bnum, bword = None, -1, False, False
     for o in sucs:
         if es_hop != _and_norm(o).startswith("PUNTO ANDREANI HOP"):
             continue
-        ts = set(_and_toks(o))
+        ocity, odet = _and_partes_of(o)
+        ts = ocity | odet
         nums = {w for w in ts if w.isdigit()}
         sc = sum(len(w) for w in (q & ts))
         numok = bool(qn and nums and qn & nums)
         if numok:
             sc += 25
+        if ccity_w and ccity_w <= ocity:      # la ciudad del cliente coincide con la ciudad oficial
+            sc += 30
         if sc > bs:
             bs, best, bnum, bword = sc, o, numok, bool(qw & {w for w in ts if len(w) >= 4})
     conf = (bnum and bword) if es_hop else (bs >= 4)
@@ -9453,6 +9479,57 @@ def wa_seed_enviados():
         n += 1
     _wa_save_chats(chats)
     return jsonify({"ok": True, "sembrados": n})
+
+
+@app.get("/pf-diag-full")
+def pf_diag_full():
+    """TEMPORAL — vuelca el dato de envío (método/localidad/prov/CP) de un rango de pedidos, con el
+    token que RealProfit ya tiene. Solo para auditar la resolución de sucursales. Gateado con clave."""
+    if (request.args.get("key") or "") != "chequeo-noxa-2026":
+        return jsonify({"ok": False}), 403
+    shopq = (request.args.get("shop") or "").strip().lower()
+    lo = int(request.args.get("lo") or 1000)
+    hi = int(request.args.get("hi") or 9999)
+    tok = shopdom = None
+    for em, c in _shop_tokens().items():
+        sh = str(c.get("shop") or "").lower()
+        if sh and (shopq in sh or not shopq):
+            tok = c.get("access_token"); shopdom = sh
+            if shopq:
+                break
+    if not tok:
+        return jsonify({"ok": False, "msg": "sin token"})
+    H = {"X-Shopify-Access-Token": tok}
+    base = "https://%s/admin/api/2024-10" % shopdom
+    rows = []
+    since = 0
+    for _ in range(20):
+        try:
+            r = requests.get("%s/orders.json" % base, headers=H, params={
+                "status": "any", "limit": 250, "since_id": since, "order": "id asc",
+                "fields": "id,order_number,name,shipping_lines,shipping_address,cancelled_at,fulfillment_status"}, timeout=30)
+            lote = (r.json() or {}).get("orders", []) if r.status_code == 200 else []
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)[:100]})
+        if not lote:
+            break
+        since = lote[-1]["id"]
+        for o in lote:
+            n = o.get("order_number") or 0
+            if n < lo or n > hi:
+                continue
+            sa = o.get("shipping_address") or {}
+            sl = o.get("shipping_lines") or [{}]
+            metodo = " ".join(str((x or {}).get("title") or "") for x in sl).strip()
+            try:
+                es_suc = _es_sucursal_ship(o)
+            except Exception:
+                es_suc = _txt_es_sucursal(metodo)
+            rows.append({"num": n, "tipo": "S" if es_suc else "D", "metodo": metodo[:90],
+                         "loc": sa.get("city") or "", "prov": sa.get("province") or "", "cp": sa.get("zip") or "",
+                         "canc": bool(o.get("cancelled_at"))})
+    rows.sort(key=lambda x: x["num"])
+    return jsonify({"ok": True, "tienda": shopdom, "n": len(rows), "rango": [lo, hi], "rows": rows})
 
 
 @app.get("/wa")
