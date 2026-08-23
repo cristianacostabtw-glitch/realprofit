@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-diag-excel"})
+    return jsonify({"ok": True, "v": "2026-08-23-diag-apt"})
 
 
 @app.get("/pf-diag")
@@ -9714,7 +9714,7 @@ def pf_diag_suc():
     return jsonify({"ok": True, "pedido": o.get("name"), "tipo": "SUCURSAL" if es_suc else "DOMICILIO",
                     "metodo": metodo, "sucursal_resuelta": resuelto, "via": capa,
                     "localidad": sa.get("city"), "provincia": sa.get("province"), "cp": sa.get("zip"),
-                    "calle": sa.get("address1")})
+                    "calle": sa.get("address1"), "apartamento": sa.get("address2")})
 
 
 @app.get("/wa")
