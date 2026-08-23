@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-emdash-exacto"})
+    return jsonify({"ok": True, "v": "2026-08-23-hop-nodoble"})
 
 
 @app.get("/pf-diag")
@@ -4836,7 +4836,10 @@ def _and_suc_exacto(zeny):
     s = _re_and.sub(r"^.*?[-–—]\s*", "", str(zeny)).strip()
     if "HOP" in str(zeny).upper():
         addr = _re_and.sub(r"\s*\(.*?\)\s*$", "", s)          # saca el nombre de la tienda (paréntesis)
-        return idx.get(_and_norm("PUNTO ANDREANI HOP " + addr))
+        key = _and_norm(addr)
+        if not key.startswith("PUNTO ANDREANI HOP"):          # formato viejo trae solo la dirección
+            key = _and_norm("PUNTO ANDREANI HOP " + addr)     # formato nuevo ya trae 'PUNTO ANDREANI HOP ...'
+        return idx.get(key)
     return idx.get(_and_norm(s))                              # 'Ciudad (Detalle)'
 
 
