@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-excl-dudosos"})
+    return jsonify({"ok": True, "v": "2026-08-23-dudosos-v2"})
 
 
 @app.get("/pf-diag")
@@ -9644,11 +9644,13 @@ def pf_diag_excel():
             r_suc += 1
         else:
             calle, numero, depto = _and_domicilio(r.get("calle"), r.get("numero"), r.get("extra"))
+            # calle válida = tiene nombre (palabra 3+ letras) O es numerada (tiene dígito). "Casa"/"Local" = genérica.
+            calle_real = bool(_re_and.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", calle)) or bool(_re_and.search(r"\d", calle))
             motivo = ""
             if not numero:
                 motivo = "sin altura de calle"
-            elif len(_and_letters(calle)) < 3 or calle.strip().lower() in _AND_DOM_PH:
-                motivo = "calle genérica (sin nombre de calle)"
+            elif calle.strip().lower() in _AND_DOM_PH or not calle_real:
+                motivo = "calle genérica (tipo 'Casa')"
             if motivo:                                   # dudoso → NO va al Excel, va a la lista de contacto
                 faltantes.append(str(r["num"]))
                 dudosos.append({"num": r["num"], "nombre": r["nombre"], "tel": r.get("tel") or "",
