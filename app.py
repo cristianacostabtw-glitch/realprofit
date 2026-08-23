@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-incluir"})
+    return jsonify({"ok": True, "v": "2026-08-23-cp-suelto"})
 
 
 @app.get("/pf-diag")
@@ -4963,10 +4963,12 @@ def _and_domicilio(calle, numero, extra):
         c2, n2 = _calle_num(calle)
         if n2:
             calle, numero = c2, n2
-    # calle "débil" = placeholder ("Casa") o basura sin nombre NI número ("A"). Una calle numerada
-    # ("86 n", "70") tiene dígito → NO es débil, es válida.
-    calle_debil = calle_ph or (not _re_and.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", calle)
-                               and not _re_and.search(r"\d", calle))
+    # calle "débil" = placeholder ("Casa"), basura sin nombre NI número ("A"), o un número suelto de
+    # 4+ dígitos (tipo CP, ej "8322", NO una calle). Calle numerada corta ("86 n", "70") es válida.
+    calle_debil = (calle_ph
+                   or (not _re_and.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", calle)
+                       and not _re_and.search(r"\d", calle))
+                   or bool(_re_and.fullmatch(r"\d{4,}", calle.strip())))
     if not numero and extra:                         # 2) el número (y a veces la calle) está en el Apartamento
         mx = _re_and.search(r"\d{1,6}", extra)
         if mx:
