@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-debil-fix"})
+    return jsonify({"ok": True, "v": "2026-08-23-incluir"})
 
 
 @app.get("/pf-diag")
@@ -9619,6 +9619,7 @@ def pf_diag_excel():
     wb = openpyxl.load_workbook(tpl); ws_dom = wb["A domicilio"]; ws_suc = wb["A sucursal"]
     ALTO, ANCHO, PROF, PESO = 15, 12, 10, 1000
     cpidx, sucs = _and_cfg(wb)
+    incluir = set(x.strip() for x in (request.args.get("incluir") or "").split(",") if x.strip())
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
@@ -9655,6 +9656,10 @@ def pf_diag_excel():
                 motivo = "sin altura de calle"
             elif calle.strip().lower() in _AND_DOM_PH or not calle_real:
                 motivo = "calle genérica (tipo 'Casa')"
+            if motivo and str(r["num"]) in incluir:      # forzar-incluir (ej rural s/n válido): va con "0"
+                motivo = ""
+                if not numero:
+                    numero = "0"
             if motivo:                                   # dudoso → NO va al Excel, va a la lista de contacto
                 faltantes.append(str(r["num"]))
                 dudosos.append({"num": r["num"], "nombre": r["nombre"], "tel": r.get("tel") or "",
