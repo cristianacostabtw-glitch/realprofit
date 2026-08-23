@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-suc-exacto-first"})
+    return jsonify({"ok": True, "v": "2026-08-23-spotcheck"})
 
 
 @app.get("/pf-diag")
@@ -9494,6 +9494,64 @@ def wa_seed_enviados():
         n += 1
     _wa_save_chats(chats)
     return jsonify({"ok": True, "sembrados": n})
+
+
+@app.get("/pf-diag-suc")
+def pf_diag_suc():
+    """TEMPORAL — spot-check de un pedido: método de envío + cómo resuelve la sucursal (resolvedor real). Gateado."""
+    if (request.args.get("key") or "") != "chequeo-noxa-2026":
+        return jsonify({"ok": False}), 403
+    shopq = (request.args.get("shop") or "").strip().lower()
+    num = str(request.args.get("num") or "").strip()
+    tok = shopdom = None
+    for em, c in _shop_tokens().items():
+        sh = str(c.get("shop") or "").lower()
+        if sh and (shopq in sh or not shopq):
+            tok = c.get("access_token"); shopdom = sh
+            if shopq:
+                break
+    if not tok:
+        return jsonify({"ok": False, "msg": "sin token"})
+    H = {"X-Shopify-Access-Token": tok}
+    base = "https://%s/admin/api/2024-10" % shopdom
+    o = None
+    try:
+        r = requests.get("%s/orders.json" % base, headers=H, params={
+            "status": "any", "name": num, "limit": 5,
+            "fields": "id,order_number,name,shipping_lines,shipping_address"}, timeout=25)
+        for x in (r.json() or {}).get("orders", []):
+            if str(x.get("order_number")) == num:
+                o = x; break
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100]})
+    if not o:
+        return jsonify({"ok": False, "msg": "no encontré #%s" % num})
+    sl = o.get("shipping_lines") or [{}]
+    metodo = " ".join(str((x or {}).get("title") or "") for x in sl).strip()
+    sa = o.get("shipping_address") or {}
+    es_suc = _es_sucursal_ship(o)
+    resuelto = capa = None
+    if es_suc:
+        tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+        try:
+            import openpyxl
+            _cpidx, _sucs = _and_cfg(openpyxl.load_workbook(tpl))
+        except Exception:
+            _sucs = []
+        of = _and_suc_exacto(metodo); capa = "exacto"
+        if not of:
+            of, cf = _and_suc_excel(metodo, _sucs); capa = "fuzzy" if cf else None
+            if not cf:
+                try:
+                    lv = _and_suc_live(metodo, sa.get("zip") or "")
+                except Exception:
+                    lv = None
+                of, capa = (lv, "live") if lv else (None, None)
+        resuelto = of
+    return jsonify({"ok": True, "pedido": o.get("name"), "tipo": "SUCURSAL" if es_suc else "DOMICILIO",
+                    "metodo": metodo, "sucursal_resuelta": resuelto, "via": capa,
+                    "localidad": sa.get("city"), "provincia": sa.get("province"), "cp": sa.get("zip"),
+                    "calle": sa.get("address1")})
 
 
 @app.get("/wa")
