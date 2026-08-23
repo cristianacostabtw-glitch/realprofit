@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-22-sku-x6-par-impar"})
+    return jsonify({"ok": True, "v": "2026-08-23-diag-envios+wa-secciones"})
 
 
 @app.get("/pf-diag")
@@ -8824,12 +8824,16 @@ _WA_PAGE = """<!doctype html>
 <div class="top">
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
  <span class="num" id="num"></span>
+ <button id="bChats" style="display:none;background:rgba(255,255,255,.32)" onclick="waTab('chats')">&#128172; Chats</button>
+ <button id="bTransf" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
+ <button id="bCarr" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
  <button id="bBot" style="display:none" onclick="openBot()">&#129302; Bot</button>
  <button id="bTpl" style="display:none" onclick="openTpl()">Plantillas</button>
  <button id="bCfg" style="display:none" onclick="doDisc()">Desconectar</button>
  <button onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
+<div id="panel" style="display:none;position:absolute;inset:56px 0 0 0;background:#eef2f5;overflow:auto;padding:22px;z-index:5"></div>
 <div class="lock" id="lock"><div class="lockcard" id="lockcard"></div></div>
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 <div class="lightbox" id="lb" onclick="this.classList.remove('on')"><img alt=""></div>
@@ -8889,6 +8893,9 @@ function renderApp(){
  document.getElementById('bBot').style.display='';
  document.getElementById('bTpl').style.display='';
  document.getElementById('bCfg').style.display='';
+ document.getElementById('bChats').style.display='';
+ document.getElementById('bTransf').style.display='';
+ document.getElementById('bCarr').style.display='';
  var app=document.getElementById('app');
  app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
   +'<div class="conv" id="conv"><div class="empty">&#128172; Elegí una conversación</div></div>';
@@ -8896,6 +8903,63 @@ function renderApp(){
  if(POLL)clearInterval(POLL);
  POLL=setInterval(loadChats,4000);
 }
+// ───── Pestañas Transferencias / Carritos ─────
+var TAB='chats', TDATA=[], TSEL={};
+function waTab(t){ TAB=t; var p=document.getElementById('panel'); var b1=document.getElementById('bChats');
+ [['bChats','chats'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.style.background=(x[1]===t?'rgba(255,255,255,.32)':'rgba(255,255,255,.16)'); });
+ if(t==='chats'){ p.style.display='none'; return; }
+ p.style.display='block'; p.innerHTML='<div style="max-width:940px;margin:0 auto;color:#334">Cargando…</div>';
+ TSEL={}; if(t==='transfers') loadTransfers(); else loadCarritos();
+}
+function _money(v){ v=Math.round(Number(v)||0); return '$'+v.toLocaleString('es-AR'); }
+function _tel10(k){ return String(k||''); }
+function loadTransfers(){ get('/wa-transfers').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
+ TDATA=r.items||[]; window._WACBU=r.cbu; window._WATIT=r.titular; renderTransfers(r); }); }
+function renderTransfers(r){ var pend=TDATA.filter(function(o){return !o.enviado;});
+ var rows=pend.map(function(o){ var ck='<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
+  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px;font-weight:700">#'+esc(o.num)+'</td><td style="padding:9px 8px">'+esc(o.nombre)+'</td><td style="padding:9px 8px;color:#667">'+esc(o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+esc(o.fecha)+'</td></tr>'; }).join('');
+ var head='<div style="max-width:940px;margin:0 auto">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128179; Transferencias</h2><span style="color:#667">pedidos pendientes de pago</span></div>'
+  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Les manda el CBU por WhatsApp (plantilla <b>datos_transferencia</b>). CBU: <b>'+esc(r.cbu)+'</b> · '+esc(r.titular)+'. Ya enviados se ocultan.</div>';
+ if(!r.wpp_on) head+='<div style="background:#fdeaea;color:#c0392b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
+ if(!pend.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay pedidos pendientes sin avisar. &#9989;</div></div>'; return; }
+ head+='<div style="display:flex;gap:10px;margin-bottom:12px"><button onclick="sendTransfers(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar CBU a los '+pend.length+'</button>'
+  +'<button onclick="sendTransfers(true)" style="background:#e8eef0;color:#243;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
+  +'<span id="tmsg" style="align-self:center;font-weight:700"></span></div>'
+  +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Pedido</th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Fecha</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+ document.getElementById('panel').innerHTML=head;
+}
+function sendTransfers(soloTildados){ var tels=soloTildados?Object.keys(TSEL).filter(function(k){return TSEL[k];}):[];
+ if(soloTildados && !tels.length){ alert('No tildaste ninguno.'); return; }
+ var msg=document.getElementById('tmsg'); if(msg){ msg.style.color='#556'; msg.textContent='Enviando…'; }
+ fetch('/wa-transfers-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tels:tels,cbu:window._WACBU,titular:window._WATIT})}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){ if(msg){msg.style.color='#c0392b';msg.textContent=j.msg||'error';} return; }
+  if(msg){ msg.style.color='#0a7d3c'; msg.textContent='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.innerHTML=msg.textContent; }
+  loadTransfers();
+ }); }
+function loadCarritos(){ get('/wa-carritos?dias=14').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
+ TDATA=r.items||[]; renderCarritos(r); }); }
+function renderCarritos(r){ var rows=TDATA.map(function(o){ var ck='<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
+  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+'</td><td style="padding:9px 8px;color:#667">'+esc(o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+o.dias+'d</td></tr>'; }).join('');
+ var head='<div style="max-width:940px;margin:0 auto">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128722; Carritos abandonados</h2><span style="color:#667">no contactados · &#8804; '+r.dias+' días</span></div>'
+  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> (cupón REGALO10). <b>Filtro seguro:</b> excluye a los que ya recibieron carrito y a los que ya compraron, 1 por teléfono. No repite.</div>';
+ if(!r.wpp_on) head+='<div style="background:#fdeaea;color:#c0392b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
+ if(!TDATA.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay carritos sin contactar. &#9989;</div></div>'; return; }
+ head+='<div style="display:flex;gap:10px;margin-bottom:12px"><button onclick="sendCarritos(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar a los '+TDATA.length+'</button>'
+  +'<button onclick="sendCarritos(true)" style="background:#e8eef0;color:#243;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
+  +'<span id="cmsg2" style="align-self:center;font-weight:700"></span></div>'
+  +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Antigüedad</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+ document.getElementById('panel').innerHTML=head;
+}
+function sendCarritos(soloTildados){ var tels=soloTildados?Object.keys(TSEL).filter(function(k){return TSEL[k];}):[];
+ if(soloTildados && !tels.length){ alert('No tildaste ninguno.'); return; }
+ var msg=document.getElementById('cmsg2'); if(msg){ msg.style.color='#556'; msg.textContent='Enviando…'; }
+ fetch('/wa-carritos-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tels:tels,dias:14})}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){ if(msg){msg.style.color='#c0392b';msg.textContent=j.msg||'error';} return; }
+  if(msg){ var tx='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.style.color='#0a7d3c'; msg.innerHTML=tx; }
+  loadCarritos();
+ }); }
 function loadChats(){
  get('/wa-chats').then(function(r){
   if(!r.ok)return; CHATS=r.chats||[]; renderList(); updateTitle();
@@ -9110,6 +9174,340 @@ function probarBot(){
 boot();
 </script>
 </body></html>"""
+
+
+# ══════════════ Transferencias + Carritos — envío WhatsApp desde RealProfit ══════════════
+# Fuente ÚNICA de verdad del envío (consolidado acá). El dedupe lee el log de chats de RealProfit
+# (_wa_chats_all), sembrado con lo que ya mandó la Mac. NUNCA duplicar (ver incidente 22-ago).
+WA_TPL_TRANSF = "datos_transferencia"      # params: nombre, pedido, cbu, titular, monto
+WA_TPL_CARRITO = "carrito_abandonado"      # params: nombre, url
+WA_TPL_LANG = "es_AR"
+WA_CBU_DEFAULT = "0070059730004102336598"
+WA_TITULAR_DEFAULT = "Cristian Acosta"
+
+
+def _wa_e164(t):
+    d = re.sub(r"\D", "", t or ""); d = d.lstrip("0")
+    if d.startswith("15"): d = d[2:]
+    if not d.startswith("54"): d = "54" + d
+    if d.startswith("54") and not d.startswith("549"): d = "549" + d[2:]
+    return d
+
+
+def _wa_marca_enviados(email, tipo):
+    """Set de teléfonos (E164) que YA recibieron ese tipo ('carrito'|'transfer'), del log de chats."""
+    chats = _wa_chats_all().get(email, {})
+    if tipo == "carrito":
+        marcas = ("[carrito", "regalo10", "no la finalizaste")
+    else:
+        marcas = ("[transfer", "cbu ", "transfer")
+    ya = set()
+    for wid, conv in chats.items():
+        for m in conv.get("messages", []):
+            if m.get("dir") != "out":
+                continue
+            t = (m.get("text") or "").lower()
+            if any(s in t for s in marcas):
+                ya.add(_wa_e164(wid)); break
+    return ya
+
+
+def _wa_send_tpl(email, conf, wid, tpl_name, params, log_text):
+    """Manda una plantilla y la loguea en el chat de RealProfit. Devuelve (ok, detalle)."""
+    tpl = {"name": tpl_name, "language": {"code": WA_TPL_LANG}}
+    if params:
+        tpl["components"] = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in params]}]
+    try:
+        r = requests.post("%s/%s/messages" % (WA_GRAPH, conf["phone_id"]),
+                          headers={"Authorization": "Bearer " + conf["token"]},
+                          json={"messaging_product": "whatsapp", "to": wid, "type": "template", "template": tpl},
+                          timeout=20)
+        j = r.json()
+    except Exception as e:
+        return False, str(e)[:120]
+    if r.status_code >= 400:
+        return False, str((j.get("error") or {}).get("message", "error"))[:160]
+    mid = (j.get("messages") or [{}])[0].get("id", "")
+    try:
+        chats = _wa_chats_all()
+        conv = chats.setdefault(email, {}).setdefault(wid, {"name": wid, "messages": []})
+        conv["messages"].append({"dir": "out", "text": log_text, "ts": _wa_now(),
+                                 "type": "template", "id": mid, "status": "sent"})
+        conv["updated"] = _wa_now()
+        _wa_save_chats(chats)
+    except Exception:
+        pass
+    return True, "ok"
+
+
+def _wa_transfers_list(email):
+    """Pedidos TN pendientes de pago (candidatos a mandar CBU). Marca los ya enviados."""
+    tk = _tn_tokens().get(email) or {}
+    if not (tk.get("access_token") and tk.get("store_id")):
+        return []
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    ya = _wa_marca_enviados(email, "transfer")
+    out = []
+    for page in (1, 2):
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 50, "page": page, "payment_status": "pending", "status": "open", "sort": "-id",
+                "fields": "number,contact_name,shipping_address,total,contact_phone,billing_phone,created_at"}, timeout=30)
+            d = r.json() if r.content else []
+        except Exception:
+            d = []
+        if not isinstance(d, list) or not d:
+            break
+        for o in d:
+            sa = o.get("shipping_address") or {}
+            tel = sa.get("phone") or o.get("contact_phone") or o.get("billing_phone") or ""
+            if not re.sub(r"\D", "", tel or ""):
+                continue
+            k = _wa_e164(tel)
+            out.append({"num": str(o.get("number")), "nombre": sa.get("name") or o.get("contact_name") or "—",
+                        "total": o.get("total"), "tel": k, "fecha": (o.get("created_at") or "")[:10],
+                        "enviado": k in ya})
+        if len(d) < 50:
+            break
+    return out
+
+
+def _wa_carritos_list(email, dias=14):
+    """Carritos abandonados NO contactados (filtro seguro: excluye ya-contactados, compradores, dedupe x tel)."""
+    tk = _tn_tokens().get(email) or {}
+    if not (tk.get("access_token") and tk.get("store_id")):
+        return []
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    ya = _wa_marca_enviados(email, "carrito")
+    compr_t, compr_m = set(), set()
+    for page in (1, 2, 3):
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page, "fields": "contact_phone,contact_email",
+                "created_at_min": (_dt.date.today() - _dt.timedelta(days=25)).isoformat()}, timeout=30)
+            d = r.json() if r.content else []
+        except Exception:
+            d = []
+        if not isinstance(d, list) or not d:
+            break
+        for o in d:
+            if o.get("contact_phone"):
+                compr_t.add(_wa_e164(o["contact_phone"]))
+            if o.get("contact_email"):
+                compr_m.add((o["contact_email"] or "").lower())
+        if len(d) < 200:
+            break
+    now = _dt.datetime.now(_dt.timezone.utc)
+    cand = {}
+    parar = False
+    for page in range(1, 15):
+        if parar:
+            break
+        try:
+            r = requests.get("%s/%s/checkouts" % (TN_API, store), headers=hdr,
+                             params={"per_page": 100, "page": page}, timeout=30)
+            d = r.json() if r.content else []
+        except Exception:
+            d = []
+        if not isinstance(d, list) or not d:
+            break
+        for o in d:
+            try:
+                cr = _dt.datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+            except Exception:
+                continue
+            if (now - cr).days > dias:
+                parar = True
+                continue
+            if o.get("completed_at"):
+                continue
+            tel = o.get("contact_phone") or o.get("shipping_phone")
+            if not tel or not re.sub(r"\D", "", tel):
+                continue
+            if not o.get("abandoned_checkout_url"):
+                continue
+            k = _wa_e164(tel)
+            mail = (o.get("contact_email") or "").lower()
+            if k in ya or k in compr_t or (mail and mail in compr_m):
+                continue
+            if k not in cand or cr > cand[k]["cr"]:
+                cand[k] = {"cr": cr, "nombre": o.get("contact_name") or o.get("shipping_name") or "cliente",
+                           "url": o.get("abandoned_checkout_url"), "total": o.get("total"), "dias": (now - cr).days}
+        if len(d) < 100:
+            break
+    return [{"tel": k, "nombre": v["nombre"], "url": v["url"], "total": v["total"], "dias": v["dias"]}
+            for k, v in sorted(cand.items(), key=lambda x: x[1]["cr"], reverse=True)]
+
+
+@app.get("/wa-transfers")
+def wa_transfers():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    conf = _wa_conf(email) or {}
+    return jsonify({"ok": True, "wpp_on": bool(conf.get("token") and conf.get("phone_id")),
+                    "cbu": conf.get("cbu") or WA_CBU_DEFAULT, "titular": conf.get("titular") or WA_TITULAR_DEFAULT,
+                    "items": _wa_transfers_list(email)})
+
+
+@app.post("/wa-transfers-enviar")
+def wa_transfers_enviar():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    conf = _wa_conf(email)
+    if not (conf and conf.get("token") and conf.get("phone_id")):
+        return jsonify({"ok": False, "msg": "WhatsApp no conectado"})
+    data = request.get_json(silent=True) or {}
+    solo = set(data.get("tels") or [])            # si viene, manda solo esos; si no, todos los pendientes
+    cbu = (data.get("cbu") or conf.get("cbu") or WA_CBU_DEFAULT).strip()
+    titular = (data.get("titular") or conf.get("titular") or WA_TITULAR_DEFAULT).strip()
+    ya = _wa_marca_enviados(email, "transfer")     # re-chequeo anti-duplicado en el momento del envío
+    env = salt = fail = 0
+    errores = []
+    for it in _wa_transfers_list(email):
+        k = it["tel"]
+        if solo and k not in solo:
+            continue
+        if k in ya or it.get("enviado"):
+            salt += 1
+            continue
+        n = (it["nombre"] or "cliente").split()[0]
+        monto = str(int(round(float(it.get("total") or 0))))
+        ok, det = _wa_send_tpl(email, conf, k, WA_TPL_TRANSF, [n, it["num"], cbu, titular, monto],
+                               "[transfer] #%s CBU %s a %s por %s" % (it["num"], cbu, titular, monto))
+        if ok:
+            env += 1; ya.add(k)
+        else:
+            fail += 1; errores.append({"num": it["num"], "msg": det})
+    return jsonify({"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:5]})
+
+
+@app.get("/wa-carritos")
+def wa_carritos():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    conf = _wa_conf(email) or {}
+    try:
+        dias = max(1, min(30, int(request.args.get("dias") or 14)))
+    except Exception:
+        dias = 14
+    return jsonify({"ok": True, "wpp_on": bool(conf.get("token") and conf.get("phone_id")),
+                    "dias": dias, "items": _wa_carritos_list(email, dias)})
+
+
+@app.post("/wa-carritos-enviar")
+def wa_carritos_enviar():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    conf = _wa_conf(email)
+    if not (conf and conf.get("token") and conf.get("phone_id")):
+        return jsonify({"ok": False, "msg": "WhatsApp no conectado"})
+    data = request.get_json(silent=True) or {}
+    solo = set(data.get("tels") or [])
+    try:
+        dias = max(1, min(30, int(data.get("dias") or 14)))
+    except Exception:
+        dias = 14
+    ya = _wa_marca_enviados(email, "carrito")      # re-chequeo anti-duplicado al momento de mandar
+    env = salt = fail = 0
+    errores = []
+    for it in _wa_carritos_list(email, dias):
+        k = it["tel"]
+        if solo and k not in solo:
+            continue
+        if k in ya:
+            salt += 1
+            continue
+        n = (it["nombre"] or "cliente").split()[0]
+        ok, det = _wa_send_tpl(email, conf, k, WA_TPL_CARRITO, [n, it["url"]],
+                               "[carrito] %s -> %s" % (n, it["url"]))
+        if ok:
+            env += 1; ya.add(k)
+        else:
+            fail += 1; errores.append({"tel": k, "msg": det})
+    return jsonify({"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:5]})
+
+
+@app.post("/wa-seed-enviados")
+def wa_seed_enviados():
+    """Siembra el dedupe con teléfonos ya contactados desde otra máquina (la Mac). tipo=carrito|transfer."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    data = request.get_json(silent=True) or {}
+    tipo = (data.get("tipo") or "carrito").strip()
+    tels = data.get("tels") or []
+    marca = "[carrito] (sembrado)" if tipo == "carrito" else "[transfer] (sembrado)"
+    chats = _wa_chats_all()
+    n = 0
+    for t in tels:
+        k = _wa_e164(t)
+        if not k:
+            continue
+        conv = chats.setdefault(email, {}).setdefault(k, {"name": k, "messages": []})
+        conv["messages"].append({"dir": "out", "text": marca, "ts": _wa_now(), "type": "seed", "status": "sent"})
+        conv["updated"] = _wa_now()
+        n += 1
+    _wa_save_chats(chats)
+    return jsonify({"ok": True, "sembrados": n})
+
+
+@app.get("/pf-diag-envios")
+def pf_diag_envios():
+    """TEMPORAL — chequeo de envíos de una tienda usando el token que RealProfit ya tiene guardado.
+    Gateado con clave. Devuelve cuántos pedidos tienen tracking de Andreani cargado y cuántos no."""
+    if (request.args.get("key") or "") != "chequeo-noxa-2026":
+        return jsonify({"ok": False}), 403
+    shopq = (request.args.get("shop") or "").strip().lower()
+    tok = None
+    shopdom = None
+    owner = None
+    for em, c in _shop_tokens().items():
+        sh = str(c.get("shop") or "").lower()
+        if sh and (shopq in sh or not shopq):
+            tok = c.get("access_token"); shopdom = sh; owner = em
+            if shopq:
+                break
+    if not tok:
+        return jsonify({"ok": False, "msg": "no encontré token para esa tienda",
+                        "tiendas": [str((c.get("shop") or "")) for c in _shop_tokens().values()]})
+    H = {"X-Shopify-Access-Token": tok}
+    base = "https://%s/admin/api/2024-10" % shopdom
+    out = {"ok": True, "tienda": shopdom, "cuenta": owner}
+    try:
+        r = requests.get("%s/orders.json" % base, headers=H, params={
+            "status": "any", "limit": 40, "order": "created_at desc",
+            "fields": "id,name,order_number,fulfillment_status,fulfillments,created_at,financial_status,cancelled_at"}, timeout=30)
+        out["http"] = r.status_code
+        ords = (r.json() or {}).get("orders", []) if r.status_code == 200 else []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    con = sin = unfulf = canc = 0
+    ejemplos = []
+    for o in ords:
+        if o.get("cancelled_at"):
+            canc += 1; continue
+        fs = o.get("fulfillment_status")
+        fums = o.get("fulfillments") or []
+        trk = ""
+        for f in fums:
+            if f.get("tracking_number"):
+                trk = f.get("tracking_number"); break
+        if not fums or fs is None:
+            unfulf += 1
+        elif trk:
+            con += 1
+        else:
+            sin += 1
+            if len(ejemplos) < 12:
+                ejemplos.append({"pedido": o.get("name"), "estado": fs, "sin_tracking": True})
+    out.update({"analizados": len(ords), "cancelados": canc,
+                "con_tracking": con, "sin_tracking_pero_preparado": sin, "sin_despachar": unfulf,
+                "ejemplos_sin_tracking": ejemplos})
+    return jsonify(out)
 
 
 @app.get("/wa")
