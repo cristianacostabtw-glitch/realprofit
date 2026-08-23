@@ -9479,34 +9479,41 @@ def pf_diag_envios():
     out = {"ok": True, "tienda": shopdom, "cuenta": owner}
     try:
         r = requests.get("%s/orders.json" % base, headers=H, params={
-            "status": "any", "limit": 40, "order": "created_at desc",
-            "fields": "id,name,order_number,fulfillment_status,fulfillments,created_at,financial_status,cancelled_at"}, timeout=30)
+            "status": "any", "limit": 60, "order": "created_at desc",
+            "fields": "id,name,order_number,fulfillment_status,fulfillments,created_at,financial_status,"
+                      "cancelled_at,shipping_lines,shipping_address"}, timeout=30)
         out["http"] = r.status_code
         ords = (r.json() or {}).get("orders", []) if r.status_code == 200 else []
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:120]})
     con = sin = unfulf = canc = 0
-    ejemplos = []
+    clasif = []
     for o in ords:
         if o.get("cancelled_at"):
             canc += 1; continue
         fs = o.get("fulfillment_status")
         fums = o.get("fulfillments") or []
-        trk = ""
-        for f in fums:
-            if f.get("tracking_number"):
-                trk = f.get("tracking_number"); break
+        trk = next((f.get("tracking_number") for f in fums if f.get("tracking_number")), "")
         if not fums or fs is None:
             unfulf += 1
         elif trk:
             con += 1
         else:
             sin += 1
-            if len(ejemplos) < 12:
-                ejemplos.append({"pedido": o.get("name"), "estado": fs, "sin_tracking": True})
+        sl = (o.get("shipping_lines") or [{}])
+        metodo = " ".join(str((x or {}).get("title") or "") for x in sl).strip()
+        sa = o.get("shipping_address") or {}
+        try:
+            es_suc = _es_sucursal_ship(o)
+        except Exception:
+            es_suc = _txt_es_sucursal(metodo)
+        clasif.append({"pedido": o.get("name"), "metodo": metodo[:70],
+                       "clasificado": "SUCURSAL" if es_suc else "DOMICILIO",
+                       "localidad": sa.get("city") or "", "prov": sa.get("province") or "",
+                       "calle": (sa.get("address1") or "")[:42], "cp": sa.get("zip") or ""})
     out.update({"analizados": len(ords), "cancelados": canc,
                 "con_tracking": con, "sin_tracking_pero_preparado": sin, "sin_despachar": unfulf,
-                "ejemplos_sin_tracking": ejemplos})
+                "clasificacion": clasif})
     return jsonify(out)
 
 
