@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-dudosos-v2"})
+    return jsonify({"ok": True, "v": "2026-08-23-apt-calle-debil"})
 
 
 @app.get("/pf-diag")
@@ -4963,16 +4963,18 @@ def _and_domicilio(calle, numero, extra):
         c2, n2 = _calle_num(calle)
         if n2:
             calle, numero = c2, n2
+    # calle "débil" = placeholder conocido ("Casa") o sin un nombre real (basura tipo "A", "8322")
+    calle_debil = calle_ph or not _re_and.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]{3,}", calle)
     if not numero and extra:                         # 2) el número (y a veces la calle) está en el Apartamento
         mx = _re_and.search(r"\d{1,6}", extra)
         if mx:
             numero = mx.group(0)
             apt_calle = _re_and.sub(r"^(calle|av\.?|avenida)\s+", "", extra[:mx.start()].strip(" ,.-"), flags=_re_and.I).strip()
-            if calle_ph and len(_and_letters(apt_calle)) >= 3:   # la calle real estaba en el apartamento
+            if calle_debil and len(_and_letters(apt_calle)) >= 3:   # la calle real estaba en el apartamento
                 calle = apt_calle
             extra = extra[mx.end():].strip(" ,.-")
-    if calle_ph and len(_and_letters(calle)) < 3 and len(_and_letters(extra)) >= 3:
-        calle = extra; extra = ""                    # 3) calle placeholder y el apto trae la calle (sin número)
+    if calle_debil and len(_and_letters(calle)) < 3 and len(_and_letters(extra)) >= 3:
+        calle = extra; extra = ""                    # 3) calle débil y el apto trae la calle (sin número)
     return _and_txt(calle), _and_num_limpio(numero), _and_txt(extra)
 
 
