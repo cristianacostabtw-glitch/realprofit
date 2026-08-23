@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-spotcheck"})
+    return jsonify({"ok": True, "v": "2026-08-23-emdash-exacto"})
 
 
 @app.get("/pf-diag")
@@ -4833,7 +4833,7 @@ def _and_suc_exacto(zeny):
     """Match EXACTO al nombre OFICIAL de Andreani. El método del cliente YA trae el nombre tal cual
     Andreani lo nombra; si coincide exacto es 100% seguro (no adivina)."""
     idx = _AND_CFG.get("norm") or {}
-    s = _re_and.sub(r"^.*?[-–]\s*", "", str(zeny)).strip()
+    s = _re_and.sub(r"^.*?[-–—]\s*", "", str(zeny)).strip()
     if "HOP" in str(zeny).upper():
         addr = _re_and.sub(r"\s*\(.*?\)\s*$", "", s)          # saca el nombre de la tienda (paréntesis)
         return idx.get(_and_norm("PUNTO ANDREANI HOP " + addr))
@@ -4851,14 +4851,14 @@ def _and_pcl(cp, prov, cpidx):
 
 
 def _and_mid(zeny):
-    m = _re_and.search(r"[-–]\s*(.*?)\s*\((.*)\)\s*$", str(zeny))
-    return (m.group(1) if m else _re_and.sub(r".*?[-–]\s*", "", str(zeny))).strip()
+    m = _re_and.search(r"[-–—]\s*(.*?)\s*\((.*)\)\s*$", str(zeny))
+    return (m.group(1) if m else _re_and.sub(r".*?[-–—]\s*", "", str(zeny))).strip()
 
 
 def _and_partes(s):
     """Ciudad (antes del paréntesis) y detalle (dentro del paréntesis) del método del cliente.
     Ej 'ANDREANI SUCURSAL - San Martin (Mendoza)' → ({SAN,MARTIN}, {MENDOZA})."""
-    m = _re_and.search(r"[-–]\s*(.*?)\s*(?:\((.*)\))?\s*$", str(s))
+    m = _re_and.search(r"[-–—]\s*(.*?)\s*(?:\((.*)\))?\s*$", str(s))
     if m:
         return set(_and_toks(m.group(1))), set(_and_toks(m.group(2) or ""))
     return set(_and_toks(s)), set()
