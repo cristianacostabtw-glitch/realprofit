@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-cp-suelto"})
+    return jsonify({"ok": True, "v": "2026-08-23-resol"})
 
 
 @app.get("/pf-diag")
@@ -9679,6 +9679,66 @@ def pf_diag_excel():
                     "domicilio": r_dom - 3, "sucursal": r_suc - 3, "via": via,
                     "revisar": revisar, "omitidos_dudosos": len(dudosos), "dudosos": dudosos,
                     "xlsx_b64": _b64.b64encode(buf.getvalue()).decode()})
+
+
+@app.get("/pf-diag-resol")
+def pf_diag_resol():
+    """TEMPORAL — resuelve tipo (dom/suc) + sucursal oficial de TODOS los pedidos de un rango
+    (sin filtrar por pago/tracking). Para auditar etiquetas ya generadas. Gateado."""
+    if (request.args.get("key") or "") != "chequeo-noxa-2026":
+        return jsonify({"ok": False}), 403
+    shopq = (request.args.get("shop") or "").strip().lower()
+    lo = int(request.args.get("lo") or 0); hi = int(request.args.get("hi") or 99999)
+    tok = shopdom = None
+    for em, c in _shop_tokens().items():
+        sh = str(c.get("shop") or "").lower()
+        if sh and (shopq in sh or not shopq):
+            tok = c.get("access_token"); shopdom = sh
+            if shopq:
+                break
+    if not tok:
+        return jsonify({"ok": False, "msg": "sin token"})
+    import openpyxl
+    tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+    _cpidx, sucs = _and_cfg(openpyxl.load_workbook(tpl))
+    H = {"X-Shopify-Access-Token": tok}
+    base = "https://%s/admin/api/2024-10" % shopdom
+    out = {}
+    since = 0
+    for _ in range(20):
+        try:
+            r = requests.get("%s/orders.json" % base, headers=H, params={
+                "status": "any", "limit": 250, "since_id": since, "order": "id asc",
+                "fields": "id,order_number,shipping_lines,shipping_address,cancelled_at"}, timeout=30)
+            lote = (r.json() or {}).get("orders", []) if r.status_code == 200 else []
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)[:100]})
+        if not lote:
+            break
+        since = lote[-1]["id"]
+        for o in lote:
+            n = o.get("order_number") or 0
+            if n < lo or n > hi:
+                continue
+            sa = o.get("shipping_address") or {}
+            suc_raw = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip()
+            if _es_sucursal_ship(o):
+                of = _and_suc_exacto(suc_raw)
+                via = "exacto"
+                if not of:
+                    of, cf = _and_suc_excel(suc_raw, sucs); via = "fuzzy" if cf else None
+                    if not cf:
+                        try:
+                            lv = _and_suc_live(suc_raw, sa.get("zip") or "")
+                        except Exception:
+                            lv = None
+                        of, via = (lv, "live") if lv else (None, None)
+                out[str(n)] = {"tipo": "S", "suc": of, "via": via, "metodo": suc_raw,
+                               "loc": sa.get("city") or "", "prov": sa.get("province") or ""}
+            else:
+                out[str(n)] = {"tipo": "D", "loc": sa.get("city") or "", "prov": sa.get("province") or "",
+                               "calle": sa.get("address1") or ""}
+    return jsonify({"ok": True, "tienda": shopdom, "n": len(out), "resol": out})
 
 
 @app.get("/pf-diag-suc")
