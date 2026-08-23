@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-excluir"})
+    return jsonify({"ok": True, "v": "2026-08-23-excluir2"})
 
 
 @app.get("/pf-diag")
@@ -9581,6 +9581,8 @@ def pf_diag_excel():
         return jsonify({"ok": False, "msg": "sin token"})
     H = {"X-Shopify-Access-Token": tok}
     base = "https://%s/admin/api/2024-10" % shopdom
+    incluir = set(x.strip() for x in (request.args.get("incluir") or "").split(",") if x.strip())
+    excluir = set(x.strip() for x in (request.args.get("excluir") or "").split(",") if x.strip())
     sel = []
     since = 0
     for _ in range(20):
@@ -9623,8 +9625,6 @@ def pf_diag_excel():
     wb = openpyxl.load_workbook(tpl); ws_dom = wb["A domicilio"]; ws_suc = wb["A sucursal"]
     ALTO, ANCHO, PROF, PESO = 15, 12, 10, 1000
     cpidx, sucs = _and_cfg(wb)
-    incluir = set(x.strip() for x in (request.args.get("incluir") or "").split(",") if x.strip())
-    excluir = set(x.strip() for x in (request.args.get("excluir") or "").split(",") if x.strip())
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
