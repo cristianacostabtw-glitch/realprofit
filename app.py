@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-dom-apt-recover"})
+    return jsonify({"ok": True, "v": "2026-08-23-excl-dudosos"})
 
 
 @app.get("/pf-diag")
@@ -9607,14 +9607,15 @@ def pf_diag_excel():
                         "tel": sa.get("phone") or (cust.get("phone") or ""), "dni": _dni_de(o),
                         "email": o.get("contact_email") or (cust.get("email") or ""),
                         "suc_nombre": " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip(),
-                        "calle": sa.get("address1") or "", "extra": sa.get("address2") or ""})
+                        "calle": sa.get("address1") or "", "extra": sa.get("address2") or "",
+                        "localidad": sa.get("city") or ""})
     sel.sort(key=lambda x: int(x["num"]) if x["num"].isdigit() else 0)
     tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
     import openpyxl
     wb = openpyxl.load_workbook(tpl); ws_dom = wb["A domicilio"]; ws_suc = wb["A sucursal"]
     ALTO, ANCHO, PROF, PESO = 15, 12, 10, 1000
     cpidx, sucs = _and_cfg(wb)
-    r_dom = r_suc = 3; faltantes = []; revisar = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
+    r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
         valor = int(round(r["total"])); dni = str(r.get("dni") or "").strip() or "00000000"
@@ -9643,8 +9644,18 @@ def pf_diag_excel():
             r_suc += 1
         else:
             calle, numero, depto = _and_domicilio(r.get("calle"), r.get("numero"), r.get("extra"))
+            motivo = ""
             if not numero:
-                numero = "0"; faltantes.append(str(r["num"]))
+                motivo = "sin altura de calle"
+            elif len(_and_letters(calle)) < 3 or calle.strip().lower() in _AND_DOM_PH:
+                motivo = "calle genérica (sin nombre de calle)"
+            if motivo:                                   # dudoso → NO va al Excel, va a la lista de contacto
+                faltantes.append(str(r["num"]))
+                dudosos.append({"num": r["num"], "nombre": r["nombre"], "tel": r.get("tel") or "",
+                                "dir": r.get("calle") or "", "apt": r.get("extra") or "",
+                                "loc": r.get("localidad") or r.get("cp") or "", "prov": r.get("provincia") or "",
+                                "motivo": motivo})
+                continue
             pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
             vals = [None, PESO, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni, email, tel_cod, tel_num, calle, numero, "", depto, pcl, ""]
             for c, v in enumerate(vals, start=1):
@@ -9653,7 +9664,7 @@ def pf_diag_excel():
     buf = _io.BytesIO(); wb.save(buf); wb.close()
     return jsonify({"ok": True, "tienda": shopdom, "pedidos": len(sel),
                     "domicilio": r_dom - 3, "sucursal": r_suc - 3, "via": via,
-                    "revisar": revisar, "sin_numero": faltantes,
+                    "revisar": revisar, "omitidos_dudosos": len(dudosos), "dudosos": dudosos,
                     "xlsx_b64": _b64.b64encode(buf.getvalue()).decode()})
 
 
