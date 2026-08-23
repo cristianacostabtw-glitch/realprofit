@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-trk-check"})
+    return jsonify({"ok": True, "v": "2026-08-23-diag-excel"})
 
 
 @app.get("/pf-diag")
@@ -9539,6 +9539,124 @@ def pf_diag_trk():
     ult = con_trk[-1] if con_trk else None
     return jsonify({"ok": True, "tienda": shopdom, "con_tracking": len(con_trk),
                     "ultimo_con_tracking": ult, "ultimos_10": con_trk[-10:]})
+
+
+@app.get("/pf-diag-excel")
+def pf_diag_excel():
+    """TEMPORAL — genera el Excel Andreani para un rango de pedidos de una tienda (usa el token guardado
+    + el resolvedor real con los fixes). Devuelve resumen + xlsx en base64. Gateado."""
+    if (request.args.get("key") or "") != "chequeo-noxa-2026":
+        return jsonify({"ok": False}), 403
+    import base64 as _b64, io as _io
+    shopq = (request.args.get("shop") or "").strip().lower()
+    lo = int(request.args.get("lo") or 0); hi = int(request.args.get("hi") or 99999)
+    tok = shopdom = None
+    for em, c in _shop_tokens().items():
+        sh = str(c.get("shop") or "").lower()
+        if sh and (shopq in sh or not shopq):
+            tok = c.get("access_token"); shopdom = sh
+            if shopq:
+                break
+    if not tok:
+        return jsonify({"ok": False, "msg": "sin token"})
+    H = {"X-Shopify-Access-Token": tok}
+    base = "https://%s/admin/api/2024-10" % shopdom
+    sel = []
+    since = 0
+    for _ in range(20):
+        try:
+            r = requests.get("%s/orders.json" % base, headers=H, params={
+                "status": "any", "limit": 250, "since_id": since, "order": "id asc",
+                "fields": "id,order_number,name,total_price,current_total_price,financial_status,"
+                          "fulfillment_status,cancelled_at,shipping_lines,shipping_address,customer,"
+                          "contact_email,note_attributes,fulfillments"}, timeout=30)
+            lote = (r.json() or {}).get("orders", []) if r.status_code == 200 else []
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)[:100]})
+        if not lote:
+            break
+        since = lote[-1]["id"]
+        for o in lote:
+            n = o.get("order_number") or 0
+            if n < lo or n > hi or o.get("cancelled_at"):
+                continue
+            if (o.get("financial_status") or "").lower() != "paid":
+                continue
+            if any(f.get("tracking_number") for f in (o.get("fulfillments") or [])):
+                continue                                         # ya despachado (tiene tracking)
+            sa = o.get("shipping_address") or {}; cust = o.get("customer") or {}
+            nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip()) or "—")
+            sel.append({"num": str(n), "nombre": nombre.strip(),
+                        "tipo": "sucursal" if _es_sucursal_ship(o) else "domicilio",
+                        "cp": sa.get("zip") or "", "provincia": sa.get("province") or "",
+                        "total": round(float(o.get("total_price") or o.get("current_total_price") or 0), 2),
+                        "tel": sa.get("phone") or (cust.get("phone") or ""), "dni": _dni_de(o),
+                        "email": o.get("contact_email") or (cust.get("email") or ""),
+                        "suc_nombre": " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip(),
+                        "calle": sa.get("address1") or "", "extra": sa.get("address2") or ""})
+    sel.sort(key=lambda x: int(x["num"]) if x["num"].isdigit() else 0)
+    tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+    import openpyxl
+    wb = openpyxl.load_workbook(tpl); ws_dom = wb["A domicilio"]; ws_suc = wb["A sucursal"]
+    ALTO, ANCHO, PROF, PESO = 15, 12, 10, 1000
+    cpidx, sucs = _and_cfg(wb)
+    r_dom = r_suc = 3; faltantes = []; revisar = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
+    for r in sel:
+        nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
+        valor = int(round(r["total"])); dni = str(r.get("dni") or "").strip() or "00000000"
+        tel_cod, tel_num = _and_split_tel(r.get("tel")); email = r.get("email") or ""
+        if r["tipo"] == "sucursal":
+            suc_raw = r.get("suc_nombre") or ""
+            of = _and_suc_exacto(suc_raw); conf = bool(of)
+            if of:
+                via["exacto"] += 1
+            else:
+                of, conf = _and_suc_excel(suc_raw, sucs)
+                if conf:
+                    via["fuzzy"] += 1
+                else:
+                    try:
+                        lv = _and_suc_live(suc_raw, r.get("cp") or "")
+                    except Exception:
+                        lv = None
+                    if lv:
+                        of, conf = lv, True; via["live"] += 1
+            if not conf or not of:
+                revisar.append(str(r["num"])); continue
+            vals = [None, PESO, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni, email, tel_cod, tel_num, of]
+            for c, v in enumerate(vals, start=1):
+                ws_suc.cell(r_suc, c, v)
+            r_suc += 1
+        else:
+            calle = str(r.get("calle") or "").strip(); numero = ""; extra = str(r.get("extra") or "").strip(); depto = ""
+            _PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto", "s/n", "sn", "sin numero", "sin número")
+            calle_ph = (calle.lower() in _PH) or (len(_re_and.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", calle)) < 3)
+            if calle_ph and extra and _re_and.search(r"[A-Za-zÁÉÍÓÚÑ]", extra):
+                mx = _re_and.search(r"(\d{1,6})", extra)
+                if mx and mx.start() > 0:
+                    calle = extra[:mx.start()].strip(" ,.-") or extra
+                    if not numero:
+                        numero = mx.group(1)
+                else:
+                    calle = extra
+                extra = ""
+            if not numero:
+                calle, numero = _calle_num(calle)
+            calle = _and_txt(calle); extra = _and_txt(extra); depto = _and_txt(depto); numero = _and_num_limpio(numero)
+            if not numero:
+                numero = "0"; faltantes.append(str(r["num"]))
+            if extra:
+                depto, extra = extra, ""
+            pcl = _and_pcl(r.get("cp"), r.get("provincia"), cpidx) or _and_normP(r.get("provincia"))
+            vals = [None, PESO, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni, email, tel_cod, tel_num, calle, numero, extra, depto, pcl, ""]
+            for c, v in enumerate(vals, start=1):
+                ws_dom.cell(r_dom, c, v)
+            r_dom += 1
+    buf = _io.BytesIO(); wb.save(buf); wb.close()
+    return jsonify({"ok": True, "tienda": shopdom, "pedidos": len(sel),
+                    "domicilio": r_dom - 3, "sucursal": r_suc - 3, "via": via,
+                    "revisar": revisar, "sin_numero": faltantes,
+                    "xlsx_b64": _b64.b64encode(buf.getvalue()).decode()})
 
 
 @app.get("/pf-diag-suc")
