@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-diag-envios+wa-secciones"})
+    return jsonify({"ok": True, "v": "2026-08-23-wa-secciones"})
 
 
 @app.get("/pf-diag")
@@ -9453,68 +9453,6 @@ def wa_seed_enviados():
         n += 1
     _wa_save_chats(chats)
     return jsonify({"ok": True, "sembrados": n})
-
-
-@app.get("/pf-diag-envios")
-def pf_diag_envios():
-    """TEMPORAL — chequeo de envíos de una tienda usando el token que RealProfit ya tiene guardado.
-    Gateado con clave. Devuelve cuántos pedidos tienen tracking de Andreani cargado y cuántos no."""
-    if (request.args.get("key") or "") != "chequeo-noxa-2026":
-        return jsonify({"ok": False}), 403
-    shopq = (request.args.get("shop") or "").strip().lower()
-    tok = None
-    shopdom = None
-    owner = None
-    for em, c in _shop_tokens().items():
-        sh = str(c.get("shop") or "").lower()
-        if sh and (shopq in sh or not shopq):
-            tok = c.get("access_token"); shopdom = sh; owner = em
-            if shopq:
-                break
-    if not tok:
-        return jsonify({"ok": False, "msg": "no encontré token para esa tienda",
-                        "tiendas": [str((c.get("shop") or "")) for c in _shop_tokens().values()]})
-    H = {"X-Shopify-Access-Token": tok}
-    base = "https://%s/admin/api/2024-10" % shopdom
-    out = {"ok": True, "tienda": shopdom, "cuenta": owner}
-    try:
-        r = requests.get("%s/orders.json" % base, headers=H, params={
-            "status": "any", "limit": 60, "order": "created_at desc",
-            "fields": "id,name,order_number,fulfillment_status,fulfillments,created_at,financial_status,"
-                      "cancelled_at,shipping_lines,shipping_address"}, timeout=30)
-        out["http"] = r.status_code
-        ords = (r.json() or {}).get("orders", []) if r.status_code == 200 else []
-    except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)[:120]})
-    con = sin = unfulf = canc = 0
-    clasif = []
-    for o in ords:
-        if o.get("cancelled_at"):
-            canc += 1; continue
-        fs = o.get("fulfillment_status")
-        fums = o.get("fulfillments") or []
-        trk = next((f.get("tracking_number") for f in fums if f.get("tracking_number")), "")
-        if not fums or fs is None:
-            unfulf += 1
-        elif trk:
-            con += 1
-        else:
-            sin += 1
-        sl = (o.get("shipping_lines") or [{}])
-        metodo = " ".join(str((x or {}).get("title") or "") for x in sl).strip()
-        sa = o.get("shipping_address") or {}
-        try:
-            es_suc = _es_sucursal_ship(o)
-        except Exception:
-            es_suc = _txt_es_sucursal(metodo)
-        clasif.append({"pedido": o.get("name"), "metodo": metodo[:70],
-                       "clasificado": "SUCURSAL" if es_suc else "DOMICILIO",
-                       "localidad": sa.get("city") or "", "prov": sa.get("province") or "",
-                       "calle": (sa.get("address1") or "")[:42], "cp": sa.get("zip") or ""})
-    out.update({"analizados": len(ords), "cancelados": canc,
-                "con_tracking": con, "sin_tracking_pero_preparado": sin, "sin_despachar": unfulf,
-                "clasificacion": clasif})
-    return jsonify(out)
 
 
 @app.get("/wa")
