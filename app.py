@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-suc-diag"})
+    return jsonify({"ok": True, "v": "2026-08-24-coord-strict"})
 
 
 @app.get("/pf-diag")
@@ -5136,35 +5136,29 @@ def _and_suc_coord(lat, lng, es_hop, punto_id="", sucs=None):
         return None
     if not isinstance(pts, list) or not pts:
         return None
-    pid = _re_and.sub(r"\D", "", str(punto_id or ""))
-    # 1) si tenemos el id del punto (shipping_option_reference), match EXACTO por id → 100% seguro
+    # id del punto que eligió el cliente (último número del shipping_option_reference, ej ...:pickup:17910)
+    m = _re_and.search(r"(\d+)\s*$", str(punto_id or ""))
+    pid = m.group(1) if m else ""
+    # 1) match EXACTO por id del punto elegido → es DEFINITIVO. Si su nombre no está en el dropdown
+    #    de la plantilla → None (a REVISAR): no lo cambio por otro punto cercano.
     if pid:
         for p in pts:
-            if _re_and.sub(r"\D", "", str(p.get("puntoDeTerceroId") or "")) == pid:
-                of = _and_suc_exacto(p.get("descripcion") or "")
-                if of:
-                    return of
+            if str(p.get("puntoDeTerceroId") or "") == pid:
+                return _and_suc_exacto(p.get("descripcion") or "")   # puede ser None → REVISAR
 
     def _dist(p):
         try:
             return float(p.get("distancia"))
         except Exception:
             return 9e9
-    # 2) el punto MÁS CERCANO del tipo pedido (HOP/sucursal): su descripcion es el nombre oficial
-    for p in sorted(pts, key=_dist):
-        nom = p.get("descripcion") or ""
-        if es_hop and "hop" not in nom.lower():
-            continue
-        of = _and_suc_exacto(nom)
-        if of:
-            return of
-        # el nombre viene de Andreani (autoritativo, no del texto de la tienda) → mapeo por tokens
-        # es seguro: no puede cruzar de ciudad/provincia porque es el punto REAL de esas coordenadas
-        if sucs:
-            of2, ok = _and_suc_excel(nom, sucs)
-            if ok and of2:
-                return of2
-        break   # el más cercano ya no mapeó → no sigo probando puntos lejanos (evita agarrar otro)
+    # 2) sin id (o el id ya no está en Andreani): SOLO acepto el punto que está EXACTAMENTE en esas
+    #    coordenadas (dist ≈ 0). Si el más cercano no está prácticamente encima (>80 m), NO es el que
+    #    eligió el cliente → None (REVISAR). NUNCA agarro "el de al lado" (ese fue el bug del 9 de julio).
+    nearest = min(pts, key=_dist)
+    if _dist(nearest) <= 80:
+        nom = nearest.get("descripcion") or ""
+        if (not es_hop) or ("hop" in nom.lower()):
+            return _and_suc_exacto(nom)   # puede ser None → REVISAR
     return None
 
 
