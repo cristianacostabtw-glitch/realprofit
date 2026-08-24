@@ -3768,7 +3768,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-seccion-hub"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-submenu"})
 
 
 @app.get("/pf-diag")
@@ -8656,9 +8656,14 @@ _MELI_PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8">
  .chip.off{background:#241a10;border:1px solid #4a3a1a;color:#ffb35a}
  .top .sp{margin-left:auto}
  .top button{background:rgba(255,255,255,.1);color:#fff;border:0;border-radius:9px;padding:8px 13px;font-size:13px;cursor:pointer}
- .wrap{max-width:1000px;margin:0 auto;padding:26px 20px 60px}
- h1{font-size:23px;margin:0 0 4px} .lead{color:#93a3ba;font-size:13.5px;margin:0 0 22px}
- .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+ .shell{display:flex;height:calc(100vh - 56px)}
+ .side{width:238px;flex:none;border-right:1px solid #1b2635;padding:12px 10px;overflow:auto;background:#0b111b}
+ .side .it{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:10px;cursor:pointer;color:#c4d0de;font-weight:600;font-size:13.5px;margin-bottom:2px}
+ .side .it:hover{background:#111c2b} .side .it.on{background:#182234;color:#fff}
+ .side .it .ic{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+ .side .it .soon{margin-left:auto;font-size:9px;font-weight:800;color:#7aa2c8;background:#101a28;border:1px solid #24344a;border-radius:10px;padding:2px 6px;letter-spacing:.3px}
+ .main{flex:1;overflow:auto;padding:24px 26px 60px}
+ h1{font-size:21px;margin:0 0 4px} .lead{color:#93a3ba;font-size:13px;margin:0 0 18px}
  .card{background:linear-gradient(180deg,#0f1723,#0b111b);border:1px solid #1b2635;border-radius:16px;padding:18px}
  .card .h{display:flex;align-items:center;gap:11px;margin-bottom:8px}
  .card .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
@@ -8679,45 +8684,50 @@ _MELI_PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8">
  <span class="sp"></span>
  <button onclick="if(window.parent!==window){window.parent.rpMeli&&window.parent.rpMeli(false)}else{location.href='/'}">&#8592; Volver</button>
 </div>
-<div class="wrap">
- <h1>MercadoLibre</h1>
- <p class="lead">Todo lo de tu cuenta de Mercado Libre en un solo lugar: ventas, mensajes, envíos, publicaciones y stock.</p>
- <div id="connect"></div>
- <div id="hub"></div>
+<div class="shell">
+ <div class="side" id="side"></div>
+ <div class="main" id="main"></div>
 </div>
 <script>
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
+var CONN=false, NICK='', SEL='ventas';
 var FEATURES=[
- {ic:'🧾',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',tag:'list',fn:'ventas'},
- {ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Responder preguntas y mensajes de pre y post compra (con el bot o a mano).',tag:'soon'},
- {ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Ver el estado de los envíos (Mercado Envíos) y generar etiquetas.',tag:'soon'},
- {ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Poner y emparejar el SKU de cada publicación.',tag:'soon'},
- {ic:'📊',bg:'#101c2e',t:'Stock',d:'Actualizar y unificar el stock de unidades.',tag:'soon'},
- {ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Ventas, reputación y salud de la cuenta.',tag:'soon'}
+ {k:'ventas',ic:'🧾',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
+ {k:'mensajes',ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Responder preguntas y mensajes de pre y post compra (con el bot o a mano).',soon:true},
+ {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Ver el estado de los envíos (Mercado Envíos) y generar etiquetas.',soon:true},
+ {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Poner y emparejar el SKU de cada publicación.',soon:true},
+ {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Actualizar y unificar el stock de unidades.',soon:true},
+ {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Ventas, reputación y salud de la cuenta.',soon:true}
 ];
-function card(f){ return '<div class="card"><div class="h"><span class="ic" style="background:'+f.bg+'">'+f.ic+'</span><span class="t">'+esc(f.t)+'</span><span class="tag '+(f.tag)+'">'+(f.tag==='list'?'Activo':'En construcción')+'</span></div><div class="d">'+esc(f.d)+'</div>'+(f.fn==='ventas'?'<div id="mlv"></div>':'')+'</div>'; }
-function boot(){ fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ render(s||{}); }).catch(function(){ render({}); }); }
-function render(s){
- var e=document.getElementById('estado');
- if(s.conectado){ e.className='chip on'; e.textContent='✓ Conectado'+(s.nickname?(' · '+s.nickname):''); document.getElementById('connect').innerHTML='';
-   document.getElementById('hub').innerHTML='<div class="grid">'+FEATURES.map(card).join('')+'</div>'; cargarVentas();
- } else {
-   e.className='chip off'; e.textContent='No conectado';
-   document.getElementById('connect').innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>';
-   document.getElementById('hub').innerHTML='<div class="grid">'+FEATURES.map(card).join('')+'</div>';
- }
+function renderSide(){
+ var s=document.getElementById('side');
+ s.innerHTML=FEATURES.map(function(f){ return '<div class="it'+(f.k===SEL?' on':'')+'" onclick="sel(\''+f.k+'\')"><span class="ic" style="background:'+f.bg+'">'+f.ic+'</span><span>'+esc(f.t)+'</span>'+(f.soon?'<span class="soon">PRONTO</span>':'')+'</div>'; }).join('');
 }
-function cargarVentas(){ var box=document.getElementById('mlv'); if(!box)return; box.innerHTML='<div style="color:#5b6b82;font-size:12.5px;margin-top:10px">Trayendo ventas…</div>';
+function sel(k){ SEL=k; renderSide(); renderMain(); }
+function renderMain(){
+ var m=document.getElementById('main'); var f=FEATURES.filter(function(x){return x.k===SEL;})[0]||FEATURES[0];
+ if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
+ var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
+ if(f.k==='ventas'){ m.innerHTML=head+'<div class="card"><div id="mlv">Trayendo ventas…</div></div>'; cargarVentas(); return; }
+ m.innerHTML=head+'<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:30px;margin-bottom:10px">'+f.ic+'</div><div style="font-weight:800;font-size:15px;margin-bottom:6px">En construcción</div><div style="color:#93a3ba;font-size:13px;max-width:420px;margin:0 auto">Esta función se está armando. Muy pronto vas a poder usarla desde acá.</div></div>';
+}
+function cargarVentas(){ var box=document.getElementById('mlv'); if(!box)return;
  fetch('/meli/ventas').then(function(r){return r.json();}).then(function(j){
-  if(!j||!j.ok){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px;margin-top:10px">'+esc((j&&j.msg)||'No se pudieron traer las ventas')+'</div>'; return; }
+  if(!j||!j.ok){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px">'+esc((j&&j.msg)||'No se pudieron traer las ventas')+'</div>'; return; }
   var v=j.ventas||[];
-  if(!v.length){ box.innerHTML='<div style="color:#5b6b82;font-size:12.5px;margin-top:10px">Sin ventas recientes.</div>'; return; }
-  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-top:10px">'+(j.total!=null?('Total histórico: '+j.total+' · '):'')+'últimas '+v.length+'</div>'
+  if(!v.length){ box.innerHTML='<div style="color:#5b6b82;font-size:12.5px">Sin ventas recientes.</div>'; return; }
+  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+(j.total!=null?('Total histórico: '+j.total+' · '):'')+'últimas '+v.length+'</div>'
    +'<div style="overflow:auto"><table><thead><tr><th>Fecha</th><th>Comprador</th><th>Producto</th><th style="text-align:right">Un.</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead><tbody>'
-   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')
+   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')
    +'</tbody></table></div>';
- }).catch(function(){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px;margin-top:10px">Error al traer las ventas.</div>'; });
+ }).catch(function(){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px">Error al traer las ventas.</div>'; });
+}
+function boot(){ renderSide(); renderMain();
+ fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
+  var e=document.getElementById('estado'); if(CONN){ e.className='chip on'; e.textContent='✓ Conectado'+(NICK?(' · '+NICK):''); } else { e.className='chip off'; e.textContent='No conectado'; }
+  renderMain();
+ }).catch(function(){});
 }
 boot();
 </script></body></html>"""
