@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-stock30"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-bpu-sku"})
 
 
 @app.get("/pf-diag")
@@ -8860,6 +8860,22 @@ def meli_metricas():
                     "rating": (tx.get("ratings") or {}), "nickname": u.get("nickname", "")})
 
 
+def _bpu_from_sku(sku):
+    """Botellas de 30 ml por unidad, sacadas del SKU (lo confiable). 0 = no detectado."""
+    s = (sku or "").lower().strip()
+    if not s:
+        return 0
+    m = re.search(r"x\s?([1-9])", s)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"([1-9])\s*pote", s)
+    if m:
+        return int(m.group(1))
+    m = re.fullmatch(r"\s*([1-9])\s*", s)
+    if m:
+        return int(m.group(1))
+    return 0
+
 def _bpu_auto(title):
     """Botellas de 30 ml por unidad, detectadas del título (Pack X2 = 2, 3 meses = 3, etc.)."""
     t = (title or "").lower()
@@ -8936,14 +8952,19 @@ def meli_stock30_sync():
         chunk = ids[i:i + 20]
         try:
             rr = requests.get("%s/items" % MELI_API, headers={"Authorization": "Bearer " + tok},
-                              params={"ids": ",".join(chunk), "attributes": "id,title,available_quantity,status"}, timeout=25)
+                              params={"ids": ",".join(chunk), "attributes": "id,title,available_quantity,status,seller_custom_field,attributes"}, timeout=25)
             arr = rr.json() if rr.content else []
         except Exception:
             arr = []
         for wrap in arr:
             b = wrap.get("body") or {}
             iid = b.get("id"); title = b.get("title", "")
-            k = bpu.get(str(iid)) or _bpu_auto(title)
+            _sku = b.get("seller_custom_field") or ""
+            if not _sku:
+                for _a in (b.get("attributes") or []):
+                    if _a.get("id") == "SELLER_SKU":
+                        _sku = _a.get("value_name") or ""; break
+            k = bpu.get(str(iid)) or _bpu_from_sku(_sku) or _bpu_auto(title)
             units = int(stock30) // max(1, int(k))
             row = {"id": iid, "title": title, "bpu": k, "units": units,
                    "antes": b.get("available_quantity"), "ok": True, "msg": ""}
@@ -9054,6 +9075,8 @@ function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.
 }
 var STK30={items:[],bpu:{},stock30:null};
 function bpuAuto(t){ t=(t||'').toLowerCase(); var m=t.match(/x\s?([2-9])\b/); if(m)return +m[1]; m=t.match(/(\d)\s*meses/); if(m&&+m[1]>=2&&+m[1]<=9)return +m[1]; if(t.indexOf('cuatro')>=0)return 4; if(t.indexOf('tres')>=0)return 3; if(t.indexOf('dos')>=0)return 2; return 1; }
+function bpuFromSku(s){ s=(s||'').toLowerCase().trim(); if(!s)return 0; var m=s.match(/x\s?([1-9])/); if(m)return +m[1]; m=s.match(/([1-9])\s*pote/); if(m)return +m[1]; m=s.match(/^\s*([1-9])\s*$/); if(m)return +m[1]; return 0; }
+function bpuFor(it){ return STK30.bpu[it.id] || bpuFromSku(it.sku) || bpuAuto(it.title) || 1; }
 function cargarStock(){ var box=document.getElementById('mlc'); if(!box)return;
  Promise.all([fetch('/meli/stock30').then(function(r){return r.json();}),fetch('/meli/publicaciones').then(function(r){return r.json();})]).then(function(res){
   var s=res[0]||{}, j=res[1]||{}; if(!j.ok){ box.innerHTML=err(j); return; }
@@ -9069,7 +9092,7 @@ function renderStock30(){ var box=document.getElementById('mlc'); if(!box)return
   +'<button onclick="guardarS30()" style="background:#137fec;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer">Guardar</button>'
   +'<span id="s30m" style="font-size:12px;margin-left:4px"></span></div></div>';
  if(!v.length){ box.innerHTML=top+vacio('Sin publicaciones activas.'); return; }
- var rows=v.map(function(it){ var k=STK30.bpu[it.id]||bpuAuto(it.title); var units=(STK30.stock30!=null?Math.floor(STK30.stock30/Math.max(1,k)):'—');
+ var rows=v.map(function(it){ var k=bpuFor(it); var units=(STK30.stock30!=null?Math.floor(STK30.stock30/Math.max(1,k)):'—');
    return '<tr><td style="max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'</td><td><input id="bpu_'+it.id+'" type="number" min="1" value="'+k+'" onchange="reBpu()" style="width:56px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:5px 7px;font-size:12px;text-align:center"></td><td style="text-align:right;font-weight:700;color:#34d399" id="un_'+it.id+'">'+units+'</td><td style="text-align:right;color:#93a3ba">'+(it.stock!=null?it.stock:'')+'</td></tr>'; }).join('');
  box.innerHTML=top
   +'<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap"><button onclick="syncStock30(false)" style="background:#ffe600;color:#2d3277;border:0;border-radius:9px;padding:11px 20px;font-weight:800;cursor:pointer">🔄 Sincronizar a MercadoLibre</button><span id="syncm" style="align-self:center;font-size:12.5px;font-weight:600"></span></div>'
