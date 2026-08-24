@@ -78,6 +78,68 @@ def _mp_save_token(key, data) -> None:
     MP_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+# ---------------- Mercado Libre (marketplace / ventas) OAuth ----------------
+# Multi-cuenta: cada usuario de RealProfit conecta SU propia cuenta de ML. Una sola app (Client
+# ID/Secret del dueño) via env; los tokens se guardan por email en el disco persistente.
+MELI_TOKENS = DATA_DIR / "meli_tokens.json"   # {email: {access_token, refresh_token, user_id, nickname, obtained, expires_in}}
+MELI_NOTIF = DATA_DIR / "meli_notif.json"     # log liviano de notificaciones entrantes (para procesar)
+MELI_AUTH = "https://auth.mercadolibre.com.ar/authorization"
+MELI_API = "https://api.mercadolibre.com"
+
+
+def _meli_cfg() -> dict:
+    return {"client_id": _os.getenv("MELI_CLIENT_ID", ""),
+            "client_secret": _os.getenv("MELI_CLIENT_SECRET", ""),
+            "redirect_uri": _os.getenv("MELI_REDIRECT_URI", "https://realprofitapp.com/meli/callback")}
+
+
+def _meli_tokens() -> dict:
+    try:
+        return _json.loads(MELI_TOKENS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _meli_save_token(email, data) -> None:
+    d = _meli_tokens()
+    d[str(email)] = data
+    MELI_TOKENS.parent.mkdir(parents=True, exist_ok=True)
+    MELI_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _meli_token(email):
+    """Devuelve un access_token VÁLIDO para ese email, refrescándolo si venció. None si no conectado."""
+    import time as _t
+    d = _meli_tokens().get(str(email))
+    if not d or not d.get("access_token"):
+        return None
+    obtenido = d.get("obtained", 0)
+    dura = d.get("expires_in", 21600)
+    if _t.time() < obtenido + dura - 600:      # todavía válido (margen 10 min)
+        return d["access_token"]
+    # vencido → refrescar
+    cfg = _meli_cfg()
+    if not (cfg["client_id"] and cfg["client_secret"] and d.get("refresh_token")):
+        return d.get("access_token")
+    try:
+        r = requests.post("%s/oauth/token" % MELI_API,
+                          headers={"Accept": "application/json"},
+                          data={"grant_type": "refresh_token", "client_id": cfg["client_id"],
+                                "client_secret": cfg["client_secret"], "refresh_token": d["refresh_token"]},
+                          timeout=25)
+        tok = r.json() if r.content else {}
+        if tok.get("access_token"):
+            d.update({"access_token": tok["access_token"], "obtained": _t.time(),
+                      "expires_in": tok.get("expires_in", 21600)})
+            if tok.get("refresh_token"):
+                d["refresh_token"] = tok["refresh_token"]
+            _meli_save_token(email, d)
+            return d["access_token"]
+    except Exception:
+        pass
+    return d.get("access_token")
+
+
 # ---------------- Meta (Facebook / Instagram Ads) OAuth ----------------
 META_SECRETS = RAIZ / "meta_secrets.json"     # App ID + App Secret (dueño de la app)
 META_TOKENS = DATA_DIR / "meta_tokens.json"   # tokens por usuario (persistente)
@@ -1050,11 +1112,12 @@ _SOLO_DASH = r"""
   var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
   var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn);
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; right=chip('Conectado','#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; var etiqCon=(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='meli'){ b='<a href="/conectar-meli" onclick="window.location.assign(\'/conectar-meli\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='meta'){ b='<a href="#" onclick="rpMetaTokToggle();return false;" style="'+bs+'">&#9889; '+(window._rpMetaTokOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
@@ -1115,6 +1178,7 @@ _SOLO_DASH = r"""
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meta/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeta=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/meli/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeli=!!(j&&j.conectado); window._rpMeliNick=(j&&j.nickname)||''; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/tiendanube/estado').then(function(r){return r.json();}).then(function(j){ window._rpTn=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
  function rpShopPanel(){ var CB='https://www.realprofitapp.com/shopify/callback'; return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
@@ -3685,7 +3749,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-conjunto-nuevo-sin-copiar"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-oauth-conector"})
 
 
 @app.get("/pf-diag")
@@ -8425,6 +8489,111 @@ def mp_estado():
     email = _user_actual()
     conectado = bool(email and email in _mp_tokens())
     return jsonify({"ok": True, "conectado": conectado})
+
+
+# ================= Mercado Libre — OAuth (multi-cuenta) =================
+@app.get("/conectar-meli")
+@limiter.limit("30 per hour")
+def conectar_meli():
+    """Manda al usuario a la pantalla oficial de Mercado Libre para autorizar (OAuth)."""
+    if not _user_actual():
+        return redirect("/")
+    cfg = _meli_cfg()
+    if not cfg["client_id"]:
+        return ("Falta configurar MELI_CLIENT_ID en el servidor (Render → Environment).", 400)
+    state = _secrets.token_urlsafe(16)
+    session["meli_state"] = state
+    qs = _url.urlencode({"response_type": "code", "client_id": cfg["client_id"],
+                         "redirect_uri": cfg["redirect_uri"], "state": state})
+    return redirect(MELI_AUTH + "?" + qs, code=302)
+
+
+@app.get("/meli/callback")
+@limiter.limit("30 per hour")
+def meli_callback():
+    """Mercado Libre vuelve acá con un 'code'. Lo cambiamos por el token del usuario."""
+    import time as _t
+    cfg = _meli_cfg()
+    code = request.args.get("code")
+    state = request.args.get("state")
+    if not code:
+        # visita sin código = ML validando la URL → 200 para pasar la validación
+        return ("RealProfit — punto de conexión con Mercado Libre. "
+                "Volvé a la app y usá el botón «Conectar Mercado Libre».", 200)
+    if not state or state != session.get("meli_state"):
+        return ("La conexión no pasó el control de seguridad. Reintentá desde el botón.", 400)
+    try:
+        r = requests.post("%s/oauth/token" % MELI_API,
+                          headers={"Accept": "application/json"},
+                          data={"grant_type": "authorization_code", "client_id": cfg["client_id"],
+                                "client_secret": cfg["client_secret"], "code": code,
+                                "redirect_uri": cfg["redirect_uri"]}, timeout=30)
+        tok = r.json() if r.content else {}
+    except Exception:
+        return ("No pudimos conectar con Mercado Libre en este momento. Probá de nuevo.", 502)
+    if not tok.get("access_token"):
+        return ("Mercado Libre no autorizó la conexión. Reintentá.", 400)
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    data = {"access_token": tok["access_token"], "refresh_token": tok.get("refresh_token", ""),
+            "user_id": tok.get("user_id"), "obtained": _t.time(),
+            "expires_in": tok.get("expires_in", 21600), "scope": tok.get("scope", "")}
+    # traer el nickname de la cuenta (para mostrar "Conectado — NICK")
+    try:
+        me = requests.get("%s/users/me" % MELI_API,
+                          headers={"Authorization": "Bearer " + tok["access_token"]}, timeout=15)
+        if me.status_code < 400:
+            j = me.json(); data["nickname"] = j.get("nickname", ""); data["user_id"] = j.get("id", data.get("user_id"))
+    except Exception:
+        pass
+    _meli_save_token(email, data)
+    session.pop("meli_state", None)
+    return redirect("/?integ=1", code=302)
+
+
+@app.get("/meli/estado")
+def meli_estado():
+    email = _user_actual()
+    d = (_meli_tokens().get(email) if email else None) or {}
+    return jsonify({"ok": True, "conectado": bool(d.get("access_token")),
+                    "nickname": d.get("nickname", ""), "user_id": d.get("user_id")})
+
+
+@app.get("/desconectar-meli")
+def desconectar_meli():
+    email = _user_actual()
+    if email:
+        d = _meli_tokens(); d.pop(email, None)
+        try:
+            MELI_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
+    return redirect("/?integ=1", code=302)
+
+
+@app.route("/meli/notifications", methods=["POST", "GET"])
+def meli_notifications():
+    """Webhook de Mercado Libre: recibe avisos de ventas/mensajes/ítems. Guarda liviano para procesar.
+    Responde 200 SIEMPRE y rápido (ML reintenta y penaliza si tardás o das error)."""
+    if request.method == "GET":
+        return ("OK", 200)   # validación de la URL
+    try:
+        n = request.get_json(silent=True) or {}
+        # n típico: {user_id, topic, resource, application_id, sent, attempts, received}
+        log = []
+        try:
+            log = _json.loads(MELI_NOTIF.read_text(encoding="utf-8"))
+        except Exception:
+            log = []
+        n["_recv"] = _wa_now() if "_wa_now" in globals() else ""
+        log.append({k: n.get(k) for k in ("user_id", "topic", "resource", "application_id", "sent", "_recv")})
+        log = log[-500:]   # solo las últimas 500
+        MELI_NOTIF.parent.mkdir(parents=True, exist_ok=True)
+        MELI_NOTIF.write_text(_json.dumps(log, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return ("", 200)
 
 
 @app.post("/shopify/byoa-start")
