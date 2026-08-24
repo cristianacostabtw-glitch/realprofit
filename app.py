@@ -302,7 +302,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-meli-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -392,9 +392,20 @@ _SOLO_DASH = r"""
      wa0.parentNode.insertBefore(cwa, wa0.nextSibling);
     }
    }
+   // Agregar "MercadoLibre" en la barra (debajo de WhatsApp) → abre la sección de ML.
+   if(!nav.querySelector('#rp-meli-nav')){
+    var ml0=nav.querySelector('#rp-wa-nav')||nav.querySelector('#rp-stock-nav')||nav.querySelector('#rp-ads-nav');
+    if(ml0){ var cml=ml0.cloneNode(true); cml.id='rp-meli-nav'; cml.style.display='';
+     var aml=cml.querySelector('a'); if(aml){ aml.setAttribute('href','#'); aml.removeAttribute('aria-current'); aml.classList.remove('bg-white/[0.08]'); aml.classList.remove('text-primary');
+      var naml=aml.cloneNode(true); aml.parentNode.replaceChild(naml,aml); naml.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); try{window.rpMeli(true);}catch(err){} }); aml=naml; }
+     var icml=cml.querySelector('.material-symbols-outlined'); if(icml){ icml.textContent=''; icml.style.fontSize='0'; icml.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24" style="display:block"><circle cx="12" cy="12" r="11" fill="#ffe600"/><path d="M6.2 11.3c1.2-1.6 3.3-2.5 5.8-2.5s4.6.9 5.8 2.5c-.5-2.4-2.9-4.1-5.8-4.1s-5.3 1.7-5.8 4.1zm11.6 1.4c-1.2 1.6-3.3 2.5-5.8 2.5s-4.6-.9-5.8-2.5c.5 2.4 2.9 4.1 5.8 4.1s5.3-1.7 5.8-4.1z" fill="#2d3277"/></svg>'; }
+     var spml=cml.querySelectorAll('span'); for(var sm=0;sm<spml.length;sm++){ var s11=spml[sm]; if(!s11.classList.contains('material-symbols-outlined') && s11.children.length===0 && (s11.textContent||'').trim()){ s11.textContent='MercadoLibre'; } }
+     ml0.parentNode.insertBefore(cml, ml0.nextSibling);
+    }
+   }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpAds(false);}catch(e){} try{window.rpStock(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpAds(false);}catch(e){} try{window.rpStock(false);}catch(e){} try{window.rpWa(false);}catch(e){} try{window.rpMeli(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -436,6 +447,7 @@ _SOLO_DASH = r"""
  </div>
 </div>
 <div id="rp-wa-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0b141a;display:none;overflow:hidden;transition:left .18s ease"><iframe id="rp-wa-frame" title="WhatsApp" style="width:100%;height:100%;border:0;display:block"></iframe></div>
+<div id="rp-meli-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#080c14;display:none;overflow:hidden;transition:left .18s ease"><iframe id="rp-meli-frame" title="MercadoLibre" style="width:100%;height:100%;border:0;display:block"></iframe></div>
 <div id="rp-mp-switch" style="position:fixed;inset:0;z-index:100003;background:rgba(4,8,14,.74);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpMpSwitchClose()"><div id="rp-mp-switch-box" style="background:#0e1a2e;border:1px solid #243352;border-radius:18px;width:min(560px,96vw);max-height:90vh;overflow:auto;padding:24px;color:#e7eef8"></div></div>
 <div id="rp-prod-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0a111e;display:none;overflow:auto;transition:left .18s ease;font-family:system-ui,-apple-system,sans-serif">
  <div style="max-width:1120px;margin:0 auto;padding:26px 30px 60px">
@@ -1288,10 +1300,17 @@ _SOLO_DASH = r"""
    o.style.display=open?'block':'none';
    if(open && !_dLoaded) rpDLoad(); };
  window.rpWa=function(open){ var o=document.getElementById('rp-wa-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-meli-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      var f=document.getElementById('rp-wa-frame'); if(f && !f.getAttribute('src')){ f.setAttribute('src','/wa'); }
      var a=document.querySelector('aside'); if(a){ var w=Math.round(a.getBoundingClientRect().width); o.style.left=(w>110?w:72)+'px'; }
      _rpNavActive('rp-wa-nav');
+   } else { _rpNavActive(null); }
+   o.style.display=open?'block':'none'; };
+ window.rpMeli=function(open){ var o=document.getElementById('rp-meli-ov'); if(!o)return;
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-wa-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+     var f=document.getElementById('rp-meli-frame'); if(f && !f.getAttribute('src')){ f.setAttribute('src','/meli'); }
+     var a=document.querySelector('aside'); if(a){ var w=Math.round(a.getBoundingClientRect().width); o.style.left=(w>110?w:72)+'px'; }
+     _rpNavActive('rp-meli-nav');
    } else { _rpNavActive(null); }
    o.style.display=open?'block':'none'; };
  window._rpMpMode='ahora'; window._rpMpDate='';
@@ -3749,7 +3768,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-oauth-conector"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-seccion-hub"})
 
 
 @app.get("/pf-diag")
@@ -8594,6 +8613,121 @@ def meli_notifications():
     except Exception:
         pass
     return ("", 200)
+
+
+@app.get("/meli/ventas")
+def meli_ventas():
+    """Últimas ventas/órdenes de la cuenta de ML conectada (por email)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "ventas": []})
+    tok = _meli_token(email)
+    d = _meli_tokens().get(email) or {}
+    uid = d.get("user_id")
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado", "ventas": []})
+    try:
+        r = requests.get("%s/orders/search" % MELI_API,
+                         headers={"Authorization": "Bearer " + tok},
+                         params={"seller": uid, "sort": "date_desc", "limit": 30}, timeout=25)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100], "ventas": []})
+    out = []
+    for o in j.get("results", []):
+        items = o.get("order_items") or []
+        tit = (items[0].get("item") or {}).get("title", "") if items else ""
+        un = sum(int(it.get("quantity") or 0) for it in items)
+        out.append({"id": o.get("id"), "fecha": (o.get("date_created") or "")[:10],
+                    "estado": o.get("status", ""), "comprador": (o.get("buyer") or {}).get("nickname", ""),
+                    "titulo": tit, "unidades": un, "total": o.get("total_amount", 0)})
+    return jsonify({"ok": True, "ventas": out, "total": (j.get("paging") or {}).get("total")})
+
+
+_MELI_PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>MercadoLibre — RealProfit</title>
+<style>
+ *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:#080c14;color:#eef3f9}
+ .top{height:56px;background:#0e1521;border-bottom:1px solid #1b2635;display:flex;align-items:center;gap:12px;padding:0 18px}
+ .top .lg{display:flex;align-items:center;gap:9px;font-weight:800;font-size:16px}
+ .top .lg .d{width:26px;height:26px;border-radius:50%;background:#ffe600;display:flex;align-items:center;justify-content:center}
+ .chip{font-size:12px;font-weight:700;border-radius:20px;padding:5px 12px}
+ .chip.on{background:#0e2a1c;border:1px solid #17492f;color:#34d399}
+ .chip.off{background:#241a10;border:1px solid #4a3a1a;color:#ffb35a}
+ .top .sp{margin-left:auto}
+ .top button{background:rgba(255,255,255,.1);color:#fff;border:0;border-radius:9px;padding:8px 13px;font-size:13px;cursor:pointer}
+ .wrap{max-width:1000px;margin:0 auto;padding:26px 20px 60px}
+ h1{font-size:23px;margin:0 0 4px} .lead{color:#93a3ba;font-size:13.5px;margin:0 0 22px}
+ .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+ .card{background:linear-gradient(180deg,#0f1723,#0b111b);border:1px solid #1b2635;border-radius:16px;padding:18px}
+ .card .h{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+ .card .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+ .card .t{font-weight:800;font-size:15px}
+ .card .d{color:#93a3ba;font-size:12.5px;line-height:1.5}
+ .card .tag{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;padding:3px 9px;border-radius:20px;margin-left:auto}
+ .tag.list{background:#0e2a1c;border:1px solid #17492f;color:#34d399}
+ .tag.soon{background:#141d2c;border:1px solid #24344a;color:#7aa2c8}
+ .connectbox{background:linear-gradient(180deg,#0f1723,#0b111b);border:1px solid #1b2635;border-radius:16px;padding:28px;text-align:center;margin-bottom:20px}
+ .btn{background:#ffe600;color:#2d3277;border:0;border-radius:10px;padding:12px 22px;font-weight:800;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block}
+ table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+ th{color:#5b6b82;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;text-align:left;padding:8px 8px;border-bottom:1px solid #1b2635}
+ td{padding:9px 8px;border-bottom:1px solid #131e2c}
+</style></head><body>
+<div class="top">
+ <span class="lg"><span class="d"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M6.2 11.3c1.2-1.6 3.3-2.5 5.8-2.5s4.6.9 5.8 2.5c-.5-2.4-2.9-4.1-5.8-4.1s-5.3 1.7-5.8 4.1zm11.6 1.4c-1.2 1.6-3.3 2.5-5.8 2.5s-4.6-.9-5.8-2.5c.5 2.4 2.9 4.1 5.8 4.1s5.3-1.7 5.8-4.1z" fill="#2d3277"/></svg></span> MercadoLibre</span>
+ <span id="estado" class="chip off">consultando…</span>
+ <span class="sp"></span>
+ <button onclick="if(window.parent!==window){window.parent.rpMeli&&window.parent.rpMeli(false)}else{location.href='/'}">&#8592; Volver</button>
+</div>
+<div class="wrap">
+ <h1>MercadoLibre</h1>
+ <p class="lead">Todo lo de tu cuenta de Mercado Libre en un solo lugar: ventas, mensajes, envíos, publicaciones y stock.</p>
+ <div id="connect"></div>
+ <div id="hub"></div>
+</div>
+<script>
+function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
+function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
+var FEATURES=[
+ {ic:'🧾',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',tag:'list',fn:'ventas'},
+ {ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Responder preguntas y mensajes de pre y post compra (con el bot o a mano).',tag:'soon'},
+ {ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Ver el estado de los envíos (Mercado Envíos) y generar etiquetas.',tag:'soon'},
+ {ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Poner y emparejar el SKU de cada publicación.',tag:'soon'},
+ {ic:'📊',bg:'#101c2e',t:'Stock',d:'Actualizar y unificar el stock de unidades.',tag:'soon'},
+ {ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Ventas, reputación y salud de la cuenta.',tag:'soon'}
+];
+function card(f){ return '<div class="card"><div class="h"><span class="ic" style="background:'+f.bg+'">'+f.ic+'</span><span class="t">'+esc(f.t)+'</span><span class="tag '+(f.tag)+'">'+(f.tag==='list'?'Activo':'En construcción')+'</span></div><div class="d">'+esc(f.d)+'</div>'+(f.fn==='ventas'?'<div id="mlv"></div>':'')+'</div>'; }
+function boot(){ fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ render(s||{}); }).catch(function(){ render({}); }); }
+function render(s){
+ var e=document.getElementById('estado');
+ if(s.conectado){ e.className='chip on'; e.textContent='✓ Conectado'+(s.nickname?(' · '+s.nickname):''); document.getElementById('connect').innerHTML='';
+   document.getElementById('hub').innerHTML='<div class="grid">'+FEATURES.map(card).join('')+'</div>'; cargarVentas();
+ } else {
+   e.className='chip off'; e.textContent='No conectado';
+   document.getElementById('connect').innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>';
+   document.getElementById('hub').innerHTML='<div class="grid">'+FEATURES.map(card).join('')+'</div>';
+ }
+}
+function cargarVentas(){ var box=document.getElementById('mlv'); if(!box)return; box.innerHTML='<div style="color:#5b6b82;font-size:12.5px;margin-top:10px">Trayendo ventas…</div>';
+ fetch('/meli/ventas').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px;margin-top:10px">'+esc((j&&j.msg)||'No se pudieron traer las ventas')+'</div>'; return; }
+  var v=j.ventas||[];
+  if(!v.length){ box.innerHTML='<div style="color:#5b6b82;font-size:12.5px;margin-top:10px">Sin ventas recientes.</div>'; return; }
+  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-top:10px">'+(j.total!=null?('Total histórico: '+j.total+' · '):'')+'últimas '+v.length+'</div>'
+   +'<div style="overflow:auto"><table><thead><tr><th>Fecha</th><th>Comprador</th><th>Producto</th><th style="text-align:right">Un.</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead><tbody>'
+   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')
+   +'</tbody></table></div>';
+ }).catch(function(){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px;margin-top:10px">Error al traer las ventas.</div>'; });
+}
+boot();
+</script></body></html>"""
+
+
+@app.get("/meli")
+def meli_page():
+    if not _user_actual():
+        return redirect("/")
+    return Response(_MELI_PAGE, mimetype="text/html")
 
 
 @app.post("/shopify/byoa-start")
