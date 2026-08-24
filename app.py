@@ -3682,7 +3682,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-elegir-api-web+chips"})
+    return jsonify({"ok": True, "v": "2026-08-24-barra-wa-prolija"})
 
 
 @app.get("/pf-diag")
@@ -8876,12 +8876,20 @@ _WA_PAGE = """<!doctype html>
  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
  body{margin:0;height:100vh;background:#d1d7db;color:var(--ink);overflow:hidden}
  a{color:var(--wa2)}
- .top{height:56px;background:var(--wa2);color:#fff;display:flex;align-items:center;gap:12px;padding:0 16px}
- .top .lg{display:flex;align-items:center;gap:9px;font-weight:700;font-size:16px}
+ .top{height:56px;background:var(--wa2);color:#fff;display:flex;align-items:center;gap:10px;padding:0 14px;flex-wrap:nowrap;overflow-x:auto}
+ .top::-webkit-scrollbar{display:none}
+ .top .lg{display:flex;align-items:center;gap:9px;font-weight:700;font-size:16px;white-space:nowrap;flex:none}
  .top .lg svg{width:22px;height:22px}
- .top .num{margin-left:auto;font-size:13px;opacity:.9}
- .top button{background:rgba(255,255,255,.16);color:#fff;border:0;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
- .top button:hover{background:rgba(255,255,255,.3)}
+ .top .num{font-size:13px;opacity:.9;white-space:nowrap;flex:none}
+ .top .spacer{margin-left:auto}
+ .navtabs{display:flex;gap:2px;background:rgba(0,0,0,.18);border-radius:11px;padding:3px;flex:none}
+ .top .tab{background:transparent;color:#fff;border:0;border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .12s}
+ .top .tab:hover{background:rgba(255,255,255,.14)}
+ .top .tab.on{background:#fff;color:var(--wa2)}
+ .top .util{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:9px;padding:7px 12px;font-size:13px;cursor:pointer;white-space:nowrap;flex:none}
+ .top .util:hover{background:rgba(255,255,255,.28)}
+ .top .back{background:rgba(255,255,255,.22);color:#fff;border:0;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex:none}
+ .top .back:hover{background:rgba(255,255,255,.34)}
  .wrap{height:calc(100vh - 56px);display:flex}
  .connect{max-width:540px;margin:4vh auto;background:#fff;border-radius:14px;padding:26px;box-shadow:0 12px 44px rgba(0,0,0,.18);max-height:88vh;overflow:auto}
  .connect h2{margin:0 0 3px;font-size:21px}
@@ -8981,7 +8989,6 @@ _WA_PAGE = """<!doctype html>
  .lock{display:none;position:fixed;inset:56px 0 0 0;z-index:30;align-items:flex-start;justify-content:center;overflow:auto;background:rgba(6,20,14,.36)}
  body.locked .lock{display:flex}
  body.locked #app{filter:blur(7px) brightness(.82);pointer-events:none;user-select:none}
- body.locked #bTpl,body.locked #bCfg,body.locked #bBot{display:none!important}
  body.locked #num{opacity:.45}
  .lockcard{background:#fff;border-radius:18px;padding:30px 28px;max-width:468px;width:92%;margin:min(6vh,56px) 0;box-shadow:0 24px 70px rgba(0,0,0,.34)}
  .lockbadge{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#25D366,#0a7d3c);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 8px 22px rgba(37,211,102,.35)}
@@ -8990,16 +8997,19 @@ _WA_PAGE = """<!doctype html>
 <body>
 <div class="top">
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
+ <div class="navtabs" id="navtabs">
+  <button id="bChats" class="tab" style="display:none" onclick="waTab('chats')">&#128172; Chats</button>
+  <button id="bWeb" class="tab" style="display:none" onclick="waTab('web')">&#127760; Web</button>
+  <button id="bTransf" class="tab" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
+  <button id="bCarr" class="tab" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
+ </div>
+ <span class="spacer"></span>
  <span class="num" id="num"></span>
- <button id="botTop" style="display:none;align-items:center;gap:4px" onclick="botTopToggle()" title="Bot">&#129302; OFF</button>
- <button id="bChats" style="display:none;background:rgba(255,255,255,.32)" onclick="waTab('chats')">&#128172; Chats</button>
- <button id="bWeb" style="display:none" onclick="waTab('web')">&#127760; Web</button>
- <button id="bTransf" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
- <button id="bCarr" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
- <button id="bBot" style="display:none" onclick="openBot()">&#129302; Bot</button>
- <button id="bTpl" style="display:none" onclick="openTpl()">Plantillas</button>
- <button id="bCfg" style="display:none" onclick="doDisc()">Desconectar</button>
- <button onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
+ <button id="botTop" class="util" style="display:none" onclick="botTopToggle()" title="Bot">&#129302; OFF</button>
+ <button id="bBot" class="util" style="display:none" onclick="openBot()">&#129302; Bot</button>
+ <button id="bTpl" class="util" style="display:none" onclick="openTpl()">Plantillas</button>
+ <button id="bCfg" class="util" style="display:none" onclick="doDisc()">Desconectar</button>
+ <button class="back" onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
 <div id="panel" style="display:none;position:absolute;inset:56px 0 0 0;background:#eef2f5;overflow:auto;padding:22px;z-index:5"></div>
@@ -9077,13 +9087,11 @@ function val(id){ return (document.getElementById(id)||{}).value||''; }
 function renderApp(){
  document.getElementById('num').textContent=EST.numero?('&#128241; '+EST.numero):'';
  document.getElementById('num').innerHTML=EST.numero?('&#128241; '+esc(EST.numero)):'';
- document.getElementById('bBot').style.display='';
- document.getElementById('bTpl').style.display='';
- document.getElementById('bCfg').style.display='';
- document.getElementById('bChats').style.display='';
- document.getElementById('bWeb').style.display='';
- document.getElementById('bTransf').style.display='';
- document.getElementById('bCarr').style.display='';
+ var conn=!!(EST&&EST.conectado);
+ var v=function(id,show){ var el=document.getElementById(id); if(el) el.style.display=show?'':'none'; };
+ v('bWeb',true); v('bBot',true);                          // Web (QR) y Bot: siempre disponibles
+ v('bChats',conn); v('bTransf',conn); v('bCarr',conn);    // estas necesitan la Cloud API
+ v('bTpl',conn); v('bCfg',conn);
  loadBotTop();
  var app=document.getElementById('app');
  app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
@@ -9095,7 +9103,7 @@ function renderApp(){
 // ───── Pestañas Transferencias / Carritos ─────
 var TAB='chats', TDATA=[], TSEL={};
 function waTab(t){ TAB=t; var p=document.getElementById('panel');
- [['bChats','chats'],['bWeb','web'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.style.background=(x[1]===t?'rgba(255,255,255,.32)':'rgba(255,255,255,.16)'); });
+ [['bChats','chats'],['bWeb','web'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.classList.toggle('on',x[1]===t); });
  if(WEBPOLL){ clearInterval(WEBPOLL); WEBPOLL=null; }
  // La pestaña WEB (QR) NO necesita la Cloud API → destraba y muestra el panel.
  if(t==='web'){ document.body.classList.remove('locked'); p.style.display='block'; p.innerHTML='<div style="max-width:720px;margin:0 auto;color:#334">Cargando…</div>'; TSEL={}; loadWeb(); return; }
