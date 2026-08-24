@@ -2450,6 +2450,7 @@ _SOLO_DASH = r"""
      <div class="s on" id="rpa-cjdup" onclick="rpaCj('dup')">Agregar conjunto<small>misma config + tus videos</small></div>
      <div class="s" id="rpa-cjusar" onclick="rpaCj('usar')">A&ntilde;adir al mismo<small>suma los ads a uno</small></div></div>
     <div id="rpa-cjlista" style="display:none;margin-bottom:13px"><span class="lb" id="rpa-cjlb">Copiar la config de</span><select class="in" id="rpa-cjsel"></select></div>
+    <div id="rpa-cjpresupwrap" style="display:none;margin-bottom:13px"><span class="lb">Presupuesto diario del conjunto (ABO) <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">opcional — vac&iacute;o = copia el del conjunto elegido</span></span><input class="in" id="rpa-cjpresup" placeholder="ej: 35" oninput="rpaCalc()"></div>
     <div id="rpa-cjnom" style="margin-bottom:13px"><span class="lb">Nombre del conjunto</span><input class="in" id="rpa-cjnombre" value="CONJUNTO 1" oninput="rpaCalc()"></div>
     <div id="rpa-cjcant" class="row" style="align-items:flex-end">
      <div><span class="lb" id="rpa-cantlb">Cantidad de conjuntos</span><div class="step"><button class="b" onclick="rpaConj(-1)">&ndash;</button><b id="rpa-nconj">1</b><button class="b" onclick="rpaConj(1)">+</button></div></div>
@@ -2520,13 +2521,24 @@ _SOLO_DASH = r"""
   $('rpa-boxn').style.display=m=='nueva'?'block':'none';$('rpa-boxe').style.display=m=='exist'?'block':'none';
   $('rpa-cjmodo').style.display=m=='exist'?'flex':'none';$('rpa-cjctx').textContent=m=='exist'?'en la campaña elegida':'';
   rpaCj(m=='exist'?'dup':'nuevo');if(m=='exist')rpaCmpChange();rpaCalc();};
- window.rpaCmpChange=function(){var cid=$('rpa-cmp').value;if(!cid)return;$('rpa-cjsel').innerHTML='<option>cargando…</option>';
-  fetch('/pf-ads-conjuntos?campaign_id='+cid).then(function(r){return r.json();}).then(function(j){CJS=(j&&j.conjuntos)||[];
-   $('rpa-cjsel').innerHTML=opt(CJS.map(function(c){return {v:c.id,t:c.name+' · '+c.n_ads+' ads'};}));rpaCalc();});};
+ window.rpaCmpChange=function(){var cid=$('rpa-cmp').value;if(!cid)return;$('rpa-cjsel').innerHTML='<option value="">cargando…</option>';rpaAbo();
+  fetch('/pf-ads-conjuntos?campaign_id='+cid).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){$('rpa-cjsel').innerHTML='<option value="">(no pude traer los conjuntos'+(j&&j.msg?': '+j.msg:'')+')</option>';return;}
+   CJS=j.conjuntos||[];
+   if(!CJS.length){$('rpa-cjsel').innerHTML='<option value="">(esta campaña no tiene conjuntos)</option>';}
+   else {$('rpa-cjsel').innerHTML=opt(CJS.map(function(c){return {v:c.id,t:c.name+(c.presupuesto?(' · $'+c.presupuesto):'')};}));}
+   rpaAbo();rpaCalc();
+  }).catch(function(){$('rpa-cjsel').innerHTML='<option value="">(error al traer los conjuntos)</option>';});};
+ // Muestra el campo de presupuesto por conjunto SOLO cuando la campaña existente es ABO y estás agregando conjunto.
+ window.rpaAbo=function(){var w=$('rpa-cjpresupwrap');if(!w)return;
+  var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];
+  var isAbo=(CMP=='exist'&&CJ=='dup'&&c&&!c.cbo);
+  w.style.display=isAbo?'block':'none';};
  window.rpaCj=function(m){CJ=m;var d=$('rpa-cjdup'),u=$('rpa-cjusar');if(d)d.classList.toggle('on',m=='dup');if(u)u.classList.toggle('on',m=='usar');
   $('rpa-cjlista').style.display=(m=='dup'||m=='usar')?'block':'none';$('rpa-cjcant').style.display=(m=='usar')?'none':'flex';$('rpa-cjnom').style.display=(m=='usar')?'none':'block';
   $('rpa-cjlb').textContent=m=='usar'?'Conjunto al que sumar los ads':'Copiar la config de';
   $('rpa-cjhint').innerHTML=(m=='usar')?'Los anuncios se agregan al conjunto elegido (no crea uno nuevo).':(m=='dup')?'Agrega un conjunto con la misma config del elegido + tus videos.':'Cada conjunto lleva 1 anuncio por video.';
+  if(window.rpaAbo)rpaAbo();
   if(m=='usar')NCONJ=1;rpaCalc();};
  window.rpaConj=function(d){NCONJ=Math.max(1,Math.min(20,NCONJ+d));$('rpa-nconj').textContent=NCONJ;for(var i=0;i<RMAP.length;i++){if(RMAP[i]>NCONJ)RMAP[i]=NCONJ;}renderVids(VMSG);rpaCalc();};
  window.rpaRep=function(){REPARTIR=!REPARTIR;var t=$('rpa-reptk');if(t)t.classList.toggle('on',REPARTIR);renderVids(VMSG);rpaCalc();};
@@ -2579,7 +2591,7 @@ _SOLO_DASH = r"""
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
-   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   var go=$('rpa-go');go.disabled=true;go.textContent='Lanzando…';var pr=$('rpa-prog'),bar=$('rpa-bar'),msg=$('rpa-msg');pr.style.display='block';
@@ -3673,7 +3685,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-bot-por-cuenta"})
+    return jsonify({"ok": True, "v": "2026-08-24-subidor-conjuntos-abo"})
 
 
 @app.get("/pf-diag")
@@ -7237,9 +7249,10 @@ def _ads_creative_payload(nombre, medio, cfg, ad):
     return creative
 
 
-def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None):
+def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None, presup_override=None):
     """Crea un conjunto NUEVO copiando la config de src_id (segmentación/optimización/pixel/atribución),
-    vacío. No copia los ads viejos. Filtra placeholders que Meta rechaza (UNDEFINED/NONE)."""
+    vacío. No copia los ads viejos. Filtra placeholders que Meta rechaza (UNDEFINED/NONE).
+    presup_override: si viene (ABO), fija ese presupuesto diario en vez de copiar el del origen."""
     F = ("name,billing_event,optimization_goal,targeting,promoted_object,attribution_spec,"
          "destination_type,optimization_sub_event,pacing_type,daily_budget")
     s = _ads_call("GET", str(src_id), params={"fields": F})
@@ -7261,8 +7274,16 @@ def _ads_adset_dup(acct, src_id, campaign_id, nombre, pixel, status, start=None)
         p["optimization_sub_event"] = s["optimization_sub_event"]
     if s.get("pacing_type"):
         p["pacing_type"] = s["pacing_type"]
-    if s.get("daily_budget"):
-        p["daily_budget"] = s["daily_budget"]        # ABO: copia el presupuesto del conjunto
+    _po = None
+    try:
+        _po = int(round(float(presup_override))) if (presup_override not in (None, "", 0, "0")) else None
+    except Exception:
+        _po = None
+    if _po:                                          # ABO: presupuesto que puso el usuario a mano
+        p["daily_budget"] = _po * 100
+        p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"
+    elif s.get("daily_budget"):
+        p["daily_budget"] = s["daily_budget"]        # ABO: copia el presupuesto del conjunto origen
         p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"  # ABO: la estrategia de puja va en el conjunto
     if status == "ACTIVE":
         p["start_time"] = start or _ads_start_5am()
@@ -7448,7 +7469,8 @@ def _ads_run(job, params):
                 st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj)
                 nombre_conj = base if n_conj == 1 else ("%s %d" % (base, c + 1))
                 if modo_conj == "dup" and src:              # copia la config de un conjunto existente
-                    adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start))
+                    adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start,
+                                                 presup_override=params.get("presup_conjunto")))
                 else:                                        # conjunto nuevo estándar
                     adsets.append(_ads_crear(acct, "adsets",
                                              _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado, start)))
@@ -7733,16 +7755,14 @@ def pf_ads_conjuntos():
     if not cid:
         return jsonify({"ok": False, "conjuntos": []})
     try:
+        # UNA sola llamada (antes hacía 1 request por conjunto para contar ads → N+1 lento que
+        # timeouteaba y dejaba el desplegable vacío). Traemos nombre, estado y presupuesto de una.
         r = _ads_call("GET", "%s/adsets" % cid,
-                      params={"fields": "name,effective_status", "limit": 60})
-        out = []
-        for s in r.get("data", []):
-            try:
-                n = len(_ads_call("GET", "%s/ads" % s["id"], params={"fields": "id", "limit": 100}).get("data", []))
-            except Exception:
-                n = 0
-            out.append({"id": s["id"], "name": s.get("name", ""),
-                        "activo": s.get("effective_status") == "ACTIVE", "n_ads": n})
+                      params={"fields": "name,effective_status,daily_budget", "limit": 200})
+        out = [{"id": s["id"], "name": s.get("name", ""),
+                "activo": s.get("effective_status") == "ACTIVE",
+                "presupuesto": int((s.get("daily_budget") or 0)) // 100}
+               for s in r.get("data", [])]
         out.sort(key=lambda x: int(x["id"]) if str(x["id"]).isdigit() else 0, reverse=True)
         return jsonify({"ok": True, "conjuntos": out})
     except Exception as e:
