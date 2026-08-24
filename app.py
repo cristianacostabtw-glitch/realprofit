@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-fix-suc-tn2"})
+    return jsonify({"ok": True, "v": "2026-08-24-fix-suc-tn3"})
 
 
 @app.get("/pf-diag")
@@ -9444,8 +9444,8 @@ def pf_tn_raw():
     num = str(request.args.get("num") or "").strip()
     # cargar el desplegable oficial de Andreani (sino el match exacto da siempre null)
     try:
-        _tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
-        _and_cfg(openpyxl.load_workbook(_tpl, read_only=True, data_only=True))
+        import openpyxl as _oxl
+        $1_oxl$2(_tpl, read_only=True, data_only=True))
     except Exception as e:
         return jsonify({"ok": False, "msg": "no pude cargar plantilla: " + str(e)[:100]})
     buscar = str(request.args.get("buscar") or "").strip().upper()
