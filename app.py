@@ -2525,8 +2525,8 @@ _SOLO_DASH = r"""
   fetch('/pf-ads-conjuntos?campaign_id='+cid).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){$('rpa-cjsel').innerHTML='<option value="">(no pude traer los conjuntos'+(j&&j.msg?': '+j.msg:'')+')</option>';return;}
    CJS=j.conjuntos||[];
-   if(!CJS.length){$('rpa-cjsel').innerHTML='<option value="">(esta campaña no tiene conjuntos)</option>';}
-   else {$('rpa-cjsel').innerHTML=opt(CJS.map(function(c){return {v:c.id,t:c.name+(c.presupuesto?(' · $'+c.presupuesto):'')};}));}
+   var base=[{v:'',t:'— No copiar (conjunto nuevo) —'}];
+   $('rpa-cjsel').innerHTML=opt(base.concat(CJS.map(function(c){return {v:c.id,t:c.name+(c.presupuesto?(' · $'+c.presupuesto):'')};})));
    rpaAbo();rpaCalc();
   }).catch(function(){$('rpa-cjsel').innerHTML='<option value="">(error al traer los conjuntos)</option>';});};
  // Muestra el campo de presupuesto por conjunto SOLO cuando la campaña existente es ABO y estás agregando conjunto.
@@ -2591,7 +2591,7 @@ _SOLO_DASH = r"""
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
-   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   var go=$('rpa-go');go.disabled=true;go.textContent='Lanzando…';var pr=$('rpa-prog'),bar=$('rpa-bar'),msg=$('rpa-msg');pr.style.display='block';
@@ -3685,7 +3685,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-subidor-conjuntos-abo"})
+    return jsonify({"ok": True, "v": "2026-08-24-conjunto-nuevo-sin-copiar"})
 
 
 @app.get("/pf-diag")
@@ -7471,7 +7471,17 @@ def _ads_run(job, params):
                 if modo_conj == "dup" and src:              # copia la config de un conjunto existente
                     adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start,
                                                  presup_override=params.get("presup_conjunto")))
-                else:                                        # conjunto nuevo estándar
+                elif params.get("modo_campana") == "existente":
+                    # conjunto NUEVO (sin copiar) dentro de una campaña existente:
+                    # respetá el tipo REAL de esa campaña (ABO → presupuesto en el conjunto; CBO → sin presupuesto).
+                    _abo = not bool(params.get("camp_cbo"))
+                    try:
+                        _pcj = int(float(params.get("presup_conjunto"))) if str(params.get("presup_conjunto") or "").strip() else presup
+                    except Exception:
+                        _pcj = presup
+                    adsets.append(_ads_crear(acct, "adsets",
+                                             _ads_adset_payload(nombre_conj, campaign_id, pixel, (not _abo), _pcj, estado, start)))
+                else:                                        # conjunto nuevo estándar (campaña nueva)
                     adsets.append(_ads_crear(acct, "adsets",
                                              _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado, start)))
 
