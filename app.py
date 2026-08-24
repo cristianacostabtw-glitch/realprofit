@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-duplicar"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-duplicar-fix"})
 
 
 @app.get("/pf-diag")
@@ -9140,9 +9140,10 @@ function cargarVentas(){ var box=document.getElementById('mlc'); if(!box)return;
  }).catch(function(){ box.innerHTML=err(); });
 }
 var PUBS=[];
-$1
+function cargarPubs(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/publicaciones').then(function(r){return r.json();}).then(function(j){
-  PUBS=(j&&j.items)||[]; $1
+  PUBS=(j&&j.items)||[]; if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.items||[]; if(!v.length){ box.innerHTML=vacio('Sin publicaciones activas.'); return; }
+  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+v.length+' publicaciones</div>'
    +'<div style="overflow:auto"><table><thead><tr><th></th>'+TH+'Publicación</th><th style="text-align:right">Precio</th><th style="text-align:right">Stock</th>'+TH+'SKU</th><th></th></tr></thead><tbody>'
    +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'<div style="font-size:10px;color:#5b6b82">'+esc(it.id)+'</div></td><td style="text-align:right">'+money(it.price)+'</td><td style="text-align:right">'+(it.stock!=null?it.stock:'')+'</td><td><input id="sku_'+it.id+'" value="'+esc(it.sku)+'" placeholder="SKU" style="width:110px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarSku(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <button onclick="duplicarPub(\''+it.id+'\')" style="background:#111c2b;border:1px solid #22324a;color:#cbd5e1;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px">Duplicar</button> <span id="skum_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
  }).catch(function(){ box.innerHTML=err(); });
