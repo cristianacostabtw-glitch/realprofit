@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-revert-chips-kpi"})
+    return jsonify({"ok": True, "v": "2026-08-24-bot-por-cuenta"})
 
 
 @app.get("/pf-diag")
@@ -8834,7 +8834,11 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             imagenes.append((data, mime))
 
     d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
-                          extra_instr=conf.get("bot_instr", ""))
+                          extra_instr=conf.get("bot_instr", ""),
+                          marca=conf.get("bot_marca", ""),
+                          pago={"titular": conf.get("bot_pago_titular", ""),
+                                "alias": conf.get("bot_pago_alias", ""),
+                                "cuit": conf.get("bot_pago_cuit", "")})
     conv["bot_motivo"] = d.get("motivo", ""); conv["bot_cat"] = d.get("categoria", "")
 
     if d.get("responder") and (d.get("mensaje") or "").strip():
@@ -9400,14 +9404,22 @@ function renderBot(c){
   +'<label style="font-weight:700">Auto-respondedor</label>'
   +'<button id="botTgl" onclick="toggleBot()" style="border:0;border-radius:20px;padding:7px 16px;font-weight:700;cursor:pointer;color:#fff;background:'+(BOTON?'#25D366':'#94a3b8')+'">'+(BOTON?'ENCENDIDO':'APAGADO')+'</button>'
   +'<span id="botTglTxt" style="font-size:12px;color:#667781">'+(BOTON?'está respondiendo solo':'apagado, no responde')+'</span></div>'
+  +'<div class="fld" style="margin-bottom:10px"><label>Marca / nombre de la tienda</label><input id="botMarca" value="'+esc(c.marca||'')+'" placeholder="Ej: VisionPure" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><small style="color:#667781">Con este nombre se presenta el bot. Cada cuenta el suyo, no se mezcla.</small></div>'
   +'<div class="fld" style="margin-bottom:10px"><label>Modo</label><select id="botMode" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="auto"'+(c.mode!='draft'?' selected':'')+'>Auto-enviar (responde solo)</option><option value="draft"'+(c.mode=='draft'?' selected':'')+'>Borrador (lo escribe, lo mandás vos)</option></select></div>'
   +'<div class="fld" style="margin-bottom:10px"><label>¿En qué WhatsApp responde?</label><select id="botCanal" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="api"'+(c.canal=='api'||!c.canal?' selected':'')+'>API oficial (el número de arriba)</option><option value="web"'+(c.canal=='web'?' selected':'')+'>WhatsApp Web (el del QR)</option><option value="ambos"'+(c.canal=='ambos'?' selected':'')+'>Los dos</option></select></div>'
   +'<div class="fld" style="margin-bottom:10px"><label>¿Cuándo responde?</label><select id="botSched" onchange="schedUI()" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="24h"'+(c.sched!='franja'?' selected':'')+'>24 horas (siempre)</option><option value="franja"'+(c.sched=='franja'?' selected':'')+'>Solo en un horario (cuando no atendés vos)</option></select>'
   +'<div id="schedBox" style="display:'+(c.sched=='franja'?'flex':'none')+';gap:8px;align-items:center;margin-top:8px"><span style="font-size:13px;color:#667781">Responde de</span><input id="botDesde" type="time" value="'+esc(c.desde||'20:00')+'" style="padding:6px;border:1px solid var(--line);border-radius:8px"><span style="font-size:13px;color:#667781">a</span><input id="botHasta" type="time" value="'+esc(c.hasta||'09:00')+'" style="padding:6px;border:1px solid var(--line);border-radius:8px"><span style="font-size:12px;color:#667781">(hora Argentina)</span></div></div>'
   +'<div class="fld"><label>Instrucciones para el bot (su cerebro)</label>'
   +'<textarea id="botInstr" rows="6" style="width:100%;font-family:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="Escribile indicaciones para que se entiendan. Ej: si preguntan por envío a Córdoba, decí 3-5 días. No ofrezcas descuentos. Si mandan un audio, avisá que ya lo escuchás.">'+esc(c.instr||'')+'</textarea>'
-  +'<small style="color:#667781">Lo que pongas acá se le suma al cerebro y lo respeta en cada respuesta. Así lo vas afinando.</small></div>'
-  +'<button class="btn" onclick="saveBot()" style="margin-top:6px">Guardar</button>'
+  +'<small style="color:#667781">Poné acá TODO lo de tu marca: qué vendés, precios, link de compra, envíos, formas de pago, promos y cómo se usa. El bot SOLO sabe lo que escribas acá (no inventa).</small></div>'
+  +'<div style="font-weight:700;margin:14px 0 4px;font-size:13px">Datos de pago (para leer comprobantes) <span style="color:#94a3b8;font-weight:400">opcional</span></div>'
+  +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+  +'<input id="botPagTit" value="'+esc(c.pago_titular||'')+'" placeholder="Titular de la cuenta" style="flex:1;min-width:150px;padding:8px;border:1px solid var(--line);border-radius:8px">'
+  +'<input id="botPagAli" value="'+esc(c.pago_alias||'')+'" placeholder="Alias" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px">'
+  +'<input id="botPagCuit" value="'+esc(c.pago_cuit||'')+'" placeholder="CUIT" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px"></div>'
+  +'<small style="color:#667781">Si los cargás, el bot valida el comprobante contra estos datos. Si no, deja las transferencias para que las confirmes vos.</small>'
+  +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="saveBot()">Guardar</button>'
+  +'<button onclick="presetVP()" style="background:#eef2f4;color:#334;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer" title="Rellena marca, cerebro y datos de pago de VisionPure">Cargar preset VisionPure</button></div>'
   +'<div id="botMsg" style="margin-top:8px"></div>'
   +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
   +'<div style="font-weight:700;margin-bottom:4px">&#129514; Probador (no manda nada)</div>'
@@ -9419,10 +9431,25 @@ function renderBot(c){
 function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); b.textContent=BOTON?'ENCENDIDO':'APAGADO'; b.style.background=BOTON?'#25D366':'#94a3b8'; var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; syncBotTop(); }
 function schedUI(){ var b=document.getElementById('schedBox'); if(b) b.style.display=(val('botSched')=='franja')?'flex':'none'; }
 function saveBot(){
- post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),instr:document.getElementById('botInstr').value}).then(function(r){
+ post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),marca:val('botMarca'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit'),instr:document.getElementById('botInstr').value}).then(function(r){
   document.getElementById('botMsg').innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado'+(r.bot?' &#8212; bot ENCENDIDO':' &#8212; bot apagado')+'</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
   syncBotTop();
  });
+}
+var _VP_INSTR=`Qué vendemos: VisionPure, spray ocular de luteína (+ caléndula, vitamina E, mentol). Público: adultos 65+ en Argentina que sienten que pierden la vista (vista cansada, manejar de noche, leer) y sus hijos (35-55) que compran para el padre/madre.
+Precio: 1 unidad ronda $39.900 — decilo SOLO si preguntan el precio puntual, y mejor invitá a la web. No pongas listados de cuotas/envío/descuento.
+Link ÚNICO oficial de compra (todo está ahí: precios, promos, pagos, envíos y reseñas reales): https://tryvisionpure.shop/productos/visionpure-recupera-la-nitidez-que-perdiste-con-los-anos2/
+Envíos (solo si preguntan): Andreani a todo el país, a domicilio o sucursal, 3-6 días hábiles.
+Pago (solo si preguntan): por la web con MercadoPago (débito/crédito) o transferencia. NO hay contrareembolso ni retiro en persona.
+Mercado Libre: lo que se vende ahí es IMITACIÓN, no tenemos cuenta ni publicaciones.
+Modo de uso (SOLO si preguntan cómo se usa/aplica/dosis): 1 vez al día, preferible a la mañana: 2 pulverizaciones sobre el párpado cerrado y parpadear unas 5 veces, para que la luteína se absorba. La clave es la constancia. Si además preguntan cuándo se ven resultados: muchos notan la diferencia al mes / a los 2 meses.
+Salud: respondé en clave de bienestar (ayuda a recuperar nitidez / cuidar la vista con el uso constante). NUNCA digas que cura enfermedades (cataratas, maculopatía, glaucoma, DMAE, retina). No agregues "consultá con tu médico" si no lo pidieron.
+Reclamo "compré 2 y me llegó 1" (NO escalar, contestá cálido): pedí disculpas y explicá que por falta de stock de 30 ml se envió el de 60 ml, que trae la misma cantidad que 2 de 30 ml juntos (recibió todo, rinde igual, dura más), y que eso se avisaba en el mensaje de despacho. Si el reclamo es "nunca me llegó / quiero reembolso" → escalá a un humano.`;
+function presetVP(){
+  var s=function(id,v){ var e=document.getElementById(id); if(e)e.value=v; };
+  s('botMarca','VisionPure'); s('botPagTit','Maximo Benjamin Barrera'); s('botPagAli','visionpure1'); s('botPagCuit','20482009191');
+  s('botInstr',_VP_INSTR);
+  var mm=document.getElementById('botMsg'); if(mm) mm.innerHTML='<div class="msgline msgok">Preset cargado. Revisá y tocá Guardar.</div>';
 }
 // Toggle rápido del bot arriba (al lado del número)
 function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot encendido — tocá para apagar':'Bot apagado — tocá para encender'; t.innerHTML='&#129302; '+(BOTON?'ON':'OFF'); }
@@ -10262,6 +10289,10 @@ def wa_bot_config_get():
                     "canal": c.get("bot_canal", "api"),
                     "sched": c.get("bot_sched", "24h"),
                     "desde": c.get("bot_desde", "20:00"), "hasta": c.get("bot_hasta", "09:00"),
+                    "marca": c.get("bot_marca", ""),
+                    "pago_titular": c.get("bot_pago_titular", ""),
+                    "pago_alias": c.get("bot_pago_alias", ""),
+                    "pago_cuit": c.get("bot_pago_cuit", ""),
                     "activo_ahora": _bot_activo_ahora(c),
                     "conectado": bool(c.get("token") and c.get("phone_id"))})
 
@@ -10281,6 +10312,14 @@ def wa_bot_config_set():
         c["bot_mode"] = "draft" if request.form.get("mode") == "draft" else "auto"
     if "instr" in request.form:
         c["bot_instr"] = (request.form.get("instr") or "")[:6000]
+    if "marca" in request.form:
+        c["bot_marca"] = (request.form.get("marca") or "")[:80]
+    if "pago_titular" in request.form:
+        c["bot_pago_titular"] = (request.form.get("pago_titular") or "")[:120]
+    if "pago_alias" in request.form:
+        c["bot_pago_alias"] = (request.form.get("pago_alias") or "")[:120]
+    if "pago_cuit" in request.form:
+        c["bot_pago_cuit"] = (request.form.get("pago_cuit") or "")[:20]
     if "canal" in request.form:
         v = request.form.get("canal")
         c["bot_canal"] = v if v in ("api", "web", "ambos") else "api"
@@ -10317,7 +10356,11 @@ def wa_bot_probar():
     if not agente_ia.disponible():
         return jsonify({"ok": False, "msg": "Falta ANTHROPIC_API_KEY en el servidor (Render → Environment)"})
     hist = [{"dir": "in", "texto": txt}]
-    d = agente_ia.decidir(hist, nombre=nombre, extra_instr=c.get("bot_instr", ""))
+    d = agente_ia.decidir(hist, nombre=nombre, extra_instr=c.get("bot_instr", ""),
+                          marca=c.get("bot_marca", ""),
+                          pago={"titular": c.get("bot_pago_titular", ""),
+                                "alias": c.get("bot_pago_alias", ""),
+                                "cuit": c.get("bot_pago_cuit", "")})
     return jsonify({"ok": True, "d": d})
 
 
