@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-coord-strict"})
+    return jsonify({"ok": True, "v": "2026-08-24-envialo-passthrough"})
 
 
 @app.get("/pf-diag")
@@ -5162,6 +5162,52 @@ def _and_suc_coord(lat, lng, es_hop, punto_id="", sucs=None):
     return None
 
 
+def _hop_passthrough(zeny):
+    """El nombre del punto que da Envialo/TiendaNube (shipping_pickup_details.name) ES el punto
+    oficial que eligió el cliente. Si es un HOP claro de Andreani (PUNTO ANDREANI HOP + dirección
+    con número), lo devolvemos normalizado para el Excel AUNQUE no esté en nuestra plantilla:
+    Andreani lo acepta igual — Envialo escribe estos nombres tal cual y funcionan (verificado con
+    'PUNTO ANDREANI HOP SAN MARTIN 1927', que no está en ningún desplegable y despacha bien).
+    Formato = MAYÚSCULAS sin acentos, como los escribe Envialo. Sino → None."""
+    z = str(zeny or "")
+    i = z.upper().find("PUNTO ANDREANI HOP")
+    if i >= 0:
+        z = z[i:]
+    else:
+        j = z.upper().find("HOP ")
+        if j < 0:
+            return None
+        z = "PUNTO ANDREANI " + z[j:]
+    z = _re_and.sub(r"\s*\(.*?\)\s*$", "", z)     # saca '(nombre de la tienda)' al final
+    z = _re_and.sub(r"\s*[-–—]\s*", " ", z)        # 'HOP - Av X' → 'HOP Av X'
+    out = _and_normP(z)                            # MAYÚSCULAS, sin acentos, espacios simples
+    if not out.startswith("PUNTO ANDREANI HOP") or not _re_and.search(r"\d", out):
+        return None
+    return out
+
+
+_SUC_GENERICO = ("ANDREANI SUCURSAL", "PUNTO DE RETIRO", "ANDREANI PUNTO DE RETIRO",
+                 "SUCURSAL", "RETIRO EN SUCURSAL", "CORREO ARGENTINO", "OCA", "ANDREANI")
+
+
+def _punto_passthrough(zeny):
+    """El punto que da Envialo (HOP de terceros O sucursal propia de Andreani) es la fuente de
+    verdad: lo usamos tal cual aunque no esté en nuestra plantilla (Andreani lo acepta). Cubre:
+      - HOP:       'PUNTO ANDREANI HOP <calle> <nº>'
+      - Sucursal:  'CIUDAD (DETALLE)'  (ej 'CANNING (AV CASTEX)')
+    Rechaza etiquetas GENÉRICAS sin punto específico (esas van a coord/vivo/REVISAR)."""
+    hp = _hop_passthrough(zeny)
+    if hp:
+        return hp
+    s = _re_and.sub(r"^.*?[-–—]\s*", "", str(zeny or "")).strip()   # saca 'Andreani Sucursal —'
+    if _re_and.match(r"^[^()]+\([^()]+\)\s*$", s):                  # formato 'CIUDAD (DETALLE)'
+        out = _and_normP(s)
+        base = _and_normP(_re_and.sub(r"\s*\(.*\)\s*$", "", s))     # la parte antes del paréntesis
+        if len(out) >= 5 and base and base not in _SUC_GENERICO and "PUNTO DE RETIRO" not in out:
+            return out
+    return None
+
+
 _AND_DOM_PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto", "s/n", "sn",
                "sin numero", "sin número", "local", "plata baja", "planta baja", "pb")
 
@@ -5253,28 +5299,13 @@ def pf_despachos_excel():
         tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
         email = r.get("email") or ""
         if r["tipo"] == "sucursal":
-            # resolver al nombre OFICIAL de Andreani: primero la lista de la plantilla,
-            # si no matchea (HOP nuevo), byCoordenadas en vivo (público). Nunca a otra provincia.
+            # MISMA cadena que el preview (/pf-suc-preview): exacto → nombre de Envialo (HOP/sucursal,
+            # aunque no esté en la plantilla; Andreani lo acepta) → coordenadas → vivo → REVISAR.
+            # Si no lo resolvemos con certeza NO inventamos una sucursal (mandaría a otro lado).
             suc_raw = r.get("suc_nombre") or ""
-            of = _and_suc_exacto(suc_raw)                      # 1) match EXACTO al nombre oficial (100% seguro)
-            conf = bool(of)
-            if not conf:                                       # 2) por COORDENADAS del punto elegido (TiendaNube)
-                try:
-                    of = _and_suc_coord(r.get("suc_lat"), r.get("suc_lng"),
-                                        "HOP" in suc_raw.upper(), r.get("suc_pid"), sucs)
-                except Exception:
-                    of = None
-                conf = bool(of)
-            if not conf:
-                try:
-                    live = _and_suc_live(suc_raw, r.get("cp") or "")   # 3) cruce en vivo por dirección (Shopify)
-                except Exception:
-                    live = None
-                if live:
-                    of, conf = live, True
-            if not conf or not of:
-                # No pudimos mapear a una sucursal OFICIAL de Andreani con confianza → NO inventamos
-                # una sucursal cualquiera (mandaría el paquete a otro lado). Lo marcamos para revisar.
+            of, _via = _resolver_suc_completo(suc_raw, r.get("suc_lat"), r.get("suc_lng"),
+                                              r.get("suc_pid"), r.get("cp"), sucs)
+            if not of:
                 revisar.append(str(r["num"]))
                 continue
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
@@ -9493,10 +9524,13 @@ def _tn_headers(token) -> dict:
 
 def _resolver_suc_completo(suc_raw, lat, lng, pid, cp, sucs):
     """Corre la MISMA cadena del generador de Excel y devuelve (sucursal_oficial, via).
-    exacto → coordenadas del punto → vivo por dirección → None (revisar)."""
+    exacto → nombre de Envialo (HOP/sucursal) → coordenadas del punto → vivo → None (revisar)."""
     of = _and_suc_exacto(suc_raw)
     if of:
         return of, "exacto"
+    pt = _punto_passthrough(suc_raw)   # el nombre que da Envialo ES el punto que eligió el cliente
+    if pt:
+        return pt, "envialo"
     try:
         of = _and_suc_coord(lat, lng, "HOP" in str(suc_raw).upper(), pid, sucs)
     except Exception:
