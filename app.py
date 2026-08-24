@@ -1720,16 +1720,7 @@ _SOLO_DASH = r"""
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
-    try{ _matarChips(); }catch(e){}
     try{ hookCur(); }catch(e){} }
-  // Los chips "↑ +100%" de las tarjetas KPI son placeholders estáticos del pf.html (no hay comparación real
-  // con período anterior). Quedan mostrando +100% en tienda nueva / al inicio → los apagamos.
-  function _matarChips(){ try{
-    var sy=document.querySelectorAll('.material-symbols-outlined');
-    for(var i=0;i<sy.length;i++){ var t=(sy[i].textContent||'').trim();
-      if(t==='arrow_upward'||t==='arrow_downward'){ var ch=sy[i].parentElement;
-        if(ch && /%/.test(ch.textContent||'') && ch.style.display!=='none'){ ch.style.display='none'; } } }
-  }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
@@ -3682,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-barra-wa-prolija"})
+    return jsonify({"ok": True, "v": "2026-08-24-revert-chips-kpi"})
 
 
 @app.get("/pf-diag")
