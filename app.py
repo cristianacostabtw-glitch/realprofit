@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-caja-acumulada-editable"})
+    return jsonify({"ok": True, "v": "2026-08-23-wa-web-qr-chats"})
 
 
 @app.get("/pf-diag")
@@ -8984,6 +8984,7 @@ _WA_PAGE = """<!doctype html>
  <span class="num" id="num"></span>
  <button id="botTop" style="display:none;align-items:center;gap:4px" onclick="botTopToggle()" title="Bot">&#129302; OFF</button>
  <button id="bChats" style="display:none;background:rgba(255,255,255,.32)" onclick="waTab('chats')">&#128172; Chats</button>
+ <button id="bWeb" style="display:none" onclick="waTab('web')">&#127760; Web</button>
  <button id="bTransf" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
  <button id="bCarr" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
  <button id="bBot" style="display:none" onclick="openBot()">&#129302; Bot</button>
@@ -9053,6 +9054,7 @@ function renderApp(){
  document.getElementById('bTpl').style.display='';
  document.getElementById('bCfg').style.display='';
  document.getElementById('bChats').style.display='';
+ document.getElementById('bWeb').style.display='';
  document.getElementById('bTransf').style.display='';
  document.getElementById('bCarr').style.display='';
  loadBotTop();
@@ -9066,11 +9068,81 @@ function renderApp(){
 // ───── Pestañas Transferencias / Carritos ─────
 var TAB='chats', TDATA=[], TSEL={};
 function waTab(t){ TAB=t; var p=document.getElementById('panel'); var b1=document.getElementById('bChats');
- [['bChats','chats'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.style.background=(x[1]===t?'rgba(255,255,255,.32)':'rgba(255,255,255,.16)'); });
+ [['bChats','chats'],['bWeb','web'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.style.background=(x[1]===t?'rgba(255,255,255,.32)':'rgba(255,255,255,.16)'); });
+ if(WEBPOLL){ clearInterval(WEBPOLL); WEBPOLL=null; }
  if(t==='chats'){ p.style.display='none'; return; }
  p.style.display='block'; p.innerHTML='<div style="max-width:940px;margin:0 auto;color:#334">Cargando…</div>';
- TSEL={}; if(t==='transfers') loadTransfers(); else loadCarritos();
+ TSEL={}; if(t==='web') loadWeb(); else if(t==='transfers') loadTransfers(); else loadCarritos();
 }
+
+// ───── Pestaña WhatsApp WEB (Baileys / QR) ─────
+var WEBPOLL=null;
+function webBox(inner){ return '<div style="max-width:720px;margin:0 auto">'
+  +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#127760; WhatsApp Web</h2><span style="color:#667">escaneás el QR con tu celular</span></div>'
+  +'<div style="color:#556;font-size:13px;margin-bottom:16px">Conectás tu WhatsApp escaneando un QR (como WhatsApp Web en la compu). Queda vinculado 24/7. Sirve para que el <b>bot</b> conteste fuera de horario. Aislado por cuenta.</div>'
+  +inner+'</div>'; }
+function loadWeb(){ var p=document.getElementById('panel');
+  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">Consultando estado…</div>');
+  get('/wa-web-status').then(function(s){ renderWeb(s); }).catch(function(){ renderWeb({ok:false}); });
+}
+function renderWeb(s){ if(TAB!=='web')return; var p=document.getElementById('panel');
+  var st=(s&&s.status)||'disconnected';
+  if(s&&s.msg&&!s.ok){ p.innerHTML=webBox('<div style="background:#fdeaea;color:#c0392b;padding:14px;border-radius:10px">'+esc(s.msg)+'</div>'); return; }
+  if(st==='connected'){ webLoadChats(s); return; }
+  if(st==='qr'){ webShowQr(); return; }
+  // desconectado / conectando → botón conectar
+  var extra=(st==='connecting')?'<div style="color:#667;font-size:13px;margin-top:10px">Conectando… si no aparece el QR en unos segundos, tocá Conectar de nuevo.</div>':'';
+  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:30px;text-align:center">'
+    +'<div style="font-size:15px;color:#243;margin-bottom:16px">Todavía no está conectado.</div>'
+    +'<button onclick="webConnect()" style="background:#25D366;color:#fff;border:0;border-radius:10px;padding:13px 26px;font-weight:700;font-size:15px;cursor:pointer">Conectar WhatsApp Web</button>'
+    +extra+'</div>');
+}
+function webConnect(){ var p=document.getElementById('panel');
+  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:30px;text-align:center;color:#667">Generando QR… esperá unos segundos.</div>');
+  post('/wa-web-connect',{}).then(function(r){
+    if(r&&r.qr){ webShowQr(r.qr); }
+    else if(r&&r.status==='connected'){ webLoadChats(r); }
+    else { webPollQr(); }
+  }).catch(function(){ renderWeb({ok:false,msg:'No se pudo conectar con el servicio Web.'}); });
+}
+function webShowQr(qr){ if(TAB!=='web')return; var p=document.getElementById('panel');
+  var img=qr?'<img src="'+qr+'" style="width:280px;height:280px;border-radius:8px">':'<div style="width:280px;height:280px;display:flex;align-items:center;justify-content:center;color:#999">cargando QR…</div>';
+  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center">'
+    +'<div style="font-size:15px;color:#243;margin-bottom:16px;font-weight:600">Escaneá este código con tu WhatsApp</div>'
+    +'<div style="display:inline-block;padding:10px;background:#fff;border:1px solid #e3e8ec;border-radius:12px">'+img+'</div>'
+    +'<ol style="text-align:left;max-width:380px;margin:18px auto 0;color:#556;font-size:13px;line-height:1.7"><li>Abrí <b>WhatsApp</b> en tu celular.</li><li>Andá a <b>Ajustes &#8594; Dispositivos vinculados</b>.</li><li>Tocá <b>Vincular un dispositivo</b> y escaneá.</li></ol>'
+    +'<div id="webqrmsg" style="color:#667;font-size:13px;margin-top:14px">Esperando que escanees…</div></div>');
+  if(!qr) webPollQr(); else webPollStatus();
+}
+function webPollQr(){ if(WEBPOLL)clearInterval(WEBPOLL);
+  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;}
+    get('/wa-web-qr').then(function(r){ if(r&&r.status==='connected'){ clearInterval(WEBPOLL); loadWeb(); }
+      else if(r&&r.qr){ var im=document.querySelector('#panel img'); if(im){ im.src=r.qr; } else { webShowQr(r.qr); } } });
+  },2500);
+}
+function webPollStatus(){ if(WEBPOLL)clearInterval(WEBPOLL);
+  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;}
+    get('/wa-web-status').then(function(s){ if(s&&s.status==='connected'){ clearInterval(WEBPOLL); loadWeb(); }
+      else if(s&&s.status==='qr'){ get('/wa-web-qr').then(function(r){ var im=document.querySelector('#panel img'); if(r&&r.qr&&im)im.src=r.qr; }); } });
+  },2500);
+}
+function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('panel');
+  var me=(s&&s.me&&s.me.name)?(' — '+esc(s.me.name)):'';
+  p.innerHTML=webBox('<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div style="color:#0a7d3c;font-weight:700">&#10003; Conectado'+me+'</div>'
+    +'<button onclick="webLogout()" style="background:#e8eef0;color:#c0392b;border:0;border-radius:9px;padding:8px 14px;font-weight:600;cursor:pointer">Desconectar</button></div>'
+    +'<div id="webchats" style="background:#fff;border-radius:12px;overflow:hidden"><div style="padding:24px;text-align:center;color:#667">Trayendo chats…</div></div>');
+  get('/wa-web-chats?limit=60').then(function(r){ var box=document.getElementById('webchats'); if(!box)return;
+    var cs=(r&&r.chats)||[];
+    if(!cs.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:#667">Todavía no hay chats (o están sincronizando). Apenas te escriban aparecen acá.</div>'; return; }
+    box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#128C7E;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">'+esc((c.name||'?').trim().charAt(0).toUpperCase())+'</div>');
+      var un=c.unread?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:1px 7px;font-size:11px;font-weight:700">'+c.unread+'</span>'):'';
+      return '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid #eef2f4">'+av
+        +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21">'+esc(c.name||c.tel)+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
+    }).join('');
+  }).catch(function(){ var box=document.getElementById('webchats'); if(box)box.innerHTML='<div style="padding:24px;text-align:center;color:#c0392b">No se pudieron traer los chats.</div>'; });
+}
+function webLogout(){ if(!confirm('¿Desconectar el WhatsApp Web de esta cuenta? Vas a tener que escanear el QR de nuevo.'))return;
+  post('/wa-web-logout',{}).then(function(){ loadWeb(); }); }
 function _money(v){ v=Math.round(Number(v)||0); return '$'+v.toLocaleString('es-AR'); }
 function _tel10(k){ return String(k||''); }
 function loadTransfers(){ get('/wa-transfers').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
@@ -10248,6 +10320,74 @@ def wa_web_hook():
     except Exception:
         pass
     return jsonify({"ok": True})
+
+
+# ── Puente con el servicio de WhatsApp Web (Baileys) — todo aislado por email ──
+def _wa_web_call(method, path, email, extra=None, timeout=25):
+    """Habla con el servicio Node pasando siempre acc=email (aislación). (resp, json|None)."""
+    if not (WA_WEB_URL and WA_WEB_SECRET):
+        return None, {"ok": False, "msg": "El servicio de WhatsApp Web no está configurado (faltan WA_WEB_URL / WA_WEB_SECRET)."}
+    try:
+        h = {"x-wa-secret": WA_WEB_SECRET}
+        body = dict(extra or {}); body["acc"] = email
+        if method == "GET":
+            r = requests.get(WA_WEB_URL + path, headers=h, params=body, timeout=timeout)
+        else:
+            r = requests.post(WA_WEB_URL + path, headers=h, json=body, timeout=timeout)
+        return r, (r.json() if r.content else {})
+    except Exception as e:
+        return None, {"ok": False, "msg": "No se pudo hablar con el servicio Web: " + str(e)[:100]}
+
+
+@app.post("/wa-web-connect")
+def wa_web_connect():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    # aseguro un lugar para la config del bot aunque use SOLO WhatsApp Web (sin Cloud API)
+    toks = _wa_tokens()
+    if email not in toks:
+        toks[email] = {"web": True}
+        _wa_save_tokens(toks)
+    _r, j = _wa_web_call("POST", "/connect", email)
+    return jsonify(j if isinstance(j, dict) else {"ok": False})
+
+
+@app.get("/wa-web-status")
+def wa_web_status():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    _r, j = _wa_web_call("GET", "/status", email, timeout=12)
+    return jsonify(j if isinstance(j, dict) else {"ok": False})
+
+
+@app.get("/wa-web-qr")
+def wa_web_qr():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    _r, j = _wa_web_call("GET", "/qr", email, timeout=12)
+    return jsonify(j if isinstance(j, dict) else {"ok": False})
+
+
+@app.get("/wa-web-chats")
+def wa_web_chats():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "chats": []})
+    limit = request.args.get("limit", "60")
+    _r, j = _wa_web_call("GET", "/chats", email, extra={"limit": limit}, timeout=40)
+    return jsonify(j if isinstance(j, dict) else {"ok": False, "chats": []})
+
+
+@app.post("/wa-web-logout")
+def wa_web_logout():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    _r, j = _wa_web_call("POST", "/logout", email)
+    return jsonify(j if isinstance(j, dict) else {"ok": False})
 
 
 @app.post("/wa-enviar")
