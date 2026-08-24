@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-bpu-sku"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-duplicar"})
 
 
 @app.get("/pf-diag")
@@ -8696,6 +8696,83 @@ def meli_publicaciones():
     return jsonify({"ok": True, "items": items, "total": len(ids)})
 
 
+@app.post("/meli/duplicar")
+def meli_duplicar():
+    """Crea una publicación NUEVA copiando una existente (título/precio/fotos/atributos/envío).
+    La deja lista para revisar/editar en ML. Devuelve el id y el link de la nueva."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    d = request.get_json(silent=True) or {}
+    src = (d.get("id") or "").strip()
+    if not src:
+        return jsonify({"ok": False, "msg": "falta el item origen"})
+    try:
+        s = requests.get("%s/items/%s" % (MELI_API, src), headers={"Authorization": "Bearer " + tok}, timeout=25).json()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100]})
+    if not s.get("id"):
+        return jsonify({"ok": False, "msg": "no encontré la publicación origen"})
+    titulo = (d.get("title") or s.get("title") or "").strip()[:60]
+    try:
+        qty = int(d.get("stock")) if d.get("stock") not in (None, "") else 1
+    except Exception:
+        qty = 1
+    payload = {
+        "title": titulo,
+        "category_id": s.get("category_id"),
+        "price": d.get("price") or s.get("price"),
+        "currency_id": s.get("currency_id") or "ARS",
+        "available_quantity": max(1, qty),
+        "buying_mode": s.get("buying_mode") or "buy_it_now",
+        "listing_type_id": s.get("listing_type_id") or "gold_special",
+        "condition": s.get("condition") or "new",
+        "pictures": [{"source": p.get("url")} for p in (s.get("pictures") or []) if p.get("url")],
+    }
+    attrs = []
+    for a in (s.get("attributes") or []):
+        if a.get("id") and (a.get("value_id") or a.get("value_name")):
+            at = {"id": a["id"]}
+            if a.get("value_id"):
+                at["value_id"] = a["value_id"]
+            if a.get("value_name"):
+                at["value_name"] = a["value_name"]
+            attrs.append(at)
+    if attrs:
+        payload["attributes"] = attrs
+    if s.get("shipping"):
+        payload["shipping"] = s["shipping"]
+    if s.get("sale_terms"):
+        payload["sale_terms"] = s["sale_terms"]
+    try:
+        r = requests.post("%s/items" % MELI_API,
+                          headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                          json=payload, timeout=45)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    if r.status_code >= 400:
+        causa = ""
+        try:
+            causa = "; ".join(c.get("message", "") for c in (j.get("cause") or []))[:150]
+        except Exception:
+            pass
+        return jsonify({"ok": False, "msg": (causa or j.get("message") or "error %s" % r.status_code)[:180]})
+    newid = j.get("id")
+    try:  # copiar la descripción
+        desc = requests.get("%s/items/%s/description" % (MELI_API, src), headers={"Authorization": "Bearer " + tok}, timeout=20).json()
+        if desc.get("plain_text"):
+            requests.post("%s/items/%s/description" % (MELI_API, newid),
+                          headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                          json={"plain_text": desc["plain_text"]}, timeout=20)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "id": newid, "permalink": j.get("permalink", ""), "title": j.get("title", "")})
+
+
 @app.post("/meli/sku-set")
 def meli_sku_set():
     email = _user_actual()
@@ -9062,16 +9139,22 @@ function cargarVentas(){ var box=document.getElementById('mlc'); if(!box)return;
    +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')+'</tbody></table></div>';
  }).catch(function(){ box.innerHTML=err(); });
 }
-function cargarPubs(){ var box=document.getElementById('mlc'); if(!box)return;
+var PUBS=[];
+$1
  fetch('/meli/publicaciones').then(function(r){return r.json();}).then(function(j){
-  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.items||[]; if(!v.length){ box.innerHTML=vacio('Sin publicaciones activas.'); return; }
-  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+v.length+' publicaciones</div>'
+  PUBS=(j&&j.items)||[]; $1
    +'<div style="overflow:auto"><table><thead><tr><th></th>'+TH+'Publicación</th><th style="text-align:right">Precio</th><th style="text-align:right">Stock</th>'+TH+'SKU</th><th></th></tr></thead><tbody>'
-   +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'<div style="font-size:10px;color:#5b6b82">'+esc(it.id)+'</div></td><td style="text-align:right">'+money(it.price)+'</td><td style="text-align:right">'+(it.stock!=null?it.stock:'')+'</td><td><input id="sku_'+it.id+'" value="'+esc(it.sku)+'" placeholder="SKU" style="width:110px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarSku(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <span id="skum_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
+   +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'<div style="font-size:10px;color:#5b6b82">'+esc(it.id)+'</div></td><td style="text-align:right">'+money(it.price)+'</td><td style="text-align:right">'+(it.stock!=null?it.stock:'')+'</td><td><input id="sku_'+it.id+'" value="'+esc(it.sku)+'" placeholder="SKU" style="width:110px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarSku(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <button onclick="duplicarPub(\''+it.id+'\')" style="background:#111c2b;border:1px solid #22324a;color:#cbd5e1;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px">Duplicar</button> <span id="skum_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
  }).catch(function(){ box.innerHTML=err(); });
 }
 function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.getElementById('skum_'+id); if(!inp)return; if(m){m.textContent='…';m.style.color='#7aa2c8';}
  post('/meli/sku-set',{id:id,sku:inp.value}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓';m.style.color='#34d399';} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
+}
+function duplicarPub(id){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; var t=prompt('Título de la publicación NUEVA (copia de esta):', it.title||''); if(t===null)return;
+ var m=document.getElementById('skum_'+id); if(m){m.textContent='Duplicando…';m.style.color='#7aa2c8';}
+ post('/meli/duplicar',{id:id,title:t}).then(function(r){ if(!m)return;
+  if(r&&r.ok){ m.innerHTML='✓ creada '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver</a>'):''); m.style.color='#34d399'; setTimeout(cargarPubs,1500); }
+  else { m.textContent=(r&&r.msg)||'error'; m.style.color='#e0637f'; } });
 }
 var STK30={items:[],bpu:{},stock30:null};
 function bpuAuto(t){ t=(t||'').toLowerCase(); var m=t.match(/x\s?([2-9])\b/); if(m)return +m[1]; m=t.match(/(\d)\s*meses/); if(m&&+m[1]>=2&&+m[1]<=9)return +m[1]; if(t.indexOf('cuatro')>=0)return 4; if(t.indexOf('tres')>=0)return 3; if(t.indexOf('dos')>=0)return 2; return 1; }
