@@ -8635,8 +8635,8 @@ WA_TOKENS = DATA_DIR / "wa_tokens.json"   # {email: {phone_id, token, waba_id, v
 WA_CHATS = DATA_DIR / "wa_chats.json"     # {email: {wa_id: {name, updated, messages:[...]}}}
 WA_GRAPH = "https://graph.facebook.com/v21.0"
 # Servicio WhatsApp Web (Baileys), corre aparte en Render. RealProfit le habla por HTTP.
-WA_WEB_URL = os.environ.get("WA_WEB_URL", "").rstrip("/")     # ej https://realprofit-wa-web.onrender.com
-WA_WEB_SECRET = os.environ.get("WA_WEB_SECRET", "")           # mismo secret que el servicio Node
+WA_WEB_URL = _os.environ.get("WA_WEB_URL", "").rstrip("/")     # ej https://realprofit-wa-web.onrender.com
+WA_WEB_SECRET = _os.environ.get("WA_WEB_SECRET", "")           # mismo secret que el servicio Node
 
 
 def _wa_web_send(email, wid, text):
