@@ -3768,7 +3768,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-logo-real"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-fix-raw"})
 
 
 @app.get("/pf-diag")
@@ -8644,7 +8644,7 @@ def meli_ventas():
     return jsonify({"ok": True, "ventas": out, "total": (j.get("paging") or {}).get("total")})
 
 
-_MELI_PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+_MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>MercadoLibre — RealProfit</title>
 <style>
  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:#080c14;color:#eef3f9}
