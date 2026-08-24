@@ -1,0 +1,19 @@
+{
+  "name": "realprofit-wa-web",
+  "version": "1.0.0",
+  "description": "Servicio WhatsApp Web (Baileys) para RealProfit: QR + sesiones por cuenta + chats con foto.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  }
+}
