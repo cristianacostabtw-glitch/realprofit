@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-desp-estado-real"})
+    return jsonify({"ok": True, "v": "2026-08-23-bot-canal-horario-web"})
 
 
 @app.get("/pf-diag")
@@ -8634,6 +8634,25 @@ def desconectar_shopify():
 WA_TOKENS = DATA_DIR / "wa_tokens.json"   # {email: {phone_id, token, waba_id, verify_token, forward_url, numero}}
 WA_CHATS = DATA_DIR / "wa_chats.json"     # {email: {wa_id: {name, updated, messages:[...]}}}
 WA_GRAPH = "https://graph.facebook.com/v21.0"
+# Servicio WhatsApp Web (Baileys), corre aparte en Render. RealProfit le habla por HTTP.
+WA_WEB_URL = os.environ.get("WA_WEB_URL", "").rstrip("/")     # ej https://realprofit-wa-web.onrender.com
+WA_WEB_SECRET = os.environ.get("WA_WEB_SECRET", "")           # mismo secret que el servicio Node
+
+
+def _wa_web_send(email, wid, text):
+    """Manda un texto por el WhatsApp Web (servicio Baileys). Devuelve (ok, id, err)."""
+    if not (WA_WEB_URL and WA_WEB_SECRET):
+        return False, "", "servicio Web no configurado"
+    try:
+        r = requests.post(WA_WEB_URL + "/send",
+                          headers={"x-wa-secret": WA_WEB_SECRET},
+                          json={"acc": email, "to": wid, "text": text}, timeout=20)
+        j = r.json() if r.content else {}
+        if r.status_code >= 400 or not j.get("ok"):
+            return False, "", j.get("msg", "error %s" % r.status_code)
+        return True, "", ""
+    except Exception as e:
+        return False, "", str(e)[:120]
 
 
 def _wa_tokens():
@@ -8710,12 +8729,46 @@ def _wa_bot_send(conf, wid, text):
         return False, "", str(e)[:120]
 
 
-def _wa_bot_run(email, conf, wid, chats):
+def _bot_activo_ahora(c):
+    """¿El bot debe responder AHORA según su horario? 24h = siempre; franja = dentro del rango
+    (hora Argentina, UTC-3). Si la franja cruza medianoche (ej 20:00→09:00) lo contempla."""
+    if (c.get("bot_sched") or "24h") == "24h":
+        return True
+    try:
+        import datetime
+        now = datetime.datetime.utcnow() - datetime.timedelta(hours=3)  # AR = UTC-3
+        cur = now.hour * 60 + now.minute
+        def _mins(s):
+            p = (s or "0:0").split(":"); return int(p[0]) * 60 + int(p[1])
+        d = _mins(c.get("bot_desde") or "20:00")
+        h = _mins(c.get("bot_hasta") or "09:00")
+    except Exception:
+        return True
+    if d == h:
+        return True
+    if d < h:
+        return d <= cur < h
+    return cur >= d or cur < h  # cruza medianoche
+
+
+def _bot_canal_ok(c, canal):
+    """¿El bot está habilitado para ESTE canal ('api' o 'web')? Default: api (retrocompatible)."""
+    sel = c.get("bot_canal") or "api"
+    return sel == "ambos" or sel == canal
+
+
+def _wa_bot_run(email, conf, wid, chats, canal="api"):
     """Corre el cerebro sobre la conversación wid y (si corresponde) responde solo.
     Anti-doble-respuesta por id del último entrante. Nunca lanza."""
     try:
         import agente_ia
     except Exception:
+        return
+    if not conf.get("bot"):
+        return
+    if not _bot_canal_ok(conf, canal):          # ¿este canal (web/api) tiene el bot prendido?
+        return
+    if not _bot_activo_ahora(conf):             # ¿estamos dentro del horario configurado?
         return
     conv = (chats.get(email) or {}).get(wid)
     if not conv:
@@ -8765,7 +8818,10 @@ def _wa_bot_run(email, conf, wid, chats):
             conv["bot_draft"] = msg  # deja el borrador listo para que el humano lo mande
             conv["bot_nota"] = "📝 Borrador del bot listo"
         else:
-            ok, mid, err = _wa_bot_send(conf, wid, msg)
+            if canal == "web":
+                ok, mid, err = _wa_web_send(email, wid, msg)
+            else:
+                ok, mid, err = _wa_bot_send(conf, wid, msg)
             if ok:
                 conv["messages"].append({"dir": "out", "text": msg, "ts": _wa_now(),
                                          "type": "text", "id": mid, "status": "sent", "by": "bot"})
@@ -8901,6 +8957,7 @@ _WA_PAGE = """<!doctype html>
 <div class="top">
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
  <span class="num" id="num"></span>
+ <button id="botTop" style="display:none;align-items:center;gap:4px" onclick="botTopToggle()" title="Bot">&#129302; OFF</button>
  <button id="bChats" style="display:none;background:rgba(255,255,255,.32)" onclick="waTab('chats')">&#128172; Chats</button>
  <button id="bTransf" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
  <button id="bCarr" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
@@ -8973,6 +9030,7 @@ function renderApp(){
  document.getElementById('bChats').style.display='';
  document.getElementById('bTransf').style.display='';
  document.getElementById('bCarr').style.display='';
+ loadBotTop();
  var app=document.getElementById('app');
  app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
   +'<div class="conv" id="conv"><div class="empty">&#128172; Elegí una conversación</div></div>';
@@ -9216,6 +9274,9 @@ function renderBot(c){
   +'<button id="botTgl" onclick="toggleBot()" style="border:0;border-radius:20px;padding:7px 16px;font-weight:700;cursor:pointer;color:#fff;background:'+(BOTON?'#25D366':'#94a3b8')+'">'+(BOTON?'ENCENDIDO':'APAGADO')+'</button>'
   +'<span id="botTglTxt" style="font-size:12px;color:#667781">'+(BOTON?'está respondiendo solo':'apagado, no responde')+'</span></div>'
   +'<div class="fld" style="margin-bottom:10px"><label>Modo</label><select id="botMode" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="auto"'+(c.mode!='draft'?' selected':'')+'>Auto-enviar (responde solo)</option><option value="draft"'+(c.mode=='draft'?' selected':'')+'>Borrador (lo escribe, lo mandás vos)</option></select></div>'
+  +'<div class="fld" style="margin-bottom:10px"><label>¿En qué WhatsApp responde?</label><select id="botCanal" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="api"'+(c.canal=='api'||!c.canal?' selected':'')+'>API oficial (el número de arriba)</option><option value="web"'+(c.canal=='web'?' selected':'')+'>WhatsApp Web (el del QR)</option><option value="ambos"'+(c.canal=='ambos'?' selected':'')+'>Los dos</option></select></div>'
+  +'<div class="fld" style="margin-bottom:10px"><label>¿Cuándo responde?</label><select id="botSched" onchange="schedUI()" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="24h"'+(c.sched!='franja'?' selected':'')+'>24 horas (siempre)</option><option value="franja"'+(c.sched=='franja'?' selected':'')+'>Solo en un horario (cuando no atendés vos)</option></select>'
+  +'<div id="schedBox" style="display:'+(c.sched=='franja'?'flex':'none')+';gap:8px;align-items:center;margin-top:8px"><span style="font-size:13px;color:#667781">Responde de</span><input id="botDesde" type="time" value="'+esc(c.desde||'20:00')+'" style="padding:6px;border:1px solid var(--line);border-radius:8px"><span style="font-size:13px;color:#667781">a</span><input id="botHasta" type="time" value="'+esc(c.hasta||'09:00')+'" style="padding:6px;border:1px solid var(--line);border-radius:8px"><span style="font-size:12px;color:#667781">(hora Argentina)</span></div></div>'
   +'<div class="fld"><label>Instrucciones para el bot (su cerebro)</label>'
   +'<textarea id="botInstr" rows="6" style="width:100%;font-family:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="Escribile indicaciones para que se entiendan. Ej: si preguntan por envío a Córdoba, decí 3-5 días. No ofrezcas descuentos. Si mandan un audio, avisá que ya lo escuchás.">'+esc(c.instr||'')+'</textarea>'
   +'<small style="color:#667781">Lo que pongas acá se le suma al cerebro y lo respeta en cada respuesta. Así lo vas afinando.</small></div>'
@@ -9228,12 +9289,18 @@ function renderBot(c){
   +'<button class="btn" onclick="probarBot()">Probar</button>'
   +'<div id="botTestOut" style="margin-top:10px"></div>';
 }
-function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); b.textContent=BOTON?'ENCENDIDO':'APAGADO'; b.style.background=BOTON?'#25D366':'#94a3b8'; var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; }
+function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); b.textContent=BOTON?'ENCENDIDO':'APAGADO'; b.style.background=BOTON?'#25D366':'#94a3b8'; var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; syncBotTop(); }
+function schedUI(){ var b=document.getElementById('schedBox'); if(b) b.style.display=(val('botSched')=='franja')?'flex':'none'; }
 function saveBot(){
- post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),instr:document.getElementById('botInstr').value}).then(function(r){
+ post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),instr:document.getElementById('botInstr').value}).then(function(r){
   document.getElementById('botMsg').innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado'+(r.bot?' &#8212; bot ENCENDIDO':' &#8212; bot apagado')+'</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
+  syncBotTop();
  });
 }
+// Toggle rápido del bot arriba (al lado del número)
+function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot encendido — tocá para apagar':'Bot apagado — tocá para encender'; t.innerHTML='&#129302; '+(BOTON?'ON':'OFF'); }
+function botTopToggle(){ post('/wa-bot-config',{bot:BOTON?'0':'1'}).then(function(r){ if(r.ok){ BOTON=!!r.bot; syncBotTop(); } }); }
+function loadBotTop(){ get('/wa-bot-config').then(function(c){ if(c&&c.ok){ BOTON=!!c.bot; syncBotTop(); } }); }
 function probarBot(){
  var t=val('botTest'); if(!t)return;
  var out=document.getElementById('botTestOut'); out.innerHTML='Pensando&#8230;';
@@ -10065,6 +10132,10 @@ def wa_bot_config_get():
         key_ok = False
     return jsonify({"ok": True, "bot": bool(c.get("bot")), "mode": c.get("bot_mode", "auto"),
                     "instr": c.get("bot_instr", ""), "key_ok": key_ok,
+                    "canal": c.get("bot_canal", "api"),
+                    "sched": c.get("bot_sched", "24h"),
+                    "desde": c.get("bot_desde", "20:00"), "hasta": c.get("bot_hasta", "09:00"),
+                    "activo_ahora": _bot_activo_ahora(c),
                     "conectado": bool(c.get("token") and c.get("phone_id"))})
 
 
@@ -10083,8 +10154,22 @@ def wa_bot_config_set():
         c["bot_mode"] = "draft" if request.form.get("mode") == "draft" else "auto"
     if "instr" in request.form:
         c["bot_instr"] = (request.form.get("instr") or "")[:6000]
+    if "canal" in request.form:
+        v = request.form.get("canal")
+        c["bot_canal"] = v if v in ("api", "web", "ambos") else "api"
+    if "sched" in request.form:
+        c["bot_sched"] = "franja" if request.form.get("sched") == "franja" else "24h"
+    def _hhmm(s, dflt):
+        import re as _re
+        s = (s or "").strip()
+        return s if _re.match(r"^\d{1,2}:\d{2}$", s) else dflt
+    if "desde" in request.form:
+        c["bot_desde"] = _hhmm(request.form.get("desde"), "20:00")
+    if "hasta" in request.form:
+        c["bot_hasta"] = _hhmm(request.form.get("hasta"), "09:00")
     _wa_save_tokens(toks)
-    return jsonify({"ok": True, "bot": bool(c.get("bot")), "mode": c.get("bot_mode", "auto")})
+    return jsonify({"ok": True, "bot": bool(c.get("bot")), "mode": c.get("bot_mode", "auto"),
+                    "canal": c.get("bot_canal", "api"), "activo_ahora": _bot_activo_ahora(c)})
 
 
 @app.post("/wa-bot-probar")
@@ -10107,6 +10192,37 @@ def wa_bot_probar():
     hist = [{"dir": "in", "texto": txt}]
     d = agente_ia.decidir(hist, nombre=nombre, extra_instr=c.get("bot_instr", ""))
     return jsonify({"ok": True, "d": d})
+
+
+@app.post("/wa-web-hook")
+def wa_web_hook():
+    """Lo llama el servicio de WhatsApp Web (Baileys) por cada mensaje ENTRANTE.
+    Guarda el mensaje y, si el bot está en canal web + horario, responde solo. Aislado por cuenta."""
+    if not WA_WEB_SECRET or request.headers.get("x-wa-secret") != WA_WEB_SECRET:
+        return jsonify({"ok": False}), 403
+    d = request.get_json(silent=True) or {}
+    email = (d.get("acc") or "").strip()
+    tel = re.sub(r"\D", "", d.get("tel") or d.get("from") or "")
+    text = (d.get("text") or "").strip()
+    if not email or not tel or not text:
+        return jsonify({"ok": False, "msg": "faltan datos"})
+    cf = _wa_conf(email)
+    if not cf:
+        return jsonify({"ok": False, "msg": "cuenta sin WhatsApp"})
+    chats = _wa_chats_all()
+    conv = chats.setdefault(email, {}).setdefault(tel, {"name": d.get("name") or tel, "messages": []})
+    if d.get("name"):
+        conv["name"] = d["name"]
+    conv["messages"].append({"dir": "in", "text": text, "ts": _wa_now(), "type": "text",
+                             "id": "web:%s:%s" % (tel, d.get("ts") or ""), "canal": "web"})
+    conv["unread"] = conv.get("unread", 0) + 1
+    conv["updated"] = _wa_now()
+    _wa_save_chats(chats)
+    try:
+        _wa_bot_run(email, cf, tel, chats, canal="web")
+    except Exception:
+        pass
+    return jsonify({"ok": True})
 
 
 @app.post("/wa-enviar")
