@@ -5,7 +5,11 @@
 //   GET  /status?acc=..            -> {status: 'qr'|'connected'|'connecting'|'logged_out', me?}
 //   GET  /qr?acc=..                -> {qr} (data URL PNG) mientras esté esperando escaneo
 //   GET  /chats?acc=..&limit=..    -> [{id, name, photo, last, ts, unread}]
+//   POST /send      {acc,to,text}  -> envía un mensaje (lo usa el bot para responder)
 //   POST /logout    {acc}          -> cierra sesión y borra credenciales
+//
+// Si WA_WEB_HOOK está seteado, cada mensaje ENTRANTE nuevo (1:1) se POSTea ahí
+// ({acc, from, tel, name, text, ts}) para que RealProfit decida si el bot responde.
 //
 // La sesión se persiste en DATA_DIR/<acc-sanitizado>/  (en Render montar un disco ahí).
 
@@ -24,6 +28,7 @@ import {
 const PORT = process.env.PORT || 8090;
 const SECRET = process.env.WA_WEB_SECRET || "";
 const DATA_DIR = process.env.WA_DATA_DIR || "/var/data/wa-web";
+const HOOK = process.env.WA_WEB_HOOK || "";   // URL de RealProfit que decide si responde el bot
 const log = pino({ level: process.env.LOG_LEVEL || "warn" });
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -119,19 +124,44 @@ async function startSession(acc) {
   sock.ev.on("contacts.upsert", (cs) => {
     for (const c of cs) touch(c.id, c.notify || c.name, undefined, 0, undefined);
   });
-  sock.ev.on("messages.upsert", ({ messages }) => {
+  sock.ev.on("messages.upsert", ({ messages, type }) => {
     for (const m of messages) {
       const jid = m.key?.remoteJid;
+      if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue; // solo 1:1
       const t = m.message?.conversation
         || m.message?.extendedTextMessage?.text
         || (m.message?.imageMessage ? "📷 Foto" : "")
         || (m.message?.documentMessage ? "📄 Documento" : "")
         || (m.message?.audioMessage ? "🎤 Audio" : "");
       touch(jid, m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
+      // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
+      const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
+      if (HOOK && type === "notify" && !m.key?.fromMe && texto) {
+        notifyHook({
+          acc,
+          from: jid,
+          tel: jid.split("@")[0],
+          name: m.pushName || "",
+          text: texto,
+          ts: Number(m.messageTimestamp) || 0,
+        }).catch(() => {});
+      }
     }
   });
 
   return s;
+}
+
+// avisar a RealProfit de un mensaje entrante (fire-and-forget, sin romper si falla)
+async function notifyHook(payload) {
+  if (!HOOK) return;
+  try {
+    await fetch(HOOK, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-wa-secret": SECRET },
+      body: JSON.stringify(payload),
+    });
+  } catch {}
 }
 
 // ---------------- HTTP ----------------
@@ -200,6 +230,29 @@ app.get("/chats", async (req, res) => {
   }
   res.json({ ok: true, status: "connected", me: s.me || null, chats: out });
 });
+
+app.post("/send", async (req, res) => {
+  const acc = (req.body?.acc || "").trim();
+  let to = (req.body?.to || "").trim();
+  const text = (req.body?.text || "").toString();
+  if (!acc || !to || !text) return res.status(400).json({ ok: false, msg: "faltan acc/to/text" });
+  const s = sessions.get(acc);
+  if (!s || s.status !== "connected") return res.status(409).json({ ok: false, msg: "sesion no conectada" });
+  if (!to.includes("@")) to = to.replace(/\D/g, "") + "@s.whatsapp.net"; // acepta solo el número
+  try {
+    await s.sock.sendMessage(to, { text });
+    touch_send(s, to, text);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, msg: String(e).slice(0, 200) });
+  }
+});
+
+function touch_send(s, jid, text) {
+  const c = s.chats.get(jid) || { id: jid };
+  c.last = text;
+  s.chats.set(jid, c);
+}
 
 app.post("/logout", async (req, res) => {
   const acc = (req.body?.acc || "").trim();
