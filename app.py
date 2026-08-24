@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-fix-sucursal-tn"})
+    return jsonify({"ok": True, "v": "2026-08-24-fix-suc-tn2"})
 
 
 @app.get("/pf-diag")
@@ -9442,8 +9442,19 @@ def pf_tn_raw():
     if request.args.get("key") != "verpickup-2026":
         return jsonify({"ok": False}), 403
     num = str(request.args.get("num") or "").strip()
+    # cargar el desplegable oficial de Andreani (sino el match exacto da siempre null)
+    try:
+        _tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+        _and_cfg(openpyxl.load_workbook(_tpl, read_only=True, data_only=True))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude cargar plantilla: " + str(e)[:100]})
+    buscar = str(request.args.get("buscar") or "").strip().upper()
+    if buscar:
+        sucs = _AND_CFG.get("sucs") or []
+        matches = [s for s in sucs if buscar in str(s).upper()][:40]
+        return jsonify({"ok": True, "total_dropdown": len(sucs), "buscar": buscar, "matches": matches})
     if not num:
-        return jsonify({"ok": False, "msg": "falta num"})
+        return jsonify({"ok": False, "msg": "falta num o buscar"})
     out = []
     for email, tk in _tn_tokens().items():
         if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("store_id")):
