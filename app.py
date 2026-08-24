@@ -1720,7 +1720,16 @@ _SOLO_DASH = r"""
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
+    try{ _matarChips(); }catch(e){}
     try{ hookCur(); }catch(e){} }
+  // Los chips "↑ +100%" de las tarjetas KPI son placeholders estáticos del pf.html (no hay comparación real
+  // con período anterior). Quedan mostrando +100% en tienda nueva / al inicio → los apagamos.
+  function _matarChips(){ try{
+    var sy=document.querySelectorAll('.material-symbols-outlined');
+    for(var i=0;i<sy.length;i++){ var t=(sy[i].textContent||'').trim();
+      if(t==='arrow_upward'||t==='arrow_downward'){ var ch=sy[i].parentElement;
+        if(ch && /%/.test(ch.textContent||'') && ch.style.display!=='none'){ ch.style.display='none'; } } }
+  }catch(e){} }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
@@ -3673,7 +3682,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-wa-web-qr-chats"})
+    return jsonify({"ok": True, "v": "2026-08-24-elegir-api-web+chips"})
 
 
 @app.get("/pf-diag")
@@ -9010,12 +9019,30 @@ function boot(){ get('/wa-estado').then(function(s){ EST=s; renderApp(); if(s&&s
 function unlock(){ document.body.classList.remove('locked'); }
 function lockScreen(){ if(POLL){clearInterval(POLL);POLL=null;} document.body.classList.add('locked'); renderLockForm(); }
 function renderConnect(){ lockScreen(); }
+var LOCKTAB='api';
+function lockTab(t){ LOCKTAB=t; renderLockForm(); }
+function goWeb(){ waTab('web'); }
 function renderLockForm(){
  var e=EST||{};
+ var on='background:#25D366;color:#fff', off='background:#eef2f4;color:#334';
+ var tabs='<div style="display:flex;gap:8px;margin-bottom:18px">'
+  +'<button onclick="lockTab(\\'api\\')" style="flex:1;border:0;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;'+(LOCKTAB==='api'?on:off)+'">&#128241; API oficial</button>'
+  +'<button onclick="lockTab(\\'web\\')" style="flex:1;border:0;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;'+(LOCKTAB==='web'?on:off)+'">&#127760; WhatsApp Web (QR)</button></div>';
+ if(LOCKTAB==='web'){
+  document.getElementById('lockcard').innerHTML=
+   '<div class="lockbadge" style="background:#25D366"><svg viewBox="0 0 24 24" fill="#fff" width="30" height="30"><path d="M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm-3 8V7a3 3 0 016 0v3H9z"/></svg></div>'
+   +'<h2>Conectá por WhatsApp Web</h2>'
+   +'<div class="sub">Escaneás un QR con tu celular (como WhatsApp Web en la compu). Ideal para que el <b>bot conteste fuera de horario</b>. No necesitás la API.</div>'
+   +tabs
+   +'<button class="btn" onclick="goWeb()" style="background:#25D366">&#127760; Conectar WhatsApp Web (QR)</button>'
+   +'<div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center">Es una conexión no oficial. Para envíos masivos usá la API.</div>';
+  return;
+ }
  document.getElementById('lockcard').innerHTML=
   '<div class="lockbadge"><svg viewBox="0 0 24 24" fill="#fff" width="30" height="30"><path d="M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm-3 8V7a3 3 0 016 0v3H9z"/></svg></div>'
   +'<h2>Conectá tu WhatsApp</h2>'
   +'<div class="sub">Vinculá tu número de la Cloud API para <b>desbloquear</b> el chat, las plantillas y los envíos. Sin QR, sin baneo.</div>'
+  +tabs
   +'<div class="fld"><label>Phone number ID</label><input id="f_pid" value="'+esc(e.phone_id||'')+'" placeholder="Ej: 123456789012345"><small>WhatsApp → API Setup, es el ID del número (no el número).</small></div>'
   +'<div class="fld"><label>Token permanente</label><input id="f_tok" value="" placeholder="EAAG..."><small>Token de la app de WhatsApp (permanente/de sistema).</small></div>'
   +'<div class="fld"><label>WABA ID <span style="color:#94a3b8">(para plantillas)</span></label><input id="f_waba" value="'+esc(e.waba_id||'')+'" placeholder="ID de la WhatsApp Business Account"></div>'
@@ -9067,12 +9094,16 @@ function renderApp(){
 }
 // ───── Pestañas Transferencias / Carritos ─────
 var TAB='chats', TDATA=[], TSEL={};
-function waTab(t){ TAB=t; var p=document.getElementById('panel'); var b1=document.getElementById('bChats');
+function waTab(t){ TAB=t; var p=document.getElementById('panel');
  [['bChats','chats'],['bWeb','web'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.style.background=(x[1]===t?'rgba(255,255,255,.32)':'rgba(255,255,255,.16)'); });
  if(WEBPOLL){ clearInterval(WEBPOLL); WEBPOLL=null; }
+ // La pestaña WEB (QR) NO necesita la Cloud API → destraba y muestra el panel.
+ if(t==='web'){ document.body.classList.remove('locked'); p.style.display='block'; p.innerHTML='<div style="max-width:720px;margin:0 auto;color:#334">Cargando…</div>'; TSEL={}; loadWeb(); return; }
+ // El resto (Chats/Transferencias/Carritos) sí necesita la Cloud API conectada.
+ if(!(EST&&EST.conectado)){ p.style.display='none'; LOCKTAB='api'; lockScreen(); return; }
  if(t==='chats'){ p.style.display='none'; return; }
  p.style.display='block'; p.innerHTML='<div style="max-width:940px;margin:0 auto;color:#334">Cargando…</div>';
- TSEL={}; if(t==='web') loadWeb(); else if(t==='transfers') loadTransfers(); else loadCarritos();
+ TSEL={}; if(t==='transfers') loadTransfers(); else loadCarritos();
 }
 
 // ───── Pestaña WhatsApp WEB (Baileys / QR) ─────
