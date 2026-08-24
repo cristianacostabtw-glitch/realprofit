@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-tn-raw-diag"})
+    return jsonify({"ok": True, "v": "2026-08-24-fix-sucursal-tn"})
 
 
 @app.get("/pf-diag")
@@ -4139,6 +4139,34 @@ def _tn_suc_nombre(sh):
     return " ".join(p for p in partes if p).strip()
 
 
+def _tn_pickup(o):
+    """El punto de retiro REAL que eligió el cliente. En TiendaNube viene en el pedido
+    (shipping_pickup_details), NO adentro de fulfillments. Devuelve el dict o {}."""
+    pd = o.get("shipping_pickup_details")
+    if isinstance(pd, dict) and pd:
+        return pd
+    return {}
+
+
+def _tn_pickup_nombre(o):
+    """Nombre EXACTO de la sucursal/HOP de Andreani que eligió el cliente en TiendaNube.
+    Ej: 'Andreani Punto de Retiro — PUNTO ANDREANI HOP MALABIA 781' → 'PUNTO ANDREANI HOP MALABIA 781'.
+    Este es el dato posta para NO equivocar la sucursal. Si no está, cae al string genérico."""
+    pd = _tn_pickup(o)
+    nom = (pd.get("name") or "").strip()
+    if nom:
+        for sep in ("—", " - ", "–", ":"):
+            if sep in nom:
+                nom = nom.split(sep, 1)[1].strip()
+                break
+        return nom
+    # sin nombre → armo con la dirección del punto (calle + localidad + CP)
+    ad = pd.get("address") or {}
+    partes = [ad.get("address"), ad.get("locality") or ad.get("city"), ad.get("zipcode")]
+    s = " ".join(str(p) for p in partes if p).strip()
+    return s
+
+
 def _tn_tel(o):
     """Primer teléfono usable del cliente de Tiendanube."""
     sa = o.get("shipping_address") or {}
@@ -4197,8 +4225,12 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 # Sucursal si TiendaNube lo marca pickup (campo del pedido/envío) O si el método dice
                 # sucursal/"Punto de retiro" (texto, misma regla central). Por defecto domicilio →
                 # nunca flipeamos un domicilio a sucursal (si el método dice 'domicilio', gana domicilio).
+                # Punto de retiro REAL que eligió el cliente (viene en shipping_pickup_details del pedido).
+                pk = _tn_pickup(o)
+                suc_nom = _tn_pickup_nombre(o)                 # nombre EXACTO de la sucursal Andreani
                 es_suc = ((o.get("shipping_pickup_type") == "pickup") or (sh.get("type") == "pickup")
-                          or _txt_es_sucursal((o.get("shipping_option") or "") + " " + _tn_suc_nombre(sh)))
+                          or bool(pk)
+                          or _txt_es_sucursal((o.get("shipping_option") or "") + " " + suc_nom))
                 sa = o.get("shipping_address") or {}
                 cust = o.get("customer") or {}
                 nombre = (sa.get("name") or o.get("contact_name") or cust.get("name") or "—")
@@ -4206,9 +4238,11 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 calle = str(sa.get("address") or "").strip()
                 numero = str(sa.get("number") or "").strip()
                 floor = str(sa.get("floor") or "").strip()
-                localidad = (sa.get("locality") or sa.get("city") or "").strip()
-                cp = str(sa.get("zipcode") or "").strip()
-                prov = (sa.get("province") or "").strip()
+                # Para SUCURSAL, la localidad/CP posta son las del PUNTO (el shipping_address suele venir "No informado").
+                pkad = pk.get("address") or {}
+                localidad = ((pkad.get("locality") or pkad.get("city")) if es_suc and pkad else "") or (sa.get("locality") or sa.get("city") or "").strip()
+                cp = (str(pkad.get("zipcode") or "") if es_suc and pkad else "") or str(sa.get("zipcode") or "").strip()
+                prov = ((pkad.get("province") or "") if es_suc and pkad else "") or (sa.get("province") or "").strip()
                 tel = _tn_tel(o)
                 dni = str(o.get("contact_identification") or cust.get("identification") or "").strip()
                 incompleta = (not es_suc) and (not calle or not cp or not tel)
@@ -4220,7 +4254,7 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                     "total": round(float(o.get("total") or 0), 2),
                     "tel": tel, "dni": dni, "fecha": o.get("created_at") or o.get("completed_at") or "",
                     "email": o.get("contact_email") or (cust.get("email") or ""),
-                    "suc_nombre": _tn_suc_nombre(sh), "calle": calle, "numero": numero, "extra": floor,
+                    "suc_nombre": suc_nom or _tn_suc_nombre(sh), "calle": calle, "numero": numero, "extra": floor,
                     "incompleta": incompleta, "estado": estado,
                 })
             if len(lote) < 200:
@@ -9425,11 +9459,15 @@ def pf_tn_raw():
         for o in arr:
             if str(o.get("number")) != num:
                 continue
-            campos = {}
-            for k, v in o.items():
-                if any(w in k.lower() for w in ("shipping", "pickup", "store", "fulfill")):
-                    campos[k] = v
-            out.append({"num": o.get("number"), "cuenta": email, "campos": campos})
+            suc_nom = _tn_pickup_nombre(o)
+            try:
+                exacto = _and_suc_exacto(suc_nom) if suc_nom else None
+            except Exception as e:
+                exacto = "err: " + str(e)[:60]
+            out.append({"num": o.get("number"), "cuenta": email,
+                        "suc_nombre_extraido": suc_nom,
+                        "resuelto_EXACTO": exacto,
+                        "pickup_name": ((o.get("shipping_pickup_details") or {}).get("name"))})
     return jsonify({"ok": True, "data": out})
 
 
