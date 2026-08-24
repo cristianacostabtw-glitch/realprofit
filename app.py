@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-fix-espacio"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-todo"})
 
 
 @app.get("/pf-diag")
@@ -8649,6 +8649,217 @@ def meli_ventas():
     return jsonify({"ok": True, "ventas": out, "total": (j.get("paging") or {}).get("total")})
 
 
+def _meli_ctx(email):
+    """(token, user_id) del ML conectado, o (None, None)."""
+    tok = _meli_token(email)
+    d = _meli_tokens().get(email) or {}
+    return tok, d.get("user_id")
+
+
+@app.get("/meli/publicaciones")
+def meli_publicaciones():
+    """Publicaciones activas con su SKU y stock, para poder emparejar/editar el SKU."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "items": []})
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado", "items": []})
+    try:
+        r = requests.get("%s/users/%s/items/search" % (MELI_API, uid),
+                         headers={"Authorization": "Bearer " + tok},
+                         params={"limit": 50}, timeout=25)
+        ids = (r.json() if r.content else {}).get("results", [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100], "items": []})
+    items = []
+    for i in range(0, len(ids), 20):
+        chunk = ids[i:i + 20]
+        try:
+            rr = requests.get("%s/items" % MELI_API, headers={"Authorization": "Bearer " + tok},
+                              params={"ids": ",".join(chunk),
+                                      "attributes": "id,title,price,available_quantity,seller_custom_field,attributes,thumbnail,status"}, timeout=25)
+            arr = rr.json() if rr.content else []
+        except Exception:
+            arr = []
+        for wrap in arr:
+            b = wrap.get("body") or {}
+            sku = b.get("seller_custom_field") or ""
+            if not sku:
+                for a in (b.get("attributes") or []):
+                    if a.get("id") == "SELLER_SKU":
+                        sku = a.get("value_name") or ""
+                        break
+            items.append({"id": b.get("id"), "title": b.get("title", ""), "price": b.get("price"),
+                          "stock": b.get("available_quantity"), "sku": sku,
+                          "thumb": b.get("thumbnail", ""), "status": b.get("status", "")})
+    return jsonify({"ok": True, "items": items, "total": len(ids)})
+
+
+@app.post("/meli/sku-set")
+def meli_sku_set():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    d = request.get_json(silent=True) or {}
+    item_id = (d.get("id") or "").strip()
+    sku = (d.get("sku") or "").strip()
+    if not item_id:
+        return jsonify({"ok": False, "msg": "falta el item"})
+    hdr = {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
+    try:
+        r = requests.put("%s/items/%s" % (MELI_API, item_id), headers=hdr,
+                         json={"attributes": [{"id": "SELLER_SKU", "value_name": sku}]}, timeout=25)
+        if r.status_code >= 400:
+            r = requests.put("%s/items/%s" % (MELI_API, item_id), headers=hdr,
+                             json={"seller_custom_field": sku}, timeout=25)
+        if r.status_code >= 400:
+            j = r.json() if r.content else {}
+            return jsonify({"ok": False, "msg": (j.get("message") or "error %s" % r.status_code)[:120]})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100]})
+
+
+@app.post("/meli/stock-set")
+def meli_stock_set():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    d = request.get_json(silent=True) or {}
+    item_id = (d.get("id") or "").strip()
+    try:
+        qty = int(d.get("stock"))
+    except Exception:
+        return jsonify({"ok": False, "msg": "stock inválido"})
+    if not item_id or qty < 0:
+        return jsonify({"ok": False, "msg": "datos inválidos"})
+    try:
+        r = requests.put("%s/items/%s" % (MELI_API, item_id),
+                         headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                         json={"available_quantity": qty}, timeout=25)
+        if r.status_code >= 400:
+            j = r.json() if r.content else {}
+            return jsonify({"ok": False, "msg": (j.get("message") or "error %s" % r.status_code)[:120]})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100]})
+
+
+@app.get("/meli/envios")
+def meli_envios():
+    """Órdenes recientes con su estado de envío y tracking (Mercado Envíos)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "envios": []})
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "no conectado", "envios": []})
+    try:
+        r = requests.get("%s/orders/search" % MELI_API, headers={"Authorization": "Bearer " + tok},
+                         params={"seller": uid, "sort": "date_desc", "limit": 20}, timeout=25)
+        res = (r.json() if r.content else {}).get("results", [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100], "envios": []})
+    out = []
+    for o in res:
+        ship = o.get("shipping") or {}
+        sid = ship.get("id")
+        estado_env, track, tipo = "", "", ""
+        if sid:
+            try:
+                s = requests.get("%s/shipments/%s" % (MELI_API, sid),
+                                 headers={"Authorization": "Bearer " + tok, "x-format-new": "true"}, timeout=15)
+                sj = s.json() if s.content else {}
+                estado_env = sj.get("status", "") or ""
+                track = sj.get("tracking_number", "") or ""
+                tipo = ((sj.get("shipping_option") or {}).get("name") or sj.get("logistic_type") or "")
+            except Exception:
+                pass
+        comprador = (o.get("buyer") or {}).get("nickname", "")
+        items = o.get("order_items") or []
+        tit = (items[0].get("item") or {}).get("title", "") if items else ""
+        out.append({"id": o.get("id"), "fecha": (o.get("date_created") or "")[:10], "comprador": comprador,
+                    "titulo": tit, "estado_env": estado_env, "tracking": track, "tipo": tipo,
+                    "estado_pago": o.get("status", "")})
+    return jsonify({"ok": True, "envios": out})
+
+
+@app.get("/meli/preguntas")
+def meli_preguntas():
+    """Preguntas SIN responder de tus publicaciones."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "preguntas": []})
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "no conectado", "preguntas": []})
+    try:
+        r = requests.get("%s/questions/search" % MELI_API, headers={"Authorization": "Bearer " + tok},
+                         params={"seller_id": uid, "status": "UNANSWERED", "api_version": "4", "limit": 50}, timeout=25)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100], "preguntas": []})
+    out = []
+    for q in j.get("questions", []):
+        out.append({"id": q.get("id"), "texto": q.get("text", ""), "fecha": (q.get("date_created") or "")[:16].replace("T", " "),
+                    "item_id": q.get("item_id", "")})
+    return jsonify({"ok": True, "preguntas": out, "total": (j.get("total"))})
+
+
+@app.post("/meli/responder")
+def meli_responder():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    d = request.get_json(silent=True) or {}
+    qid = d.get("id")
+    texto = (d.get("texto") or "").strip()
+    if not qid or not texto:
+        return jsonify({"ok": False, "msg": "falta pregunta o texto"})
+    try:
+        r = requests.post("%s/answers" % MELI_API,
+                          headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                          json={"question_id": qid, "text": texto}, timeout=25)
+        if r.status_code >= 400:
+            j = r.json() if r.content else {}
+            return jsonify({"ok": False, "msg": (j.get("message") or "error %s" % r.status_code)[:120]})
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100]})
+
+
+@app.get("/meli/metricas")
+def meli_metricas():
+    """Reputación y salud de la cuenta."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    try:
+        r = requests.get("%s/users/%s" % (MELI_API, uid), headers={"Authorization": "Bearer " + tok}, timeout=20)
+        u = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:100]})
+    rep = u.get("seller_reputation") or {}
+    tx = (rep.get("transactions") or {})
+    return jsonify({"ok": True, "nivel": rep.get("level_id", ""), "power": rep.get("power_seller_status", ""),
+                    "ventas_total": tx.get("total"), "completadas": tx.get("completed"),
+                    "canceladas": tx.get("canceled"),
+                    "rating": (tx.get("ratings") or {}), "nickname": u.get("nickname", "")})
+
+
 _MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>MercadoLibre — RealProfit</title>
 <style>
@@ -8699,34 +8910,89 @@ function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-A
 var CONN=false, NICK='', SEL='ventas';
 var FEATURES=[
  {k:'ventas',ic:'🧾',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
- {k:'mensajes',ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Responder preguntas y mensajes de pre y post compra (con el bot o a mano).',soon:true},
- {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Ver el estado de los envíos (Mercado Envíos) y generar etiquetas.',soon:true},
- {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Poner y emparejar el SKU de cada publicación.',soon:true},
- {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Actualizar y unificar el stock de unidades.',soon:true},
- {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Ventas, reputación y salud de la cuenta.',soon:true}
+ {k:'mensajes',ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Preguntas sin responder de tus publicaciones — respondé desde acá.',soon:false},
+ {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Estado de los envíos (Mercado Envíos) y tracking de cada venta.',soon:false},
+ {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
+ {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock de cada publicación — actualizalo desde acá.',soon:false},
+ {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Reputación, nivel y salud de tu cuenta.',soon:false}
 ];
 function renderSide(){
  var s=document.getElementById('side');
  s.innerHTML=FEATURES.map(function(f){ return '<div class="it'+(f.k===SEL?' on':'')+'" onclick="sel(\''+f.k+'\')"><span class="ic" style="background:'+f.bg+'">'+f.ic+'</span><span>'+esc(f.t)+'</span>'+(f.soon?'<span class="soon">PRONTO</span>':'')+'</div>'; }).join('');
 }
 function sel(k){ SEL=k; renderSide(); renderMain(); }
+function post(u,o){ return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(function(r){return r.json();}); }
+function err(j){ return '<div style="color:#e0637f;font-size:12.5px">'+esc((j&&j.msg)||'No se pudo cargar')+'</div>'; }
+function vacio(t){ return '<div style="color:#5b6b82;font-size:12.5px">'+esc(t)+'</div>'; }
+var TH='<th style="text-align:left">';
 function renderMain(){
  var m=document.getElementById('main'); var f=FEATURES.filter(function(x){return x.k===SEL;})[0]||FEATURES[0];
  if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
  var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
- if(f.k==='ventas'){ m.innerHTML=head+'<div class="card"><div id="mlv">Trayendo ventas…</div></div>'; cargarVentas(); return; }
- m.innerHTML=head+'<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:30px;margin-bottom:10px">'+f.ic+'</div><div style="font-weight:800;font-size:15px;margin-bottom:6px">En construcción</div><div style="color:#93a3ba;font-size:13px;max-width:420px;margin:0 auto">Esta función se está armando. Muy pronto vas a poder usarla desde acá.</div></div>';
+ m.innerHTML=head+'<div class="card"><div id="mlc" style="color:#5b6b82;font-size:12.5px">Cargando…</div></div>';
+ if(f.k==='ventas')cargarVentas(); else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
 }
-function cargarVentas(){ var box=document.getElementById('mlv'); if(!box)return;
+function cargarVentas(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/ventas').then(function(r){return r.json();}).then(function(j){
-  if(!j||!j.ok){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px">'+esc((j&&j.msg)||'No se pudieron traer las ventas')+'</div>'; return; }
-  var v=j.ventas||[];
-  if(!v.length){ box.innerHTML='<div style="color:#5b6b82;font-size:12.5px">Sin ventas recientes.</div>'; return; }
+  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.ventas||[]; if(!v.length){ box.innerHTML=vacio('Sin ventas recientes.'); return; }
   box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+(j.total!=null?('Total histórico: '+j.total+' · '):'')+'últimas '+v.length+'</div>'
-   +'<div style="overflow:auto"><table><thead><tr><th>Fecha</th><th>Comprador</th><th>Producto</th><th style="text-align:right">Un.</th><th style="text-align:right">Total</th><th>Estado</th></tr></thead><tbody>'
-   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')
-   +'</tbody></table></div>';
- }).catch(function(){ box.innerHTML='<div style="color:#e0637f;font-size:12.5px">Error al traer las ventas.</div>'; });
+   +'<div style="overflow:auto"><table><thead><tr>'+TH+'Fecha</th>'+TH+'Comprador</th>'+TH+'Producto</th><th style="text-align:right">Un.</th><th style="text-align:right">Total</th>'+TH+'Estado</th></tr></thead><tbody>'
+   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')+'</tbody></table></div>';
+ }).catch(function(){ box.innerHTML=err(); });
+}
+function cargarPubs(){ var box=document.getElementById('mlc'); if(!box)return;
+ fetch('/meli/publicaciones').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.items||[]; if(!v.length){ box.innerHTML=vacio('Sin publicaciones activas.'); return; }
+  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+v.length+' publicaciones</div>'
+   +'<div style="overflow:auto"><table><thead><tr><th></th>'+TH+'Publicación</th><th style="text-align:right">Precio</th><th style="text-align:right">Stock</th>'+TH+'SKU</th><th></th></tr></thead><tbody>'
+   +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'<div style="font-size:10px;color:#5b6b82">'+esc(it.id)+'</div></td><td style="text-align:right">'+money(it.price)+'</td><td style="text-align:right">'+(it.stock!=null?it.stock:'')+'</td><td><input id="sku_'+it.id+'" value="'+esc(it.sku)+'" placeholder="SKU" style="width:110px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarSku(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <span id="skum_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
+ }).catch(function(){ box.innerHTML=err(); });
+}
+function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.getElementById('skum_'+id); if(!inp)return; if(m){m.textContent='…';m.style.color='#7aa2c8';}
+ post('/meli/sku-set',{id:id,sku:inp.value}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓';m.style.color='#34d399';} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
+}
+function cargarStock(){ var box=document.getElementById('mlc'); if(!box)return;
+ fetch('/meli/publicaciones').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.items||[]; if(!v.length){ box.innerHTML=vacio('Sin publicaciones activas.'); return; }
+  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+v.length+' publicaciones</div>'
+   +'<div style="overflow:auto"><table><thead><tr><th></th>'+TH+'Publicación</th>'+TH+'SKU</th>'+TH+'Stock</th><th></th></tr></thead><tbody>'
+   +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'</td><td style="font-size:12px;color:#9cc7f5">'+esc(it.sku||'—')+'</td><td><input id="stk_'+it.id+'" type="number" value="'+(it.stock!=null?it.stock:0)+'" style="width:80px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarStock(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <span id="stkm_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
+ }).catch(function(){ box.innerHTML=err(); });
+}
+function guardarStock(id){ var inp=document.getElementById('stk_'+id), m=document.getElementById('stkm_'+id); if(!inp)return; if(m){m.textContent='…';m.style.color='#7aa2c8';}
+ post('/meli/stock-set',{id:id,stock:inp.value}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓';m.style.color='#34d399';} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
+}
+function cargarEnvios(){ var box=document.getElementById('mlc'); if(!box)return;
+ fetch('/meli/envios').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.envios||[]; if(!v.length){ box.innerHTML=vacio('Sin envíos recientes.'); return; }
+  box.innerHTML='<div style="overflow:auto"><table><thead><tr>'+TH+'Fecha</th>'+TH+'Comprador</th>'+TH+'Producto</th>'+TH+'Tipo</th>'+TH+'Estado envío</th>'+TH+'Tracking</th></tr></thead><tbody>'
+   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="font-size:11px;color:#93a3ba">'+esc(o.tipo||'')+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado_env||o.estado_pago||'')+'</span></td><td style="font-size:11px;color:#7aa2c8">'+esc(o.tracking||'—')+'</td></tr>'; }).join('')+'</tbody></table></div>';
+ }).catch(function(){ box.innerHTML=err(); });
+}
+function cargarPreg(){ var box=document.getElementById('mlc'); if(!box)return;
+ fetch('/meli/preguntas').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.preguntas||[]; if(!v.length){ box.innerHTML=vacio('No hay preguntas sin responder. 🎉'); return; }
+  box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:10px">'+v.length+' pregunta(s) sin responder</div>'
+   +v.map(function(q){ return '<div style="border:1px solid #1b2635;border-radius:12px;padding:14px;margin-bottom:10px"><div style="font-size:11px;color:#5b6b82;margin-bottom:4px">'+esc(q.fecha)+'</div><div style="font-size:14px;color:#e8edf4;margin-bottom:10px">'+esc(q.texto)+'</div><textarea id="resp_'+q.id+'" placeholder="Escribí tu respuesta…" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px;font-family:inherit;resize:vertical" rows="2"></textarea><div style="margin-top:8px"><button onclick="responder(\''+q.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer">Responder</button> <span id="respm_'+q.id+'" style="font-size:12px;margin-left:8px"></span></div></div>'; }).join('');
+ }).catch(function(){ box.innerHTML=err(); });
+}
+function responder(id){ var ta=document.getElementById('resp_'+id), m=document.getElementById('respm_'+id); if(!ta||!ta.value.trim()){ if(m){m.textContent='Escribí algo';m.style.color='#e0637f';} return; } if(m){m.textContent='Enviando…';m.style.color='#7aa2c8';}
+ post('/meli/responder',{id:id,texto:ta.value.trim()}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓ Respondida';m.style.color='#34d399'; ta.disabled=true;} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
+}
+function cargarMetr(){ var box=document.getElementById('mlc'); if(!box)return;
+ fetch('/meli/metricas').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML=err(j); return; }
+  var rt=j.rating||{}; function tile(l,v,c){ return '<div style="background:#0a1322;border:1px solid #1b2635;border-radius:12px;padding:14px 16px"><div style="font-size:11px;color:#5b6b82;text-transform:uppercase;letter-spacing:.5px">'+l+'</div><div style="font-size:22px;font-weight:800;margin-top:4px;color:'+(c||'#e8edf4')+'">'+v+'</div></div>'; }
+  box.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">'
+   +tile('Nivel','🏅 '+esc(j.nivel||'—'))
+   +tile('Power Seller',esc(j.power||'—'),'#ffe600')
+   +tile('Ventas totales',(j.ventas_total!=null?j.ventas_total:'—'))
+   +tile('Completadas',(j.completadas!=null?j.completadas:'—'),'#34d399')
+   +tile('Canceladas',(j.canceladas!=null?j.canceladas:'—'),'#e0637f')
+   +tile('👍 Positivas',Math.round((rt.positive||0)*100)+'%','#34d399')
+   +tile('👎 Negativas',Math.round((rt.negative||0)*100)+'%','#e0637f')
+   +'</div>';
+ }).catch(function(){ box.innerHTML=err(); });
 }
 function boot(){ renderSide(); renderMain();
  fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
