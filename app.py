@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-diag-shopify"})
+    return jsonify({"ok": True, "v": "2026-08-24-suc-coord"})
 
 
 @app.get("/pf-diag")
@@ -4243,6 +4243,10 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 localidad = ((pkad.get("locality") or pkad.get("city")) if es_suc and pkad else "") or (sa.get("locality") or sa.get("city") or "").strip()
                 cp = (str(pkad.get("zipcode") or "") if es_suc and pkad else "") or str(sa.get("zipcode") or "").strip()
                 prov = ((pkad.get("province") or "") if es_suc and pkad else "") or (sa.get("province") or "").strip()
+                # Coordenadas EXACTAS del punto elegido + id del punto (para resolver la sucursal sin adivinar)
+                suc_lat = pkad.get("latitude") or pkad.get("lat") or ""
+                suc_lng = pkad.get("longitude") or pkad.get("lng") or pkad.get("lon") or ""
+                suc_pid = str(o.get("shipping_option_reference") or "")
                 tel = _tn_tel(o)
                 dni = str(o.get("contact_identification") or cust.get("identification") or "").strip()
                 incompleta = (not es_suc) and (not calle or not cp or not tel)
@@ -4255,6 +4259,7 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                     "tel": tel, "dni": dni, "fecha": o.get("created_at") or o.get("completed_at") or "",
                     "email": o.get("contact_email") or (cust.get("email") or ""),
                     "suc_nombre": suc_nom or _tn_suc_nombre(sh), "calle": calle, "numero": numero, "extra": floor,
+                    "suc_lat": suc_lat, "suc_lng": suc_lng, "suc_pid": suc_pid,
                     "incompleta": incompleta, "estado": estado,
                 })
             if len(lote) < 200:
@@ -5111,6 +5116,58 @@ def _and_suc_live(zeny, cp):
     return None
 
 
+def _and_suc_coord(lat, lng, es_hop, punto_id="", sucs=None):
+    """Sucursal EXACTA por las COORDENADAS del punto que eligió el cliente (TiendaNube las trae en
+    shipping_pickup_details.address). byCoordenadas de Andreani devuelve los puntos por cercanía:
+    el de distancia≈0 (o el que matchea el id del punto = shipping_option_reference) ES el punto
+    elegido, y su 'descripcion' es el nombre OFICIAL tal cual el dropdown de la plantilla.
+    Determinístico: si no mapea a una sucursal REAL de la lista → None (no inventa, no cruza de lado)."""
+    try:
+        lat = float(lat); lng = float(lng)
+    except Exception:
+        return None
+    if not lat or not lng:
+        return None
+    hd = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.andreani.com/buscar-sucursal"}
+    try:
+        pts = requests.get("https://www.andreani.com/api/sucursales/byCoordenadas",
+                           params={"lat": lat, "lng": lng}, headers=hd, timeout=12).json()
+    except Exception:
+        return None
+    if not isinstance(pts, list) or not pts:
+        return None
+    pid = _re_and.sub(r"\D", "", str(punto_id or ""))
+    # 1) si tenemos el id del punto (shipping_option_reference), match EXACTO por id → 100% seguro
+    if pid:
+        for p in pts:
+            if _re_and.sub(r"\D", "", str(p.get("puntoDeTerceroId") or "")) == pid:
+                of = _and_suc_exacto(p.get("descripcion") or "")
+                if of:
+                    return of
+
+    def _dist(p):
+        try:
+            return float(p.get("distancia"))
+        except Exception:
+            return 9e9
+    # 2) el punto MÁS CERCANO del tipo pedido (HOP/sucursal): su descripcion es el nombre oficial
+    for p in sorted(pts, key=_dist):
+        nom = p.get("descripcion") or ""
+        if es_hop and "hop" not in nom.lower():
+            continue
+        of = _and_suc_exacto(nom)
+        if of:
+            return of
+        # el nombre viene de Andreani (autoritativo, no del texto de la tienda) → mapeo por tokens
+        # es seguro: no puede cruzar de ciudad/provincia porque es el punto REAL de esas coordenadas
+        if sucs:
+            of2, ok = _and_suc_excel(nom, sucs)
+            if ok and of2:
+                return of2
+        break   # el más cercano ya no mapeó → no sigo probando puntos lejanos (evita agarrar otro)
+    return None
+
+
 _AND_DOM_PH = ("casa", "domicilio", "particular", "depto", "departamento", "dpto", "s/n", "sn",
                "sin numero", "sin número", "local", "plata baja", "planta baja", "pb")
 
@@ -5207,11 +5264,16 @@ def pf_despachos_excel():
             suc_raw = r.get("suc_nombre") or ""
             of = _and_suc_exacto(suc_raw)                      # 1) match EXACTO al nombre oficial (100% seguro)
             conf = bool(of)
-            if not conf:
-                of, conf = _and_suc_excel(suc_raw, sucs)       # 2) fuzzy con ciudad-pesa-más (anti cross-provincia)
+            if not conf:                                       # 2) por COORDENADAS del punto elegido (TiendaNube)
+                try:
+                    of = _and_suc_coord(r.get("suc_lat"), r.get("suc_lng"),
+                                        "HOP" in suc_raw.upper(), r.get("suc_pid"), sucs)
+                except Exception:
+                    of = None
+                conf = bool(of)
             if not conf:
                 try:
-                    live = _and_suc_live(suc_raw, r.get("cp") or "")   # 3) cruce en vivo con Andreani
+                    live = _and_suc_live(suc_raw, r.get("cp") or "")   # 3) cruce en vivo por dirección (Shopify)
                 except Exception:
                     live = None
                 if live:
@@ -9435,79 +9497,6 @@ def _tn_headers(token) -> dict:
     return {"Authentication": "bearer " + str(token), "User-Agent": TN_UA}
 
 
-@app.get("/pf-tn-raw")
-def pf_tn_raw():
-    """TEMP: devuelve los campos de envío CRUDOS de un pedido de TiendaNube, para ver dónde
-    está el punto de retiro real. Gated por key. BORRAR después."""
-    if request.args.get("key") != "verpickup-2026":
-        return jsonify({"ok": False}), 403
-    num = str(request.args.get("num") or "").strip()
-    # cargar el desplegable oficial de Andreani (sino el match exacto da siempre null)
-    try:
-        import openpyxl as _oxl
-        _tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
-        _and_cfg(_oxl.load_workbook(_tpl, read_only=True, data_only=True))
-    except Exception as e:
-        return jsonify({"ok": False, "msg": "no pude cargar plantilla: " + str(e)[:100]})
-    buscar = str(request.args.get("buscar") or "").strip().upper()
-    if buscar:
-        sucs = _AND_CFG.get("sucs") or []
-        matches = [s for s in sucs if buscar in str(s).upper()][:40]
-        return jsonify({"ok": True, "total_dropdown": len(sucs), "buscar": buscar, "matches": matches})
-    shopnum = str(request.args.get("shop") or "").strip()
-    if shopnum:
-        res = []
-        for email, tk in _shop_tokens().items():
-            if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("shop")):
-                continue
-            try:
-                r = requests.get("https://%s/admin/api/2026-07/orders.json" % tk["shop"],
-                                 headers={"X-Shopify-Access-Token": tk["access_token"]},
-                                 params={"status": "any", "name": shopnum, "limit": 5,
-                                         "fields": "order_number,name,shipping_lines,shipping_address,note_attributes,fulfillments"}, timeout=30)
-                arr = (r.json() or {}).get("orders") or []
-            except Exception as e:
-                return jsonify({"ok": False, "msg": str(e)[:120]})
-            for o in arr:
-                sl = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip()
-                try:
-                    ex = _and_suc_exacto(sl) if sl else None
-                except Exception as e:
-                    ex = "err:" + str(e)[:50]
-                res.append({"num": o.get("order_number"), "cuenta": email,
-                            "shipping_lines_title": sl, "resuelto_EXACTO": ex,
-                            "note_attributes": o.get("note_attributes"),
-                            "shipping_address": {k: (o.get("shipping_address") or {}).get(k) for k in ("company", "address1", "address2", "city", "zip", "province")}})
-        return jsonify({"ok": True, "data": res})
-    if not num:
-        return jsonify({"ok": False, "msg": "falta num, shop o buscar"})
-    out = []
-    for email, tk in _tn_tokens().items():
-        if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("store_id")):
-            continue
-        try:
-            r = requests.get("%s/%s/orders" % (TN_API, tk["store_id"]), headers=_tn_headers(tk["access_token"]),
-                             params={"q": num, "per_page": 10}, timeout=30)
-            arr = r.json() if r.content else []
-        except Exception as e:
-            return jsonify({"ok": False, "msg": str(e)[:150]})
-        if not isinstance(arr, list):
-            continue
-        for o in arr:
-            if str(o.get("number")) != num:
-                continue
-            suc_nom = _tn_pickup_nombre(o)
-            try:
-                exacto = _and_suc_exacto(suc_nom) if suc_nom else None
-            except Exception as e:
-                exacto = "err: " + str(e)[:60]
-            out.append({"num": o.get("number"), "cuenta": email,
-                        "suc_nombre_extraido": suc_nom,
-                        "resuelto_EXACTO": exacto,
-                        "pickup_name": ((o.get("shipping_pickup_details") or {}).get("name"))})
-    return jsonify({"ok": True, "data": out})
-
-
 @app.get("/conectar-tiendanube")
 @limiter.limit("30 per hour")
 def conectar_tiendanube():
@@ -10849,10 +10838,14 @@ def pf_diag_excel():
             of = _and_suc_exacto(suc_raw); conf = bool(of)
             if of:
                 via["exacto"] += 1
-            else:
-                of, conf = _and_suc_excel(suc_raw, sucs)
-                if conf:
-                    via["fuzzy"] += 1
+            else:                                              # sin fuzzy: exacto → coord/vivo → REVISAR
+                try:
+                    of = _and_suc_coord(r.get("suc_lat"), r.get("suc_lng"),
+                                        "HOP" in suc_raw.upper(), r.get("suc_pid"), sucs)
+                except Exception:
+                    of = None
+                if of:
+                    conf = True; via["live"] += 1
                 else:
                     try:
                         lv = _and_suc_live(suc_raw, r.get("cp") or "")
@@ -11006,14 +10999,12 @@ def pf_diag_resol():
             if _es_sucursal_ship(o):
                 of = _and_suc_exacto(suc_raw)
                 via = "exacto"
-                if not of:
-                    of, cf = _and_suc_excel(suc_raw, sucs); via = "fuzzy" if cf else None
-                    if not cf:
-                        try:
-                            lv = _and_suc_live(suc_raw, sa.get("zip") or "")
-                        except Exception:
-                            lv = None
-                        of, via = (lv, "live") if lv else (None, None)
+                if not of:                                     # sin fuzzy: exacto → vivo → REVISAR
+                    try:
+                        lv = _and_suc_live(suc_raw, sa.get("zip") or "")
+                    except Exception:
+                        lv = None
+                    of, via = (lv, "live") if lv else (None, None)
                 out[str(n)] = {"tipo": "S", "suc": of, "via": via, "metodo": suc_raw,
                                "loc": sa.get("city") or "", "prov": sa.get("province") or ""}
             else:
@@ -11065,14 +11056,12 @@ def pf_diag_suc():
         except Exception:
             _sucs = []
         of = _and_suc_exacto(metodo); capa = "exacto"
-        if not of:
-            of, cf = _and_suc_excel(metodo, _sucs); capa = "fuzzy" if cf else None
-            if not cf:
-                try:
-                    lv = _and_suc_live(metodo, sa.get("zip") or "")
-                except Exception:
-                    lv = None
-                of, capa = (lv, "live") if lv else (None, None)
+        if not of:                                             # sin fuzzy: exacto → vivo → REVISAR
+            try:
+                lv = _and_suc_live(metodo, sa.get("zip") or "")
+            except Exception:
+                lv = None
+            of, capa = (lv, "live") if lv else (None, None)
         resuelto = of
     return jsonify({"ok": True, "pedido": o.get("name"), "tipo": "SUCURSAL" if es_suc else "DOMICILIO",
                     "metodo": metodo, "sucursal_resuelta": resuelto, "via": capa,
