@@ -859,7 +859,7 @@ _SOLO_DASH = r"""
     <div><h1>Movimientos</h1><p>Ingresos, egresos y <b style="color:#cbd5e1">aportes de socios</b>. Separ&aacute; la <b style="color:#cbd5e1">reinversi&oacute;n de la marca</b> de la <b style="color:#cbd5e1">plata que pusieron de afuera</b> &mdash; para dividir y devolver todo bien cuando se recupere.</p></div>
    </div>
    <div class="mv-chips">
-    <button class="mv-chip" style="cursor:pointer;border-color:#1f5a3d;color:#8be6bd" onclick="rpMovBase()" title="Fija tu saldo actual de Mercado Pago (para que el total cuadre)">💰 Fijar saldo MP</button>
+    <button class="mv-chip" style="cursor:pointer;border-color:#1f5a3d;color:#8be6bd" onclick="rpMovBase()" title="Poné el total de caja actual. Desde ahí acumula solo y lo podés corregir cuando quieras.">✏️ Editar total de caja</button>
     <span class="mv-chip">🇦🇷 ARS</span>
     <button class="mv-x" onclick="rpMov(false)" title="Cerrar">&#10005;</button>
    </div>
@@ -932,7 +932,7 @@ _SOLO_DASH = r"""
 (function(){
   var SOC={cristian:{nm:'Cristian',rol:'Socio · 50%',c:'#93c5fd'},socio:{nm:'Socio',rol:'Socio · 50%',c:'#c4b5fd'},marca:{nm:'Marca',c:'#6ee7b7'}};
   var CATC={'Ads':'#5aa2f5','Ads Meta':'#5aa2f5','Stock':'#fbbf24','Mercadería':'#fbbf24','Envíos':'#38bdf8','Diseño':'#a78bfa','Ventas':'#34d399','Aporte':'#93c5fd','Devolución':'#f472b6'};
-  var MOV=[], filtro='todos', mtipo='ingreso', msocio='cristian', _loaded=false;
+  var MOV=[], CAJA=null, filtro='todos', mtipo='ingreso', msocio='cristian', _loaded=false;
   function fmt(n){return '$'+Math.round(n||0).toLocaleString('es-AR');}
   function esIn(m){return m.clase==='ingreso'||m.clase==='aporte';}
   function esEg(m){return m.clase==='egreso'||m.clase==='devolucion';}
@@ -940,9 +940,9 @@ _SOLO_DASH = r"""
   function fueTag(m){ if(m.socio==='marca') return m.clase==='egreso'?'<span class="afuera" style="color:#8b97a8">reinversión</span>':''; return m.clase==='aporte'?'<span class="afuera" style="color:#fbbf24">de afuera</span>':'<span class="afuera" style="color:#34d399">recupero</span>'; }
   function esc(s){return (''+s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
   function $(id){return document.getElementById(id);}
-  window.rpMovBase=function(){ var v=prompt('Pegá tu saldo ACTUAL de Mercado Pago (lo que tenés disponible ahora):'); if(v===null||v==='')return;
-    fetch('/pf-movimientos-base',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({saldo:v})}).then(function(r){return r.json();}).then(function(j){
-      if(j&&j.ok){ if(typeof rpMovLoad==='function')rpMovLoad(); else location.reload(); } else { alert('No se pudo fijar el saldo.'); } }).catch(function(){ alert('Error de conexión.'); }); };
+  window.rpMovBase=function(){ var actual=(CAJA!=null)?(' (ahora: '+fmt(CAJA)+')'):''; var v=prompt('Escribí el TOTAL de caja actual'+actual+'. Desde acá se acumula solo (ventas MP + tus movimientos). Podés corregirlo cuando quieras:'); if(v===null||v==='')return;
+    fetch('/pf-movimientos-base',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({total:v})}).then(function(r){return r.json();}).then(function(j){
+      if(j&&j.ok){ if(typeof rpMovLoad==='function')rpMovLoad(); else location.reload(); } else { alert('No se pudo guardar el total.'); } }).catch(function(){ alert('Error de conexión.'); }); };
   window.rpMovF=function(f){ filtro=f; var ps=document.querySelectorAll('#mv-pills .mpill'); for(var i=0;i<ps.length;i++){ ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f); } rpMovRender(); };
   function filtered(){ return MOV.filter(function(m){ if(filtro==='todos')return true; if(filtro==='afuera')return esAfuera(m); if(filtro==='ingreso')return esIn(m); if(filtro==='egreso')return esEg(m); return true; }); }
   window.rpMov=function(open){ var o=$('rp-mov-ov'); if(!o)return;
@@ -954,11 +954,11 @@ _SOLO_DASH = r"""
     o.style.display=open?'block':'none';
     if(open && !_loaded) rpMovLoad(); };
   window.rpMovLoad=function(){ fetch('/pf-movimientos').then(function(r){return r.json();}).then(function(j){
-      MOV=(j&&j.ok&&j.rows)?j.rows:[]; _loaded=true; rpMovRender();
-    }).catch(function(){ MOV=[]; _loaded=true; rpMovRender(); }); };
+      MOV=(j&&j.ok&&j.rows)?j.rows:[]; CAJA=(j&&typeof j.caja==='number')?j.caja:null; _loaded=true; rpMovRender();
+    }).catch(function(){ MOV=[]; CAJA=null; _loaded=true; rpMovRender(); }); };
   window.rpMovRender=function(){
-    var ing=0,egr=0; MOV.forEach(function(m){ if(esIn(m))ing+=m.monto; else egr+=m.monto; });
-    var caja=ing-egr;
+    var ing=0,egr=0; MOV.forEach(function(m){ if(m.base)return; if(esIn(m))ing+=m.monto; else egr+=m.monto; });
+    var caja=(CAJA!=null)?CAJA:(ing-egr);   // caja ACUMULADA del backend (persistente/editable)
     var ap={cristian:0,socio:0}, rec={cristian:0,socio:0};
     MOV.forEach(function(m){ if(m.clase==='aporte')ap[m.socio]=(ap[m.socio]||0)+m.monto; if(m.clase==='devolucion')rec[m.socio]=(rec[m.socio]||0)+m.monto; });
     var sal={cristian:ap.cristian-rec.cristian, socio:ap.socio-rec.socio};
@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-bot-canal-horario-web"})
+    return jsonify({"ok": True, "v": "2026-08-23-caja-acumulada-editable"})
 
 
 @app.get("/pf-diag")
@@ -4344,33 +4344,63 @@ def _mp_movimientos(email, desde, hasta):
     return out
 
 
+def _mov_signed(m):
+    """Signo del movimiento para la caja: ingreso/aporte suma, egreso/devolucion resta."""
+    mo = m.get("monto") or 0
+    return mo if m.get("clase") in ("ingreso", "aporte") else -mo
+
+
+def _mov_caja_total(cur, manual_rows, mp_rows):
+    """Caja ACUMULADA y persistente. base = total declarado en su fecha (editable);
+    a partir de ahí se suman los movimientos posteriores (manual por id, MP por fecha)."""
+    base = cur.get("base") or {}
+    base_monto = base.get("monto", 0) if base else 0
+    base_fecha = base.get("fecha") if base else None
+    base_seq = base.get("seq", 0) if base else 0
+    total = base_monto
+    for m in manual_rows:
+        try:
+            if int(m.get("id", 0)) > base_seq:      # manual agregado DESPUÉS de fijar el total
+                total += _mov_signed(m)
+        except Exception:
+            total += _mov_signed(m)
+    for m in mp_rows:
+        if (not base_fecha) or str(m.get("d") or "") > base_fecha:  # MP de días POSTERIORES
+            total += _mov_signed(m)
+    return round(total)
+
+
 @app.get("/pf-movimientos")
 def pf_movimientos():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "rows": []})
     cur = _mov_get(email)
-    rows = list(cur.get("rows", []))
-    # AUTO: neto real de cada venta de Mercado Pago + devoluciones (ultimos 60 dias, cacheado)
+    manual_rows = list(cur.get("rows", []))
+    base = cur.get("base") or {}
+    # AUTO: neto real de cada venta de MP + devoluciones, DESDE la fecha del total fijado
+    # (o 60 días atrás si nunca lo fijó) hasta hoy → acumula día a día, ya no "solo hoy".
     import time as _t
     c = _MOV_MP_CACHE.get(email)
     if c and (_t.time() - c[0] < 180):
         mp_rows = c[1]
     else:
         try:
-            hasta = _hoy(); desde = _hoy()   # SOLO HOY (desde las 00:00)
-            mp_rows = _mp_movimientos(email, desde, hasta)
+            desde = base.get("fecha") or (_dt.date.today() - _dt.timedelta(days=60)).isoformat()
+            mp_rows = _mp_movimientos(email, desde, _hoy())
         except Exception:
             mp_rows = []
         _MOV_MP_CACHE[email] = (_t.time(), mp_rows)
-    rows = rows + mp_rows
-    base = cur.get("base")
-    if base and base.get("fecha") == _hoy():
-        rows.append({"id": "base", "d": base["fecha"], "clase": "ingreso", "cat": "Saldo inicial",
-                     "desc": "Saldo en MP al iniciar el dia", "socio": "marca",
-                     "monto": base["monto"], "auto": True})
+    caja = _mov_caja_total(cur, manual_rows, mp_rows)
+    rows = manual_rows + mp_rows
+    if base:
+        rows.append({"id": "base", "d": base.get("fecha", ""), "clase": "ingreso", "cat": "Total de caja",
+                     "desc": "Total de caja fijado", "socio": "marca",
+                     "monto": base.get("monto", 0), "auto": True, "base": True})
     rows.sort(key=lambda r: str(r.get("d") or ""), reverse=True)
-    return jsonify({"ok": True, "rows": rows})
+    return jsonify({"ok": True, "rows": rows, "caja": caja,
+                    "base": (base.get("monto") if base else None),
+                    "base_fecha": (base.get("fecha") if base else None)})
 
 
 @app.post("/pf-movimientos-add")
@@ -4408,29 +4438,24 @@ def pf_movimientos_add():
 
 @app.post("/pf-movimientos-base")
 def pf_movimientos_base():
-    """Fija el 'saldo inicial' del dia con el saldo ACTUAL de MP que pega el usuario.
-    base = saldo_actual - (neto de hoy - devoluciones de hoy) -> asi base + hoy = saldo real."""
+    """EDITA el total de caja: el valor que pega el usuario ES el total actual.
+    Se guarda con la fecha de hoy y el 'seq' de corte; desde ahí la caja acumula
+    los movimientos posteriores (manual por id, MP por fecha). No se resetea solo."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False})
     data = request.get_json(silent=True) or {}
-    raw = str(data.get("saldo") or "").replace("$", "").replace(" ", "").replace(".", "").replace(",", ".")
+    raw = str(data.get("saldo") if data.get("saldo") is not None else data.get("total") or "")
+    raw = raw.replace("$", "").replace(" ", "").replace(".", "").replace(",", ".")
     try:
-        saldo = round(float(raw or 0))
+        total = round(float(raw or 0))
     except Exception:
-        saldo = 0
-    hoy = _hoy()
-    try:
-        mp = _mp_movimientos(email, hoy, hoy)
-    except Exception:
-        mp = []
-    hoy_neto = (sum(m["monto"] for m in mp if m["clase"] == "ingreso")
-                - sum(m["monto"] for m in mp if m["clase"] == "devolucion"))
+        total = 0
     cur = _mov_get(email)
-    cur["base"] = {"fecha": hoy, "monto": round(saldo - hoy_neto)}
+    cur["base"] = {"fecha": _hoy(), "monto": total, "seq": int(cur.get("seq", 0))}
     _mov_save(email, cur)
     _MOV_MP_CACHE.pop(email, None)
-    return jsonify({"ok": True, "base": cur["base"]["monto"], "saldo": saldo})
+    return jsonify({"ok": True, "base": total})
 
 
 @app.post("/pf-movimientos-del")
