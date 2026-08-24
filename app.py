@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-fix-suc-tn4"})
+    return jsonify({"ok": True, "v": "2026-08-24-diag-shopify"})
 
 
 @app.get("/pf-diag")
@@ -9454,8 +9454,33 @@ def pf_tn_raw():
         sucs = _AND_CFG.get("sucs") or []
         matches = [s for s in sucs if buscar in str(s).upper()][:40]
         return jsonify({"ok": True, "total_dropdown": len(sucs), "buscar": buscar, "matches": matches})
+    shopnum = str(request.args.get("shop") or "").strip()
+    if shopnum:
+        res = []
+        for email, tk in _shop_tokens().items():
+            if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("shop")):
+                continue
+            try:
+                r = requests.get("https://%s/admin/api/2026-07/orders.json" % tk["shop"],
+                                 headers={"X-Shopify-Access-Token": tk["access_token"]},
+                                 params={"status": "any", "name": shopnum, "limit": 5,
+                                         "fields": "order_number,name,shipping_lines,shipping_address,note_attributes,fulfillments"}, timeout=30)
+                arr = (r.json() or {}).get("orders") or []
+            except Exception as e:
+                return jsonify({"ok": False, "msg": str(e)[:120]})
+            for o in arr:
+                sl = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip()
+                try:
+                    ex = _and_suc_exacto(sl) if sl else None
+                except Exception as e:
+                    ex = "err:" + str(e)[:50]
+                res.append({"num": o.get("order_number"), "cuenta": email,
+                            "shipping_lines_title": sl, "resuelto_EXACTO": ex,
+                            "note_attributes": o.get("note_attributes"),
+                            "shipping_address": {k: (o.get("shipping_address") or {}).get(k) for k in ("company", "address1", "address2", "city", "zip", "province")}})
+        return jsonify({"ok": True, "data": res})
     if not num:
-        return jsonify({"ok": False, "msg": "falta num o buscar"})
+        return jsonify({"ok": False, "msg": "falta num, shop o buscar"})
     out = []
     for email, tk in _tn_tokens().items():
         if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("store_id")):
