@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-chat-fix3"})
+    return jsonify({"ok": True, "v": "2026-08-24-tn-raw-diag"})
 
 
 @app.get("/pf-diag")
@@ -9399,6 +9399,38 @@ def _tn_save_token(email, data) -> None:
 
 def _tn_headers(token) -> dict:
     return {"Authentication": "bearer " + str(token), "User-Agent": TN_UA}
+
+
+@app.get("/pf-tn-raw")
+def pf_tn_raw():
+    """TEMP: devuelve los campos de envío CRUDOS de un pedido de TiendaNube, para ver dónde
+    está el punto de retiro real. Gated por key. BORRAR después."""
+    if request.args.get("key") != "verpickup-2026":
+        return jsonify({"ok": False}), 403
+    num = str(request.args.get("num") or "").strip()
+    if not num:
+        return jsonify({"ok": False, "msg": "falta num"})
+    out = []
+    for email, tk in _tn_tokens().items():
+        if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("store_id")):
+            continue
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, tk["store_id"]), headers=_tn_headers(tk["access_token"]),
+                             params={"q": num, "per_page": 10}, timeout=30)
+            arr = r.json() if r.content else []
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)[:150]})
+        if not isinstance(arr, list):
+            continue
+        for o in arr:
+            if str(o.get("number")) != num:
+                continue
+            campos = {}
+            for k, v in o.items():
+                if any(w in k.lower() for w in ("shipping", "pickup", "store", "fulfill")):
+                    campos[k] = v
+            out.append({"num": o.get("number"), "cuenta": email, "campos": campos})
+    return jsonify({"ok": True, "data": out})
 
 
 @app.get("/conectar-tiendanube")
