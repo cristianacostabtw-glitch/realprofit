@@ -593,6 +593,7 @@ _SOLO_DASH = r"""
    <label style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="rp-d-all" onclick="rpDAll(this)" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">Todas</label>
    <button id="rp-d-sync" onclick="rpDLoad()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">sync</span>Sincronizar</button>
    <button onclick="rpDExcel()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#4c3a8f,#3a2c73);border:1px solid #4a3a86;color:#e5ddff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">download</span>Generar Excel Andreani</button>
+   <label title="Subí el Excel de Envialo: las sucursales de Envialo mandan (1=1)" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">verified</span>Subir Excel de Envialo<input type="file" accept=".xlsx" onchange="rpDEnvialo(this)" style="display:none"></label>
    <button onclick="rpDActSku()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">barcode</span>Actualizar SKUs</button>
    <button onclick="rpDOpenSku()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#3b3a8f,#2c2b6b);border:1px solid #3a3a86;color:#dcdcff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">qr_code_2</span>Insertar SKU</button>
    <button onclick="rpDOpenSeg()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#b23a55,#8f2c44);border:1px solid #a23650;color:#ffe0e7;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">local_shipping</span>Enviar seguimiento</button>
@@ -1447,6 +1448,19 @@ _SOLO_DASH = r"""
       fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,accion:'exportada'})}).then(function(){ _dLoaded=false; rpDLoad(); });
       _dStat('✅ Excel descargado ('+sel.length+' pedidos) → Exportadas. Subílo a Andreani.'); })
     .catch(function(e){ _dStat('No se pudo generar el Excel'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
+ window.rpDEnvialo=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; inp.value='';
+   _dStat('⏳ Leyendo el Excel de Envialo…','#38bdf8');
+   var fd=new FormData(); fd.append('xlsx',f);
+   fetch('/pf-despachos-envialo',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ _dStat('No se pudo: '+((j&&j.msg)||'error'), '#fb7185'); return; }
+     var d=j.distintas||[];
+     var msg='✅ Envialo cargado: '+j.total+' sucursales guardadas. Coinciden '+j.coinciden+'. ';
+     if(d.length){ msg+='⚠️ '+d.length+' NO coincidían → ahora usan la de Envialo: '+d.slice(0,6).map(function(x){return '#'+x.num;}).join(', ')+(d.length>6?'…':'')+'.'; }
+     else { msg+='Todas coincidían 👌'; }
+     if(j.solo_en_envialo){ msg+=' ('+j.solo_en_envialo+' del Excel no están entre los pendientes)'; }
+     _dStat(msg, d.length?'#f0b429':'#34d399');
+     console.log('Envialo — diferencias (ahora se usa Envialo):', d);
+   }).catch(function(){ _dStat('Error subiendo el Excel de Envialo.', '#fb7185'); }); };
  window.rpDActSku=function(){ _dStat('↻ Actualizando SKUs desde tu tienda…','#38bdf8');
    fetch('/pf-despachos-sku-sync',{method:'POST'}).then(function(r){return r.json();}).then(function(j){ _dStat(j&&j.ok?('✓ '+(j.n||0)+' SKUs actualizados desde tu tienda.'):'No se pudo actualizar.'); }).catch(function(){ _dStat('Actualización de SKUs: pendiente de conectar.', '#f0b429'); }); };
  // ---- Modal Insertar SKU ----
@@ -3773,7 +3787,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-envialo-passthrough"})
+    return jsonify({"ok": True, "v": "2026-08-24-subir-envialo"})
 
 
 @app.get("/pf-diag")
@@ -5287,6 +5301,7 @@ def pf_despachos_excel():
     ALTO, ANCHO, PROF = 15, 12, 10
     PESO = 1000
     cpidx, sucs = _and_cfg(wb)   # lista oficial de la propia plantilla (sucursales + Prov/Loc/CP)
+    envialo_ov = _envialo_suc(_user_actual())   # si subiste el Excel de Envialo, esas sucursales MANDAN (1=1)
     r_dom = r_suc = 3
     faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
     revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
@@ -5303,8 +5318,10 @@ def pf_despachos_excel():
             # aunque no esté en la plantilla; Andreani lo acepta) → coordenadas → vivo → REVISAR.
             # Si no lo resolvemos con certeza NO inventamos una sucursal (mandaría a otro lado).
             suc_raw = r.get("suc_nombre") or ""
-            of, _via = _resolver_suc_completo(suc_raw, r.get("suc_lat"), r.get("suc_lng"),
-                                              r.get("suc_pid"), r.get("cp"), sucs)
+            of = envialo_ov.get(str(r["num"]))          # 1=1: si Envialo la mandó, gana Envialo
+            if not of:
+                of, _via = _resolver_suc_completo(suc_raw, r.get("suc_lat"), r.get("suc_lng"),
+                                                  r.get("suc_pid"), r.get("cp"), sucs)
             if not of:
                 revisar.append(str(r["num"]))
                 continue
@@ -9546,16 +9563,98 @@ def _resolver_suc_completo(suc_raw, lat, lng, pid, cp, sucs):
     return None, None
 
 
-_SUC_PREVIEW_DIAGKEY = "diag-suc-2026-8f3a91c7e2b5"   # TEMP: para diagnóstico; borrar con el bypass
+# ---------- Envialo como autoridad de sucursales (subir su Excel → 1=1) ----------
+ENVIALO_SUC = DATA_DIR / "envialo_sucursales.json"   # {email: {num: sucursal_oficial}}
+
+
+def _envialo_suc(email):
+    try:
+        return _json.loads(ENVIALO_SUC.read_text(encoding="utf-8")).get(str(email), {})
+    except Exception:
+        return {}
+
+
+def _envialo_suc_save(email, mapping):
+    try:
+        d = _json.loads(ENVIALO_SUC.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    cur = d.get(str(email), {})
+    cur.update({str(k): str(v) for k, v in (mapping or {}).items() if k and v})
+    d[str(email)] = cur
+    ENVIALO_SUC.parent.mkdir(parents=True, exist_ok=True)
+    ENVIALO_SUC.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return cur
+
+
+def _parse_envialo_xlsx(data):
+    """Lee el export 'andreani_estandar' de Envialo (hoja 'A sucursal') → {num_interno: sucursal}.
+    Columnas base 0: 6 = Numero Interno, 13 = Sucursal."""
+    import io
+    import openpyxl as _oxl
+    wb = _oxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    out = {}
+    if "A sucursal" not in wb.sheetnames:
+        return out
+    for r in wb["A sucursal"].iter_rows(min_row=3, values_only=True):
+        if r and len(r) > 13 and r[6] and r[13]:
+            out[str(r[6]).strip()] = str(r[13]).strip()
+    return out
+
+
+@app.post("/pf-despachos-envialo")
+def pf_despachos_envialo():
+    """Sube el Excel de Envialo y lo usa como AUTORIDAD de sucursales (1=1): compara pedido por pedido
+    contra lo que resuelve RealProfit; si alguna no coincide, GANA la de Envialo. Guarda esos valores
+    para que el Excel de Andreani salga con las sucursales de Envialo."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "logueate"}), 401
+    f = request.files.get("xlsx") or request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "msg": "subí el Excel de Envialo"}), 400
+    try:
+        env = _parse_envialo_xlsx(f.read())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude leer el Excel: " + str(e)[:120]}), 400
+    if not env:
+        return jsonify({"ok": False, "msg": "el Excel no tiene sucursales en la hoja 'A sucursal'"}), 400
+    try:
+        import openpyxl as _oxl
+        _tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+        _cpidx, sucs = _and_cfg(_oxl.load_workbook(_tpl, read_only=True, data_only=True))
+    except Exception:
+        sucs = []
+    rows = {str(r["num"]): r for r in (_despachos_orders(email) or [])}
+
+    def _n(s):
+        return _re_and.sub(r"\s+", " ", _ud_and.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().upper()).strip()
+    distintas, coinciden, solo_envialo = [], 0, 0
+    for num, suc_env in env.items():
+        r = rows.get(num)
+        if not r:
+            solo_envialo += 1
+            continue
+        mia, _via = _resolver_suc_completo(r.get("suc_nombre") or "", r.get("suc_lat"), r.get("suc_lng"),
+                                           r.get("suc_pid"), r.get("cp"), sucs)
+        if _n(mia) == _n(suc_env):
+            coinciden += 1
+        else:
+            distintas.append({"num": num, "realprofit": mia or "REVISAR", "envialo": suc_env})
+    guardadas = _envialo_suc_save(email, env)   # Envialo manda: guardo TODAS
+    return jsonify({"ok": True, "total": len(env), "coinciden": coinciden,
+                    "distintas": distintas, "solo_en_envialo": solo_envialo,
+                    "guardadas": len(guardadas)})
 
 
 @app.get("/pf-suc-preview")
 def pf_suc_preview():
     """Preview (logueado) de a qué SUCURSAL oficial de Andreani resuelve un pedido, con el punto
-    que eligió el cliente. Sirve para confirmar ANTES de despachar. Busca en TiendaNube y Shopify."""
-    dbg = (request.args.get("key") or "") == _SUC_PREVIEW_DIAGKEY   # TEMP bypass p/ diagnóstico
-    if not _user_actual() and not dbg:
+    que eligió el cliente. Sirve para confirmar ANTES de despachar. Busca en TiendaNube y Shopify.
+    Con ?debug=1 (logueado) muestra además los pasos del resolvedor (exacto/coord)."""
+    if not _user_actual():
         return jsonify({"ok": False, "msg": "logueate"}), 401
+    dbg = (request.args.get("debug") or "") == "1"
     nums = [n.strip() for n in (request.args.get("nums") or request.args.get("num") or "").split(",") if n.strip()]
     if not nums:
         return jsonify({"ok": False, "msg": "falta num"}), 400
