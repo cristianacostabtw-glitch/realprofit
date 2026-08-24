@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-units"})
+    return jsonify({"ok": True, "v": "2026-08-23-despachos-paginado"})
 
 
 @app.get("/pf-diag")
@@ -4142,16 +4142,26 @@ def _despachos_orders_shopify(email, desde=None, hasta=None):
               "fields": "id,order_number,name,total_price,current_total_price,"
                         "financial_status,fulfillment_status,cancelled_at,line_items,"
                         "created_at,shipping_lines,shipping_address,customer,contact_email,"
-                        "note_attributes"}
+                        "note_attributes,fulfillments"}
     if desde:
         params["created_at_min"] = desde + "T00:00:00-03:00"
     if hasta:
         params["created_at_max"] = hasta + "T23:59:59-03:00"
+    orders = []
+    since = 0
     try:
-        r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
-                         headers={"X-Shopify-Access-Token": token},
-                         params=params, timeout=40)
-        orders = (r.json() or {}).get("orders") or []
+        for _ in range(20):                                  # paginar: traer TODOS, no solo 250
+            params["since_id"] = since
+            r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                             headers={"X-Shopify-Access-Token": token},
+                             params=params, timeout=40)
+            lote = (r.json() or {}).get("orders") or []
+            if not lote:
+                break
+            orders.extend(lote)
+            since = lote[-1]["id"]
+            if len(lote) < 250:
+                break
     except Exception:
         return []
     st = _desp_state(email)
@@ -4161,6 +4171,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None):
             continue
         if (o.get("financial_status") or "").lower() != "paid":   # doble seguro: solo pagadas
             continue
+        if any(f.get("tracking_number") for f in (o.get("fulfillments") or [])):
+            continue                                              # ya despachado (tiene tracking) → no "por empaquetar"
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         sa = o.get("shipping_address") or {}
         cust = o.get("customer") or {}
