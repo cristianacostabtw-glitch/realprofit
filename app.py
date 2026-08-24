@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-chat-no-corta2"})
+    return jsonify({"ok": True, "v": "2026-08-24-chat-fix3"})
 
 
 @app.get("/pf-diag")
@@ -10125,8 +10125,6 @@ function lastInboundMins(c){
 }
 function renderConv(c){
  var conv=document.getElementById('conv'); if(!conv)return;
- // preservar lo que se está escribiendo (el poll de 4s re-dibuja y si no, borra el mensaje a medio tipear)
- var _pt=document.getElementById('txt'); var _pv=_pt?_pt.value:''; var _pf=(_pt&&document.activeElement===_pt); var _pcs=_pt?_pt.selectionStart:0;
  var _pm=document.getElementById('msgs'); var _atBottom=_pm?((_pm.scrollHeight-_pm.scrollTop-_pm.clientHeight)<40):true;
  var mins=lastInboundMins(c); var win=mins>1440;
  var msgs=(c.messages||[]).map(function(m){
@@ -10156,8 +10154,6 @@ function renderConv(c){
   +'<button class="att" onclick="pickFile()" title="Adjuntar foto o archivo">&#128206;</button>'
   +'<input id="txt" placeholder="Escribí un mensaje" onkeydown="if(event.key==='+"'Enter'"+')send()"><button class="snd" onclick="send()">&#10148;</button></div>'
   +'<input type="file" id="fileIn" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onchange="previewMedia(this)">';
- // restaurar lo que se estaba escribiendo (texto + cursor + foco)
- var _nt=document.getElementById('txt'); if(_nt){ _nt.value=_pv; if(_pf){ _nt.focus(); try{_nt.setSelectionRange(_pcs,_pcs);}catch(e){} } }
  var m=document.getElementById('msgs'); if(m && _atBottom)m.scrollTop=m.scrollHeight;
 }
 function send(){
