@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-meli-duplicar-fix"})
+    return jsonify({"ok": True, "v": "2026-08-24-meli-dup-form"})
 
 
 @app.get("/pf-diag")
@@ -8728,7 +8728,7 @@ def meli_duplicar():
         "currency_id": s.get("currency_id") or "ARS",
         "available_quantity": max(1, qty),
         "buying_mode": s.get("buying_mode") or "buy_it_now",
-        "listing_type_id": s.get("listing_type_id") or "gold_special",
+        "listing_type_id": d.get("listing_type_id") or s.get("listing_type_id") or "gold_special",
         "condition": s.get("condition") or "new",
         "pictures": [{"source": p.get("url")} for p in (s.get("pictures") or []) if p.get("url")],
     }
@@ -9103,6 +9103,16 @@ _MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
  <div class="side" id="side"></div>
  <div class="main" id="main"></div>
 </div>
+<div id="dupov" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(3,7,12,.72);align-items:center;justify-content:center;padding:20px">
+ <div style="width:100%;max-width:460px;background:#0e1521;border:1px solid #1b2635;border-radius:16px;padding:22px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-weight:800;font-size:16px">Duplicar publicación</div><span onclick="dupClose()" style="cursor:pointer;color:#93a3ba;font-size:20px">&times;</span></div>
+  <div style="color:#93a3ba;font-size:12.5px;margin-bottom:14px">Copia esta publicación (fotos, categoría, descripción) con los datos que pongas acá.</div>
+  <div style="margin-bottom:10px"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Título</div><input id="dupt" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"></div>
+  <div style="display:flex;gap:10px;margin-bottom:10px"><div style="flex:1"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Precio</div><input id="dupp" type="number" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"></div><div style="width:110px"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Cantidad</div><input id="dups" type="number" value="1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"></div></div>
+  <div style="margin-bottom:16px"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Tipo de publicación (cuotas)</div><select id="dupl" style="width:100%;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"><option value="gold_pro">Premium — con cuotas sin interés (más comisión)</option><option value="gold_special">Clásica — sin cuotas sin interés (menos comisión)</option></select></div>
+  <div style="display:flex;gap:10px;align-items:center"><button onclick="dupCrear(this)" style="background:#ffe600;color:#2d3277;border:0;border-radius:9px;padding:11px 20px;font-weight:800;cursor:pointer">Crear publicación</button><span id="dupm" style="font-size:12.5px;font-weight:600"></span></div>
+ </div>
+</div>
 <script>
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
@@ -9151,11 +9161,18 @@ function cargarPubs(){ var box=document.getElementById('mlc'); if(!box)return;
 function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.getElementById('skum_'+id); if(!inp)return; if(m){m.textContent='…';m.style.color='#7aa2c8';}
  post('/meli/sku-set',{id:id,sku:inp.value}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓';m.style.color='#34d399';} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
 }
-function duplicarPub(id){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; var t=prompt('Título de la publicación NUEVA (copia de esta):', it.title||''); if(t===null)return;
- var m=document.getElementById('skum_'+id); if(m){m.textContent='Duplicando…';m.style.color='#7aa2c8';}
- post('/meli/duplicar',{id:id,title:t}).then(function(r){ if(!m)return;
-  if(r&&r.ok){ m.innerHTML='✓ creada '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver</a>'):''); m.style.color='#34d399'; setTimeout(cargarPubs,1500); }
-  else { m.textContent=(r&&r.msg)||'error'; m.style.color='#e0637f'; } });
+var DUPID='';
+function duplicarPub(id){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; DUPID=id;
+ document.getElementById('dupt').value=it.title||''; document.getElementById('dupp').value=(it.price!=null?it.price:''); document.getElementById('dups').value=1; document.getElementById('dupm').textContent='';
+ document.getElementById('dupov').style.display='flex';
+}
+function dupClose(){ document.getElementById('dupov').style.display='none'; }
+function dupCrear(btn){ var m=document.getElementById('dupm'); var t=document.getElementById('dupt').value.trim(); if(!t){ m.textContent='Poné un título'; m.style.color='#e0637f'; return; }
+ var body={id:DUPID,title:t,price:document.getElementById('dupp').value,stock:document.getElementById('dups').value,listing_type_id:document.getElementById('dupl').value};
+ if(btn)btn.disabled=true; m.textContent='Creando…'; m.style.color='#7aa2c8';
+ post('/meli/duplicar',body).then(function(r){ if(btn)btn.disabled=false;
+  if(r&&r.ok){ m.innerHTML='✓ Creada '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); m.style.color='#34d399'; setTimeout(function(){ dupClose(); cargarPubs(); },1400); }
+  else { m.textContent=(r&&r.msg)||'error'; m.style.color='#e0637f'; } }).catch(function(){ if(btn)btn.disabled=false; m.textContent='Error de red'; m.style.color='#e0637f'; });
 }
 var STK30={items:[],bpu:{},stock30:null};
 function bpuAuto(t){ t=(t||'').toLowerCase(); var m=t.match(/x\s?([2-9])\b/); if(m)return +m[1]; m=t.match(/(\d)\s*meses/); if(m&&+m[1]>=2&&+m[1]<=9)return +m[1]; if(t.indexOf('cuatro')>=0)return 4; if(t.indexOf('tres')>=0)return 3; if(t.indexOf('dos')>=0)return 2; return 1; }
