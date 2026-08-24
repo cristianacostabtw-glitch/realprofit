@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-suc-coord"})
+    return jsonify({"ok": True, "v": "2026-08-24-suc-preview"})
 
 
 @app.get("/pf-diag")
@@ -9495,6 +9495,93 @@ def _tn_save_token(email, data) -> None:
 
 def _tn_headers(token) -> dict:
     return {"Authentication": "bearer " + str(token), "User-Agent": TN_UA}
+
+
+def _resolver_suc_completo(suc_raw, lat, lng, pid, cp, sucs):
+    """Corre la MISMA cadena del generador de Excel y devuelve (sucursal_oficial, via).
+    exacto → coordenadas del punto → vivo por dirección → None (revisar)."""
+    of = _and_suc_exacto(suc_raw)
+    if of:
+        return of, "exacto"
+    try:
+        of = _and_suc_coord(lat, lng, "HOP" in str(suc_raw).upper(), pid, sucs)
+    except Exception:
+        of = None
+    if of:
+        return of, "coordenadas"
+    try:
+        lv = _and_suc_live(suc_raw, cp or "")
+    except Exception:
+        lv = None
+    if lv:
+        return lv, "vivo"
+    return None, None
+
+
+@app.get("/pf-suc-preview")
+def pf_suc_preview():
+    """Preview (logueado) de a qué SUCURSAL oficial de Andreani resuelve un pedido, con el punto
+    que eligió el cliente. Sirve para confirmar ANTES de despachar. Busca en TiendaNube y Shopify."""
+    if not _user_actual():
+        return jsonify({"ok": False, "msg": "logueate"}), 401
+    num = str(request.args.get("num") or "").strip()
+    if not num:
+        return jsonify({"ok": False, "msg": "falta num"}), 400
+    try:
+        import openpyxl as _oxl
+        _tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
+        _cpidx, sucs = _and_cfg(_oxl.load_workbook(_tpl, read_only=True, data_only=True))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude cargar plantilla: " + str(e)[:100]}), 500
+    found = []
+    # --- TiendaNube ---
+    for email, tk in _tn_tokens().items():
+        if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("store_id")):
+            continue
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, tk["store_id"]), headers=_tn_headers(tk["access_token"]),
+                             params={"q": num, "per_page": 10}, timeout=30)
+            arr = r.json() if r.content else []
+        except Exception:
+            arr = []
+        for o in (arr if isinstance(arr, list) else []):
+            if str(o.get("number")) != num:
+                continue
+            pk = _tn_pickup(o); pkad = pk.get("address") or {}
+            suc_raw = _tn_pickup_nombre(o)
+            lat = pkad.get("latitude") or pkad.get("lat") or ""
+            lng = pkad.get("longitude") or pkad.get("lng") or ""
+            pid = str(o.get("shipping_option_reference") or "")
+            cp = str(pkad.get("zipcode") or (o.get("shipping_address") or {}).get("zipcode") or "")
+            of, via = _resolver_suc_completo(suc_raw, lat, lng, pid, cp, sucs)
+            found.append({"tienda": "TiendaNube", "cuenta": email, "num": num,
+                          "punto_elegido": pk.get("name") or suc_raw, "punto_extraido": suc_raw,
+                          "lat": lat, "lng": lng, "punto_id": pid,
+                          "SUCURSAL_RESUELTA": of or "⚠️ REVISAR (no la mando a cualquier lado)", "via": via})
+    # --- Shopify ---
+    for email, tk in _shop_tokens().items():
+        if not (isinstance(tk, dict) and tk.get("access_token") and tk.get("shop")):
+            continue
+        try:
+            r = requests.get("https://%s/admin/api/2024-10/orders.json" % tk["shop"],
+                             headers={"X-Shopify-Access-Token": tk["access_token"]},
+                             params={"status": "any", "name": num, "limit": 5,
+                                     "fields": "order_number,name,shipping_lines,shipping_address"}, timeout=30)
+            arr = (r.json() or {}).get("orders") or []
+        except Exception:
+            arr = []
+        for o in arr:
+            if str(o.get("order_number")) != num:
+                continue
+            suc_raw = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip()
+            cp = str((o.get("shipping_address") or {}).get("zip") or "")
+            of, via = _resolver_suc_completo(suc_raw, "", "", "", cp, sucs)
+            found.append({"tienda": "Shopify", "cuenta": email, "num": num,
+                          "punto_elegido": suc_raw, "punto_extraido": suc_raw,
+                          "SUCURSAL_RESUELTA": of or "⚠️ REVISAR (no la mando a cualquier lado)", "via": via})
+    if not found:
+        return jsonify({"ok": False, "msg": "no encontré el pedido #%s en ninguna tienda conectada" % num})
+    return jsonify({"ok": True, "resultado": found})
 
 
 @app.get("/conectar-tiendanube")
