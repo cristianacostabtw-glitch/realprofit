@@ -3673,7 +3673,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-23-despachos-paginado"})
+    return jsonify({"ok": True, "v": "2026-08-23-desp-estado-real"})
 
 
 @app.get("/pf-diag")
@@ -4171,8 +4171,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None):
             continue
         if (o.get("financial_status") or "").lower() != "paid":   # doble seguro: solo pagadas
             continue
-        if any(f.get("tracking_number") for f in (o.get("fulfillments") or [])):
-            continue                                              # ya despachado (tiene tracking) → no "por empaquetar"
+        tiene_trk = any(f.get("tracking_number") for f in (o.get("fulfillments") or []))
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         sa = o.get("shipping_address") or {}
         cust = o.get("customer") or {}
@@ -4186,7 +4185,9 @@ def _despachos_orders_shopify(email, desde=None, hasta=None):
         tel = sa.get("phone") or (cust.get("phone") or "")
         # Domicilio incompleto (sucursal no necesita dirección de casa).
         incompleta = (not suc) and (not sa.get("address1") or not cp or not tel)
-        estado = st.get(num) or "empaquetar"   # exportada / enviada / (default) empaquetar
+        # Estado REAL: si ya tiene tracking en Shopify → enviada (aunque el estado local no lo sepa).
+        # Si no, usa el estado local (exportada al generar Excel) o por defecto empaquetar.
+        estado = "enviada" if tiene_trk else (st.get(num) or "empaquetar")
         out.append({
             "tienda": "shopify", "num": num, "nombre": nombre.strip(), "tipo": "sucursal" if suc else "domicilio",
             "localidad": localidad, "cp": cp, "provincia": prov, "unidades": unidades,
@@ -9694,6 +9695,31 @@ def pf_diag_excel():
                     "domicilio": r_dom - 3, "sucursal": r_suc - 3, "via": via,
                     "revisar": revisar, "omitidos_dudosos": len(dudosos), "dudosos": dudosos,
                     "xlsx_b64": _b64.b64encode(buf.getvalue()).decode()})
+
+
+@app.get("/pf-desp-marcar-lote")
+def pf_desp_marcar_lote():
+    """TEMPORAL — marca un rango de pedidos con un estado (exportada/enviada) en el estado de despachos
+    de la cuenta dueña de la tienda. Para sincronizar el lote que se generó por afuera. Gateado."""
+    if (request.args.get("key") or "") != "chequeo-noxa-2026":
+        return jsonify({"ok": False}), 403
+    shopq = (request.args.get("shop") or "").strip().lower()
+    lo = int(request.args.get("lo") or 0); hi = int(request.args.get("hi") or 0)
+    estado = (request.args.get("estado") or "exportada").strip()
+    owner = None
+    for em, c in _shop_tokens().items():
+        if shopq in str(c.get("shop") or "").lower():
+            owner = em
+            break
+    if not owner:
+        return jsonify({"ok": False, "msg": "sin cuenta para esa tienda"})
+    st = _desp_state(owner)
+    n = 0
+    for num in range(lo, hi + 1):
+        st[str(num)] = estado
+        n += 1
+    _desp_save(owner, st)
+    return jsonify({"ok": True, "cuenta": owner, "marcados": n, "estado": estado, "rango": [lo, hi]})
 
 
 @app.get("/pf-diag-units")
