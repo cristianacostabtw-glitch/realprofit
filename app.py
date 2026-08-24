@@ -3773,7 +3773,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-chat-no-corta"})
+    return jsonify({"ok": True, "v": "2026-08-24-chat-no-corta2"})
 
 
 @app.get("/pf-diag")
@@ -10094,10 +10094,14 @@ function sendCarritos(soloTildados){ var tels=soloTildados?Object.keys(TSEL).fil
   if(msg){ var tx='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.style.color='#0a7d3c'; msg.innerHTML=tx; }
   loadCarritos();
  }); }
+var _lastMsgN=-1, _lastMsgId='';
 function loadChats(){
  get('/wa-chats').then(function(r){
   if(!r.ok)return; CHATS=r.chats||[]; renderList(); updateTitle();
-  if(SEL){ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0]; if(c)renderConv(c); }
+  if(SEL){ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0];
+   if(c){ var ms=c.messages||[]; var n=ms.length; var lid=n?(ms[n-1].id||ms[n-1].ts||''):'';
+    // Solo re-dibujar la conversación si HAY un mensaje nuevo (así no borra lo que estás escribiendo).
+    if(n!==_lastMsgN || lid!==_lastMsgId){ _lastMsgN=n; _lastMsgId=lid; renderConv(c); } } }
  });
 }
 function updateTitle(){ var n=0; CHATS.forEach(function(c){ n+=(c.unread||0); }); document.title=(n>0?'('+n+') ':'')+'WhatsApp \\u2014 RealProfit'; }
@@ -10113,7 +10117,7 @@ function renderList(){
    +'<div class="lt">'+esc(c.last||'')+(c.unread>0?'<span style="float:right;background:#25D366;color:#fff;border-radius:11px;min-width:20px;height:20px;line-height:20px;text-align:center;font-size:12px;font-weight:700;padding:0 6px">'+c.unread+'</span>':'')+'</div></div></div>';
  }).join('');
 }
-function openChat(wid){ SEL=wid; var c=CHATS.filter(function(x){return x.wa_id==wid;})[0]; if(c){ c.unread=0; try{post('/wa-leido',{wa_id:wid});}catch(e){} renderConv(c); } renderList(); updateTitle(); }
+function openChat(wid){ SEL=wid; var c=CHATS.filter(function(x){return x.wa_id==wid;})[0]; if(c){ c.unread=0; try{post('/wa-leido',{wa_id:wid});}catch(e){} renderConv(c); var _ms=c.messages||[]; _lastMsgN=_ms.length; _lastMsgId=_ms.length?(_ms[_ms.length-1].id||_ms[_ms.length-1].ts||''):''; } renderList(); updateTitle(); }
 function lastInboundMins(c){
  var last=null; (c.messages||[]).forEach(function(m){ if(m.dir=='in')last=m.ts; });
  if(!last)return 99999;
