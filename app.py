@@ -1543,6 +1543,7 @@ _SOLO_DASH = r"""
    var fd=new FormData(); fd.append('pdf',f); fd.append('tienda',_dSegTienda||'tn');
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
+     if(j.tienda){ _dSegTienda=j.tienda; rpDSegTiendaRender(); }   // backend auto-detectó la tienda (Shopify/TN)
      _dSeg=j.pedidos; _dSegWppOn=(j.wpp_on!==false); _dSegRender();
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
  window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
@@ -3799,7 +3800,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-seg-graphql-bulk"})
+    return jsonify({"ok": True, "v": "2026-08-25-seg-autodetect-tienda"})
 
 
 @app.get("/pf-diag")
@@ -6345,15 +6346,22 @@ def pf_despachos_seg_leer():
     if not f:
         return jsonify({"ok": False, "msg": "subí el PDF de Andreani"})
     tienda = (request.form.get("tienda") or "tn").strip()
+    # Auto-detecta la tienda: si pide una que NO está conectada pero la otra SÍ, usa esa.
+    # (así una cuenta Shopify no pide "conectá TiendaNube" solo porque el modal arranca en TN)
+    sh_ok = bool(_seg_shop_conn(email)[0])
+    tn_ok = bool((_seg_tn_store(email) or (None, None))[0])
+    if tienda == "tn" and not tn_ok and sh_ok:
+        tienda = "shopify"
+    elif tienda == "shopify" and not sh_ok and tn_ok:
+        tienda = "tn"
     if tienda == "shopify":
-        _sh, _at = _seg_shop_conn(email)
-        if not _sh:
+        if not sh_ok:
             return jsonify({"ok": False, "msg": "conectá tu Shopify en Integraciones"})
         store = hdr = None
     else:
         store, hdr = _seg_tn_store(email)
         if not store:
-            return jsonify({"ok": False, "msg": "conectá tu TiendaNube en Integraciones"})
+            return jsonify({"ok": False, "msg": "conectá tu tienda (Shopify o TiendaNube) en Integraciones"})
     import tempfile
     tmp = tempfile.mktemp(suffix=".pdf")
     f.save(tmp)
