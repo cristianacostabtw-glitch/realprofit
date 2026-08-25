@@ -1817,14 +1817,15 @@ _SOLO_DASH = r"""
     if(_rc){ _raw.recompras=_rc.r; _raw.fact_recompra=_rc.f; }
     // MercadoLibre no tiene ventas (todo es Shopify) → paso datos en CERO para no pintar los de Shopify.
     var meli=(_canalActivo()==='MercadoLibre'); var save=_raw; if(meli) _raw=_ceroRaw();
+    var _mok=false;
     try{ costos4(); }catch(e){}
-    try{ metricas(); }catch(e){}
+    try{ _mok=metricas(); }catch(e){}
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
     try{ hookCur(); }catch(e){}
-    // Primer paint OK (ya hay tarjetas con valores reales) → revelar la grilla con fade.
-    if(!_painted){ var _g=findGrid(); if(_g && _g.querySelector('[class*="rounded-2xl"]')){ _painted=true; _g.style.opacity='1'; } } }
+    // Revelar la grilla SOLO cuando metricas() YA remapeó las tarjetas a los valores reales (nunca el demo).
+    if(!_painted && _mok){ var _g=findGrid(); if(_g){ _painted=true; _g.style.opacity='1'; } } }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
@@ -1889,13 +1890,13 @@ _SOLO_DASH = r"""
       var hdr=sp[i]; for(var k=0;k<6 && hdr;k++){ hdr=hdr.parentElement; if(esHeader(hdr)) break; }
       if(esHeader(hdr) && hdr.parentElement) return hdr.parentElement; } }
     return null; }
-  function metricas(){ if(!_raw)return; var grid=findGrid(); if(!grid) return;
+  function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
     // Recolecto las tarjetas de la sección PUBLICIDAD (entre su header y el próximo) y remapeo POR POSICIÓN.
     var inPub=false, cards=[], kids=grid.children;
     for(var i=0;i<kids.length;i++){ var el=kids[i];
-      if(esHeader(el)){ inPub = (el.textContent||'').indexOf('Publicidad')>=0; continue; }
+      if(esHeader(el)){ inPub = (el.textContent||'').toUpperCase().indexOf('PUBLICIDAD')>=0; continue; }
       if(inPub){ var c=/rounded-2xl/.test(el.className||'')?el:(el.querySelector?el.querySelector('[class*=\"rounded-2xl\"]'):null); if(c) cards.push(c); } }
-    if(!cards.length) return;
+    if(!cards.length) return false;
     var seq=[['Gasto Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
              ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
@@ -1904,7 +1905,8 @@ _SOLO_DASH = r"""
              ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
              ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
-    for(var j=0;j<cards.length && j<seq.length;j++) setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); }
+    for(var j=0;j<cards.length && j<seq.length;j++) setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]);
+    return true; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
@@ -3797,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-wa-chat-full"})
+    return jsonify({"ok": True, "v": "2026-08-25-kpi-gate2"})
 
 
 @app.get("/pf-diag")
