@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-dup-msg"})
+    return jsonify({"ok": True, "v": "2026-08-25-variante"})
 
 
 @app.get("/pf-diag")
@@ -9155,6 +9155,30 @@ def meli_publicaciones():
     return jsonify({"ok": True, "items": items, "total": len(ids)})
 
 
+@app.post("/meli/subir-foto")
+def meli_subir_foto():
+    """Sube una imagen a MercadoLibre y devuelve su picture id (para usarla como primera foto de una copia)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    f = request.files.get("foto") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "subí una foto"})
+    try:
+        r = requests.post("%s/pictures/items/upload" % MELI_API,
+                          headers={"Authorization": "Bearer " + tok},
+                          files={"file": (f.filename or "foto.jpg", f.read(), f.mimetype or "image/jpeg")}, timeout=60)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    if r.status_code >= 400 or not j.get("id"):
+        return jsonify({"ok": False, "msg": (j.get("message") or "no se pudo subir la foto")[:150]})
+    return jsonify({"ok": True, "id": j.get("id")})
+
+
 @app.post("/meli/duplicar")
 def meli_duplicar():
     """Crea una publicación NUEVA copiando una existente (título/precio/fotos/atributos/envío).
@@ -9186,6 +9210,11 @@ def meli_duplicar():
         cuotas = 0
     # cuotas sin interés = Premium (gold_pro) + tag de campaña; sin cuotas = Clásica (gold_special)
     listing_type = "gold_pro" if cuotas > 0 else (d.get("listing_type_id") or s.get("listing_type_id") or "gold_special")
+    # Primera foto propia de esta copia (variante por unidades); el resto se copia del original.
+    pics = [{"source": p.get("url")} for p in (s.get("pictures") or []) if p.get("url")]
+    first_pic = (d.get("first_pic") or "").strip()
+    if first_pic:
+        pics = [{"id": first_pic}] + pics
     payload = {
         "title": titulo,
         "category_id": s.get("category_id"),
@@ -9195,10 +9224,13 @@ def meli_duplicar():
         "buying_mode": s.get("buying_mode") or "buy_it_now",
         "listing_type_id": listing_type,
         "condition": s.get("condition") or "new",
-        "pictures": [{"source": p.get("url")} for p in (s.get("pictures") or []) if p.get("url")],
+        "pictures": pics,
     }
+    sku_nuevo = (d.get("sku") or "").strip()   # SKU propio de esta copia (no copia el del original si lo cargan)
     attrs = []
     for a in (s.get("attributes") or []):
+        if a.get("id") == "SELLER_SKU" and sku_nuevo:
+            continue
         if a.get("id") and (a.get("value_id") or a.get("value_name")):
             at = {"id": a["id"]}
             if a.get("value_id"):
@@ -9206,6 +9238,9 @@ def meli_duplicar():
             if a.get("value_name"):
                 at["value_name"] = a["value_name"]
             attrs.append(at)
+    if sku_nuevo:
+        attrs.append({"id": "SELLER_SKU", "value_name": sku_nuevo})
+        payload["seller_custom_field"] = sku_nuevo
     if attrs:
         payload["attributes"] = attrs
     if s.get("shipping"):
@@ -9584,7 +9619,7 @@ _MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 </div>
 <div id="dupov" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(3,7,12,.72);align-items:center;justify-content:center;padding:20px">
  <div style="width:100%;max-width:600px;background:#0e1521;border:1px solid #1b2635;border-radius:16px;padding:22px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-weight:800;font-size:16px">Duplicar publicación</div><span onclick="dupClose()" style="cursor:pointer;color:#93a3ba;font-size:20px">&times;</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div id="dup-title" style="font-weight:800;font-size:16px">Duplicar publicación</div><span onclick="dupClose()" style="cursor:pointer;color:#93a3ba;font-size:20px">&times;</span></div>
   <div style="color:#93a3ba;font-size:12.5px;margin-bottom:14px">Podés crear <b style="color:#cfe0f5">varias copias</b> de una — cada una con su propio título, precio, cantidad y cuotas. Se copian fotos, categoría y descripción.</div>
   <div id="dup-rows" style="max-height:54vh;overflow:auto;margin-bottom:12px"></div>
   <button type="button" onclick="dupAddRow()" style="background:#0a1322;border:1px dashed #2a3d59;color:#9fd0ff;border-radius:9px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:14px;width:100%">+ Agregar otra copia</button>
@@ -9633,13 +9668,14 @@ function cargarPubs(){ var box=document.getElementById('mlc'); if(!box)return;
   PUBS=(j&&j.items)||[]; if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.items||[]; if(!v.length){ box.innerHTML=vacio('Sin publicaciones activas.'); return; }
   box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+v.length+' publicaciones</div>'
    +'<div style="overflow:auto"><table><thead><tr><th></th>'+TH+'Publicación</th><th style="text-align:right">Precio</th><th style="text-align:right">Stock</th>'+TH+'SKU</th><th></th></tr></thead><tbody>'
-   +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'<div style="font-size:10px;color:#5b6b82">'+esc(it.id)+'</div></td><td style="text-align:right">'+money(it.price)+'</td><td style="text-align:right">'+(it.stock!=null?it.stock:'')+'</td><td><input id="sku_'+it.id+'" value="'+esc(it.sku)+'" placeholder="SKU" style="width:110px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarSku(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <button onclick="duplicarPub(\''+it.id+'\')" style="background:#111c2b;border:1px solid #22324a;color:#cbd5e1;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px">Duplicar</button> <span id="skum_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
+   +v.map(function(it){ var im=it.thumb?('<img src="'+esc(it.thumb)+'" style="width:34px;height:34px;border-radius:6px;object-fit:cover">'):''; return '<tr><td>'+im+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.title)+'<div style="font-size:10px;color:#5b6b82">'+esc(it.id)+'</div></td><td style="text-align:right">'+money(it.price)+'</td><td style="text-align:right">'+(it.stock!=null?it.stock:'')+'</td><td><input id="sku_'+it.id+'" value="'+esc(it.sku)+'" placeholder="SKU" style="width:110px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px"></td><td style="white-space:nowrap"><button onclick="guardarSku(\''+it.id+'\')" style="background:#ffe600;color:#2d3277;border:0;border-radius:7px;padding:6px 12px;font-weight:700;cursor:pointer;font-size:12px">Guardar</button> <button onclick="duplicarPub(\''+it.id+'\')" style="background:#111c2b;border:1px solid #22324a;color:#cbd5e1;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px">Duplicar</button> <button onclick="variantePub(\''+it.id+'\')" title="Duplicar como variante por unidades: cambiás título, precio, cuotas, SKU y la primera foto" style="background:#1a1633;border:1px solid #4a3a86;color:#c9b8ff;border-radius:7px;padding:6px 10px;cursor:pointer;font-size:12px">+ Variante</button> <span id="skum_'+it.id+'" style="font-size:12px"></span></td></tr>'; }).join('')+'</tbody></table></div>';
  }).catch(function(){ box.innerHTML=err(); });
 }
 function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.getElementById('skum_'+id); if(!inp)return; if(m){m.textContent='…';m.style.color='#7aa2c8';}
  post('/meli/sku-set',{id:id,sku:inp.value}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓';m.style.color='#34d399';} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
 }
 var DUPID='';
+var DUPMODE='simple';
 function dupCuotasSel(v){ v=+v||0; var o=[[0,'Sin cuotas (Clásica · menos comisión)'],[3,'3 cuotas sin interés'],[6,'6 cuotas sin interés (recomendada)'],[9,'9 cuotas sin interés'],[12,'12 cuotas sin interés']];
  var h='<select class="dupl" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:12.5px">';
  for(var i=0;i<o.length;i++){ h+='<option value="'+o[i][0]+'"'+(o[i][0]===v?' selected':'')+'>'+o[i][1]+'</option>'; } return h+'</select>';
@@ -9651,30 +9687,40 @@ function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows
   +'<div style="'+lb+'">Título</div><input class="dupt" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px">'
   +'<div style="'+lb+'">Precio ($)</div><input class="dupp" type="number" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px">'
   +'<div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
-  +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">El resto (SKU, cantidad, fotos, categoría, descripción) se copia igual del original.</div>'
+  +(DUPMODE==='variante'
+     ? ('<div style="'+lb+';margin-top:8px">SKU de esta variante (unidades)</div><input class="dupk" placeholder="ej: x3 30ml" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px">'
+        +'<div style="'+lb+';margin-top:8px">Primera foto (opcional — cambia la principal)</div><input class="dupf" type="file" accept="image/*" style="width:100%;color:#9fb3cc;font-size:12px">'
+        +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">Esta variante cambia título, precio, cuotas, SKU y foto principal. El resto (categoría, descripción, demás fotos) se copia del original.</div>')
+     : '<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">El resto (SKU, cantidad, fotos, categoría, descripción) se copia igual del original.</div>')
   +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:6px"></div>';
  wrap.appendChild(row);
  row.querySelector('.dupt').value=pre.title||''; row.querySelector('.dupp').value=(pre.price!=null?pre.price:'');
  var rm=row.querySelector('.dup-rm'); if(rm)rm.onclick=function(){ row.remove(); dupRenum(); };
 }
 function dupRenum(){ var rows=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rows.length;i++){ rows[i].querySelector('b').textContent='Copia '+(i+1); var x=rows[i].querySelector('.dup-rm'); if(x)x.style.display=(i>0?'inline':'none'); } }
-function duplicarPub(id){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; DUPID=id;
+function dupAbrir(id,modo){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; DUPID=id; DUPMODE=modo;
+ var tt=document.getElementById('dup-title'); if(tt)tt.textContent=(modo==='variante'?'Nueva variante (por unidades)':'Duplicar publicación');
  document.getElementById('dup-rows').innerHTML=''; document.getElementById('dupm').textContent='';
  dupAddRow({title:it.title||'', price:(it.price!=null?it.price:'')});
  document.getElementById('dupov').style.display='flex';
 }
+function duplicarPub(id){ dupAbrir(id,'simple'); }
+function variantePub(id){ dupAbrir(id,'variante'); }
 function dupClose(){ document.getElementById('dupov').style.display='none'; }
 function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice.call(document.querySelectorAll('#dup-rows .dup-row'));
- var jobs=rows.map(function(r){ return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value}; });
+ var jobs=rows.map(function(r){ var kf=r.querySelector('.dupk'), ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:(kf?kf.value.trim():''),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
+ function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,first_pic:picid||''}).then(function(r){
+    if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
+    else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
+    i++; next();
+   }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); }); }
  function next(){ if(i>=jobs.length){ if(btn)btn.disabled=false; m.innerHTML='✓ '+ok+'/'+jobs.length+' creadas'; m.style.color=(ok?'#34d399':'#e0637f'); if(ok)setTimeout(cargarPubs,1600); return; }
-  var j=jobs[i]; var st=j.row.querySelector('.dupst'); st.textContent='Creando…'; st.style.color='#7aa2c8';
-  post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas}).then(function(r){
-   if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
-   else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
-   i++; next();
-  }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); });
+  var j=jobs[i]; var st=j.row.querySelector('.dupst');
+  if(j.foto){ st.textContent='Subiendo foto…'; st.style.color='#7aa2c8'; var fd=new FormData(); fd.append('foto',j.foto);
+   fetch('/meli/subir-foto',{method:'POST',body:fd}).then(function(x){return x.json();}).then(function(fr){ st.textContent='Creando…'; crear(j,st,(fr&&fr.ok)?fr.id:''); }).catch(function(){ st.textContent='Creando (foto falló)…'; crear(j,st,''); });
+  } else { st.textContent='Creando…'; st.style.color='#7aa2c8'; crear(j,st,''); }
  }
  next();
 }
