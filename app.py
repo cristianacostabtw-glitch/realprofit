@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-shopify-429"})
+    return jsonify({"ok": True, "v": "2026-08-25-meli-multicopia"})
 
 
 @app.get("/pf-diag")
@@ -9180,6 +9180,12 @@ def meli_duplicar():
         qty = int(d.get("stock")) if d.get("stock") not in (None, "") else 1
     except Exception:
         qty = 1
+    try:
+        cuotas = int(d.get("cuotas") or 0)     # 0=sin cuotas (Clásica), 3/6/9/12 sin interés (Premium)
+    except Exception:
+        cuotas = 0
+    # cuotas sin interés = Premium (gold_pro) + tag de campaña; sin cuotas = Clásica (gold_special)
+    listing_type = "gold_pro" if cuotas > 0 else (d.get("listing_type_id") or s.get("listing_type_id") or "gold_special")
     payload = {
         "title": titulo,
         "category_id": s.get("category_id"),
@@ -9187,7 +9193,7 @@ def meli_duplicar():
         "currency_id": s.get("currency_id") or "ARS",
         "available_quantity": max(1, qty),
         "buying_mode": s.get("buying_mode") or "buy_it_now",
-        "listing_type_id": d.get("listing_type_id") or s.get("listing_type_id") or "gold_special",
+        "listing_type_id": listing_type,
         "condition": s.get("condition") or "new",
         "pictures": [{"source": p.get("url")} for p in (s.get("pictures") or []) if p.get("url")],
     }
@@ -9229,7 +9235,21 @@ def meli_duplicar():
                           json={"plain_text": desc["plain_text"]}, timeout=20)
     except Exception:
         pass
-    return jsonify({"ok": True, "id": newid, "permalink": j.get("permalink", ""), "title": j.get("title", "")})
+    cuotas_ok = None
+    if cuotas > 0 and newid:          # activar la campaña de N cuotas sin interés (tag)
+        cuotas_ok = False
+        for tag in ("cuota-simple-%d" % cuotas, "mshops_%dx_campaign" % cuotas, "%dx_campaign" % cuotas):
+            try:
+                rt = requests.put("%s/items/%s" % (MELI_API, newid),
+                                  headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                                  json={"tags": [tag]}, timeout=20)
+                if rt.status_code < 400:
+                    cuotas_ok = True
+                    break
+            except Exception:
+                pass
+    return jsonify({"ok": True, "id": newid, "permalink": j.get("permalink", ""),
+                    "title": j.get("title", ""), "cuotas": cuotas, "cuotas_ok": cuotas_ok})
 
 
 @app.post("/meli/sku-set")
@@ -9563,13 +9583,12 @@ _MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
  <div class="main" id="main"></div>
 </div>
 <div id="dupov" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(3,7,12,.72);align-items:center;justify-content:center;padding:20px">
- <div style="width:100%;max-width:460px;background:#0e1521;border:1px solid #1b2635;border-radius:16px;padding:22px">
+ <div style="width:100%;max-width:600px;background:#0e1521;border:1px solid #1b2635;border-radius:16px;padding:22px">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-weight:800;font-size:16px">Duplicar publicación</div><span onclick="dupClose()" style="cursor:pointer;color:#93a3ba;font-size:20px">&times;</span></div>
-  <div style="color:#93a3ba;font-size:12.5px;margin-bottom:14px">Copia esta publicación (fotos, categoría, descripción) con los datos que pongas acá.</div>
-  <div style="margin-bottom:10px"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Título</div><input id="dupt" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"></div>
-  <div style="display:flex;gap:10px;margin-bottom:10px"><div style="flex:1"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Precio</div><input id="dupp" type="number" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"></div><div style="width:110px"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Cantidad</div><input id="dups" type="number" value="1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"></div></div>
-  <div style="margin-bottom:16px"><div style="font-size:12px;color:#93a3ba;margin-bottom:4px">Tipo de publicación (cuotas)</div><select id="dupl" style="width:100%;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:9px;font-size:13px"><option value="gold_pro">Premium — con cuotas sin interés (más comisión)</option><option value="gold_special">Clásica — sin cuotas sin interés (menos comisión)</option></select></div>
-  <div style="display:flex;gap:10px;align-items:center"><button onclick="dupCrear(this)" style="background:#ffe600;color:#2d3277;border:0;border-radius:9px;padding:11px 20px;font-weight:800;cursor:pointer">Crear publicación</button><span id="dupm" style="font-size:12.5px;font-weight:600"></span></div>
+  <div style="color:#93a3ba;font-size:12.5px;margin-bottom:14px">Podés crear <b style="color:#cfe0f5">varias copias</b> de una — cada una con su propio título, precio, cantidad y cuotas. Se copian fotos, categoría y descripción.</div>
+  <div id="dup-rows" style="max-height:54vh;overflow:auto;margin-bottom:12px"></div>
+  <button type="button" onclick="dupAddRow()" style="background:#0a1322;border:1px dashed #2a3d59;color:#9fd0ff;border-radius:9px;padding:9px 15px;font-size:12.5px;font-weight:700;cursor:pointer;margin-bottom:14px;width:100%">+ Agregar otra copia</button>
+  <div style="display:flex;gap:10px;align-items:center"><button onclick="dupCrear(this)" style="background:#ffe600;color:#2d3277;border:0;border-radius:9px;padding:11px 20px;font-weight:800;cursor:pointer">Crear todas</button><span id="dupm" style="font-size:12.5px;font-weight:600"></span></div>
  </div>
 </div>
 <script>
@@ -9621,17 +9640,41 @@ function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.
  post('/meli/sku-set',{id:id,sku:inp.value}).then(function(r){ if(m){ if(r&&r.ok){m.textContent='✓';m.style.color='#34d399';} else {m.textContent=(r&&r.msg)||'error';m.style.color='#e0637f';} } });
 }
 var DUPID='';
+function dupCuotasSel(v){ v=+v||0; var o=[[0,'Sin cuotas (Clásica · menos comisión)'],[3,'3 cuotas sin interés'],[6,'6 cuotas sin interés (recomendada)'],[9,'9 cuotas sin interés'],[12,'12 cuotas sin interés']];
+ var h='<select class="dupl" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:12.5px">';
+ for(var i=0;i<o.length;i++){ h+='<option value="'+o[i][0]+'"'+(o[i][0]===v?' selected':'')+'>'+o[i][1]+'</option>'; } return h+'</select>';
+}
+function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows'); var n=wrap.children.length+1;
+ var row=document.createElement('div'); row.className='dup-row'; row.style.cssText='border:1px solid #1b2635;border-radius:11px;padding:12px;margin-bottom:9px;background:#0b111e';
+ row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px"><b style="font-size:11.5px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.4px">Copia '+n+'</b><span class="dup-rm" style="cursor:pointer;color:#e0637f;font-size:17px;display:'+(n>1?'inline':'none')+'">&times;</span></div>'
+  +'<input class="dupt" placeholder="Título" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:7px">'
+  +'<div style="display:flex;gap:8px;margin-bottom:7px"><input class="dupp" type="number" placeholder="Precio" style="flex:1;min-width:0;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"><input class="dups" type="number" placeholder="Cant." value="1" style="width:76px;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div>'
+  +dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
+  +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:6px"></div>';
+ wrap.appendChild(row);
+ row.querySelector('.dupt').value=pre.title||''; row.querySelector('.dupp').value=(pre.price!=null?pre.price:'');
+ var rm=row.querySelector('.dup-rm'); if(rm)rm.onclick=function(){ row.remove(); dupRenum(); };
+}
+function dupRenum(){ var rows=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rows.length;i++){ rows[i].querySelector('b').textContent='Copia '+(i+1); var x=rows[i].querySelector('.dup-rm'); if(x)x.style.display=(i>0?'inline':'none'); } }
 function duplicarPub(id){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; DUPID=id;
- document.getElementById('dupt').value=it.title||''; document.getElementById('dupp').value=(it.price!=null?it.price:''); document.getElementById('dups').value=1; document.getElementById('dupm').textContent='';
+ document.getElementById('dup-rows').innerHTML=''; document.getElementById('dupm').textContent='';
+ dupAddRow({title:it.title||'', price:(it.price!=null?it.price:'')});
  document.getElementById('dupov').style.display='flex';
 }
 function dupClose(){ document.getElementById('dupov').style.display='none'; }
-function dupCrear(btn){ var m=document.getElementById('dupm'); var t=document.getElementById('dupt').value.trim(); if(!t){ m.textContent='Poné un título'; m.style.color='#e0637f'; return; }
- var body={id:DUPID,title:t,price:document.getElementById('dupp').value,stock:document.getElementById('dups').value,listing_type_id:document.getElementById('dupl').value};
- if(btn)btn.disabled=true; m.textContent='Creando…'; m.style.color='#7aa2c8';
- post('/meli/duplicar',body).then(function(r){ if(btn)btn.disabled=false;
-  if(r&&r.ok){ m.innerHTML='✓ Creada '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); m.style.color='#34d399'; setTimeout(function(){ dupClose(); cargarPubs(); },1400); }
-  else { m.textContent=(r&&r.msg)||'error'; m.style.color='#e0637f'; } }).catch(function(){ if(btn)btn.disabled=false; m.textContent='Error de red'; m.style.color='#e0637f'; });
+function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice.call(document.querySelectorAll('#dup-rows .dup-row'));
+ var jobs=rows.map(function(r){ return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,stock:r.querySelector('.dups').value,cuotas:r.querySelector('.dupl').value}; });
+ if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
+ if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
+ function next(){ if(i>=jobs.length){ if(btn)btn.disabled=false; m.innerHTML='✓ '+ok+'/'+jobs.length+' creadas'; m.style.color=(ok?'#34d399':'#e0637f'); if(ok)setTimeout(cargarPubs,1600); return; }
+  var j=jobs[i]; var st=j.row.querySelector('.dupst'); st.textContent='Creando…'; st.style.color='#7aa2c8';
+  post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,stock:j.stock,cuotas:j.cuotas}).then(function(r){
+   if(r&&r.ok){ ok++; st.innerHTML='✓ Creada '+(r.cuotas_ok===false?'<span style="color:#f0b429">(sin cuotas — tu cuenta no tiene esa campaña)</span> ':'')+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
+   else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
+   i++; next();
+  }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); });
+ }
+ next();
 }
 var STK30={items:[],bpu:{},stock30:null};
 function bpuAuto(t){ t=(t||'').toLowerCase(); var m=t.match(/x\s?([2-9])\b/); if(m)return +m[1]; m=t.match(/(\d)\s*meses/); if(m&&+m[1]>=2&&+m[1]<=9)return +m[1]; if(t.indexOf('cuatro')>=0)return 4; if(t.indexOf('tres')>=0)return 3; if(t.indexOf('dos')>=0)return 2; return 1; }
