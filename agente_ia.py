@@ -120,6 +120,22 @@ def _cliente():
     return _cli
 
 
+def chat(mensajes, sistema, max_tokens=1800) -> str:
+    """Chat LIBRE (texto) para BOTIFY, el copiloto del dueño. mensajes: [{"role":"user"/"assistant","content":str}].
+    sistema: system prompt (rol + base de conocimiento). Devuelve el texto de la respuesta. Nunca lanza."""
+    if not disponible():
+        return "Necesito que carguen la ANTHROPIC_API_KEY para poder pensar. Avisá al que administra RealProfit."
+    try:
+        resp = _cliente().messages.create(
+            model=MODELO, max_tokens=max_tokens, system=sistema,
+            messages=[m for m in mensajes if (m.get("content") or "").strip()][-40:],
+        )
+        return next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip() \
+            or "No se me ocurrió nada útil para eso, reformulame la pregunta."
+    except Exception as e:
+        return "Uf, no pude responder ahora (%s). Probá de nuevo en un toque." % type(e).__name__
+
+
 def _bloques_imagen(imagenes):
     out = []
     for img in imagenes or []:
