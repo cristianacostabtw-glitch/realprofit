@@ -3797,7 +3797,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-wa-web-gate"})
+    return jsonify({"ok": True, "v": "2026-08-25-wa-chat-full"})
 
 
 @app.get("/pf-diag")
@@ -10833,20 +10833,59 @@ function webPollStatus(){ if(WEBPOLL)clearInterval(WEBPOLL);
       else if(s&&s.status==='qr'){ get('/wa-web-qr').then(function(r){ var im=document.querySelector('#panel img'); if(r&&r.qr&&im)im.src=r.qr; }); } });
   },2500);
 }
-function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('panel');
-  var me=(s&&s.me&&s.me.name)?(' — '+esc(s.me.name)):'';
-  p.innerHTML=webBox('<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><div style="color:#0a7d3c;font-weight:700">&#10003; Conectado'+me+'</div>'
-    +'<button onclick="webLogout()" style="background:#e8eef0;color:#c0392b;border:0;border-radius:9px;padding:8px 14px;font-weight:600;cursor:pointer">Desconectar</button></div>'
-    +'<div id="webchats" style="background:#fff;border-radius:12px;overflow:hidden"><div style="padding:24px;text-align:center;color:#667">Trayendo chats…</div></div>');
-  get('/wa-web-chats?limit=60').then(function(r){ var box=document.getElementById('webchats'); if(!box)return;
-    var cs=(r&&r.chats)||[];
-    if(!cs.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:#667">Todavía no hay chats (o están sincronizando). Apenas te escriban aparecen acá.</div>'; return; }
-    box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#128C7E;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">'+esc((c.name||'?').trim().charAt(0).toUpperCase())+'</div>');
-      var un=c.unread?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:1px 7px;font-size:11px;font-weight:700">'+c.unread+'</span>'):'';
-      return '<div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid #eef2f4">'+av
-        +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21">'+esc(c.name||c.tel)+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
+var WEBCHAT=null, WEBMPOLL=null, _wtick=0, _webMsgCount=-1;
+function webHora(ts){ try{ if(!ts)return''; var d=new Date(ts*1000); return d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('panel'); WEBCHAT=null; _webMsgCount=-1;
+  var me=(s&&s.me&&s.me.name)?esc(s.me.name):'';
+  p.style.padding='0'; p.style.maxWidth='none'; p.style.display='block';
+  p.innerHTML='<div style="height:calc(100vh - 52px);display:flex;background:#fff;overflow:hidden">'
+    +'<div style="width:340px;min-width:340px;border-right:1px solid #e9edef;display:flex;flex-direction:column;background:#fff">'
+      +'<div style="padding:12px 14px;background:#f0f2f5;display:flex;align-items:center;justify-content:space-between"><div style="font-weight:700;color:#111b21;font-size:14px">&#10003; '+me+'</div><button onclick="webLogout()" style="background:none;border:0;color:#c0392b;font-size:12px;font-weight:600;cursor:pointer">Desconectar</button></div>'
+      +'<div id="webchats" style="flex:1;overflow-y:auto"><div style="padding:24px;text-align:center;color:#667">Trayendo chats&#8230;</div></div>'
+    +'</div>'
+    +'<div id="webconv" style="flex:1;display:flex;flex-direction:column;background:#efeae2"><div style="flex:1;display:flex;align-items:center;justify-content:center;color:#8696a0">&#128172; Eleg&iacute; una conversaci&oacute;n para ver los mensajes y responder</div></div>'
+  +'</div>';
+  webRenderList();
+  if(WEBPOLL)clearInterval(WEBPOLL);
+  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;} _wtick++; if(WEBCHAT) webLoadMsgs(false); if(_wtick%3===0) webRenderList(); }, 5000);
+}
+function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var box=document.getElementById('webchats'); if(!box)return;
+  var cs=(r&&r.chats)||[];
+  if(!cs.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:#667;font-size:13px">Sin chats todav&iacute;a. Apenas te escriban aparecen.</div>'; return; }
+  box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#00a884;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">'+esc((c.name||'?').trim().charAt(0).toUpperCase())+'</div>');
+    var un=(c.unread>0)?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;text-align:center">'+c.unread+'</span>'):'';
+    var sel=(WEBCHAT&&WEBCHAT.id===c.id)?';background:#f0f2f5':'';
+    return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(c.name||c.tel)+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
+      +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(c.name||c.tel)+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
+  }).join('');
+  }).catch(function(){ var box=document.getElementById('webchats'); if(box&&!box.querySelector('.wl-row'))box.innerHTML='<div style="padding:24px;text-align:center;color:#c0392b">No se pudieron traer los chats.</div>'; });
+}
+function webRowClick(el){ webOpenChat(el.getAttribute('data-id'), el.getAttribute('data-name')); }
+function webOpenChat(id,name){ WEBCHAT={id:id,name:name}; _webMsgCount=-1;
+  var rows=document.querySelectorAll('#webchats .wl-row'); for(var i=0;i<rows.length;i++){ rows[i].style.background=(rows[i].getAttribute('data-id')===id)?'#f0f2f5':''; }
+  var conv=document.getElementById('webconv'); if(!conv)return;
+  conv.innerHTML='<div style="padding:12px 16px;background:#f0f2f5;font-weight:700;color:#111b21;border-bottom:1px solid #e9edef">'+esc(name||id.split('@')[0])+'</div>'
+    +'<div id="webmsgs" style="flex:1;overflow-y:auto;padding:14px 16px;background:#efeae2"><div style="text-align:center;color:#8696a0;padding:20px">Cargando&#8230;</div></div>'
+    +'<div style="padding:10px 14px;background:#f0f2f5;display:flex;gap:8px;align-items:flex-end"><textarea id="webinput" rows="1" placeholder="Escrib&iacute; un mensaje&#8230;" style="flex:1;border:1px solid #d1d7db;border-radius:20px;padding:9px 14px;font-size:13.5px;resize:none;max-height:100px;outline:none;font-family:inherit;background:#fff"></textarea><button onclick="webSend()" style="background:#00a884;border:0;color:#fff;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:17px;flex-shrink:0">&#10148;</button></div>';
+  var inp=document.getElementById('webinput'); if(inp){ inp.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); webSend(); } }); inp.addEventListener('input',function(){ this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,100)+'px'; }); inp.focus(); }
+  webLoadMsgs(true);
+}
+function webLoadMsgs(force){ if(!WEBCHAT)return; var cid=WEBCHAT.id;
+  fetch('/wa-web-mensajes?chat='+encodeURIComponent(cid)).then(function(r){return r.json();}).then(function(j){
+    if(!WEBCHAT||WEBCHAT.id!==cid)return; var box=document.getElementById('webmsgs'); if(!box)return;
+    var ms=(j&&j.messages)||[];
+    if(force!==true && ms.length===_webMsgCount) return;   // sin cambios → no re-render en el poll
+    _webMsgCount=ms.length;
+    if(!ms.length){ box.innerHTML='<div style="text-align:center;color:#8696a0;padding:20px;font-size:13px">Sin mensajes guardados de esta conversaci&oacute;n todav&iacute;a. Los nuevos aparecen ac&aacute;.</div>'; return; }
+    box.innerHTML=ms.map(function(m){ var mine=m.fromMe;
+      return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:'+(mine?'#d9fdd3':'#fff')+';color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+esc(m.text)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(m.ts)+'</div></div></div>';
     }).join('');
-  }).catch(function(){ var box=document.getElementById('webchats'); if(box)box.innerHTML='<div style="padding:24px;text-align:center;color:#c0392b">No se pudieron traer los chats.</div>'; });
+    box.scrollTop=box.scrollHeight;
+  }).catch(function(){});
+}
+function webSend(){ var i=document.getElementById('webinput'); if(!i||!WEBCHAT)return; var t=(i.value||'').trim(); if(!t)return; i.value=''; i.style.height='auto';
+  var box=document.getElementById('webmsgs'); if(box){ if(box.querySelector('div')&&box.textContent.indexOf('Sin mensajes')>=0)box.innerHTML=''; box.insertAdjacentHTML('beforeend','<div style="display:flex;justify-content:flex-end;margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:#d9fdd3;color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+esc(t)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(Math.floor(Date.now()/1000))+'</div></div></div>'); box.scrollTop=box.scrollHeight; _webMsgCount++; }
+  fetch('/wa-web-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:WEBCHAT.id,text:t})}).then(function(r){return r.json();}).then(function(j){ if(j&&!j.ok){ if(box)box.insertAdjacentHTML('beforeend','<div style="text-align:right;color:#c0392b;font-size:11px;margin:2px 0">no se pudo enviar</div>'); } setTimeout(function(){webLoadMsgs(true);},800); }).catch(function(){});
 }
 function webLogout(){ if(!confirm('¿Desconectar el WhatsApp Web de esta cuenta? Vas a tener que escanear el QR de nuevo.'))return;
   post('/wa-web-logout',{}).then(function(){ loadWeb(); }); }
@@ -12130,6 +12169,34 @@ def wa_web_chats():
     limit = request.args.get("limit", "60")
     _r, j = _wa_web_call("GET", "/chats", email, extra={"limit": limit}, timeout=40)
     return jsonify(j if isinstance(j, dict) else {"ok": False, "chats": []})
+
+
+@app.get("/wa-web-mensajes")
+def wa_web_mensajes():
+    """Conversación completa de un chat del WhatsApp Web (Baileys)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "messages": []})
+    chat = (request.args.get("chat") or "").strip()
+    if not chat:
+        return jsonify({"ok": False, "messages": []})
+    _r, j = _wa_web_call("GET", "/messages", email, extra={"chat": chat}, timeout=30)
+    return jsonify(j if isinstance(j, dict) else {"ok": False, "messages": []})
+
+
+@app.post("/wa-web-enviar")
+def wa_web_enviar():
+    """Enviar un mensaje manual por el WhatsApp Web (desde la conversación)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    to = (d.get("to") or "").strip()
+    text = (d.get("text") or "").strip()
+    if not to or not text:
+        return jsonify({"ok": False, "msg": "falta destino o texto"})
+    _r, j = _wa_web_call("POST", "/send", email, extra={"to": to, "text": text}, timeout=30)
+    return jsonify(j if isinstance(j, dict) else {"ok": False})
 
 
 @app.post("/wa-web-logout")
