@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-diag-off"})
+    return jsonify({"ok": True, "v": "2026-08-25-restart1"})
 
 
 @app.get("/pf-diag")
