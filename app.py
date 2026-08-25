@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-dup-solo3"})
+    return jsonify({"ok": True, "v": "2026-08-25-dup-msg"})
 
 
 @app.get("/pf-diag")
@@ -9671,7 +9671,7 @@ function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice
  function next(){ if(i>=jobs.length){ if(btn)btn.disabled=false; m.innerHTML='✓ '+ok+'/'+jobs.length+' creadas'; m.style.color=(ok?'#34d399':'#e0637f'); if(ok)setTimeout(cargarPubs,1600); return; }
   var j=jobs[i]; var st=j.row.querySelector('.dupst'); st.textContent='Creando…'; st.style.color='#7aa2c8';
   post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas}).then(function(r){
-   if(r&&r.ok){ ok++; st.innerHTML='✓ Creada '+(r.cuotas_ok===false?'<span style="color:#f0b429">(sin cuotas — tu cuenta no tiene esa campaña)</span> ':'')+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
+   if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
    else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
    i++; next();
   }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); });
