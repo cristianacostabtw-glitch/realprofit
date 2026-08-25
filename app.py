@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-waweb-retry"})
+    return jsonify({"ok": True, "v": "2026-08-25-waweb-keepalive"})
 
 
 @app.get("/pf-diag")
@@ -10298,6 +10298,25 @@ WA_GRAPH = "https://graph.facebook.com/v21.0"
 # Servicio WhatsApp Web (Baileys), corre aparte en Render. RealProfit le habla por HTTP.
 WA_WEB_URL = _os.environ.get("WA_WEB_URL", "").rstrip("/")     # ej https://realprofit-wa-web.onrender.com
 WA_WEB_SECRET = _os.environ.get("WA_WEB_SECRET", "")           # mismo secret que el servicio Node
+
+
+def _wa_web_keepalive():
+    """Ping al servicio de WhatsApp Web cada 5 min para que Render no lo duerma (mientras RealProfit esté vivo)."""
+    import time as _t
+    while True:
+        try:
+            if WA_WEB_URL:
+                requests.get(WA_WEB_URL + "/health", timeout=15)
+        except Exception:
+            pass
+        _t.sleep(300)
+
+
+if WA_WEB_URL:
+    try:
+        threading.Thread(target=_wa_web_keepalive, daemon=True).start()
+    except Exception:
+        pass
 
 
 def _wa_web_send(email, wid, text):
