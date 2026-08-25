@@ -48,6 +48,27 @@ function pub(s) {
   return { status: s.status, me: s.me || null, hasQr: !!s.qr };
 }
 
+// --- persistencia de chats + mensajes en el disco (sobreviven reinicios) ---
+function storePath(acc) { return path.join(accDir(acc), "store.json"); }
+function loadStore(acc, s) {
+  try {
+    const d = JSON.parse(fs.readFileSync(storePath(acc), "utf8"));
+    if (Array.isArray(d.chats)) s.chats = new Map(d.chats);
+    if (Array.isArray(d.msgs)) s.msgs = new Map(d.msgs);
+  } catch {}
+}
+const _saveTimers = new Map();
+function saveStoreDebounced(acc, s) {
+  if (_saveTimers.has(acc)) return;
+  _saveTimers.set(acc, setTimeout(() => {
+    _saveTimers.delete(acc);
+    try {
+      const d = { chats: [...s.chats.entries()], msgs: [...(s.msgs || new Map()).entries()] };
+      fs.writeFileSync(storePath(acc), JSON.stringify(d));
+    } catch {}
+  }, 4000));
+}
+
 // Texto legible de un mensaje de Baileys (lo que se muestra en el chat)
 function msgText(m) {
   const mm = m.message || {};
@@ -72,6 +93,7 @@ async function startSession(acc) {
 
   s = s || { chats: new Map(), msgs: new Map() };
   if (!s.msgs) s.msgs = new Map();
+  if (s.chats.size === 0) loadStore(acc, s);   // recuperar del disco lo guardado (sobrevive reinicios)
   s.status = "connecting";
   s.qr = null;
   s.starting = true;
@@ -129,6 +151,7 @@ async function startSession(acc) {
     if (ts) c.ts = Math.max(c.ts || 0, ts);
     if (unread != null) c.unread = unread;
     s.chats.set(jid, c);
+    saveStoreDebounced(acc, s);
   };
 
   // guardar un mensaje en la conversación del chat (para la vista de chat completa)
@@ -140,6 +163,7 @@ async function startSession(acc) {
     if (id && arr.some((x) => x.id === id)) return;   // evitar duplicados
     arr.push({ id: id || "", fromMe: !!fromMe, text: String(text), ts: ts || 0, kind: kind || "text" });
     if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
+    saveStoreDebounced(acc, s);
   };
 
   sock.ev.on("chats.upsert", (chats) => {
