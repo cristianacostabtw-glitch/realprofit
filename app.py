@@ -3797,7 +3797,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-kpi-noflicker"})
+    return jsonify({"ok": True, "v": "2026-08-25-wa-web-gate"})
 
 
 @app.get("/pf-diag")
@@ -10681,7 +10681,11 @@ function form(o){ return Object.keys(o).map(function(k){return encodeURIComponen
 function post(u,o){ return fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form(o||{})}).then(function(r){return r.json();}); }
 function get(u){ return fetch(u).then(function(r){return r.json();}); }
 
-function boot(){ get('/wa-estado').then(function(s){ EST=s; renderApp(); if(s&&s.conectado){ unlock(); } else { lockScreen(); } }); }
+function boot(){ get('/wa-estado').then(function(s){ EST=s; renderApp(); if(s&&s.conectado){ unlock(); return; }
+  // API NO conectada: si el WhatsApp Web (QR) ya está conectado (o el servicio está despertando),
+  // abrimos directo el chat Web en vez de bloquear con el candado "Conectá tu WhatsApp".
+  get('/wa-web-status').then(function(w){ if(w && (w.ok===false || w.status==='connected')){ waTab('web'); } else { lockScreen(); } }).catch(function(){ lockScreen(); });
+}); }
 function unlock(){ document.body.classList.remove('locked'); }
 function lockScreen(){ if(POLL){clearInterval(POLL);POLL=null;} document.body.classList.add('locked'); renderLockForm(); }
 function renderConnect(){ lockScreen(); }
