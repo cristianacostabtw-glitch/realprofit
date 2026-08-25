@@ -3799,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-wa-media"})
+    return jsonify({"ok": True, "v": "2026-08-25-envialo-robusto"})
 
 
 @app.get("/pf-diag")
@@ -10030,17 +10030,32 @@ def _envialo_suc_save(email, mapping):
 
 
 def _parse_envialo_xlsx(data):
-    """Lee el export 'andreani_estandar' de Envialo (hoja 'A sucursal') → {num_interno: sucursal}.
-    Columnas base 0: 6 = Numero Interno, 13 = Sucursal."""
+    """Lee el export de Envialo → {num_interno: sucursal}. SOLO la sucursal (ignora DNI, nombres, todo lo demás).
+    Robusto: usa la hoja de sucursales y ubica la columna de sucursal aunque cambie de lugar; nunca rompe."""
     import io
     import openpyxl as _oxl
     wb = _oxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     out = {}
-    if "A sucursal" not in wb.sheetnames:
-        return out
-    for r in wb["A sucursal"].iter_rows(min_row=3, values_only=True):
-        if r and len(r) > 13 and r[6] and r[13]:
-            out[str(r[6]).strip()] = str(r[13]).strip()
+    hojas = [h for h in wb.sheetnames if "sucursal" in h.lower()] or list(wb.sheetnames)
+    for hoja in hojas:
+        try:
+            for r in wb[hoja].iter_rows(min_row=2, values_only=True):
+                if not r or len(r) < 7:
+                    continue
+                num = str(r[6]).strip() if r[6] is not None else ""
+                if not num.isdigit():
+                    continue
+                suc = str(r[13]).strip() if len(r) > 13 and r[13] else ""
+                if not suc:   # si no está en la col esperada, busco la celda que parezca sucursal Andreani
+                    for cell in r:
+                        s = str(cell or "").strip()
+                        if s and ("ANDREANI" in s.upper() or " HOP " in (" " + s.upper() + " ")):
+                            suc = s
+                            break
+                if num and suc:
+                    out[num] = suc
+        except Exception:
+            continue
     return out
 
 
@@ -10073,16 +10088,19 @@ def pf_despachos_envialo():
         return _re_and.sub(r"\s+", " ", _ud_and.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().upper()).strip()
     distintas, coinciden, solo_envialo = [], 0, 0
     for num, suc_env in env.items():
-        r = rows.get(num)
-        if not r:
-            solo_envialo += 1
-            continue
-        mia, _via = _resolver_suc_completo(r.get("suc_nombre") or "", r.get("suc_lat"), r.get("suc_lng"),
-                                           r.get("suc_pid"), r.get("cp"), sucs)
-        if _n(mia) == _n(suc_env):
-            coinciden += 1
-        else:
-            distintas.append({"num": num, "realprofit": mia or "REVISAR", "envialo": suc_env})
+        try:
+            r = rows.get(num)
+            if not r:
+                solo_envialo += 1
+                continue
+            mia, _via = _resolver_suc_completo(r.get("suc_nombre") or "", r.get("suc_lat"), r.get("suc_lng"),
+                                               r.get("suc_pid"), r.get("cp"), sucs)
+            if _n(mia) == _n(suc_env):
+                coinciden += 1
+            else:
+                distintas.append({"num": num, "realprofit": mia or "REVISAR", "envialo": suc_env})
+        except Exception:
+            distintas.append({"num": num, "realprofit": "REVISAR", "envialo": suc_env})
     guardadas = _envialo_suc_save(email, env)   # Envialo manda: guardo TODAS
     return jsonify({"ok": True, "total": len(env), "coinciden": coinciden,
                     "distintas": distintas, "solo_en_envialo": solo_envialo,
