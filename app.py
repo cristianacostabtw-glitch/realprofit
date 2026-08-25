@@ -3799,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-envialo-excluir"})
+    return jsonify({"ok": True, "v": "2026-08-25-seg-graphql-bulk"})
 
 
 @app.get("/pf-diag")
@@ -6154,46 +6154,87 @@ def _seg_shop_conn(email):
     return (tk.get("shop"), tk.get("access_token")) if (tk.get("shop") and tk.get("access_token")) else (None, None)
 
 
+_SEG_GQL = ("query($q:String!){orders(first:60,query:$q){edges{node{"
+            "legacyResourceId name email phone "
+            "customer{firstName lastName phone} "
+            "shippingAddress{name phone} "
+            "shippingLines(first:5){edges{node{title}}} "
+            "lineItems(first:60){edges{node{quantity}}} "
+            "fulfillments(first:20){trackingInfo{number} status}"
+            "}}}}")
+
+
+def _seg_gql_a_rest(node):
+    """Reshapea un pedido de GraphQL a la MISMA forma REST que espera el resto del código."""
+    cust = node.get("customer") or {}
+    sa = node.get("shippingAddress") or {}
+    ffs = []
+    for f in (node.get("fulfillments") or []):
+        ti = f.get("trackingInfo") or []
+        ffs.append({"tracking_number": (ti[0].get("number") if ti else None),
+                    "status": f.get("status")})
+    return {
+        "id": node.get("legacyResourceId"),
+        "name": node.get("name"),
+        "order_number": str(node.get("name") or "").lstrip("#"),
+        "email": node.get("email"),
+        "phone": node.get("phone"),
+        "customer": {"first_name": cust.get("firstName") or "", "last_name": cust.get("lastName") or "",
+                     "phone": cust.get("phone") or ""},
+        "shipping_address": {"name": sa.get("name") or "", "phone": sa.get("phone") or ""},
+        "shipping_lines": [{"title": (e.get("node") or {}).get("title") or ""}
+                           for e in ((node.get("shippingLines") or {}).get("edges") or [])],
+        "line_items": [{"quantity": (e.get("node") or {}).get("quantity") or 0}
+                       for e in ((node.get("lineItems") or {}).get("edges") or [])],
+        "fulfillments": ffs,
+    }
+
+
 def _seg_mapa_orders_shopify(email, numeros) -> dict:
-    """number(str) → order dict de Shopify. Busca CADA pedido por NOMBRE (rápido y exacto),
-    en vez de escanear miles de órdenes (que se colgaba/timeouteaba)."""
+    """number(str) → order dict de Shopify. Trae los pedidos en LOTES por GraphQL (40 nombres por
+    query) en vez de 1 request REST por pedido: baja de cientos de llamadas a unas pocas → segundos
+    en vez de minutos. Devuelve la MISMA forma REST (vía _seg_gql_a_rest) que consume el resto."""
     shop, atok = _seg_shop_conn(email)
     if not shop:
         return {}
-    H = {"X-Shopify-Access-Token": atok}
-    base = "https://%s/admin/api/2026-07" % shop
-    flds = ("id,name,order_number,customer,phone,line_items,fulfillment_status,fulfillments,"
-            "shipping_address,email,contact_email,shipping_lines")
+    H = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
+    gql = "https://%s/admin/api/2026-07/graphql.json" % shop
     unicos = list(dict.fromkeys(str(x) for x in numeros))  # SIN tope: se buscan TODOS
-
     import time as _tsleep
 
-    def _buscar(n):
-        for q in ("#" + n, n):                 # Shopify busca por 'name' (con o sin #)
-            for intento in range(5):           # reintenta si Shopify limita la velocidad (429) o falla
-                try:
-                    r = requests.get("%s/orders.json" % base, headers=H,
-                                     params={"status": "any", "name": q, "limit": 5, "fields": flds}, timeout=20)
-                    if r.status_code == 429 or r.status_code >= 500:
-                        _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.4 * intento)
-                        continue               # NO es "no está": es límite/servidor → reintento
-                    lote = r.json().get("orders", []) if r.status_code == 200 else []
-                except Exception:
-                    _tsleep.sleep(0.5 * (intento + 1))
+    def _lote(chunk):
+        q = " OR ".join("name:%s" % n for n in chunk)      # 1 sola query trae hasta 40 pedidos
+        want = set(chunk)
+        for intento in range(5):
+            try:
+                r = requests.post(gql, headers=H, data=_json.dumps({"query": _SEG_GQL, "variables": {"q": q}}), timeout=40)
+                if r.status_code == 429 or r.status_code >= 500:
+                    _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.5 * intento)
                     continue
-                hit = next((o for o in lote if str(o.get("order_number")) == n
-                            or str(o.get("name", "")).lstrip("#") == n), None)
-                if hit:
-                    return n, hit
-                break                          # 200 sin match → probá el otro formato de nombre, no reintentes
-        return n, None
+                j = r.json() if r.content else {}
+            except Exception:
+                _tsleep.sleep(0.5 * (intento + 1))
+                continue
+            # throttle de GraphQL (costo) → esperar y reintentar
+            if (j.get("errors") and any("THROTTLED" in str(e.get("extensions", {}).get("code", "")).upper()
+                                        or "throttl" in str(e.get("message", "")).lower() for e in j["errors"])):
+                _tsleep.sleep(1.0 + 0.5 * intento)
+                continue
+            out = {}
+            for e in (((j.get("data") or {}).get("orders") or {}).get("edges") or []):
+                node = e.get("node") or {}
+                n = str(node.get("name") or "").lstrip("#")
+                if n in want:                                # match exacto por nombre
+                    out[n] = _seg_gql_a_rest(node)
+            return out
+        return {}
 
+    chunks = [unicos[i:i + 40] for i in range(0, len(unicos), 40)]
     mapa = {}
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=3) as ex:  # menos hilos = no reventar el límite de Shopify
-        for n, hit in ex.map(_buscar, unicos):
-            if hit:
-                mapa[n] = hit
+    with ThreadPoolExecutor(max_workers=3) as ex:       # pocas queries, en paralelo
+        for res in ex.map(_lote, chunks):
+            mapa.update(res or {})
     return mapa
 
 
