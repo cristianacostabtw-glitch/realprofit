@@ -3799,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-envialo-robusto"})
+    return jsonify({"ok": True, "v": "2026-08-25-envialo-excluir"})
 
 
 @app.get("/pf-diag")
@@ -5622,10 +5622,15 @@ def pf_despachos_excel():
     PESO = 1000
     cpidx, sucs = _and_cfg(wb)   # lista oficial de la propia plantilla (sucursales + Prov/Loc/CP)
     envialo_ov = _envialo_suc(_user_actual())   # si subiste el Excel de Envialo, esas sucursales MANDAN (1=1)
+    envialo_excl = _envialo_excl(_user_actual())  # las que NO coincidían con Envialo → se despachan por Envialo, NO van acá
     r_dom = r_suc = 3
     faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
     revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
+    por_envialo = []             # pedidos que van por Envialo (no coincidían) → los saco del Excel de Andreani
     for r in sel:
+        if str(r["num"]) in envialo_excl:   # no coincidía con Envialo → se despacha por Envialo, no lo meto acá
+            por_envialo.append(str(r["num"]))
+            continue
         nom, ape = _split_nombre(r["nombre"])
         nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
         valor = int(round(r["total"]))
@@ -5644,7 +5649,12 @@ def pf_despachos_excel():
                                                   r.get("suc_pid"), r.get("cp"), sucs)
             of = _and_suc_exacto(of) if of else None    # SOLO vale si está en el desplegable de Andreani
             if not of:
-                revisar.append(str(r["num"]))
+                # No entra en el desplegable de Andreani. Si está en el Excel de Envialo, la despachás por
+                # Envialo → la excluyo del Excel (no freno). Si NO está en Envialo, sí aviso (revisar).
+                if str(r["num"]) in envialo_ov:
+                    por_envialo.append(str(r["num"]))
+                else:
+                    revisar.append(str(r["num"]))
                 continue
             vals = [None, peso, ALTO, ANCHO, PROF, valor, r["num"], nom, ape, dni,
                     email, tel_cod, tel_num, of]
@@ -10029,6 +10039,27 @@ def _envialo_suc_save(email, mapping):
     return cur
 
 
+ENVIALO_EXCL = DATA_DIR / "envialo_excluir.json"   # {email: [nums]} pedidos que NO coinciden con Envialo → se despachan por Envialo, NUNCA van en el Excel de Andreani (evita doble despacho)
+
+
+def _envialo_excl(email):
+    try:
+        return set(_json.loads(ENVIALO_EXCL.read_text(encoding="utf-8")).get(str(email), []))
+    except Exception:
+        return set()
+
+
+def _envialo_excl_save(email, nums):
+    try:
+        d = _json.loads(ENVIALO_EXCL.read_text(encoding="utf-8"))
+    except Exception:
+        d = {}
+    d[str(email)] = sorted({str(n) for n in (nums or []) if n})
+    ENVIALO_EXCL.parent.mkdir(parents=True, exist_ok=True)
+    ENVIALO_EXCL.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return d[str(email)]
+
+
 def _parse_envialo_xlsx(data):
     """Lee el export de Envialo → {num_interno: sucursal}. SOLO la sucursal (ignora DNI, nombres, todo lo demás).
     Robusto: usa la hoja de sucursales y ubica la columna de sucursal aunque cambie de lugar; nunca rompe."""
@@ -10102,9 +10133,11 @@ def pf_despachos_envialo():
         except Exception:
             distintas.append({"num": num, "realprofit": "REVISAR", "envialo": suc_env})
     guardadas = _envialo_suc_save(email, env)   # Envialo manda: guardo TODAS
+    # Las que NO coinciden se despachan por Envialo → las excluyo del Excel de Andreani (no doble despacho)
+    excluidas = _envialo_excl_save(email, [d["num"] for d in distintas])
     return jsonify({"ok": True, "total": len(env), "coinciden": coinciden,
                     "distintas": distintas, "solo_en_envialo": solo_envialo,
-                    "guardadas": len(guardadas)})
+                    "excluidas": len(excluidas), "guardadas": len(guardadas)})
 
 
 @app.get("/pf-suc-preview")
