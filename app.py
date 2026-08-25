@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-variante-attrs"})
+    return jsonify({"ok": True, "v": "2026-08-25-waweb-retry"})
 
 
 @app.get("/pf-diag")
@@ -10751,9 +10751,17 @@ function webBox(inner){ return '<div style="max-width:720px;margin:0 auto">'
   +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#127760; WhatsApp Web</h2><span style="color:#667">escaneás el QR con tu celular</span></div>'
   +'<div style="color:#556;font-size:13px;margin-bottom:16px">Conectás tu WhatsApp escaneando un QR (como WhatsApp Web en la compu). Queda vinculado 24/7. Sirve para que el <b>bot</b> conteste fuera de horario. Aislado por cuenta.</div>'
   +inner+'</div>'; }
-function loadWeb(){ var p=document.getElementById('panel');
-  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">Consultando estado…</div>');
-  get('/wa-web-status').then(function(s){ renderWeb(s); }).catch(function(){ renderWeb({ok:false}); });
+function loadWeb(intento){ intento=intento||0; var p=document.getElementById('panel');
+  if(!intento) p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">Consultando estado…</div>');
+  get('/wa-web-status').then(function(s){
+    // Puente caído / servicio dormido (ok:false) → REINTENTO mientras despierta (Render free se apaga).
+    // Solo si el servicio RESPONDE y dice desconectado, mostramos "Conectá".
+    if(s && s.ok===false && intento<6){
+      p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">Despertando el servicio de WhatsApp… ('+(intento+1)+'/6)<br><span style="font-size:12px;color:#8a97a8">tarda unos segundos si estuvo inactivo</span></div>');
+      setTimeout(function(){ if(TAB==='web') loadWeb(intento+1); }, 4000); return;
+    }
+    renderWeb(s);
+  }).catch(function(){ if(intento<6){ setTimeout(function(){ if(TAB==='web') loadWeb(intento+1); }, 4000); } else renderWeb({ok:false}); });
 }
 function renderWeb(s){ if(TAB!=='web')return; var p=document.getElementById('panel');
   var st=(s&&s.status)||'disconnected';
@@ -12072,7 +12080,7 @@ def wa_web_status():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False})
-    _r, j = _wa_web_call("GET", "/status", email, timeout=12)
+    _r, j = _wa_web_call("GET", "/status", email, timeout=20)
     return jsonify(j if isinstance(j, dict) else {"ok": False})
 
 
