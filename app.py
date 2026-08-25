@@ -2752,8 +2752,12 @@ def _shopify_orders(shop, token, desde, hasta):
               "created_at_max": hasta + "T23:59:59-03:00",
               "fields": "id,order_number,name,total_price,current_total_price,financial_status,cancelled_at,line_items,refunds,created_at,shipping_lines,shipping_address"}
     headers = {"X-Shopify-Access-Token": token}
-    for _ in range(40):
+    import time as _tsleep
+    for _ in range(80):
         r = requests.get(url, headers=headers, params=params, timeout=30)
+        if r.status_code == 429 or r.status_code >= 500:   # límite/servidor: reintenta la MISMA página, NO corta
+            _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.3)
+            continue
         if r.status_code != 200:
             break
         out.extend(r.json().get("orders", []))
@@ -3787,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-botify"})
+    return jsonify({"ok": True, "v": "2026-08-24-shopify-429"})
 
 
 @app.get("/pf-diag")
@@ -6144,23 +6148,31 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             "shipping_address,email,contact_email,shipping_lines")
     unicos = list(dict.fromkeys(str(x) for x in numeros))  # SIN tope: se buscan TODOS
 
+    import time as _tsleep
+
     def _buscar(n):
         for q in ("#" + n, n):                 # Shopify busca por 'name' (con o sin #)
-            try:
-                r = requests.get("%s/orders.json" % base, headers=H,
-                                 params={"status": "any", "name": q, "limit": 5, "fields": flds}, timeout=15)
-                lote = r.json().get("orders", []) if r.status_code == 200 else []
-            except Exception:
-                lote = []
-            hit = next((o for o in lote if str(o.get("order_number")) == n
-                        or str(o.get("name", "")).lstrip("#") == n), None)
-            if hit:
-                return n, hit
+            for intento in range(5):           # reintenta si Shopify limita la velocidad (429) o falla
+                try:
+                    r = requests.get("%s/orders.json" % base, headers=H,
+                                     params={"status": "any", "name": q, "limit": 5, "fields": flds}, timeout=20)
+                    if r.status_code == 429 or r.status_code >= 500:
+                        _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.4 * intento)
+                        continue               # NO es "no está": es límite/servidor → reintento
+                    lote = r.json().get("orders", []) if r.status_code == 200 else []
+                except Exception:
+                    _tsleep.sleep(0.5 * (intento + 1))
+                    continue
+                hit = next((o for o in lote if str(o.get("order_number")) == n
+                            or str(o.get("name", "")).lstrip("#") == n), None)
+                if hit:
+                    return n, hit
+                break                          # 200 sin match → probá el otro formato de nombre, no reintentes
         return n, None
 
     mapa = {}
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:  # menos hilos = no reventar el límite de Shopify
         for n, hit in ex.map(_buscar, unicos):
             if hit:
                 mapa[n] = hit
