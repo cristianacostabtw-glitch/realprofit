@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-meli-multicopia"})
+    return jsonify({"ok": True, "v": "2026-08-25-dup-labels"})
 
 
 @app.get("/pf-diag")
@@ -9646,10 +9646,11 @@ function dupCuotasSel(v){ v=+v||0; var o=[[0,'Sin cuotas (Clásica · menos comi
 }
 function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows'); var n=wrap.children.length+1;
  var row=document.createElement('div'); row.className='dup-row'; row.style.cssText='border:1px solid #1b2635;border-radius:11px;padding:12px;margin-bottom:9px;background:#0b111e';
- row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px"><b style="font-size:11.5px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.4px">Copia '+n+'</b><span class="dup-rm" style="cursor:pointer;color:#e0637f;font-size:17px;display:'+(n>1?'inline':'none')+'">&times;</span></div>'
-  +'<input class="dupt" placeholder="Título" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:7px">'
-  +'<div style="display:flex;gap:8px;margin-bottom:7px"><input class="dupp" type="number" placeholder="Precio" style="flex:1;min-width:0;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"><input class="dups" type="number" placeholder="Cant." value="1" style="width:76px;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div>'
-  +dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
+ var lb='font-size:11px;color:#7d8ea7;margin:0 0 3px;font-weight:600';
+ row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:11.5px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.4px">Copia '+n+'</b><span class="dup-rm" style="cursor:pointer;color:#e0637f;font-size:17px;display:'+(n>1?'inline':'none')+'">&times;</span></div>'
+  +'<div style="'+lb+'">Título</div><input class="dupt" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px">'
+  +'<div style="display:flex;gap:8px;margin-bottom:8px"><div style="flex:1;min-width:0"><div style="'+lb+'">Precio ($)</div><input class="dupp" type="number" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="width:92px"><div style="'+lb+'">Cantidad</div><input class="dups" type="number" value="1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div></div>'
+  +'<div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
   +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:6px"></div>';
  wrap.appendChild(row);
  row.querySelector('.dupt').value=pre.title||''; row.querySelector('.dupp').value=(pre.price!=null?pre.price:'');
