@@ -3787,7 +3787,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-domicilio-limpio"})
+    return jsonify({"ok": True, "v": "2026-08-24-suc-solo-desplegable"})
 
 
 @app.get("/pf-diag")
@@ -5320,14 +5320,15 @@ def pf_despachos_excel():
         tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
         email = r.get("email") or ""
         if r["tipo"] == "sucursal":
-            # MISMA cadena que el preview (/pf-suc-preview): exacto → nombre de Envialo (HOP/sucursal,
-            # aunque no esté en la plantilla; Andreani lo acepta) → coordenadas → vivo → REVISAR.
-            # Si no lo resolvemos con certeza NO inventamos una sucursal (mandaría a otro lado).
+            # Sucursal: la manda Envialo (1=1) o el resolvedor (exacto→coord→vivo). PERO la carga masiva
+            # de Andreani SOLO acepta valores del desplegable → validamos: si el punto NO está en el
+            # desplegable (ej San Martín 1927), va a REVISAR (se despacha por Envialo), NO rompe el Excel.
             suc_raw = r.get("suc_nombre") or ""
             of = envialo_ov.get(str(r["num"]))          # 1=1: si Envialo la mandó, gana Envialo
             if not of:
                 of, _via = _resolver_suc_completo(suc_raw, r.get("suc_lat"), r.get("suc_lng"),
                                                   r.get("suc_pid"), r.get("cp"), sucs)
+            of = _and_suc_exacto(of) if of else None    # SOLO vale si está en el desplegable de Andreani
             if not of:
                 revisar.append(str(r["num"]))
                 continue
@@ -9547,13 +9548,12 @@ def _tn_headers(token) -> dict:
 
 def _resolver_suc_completo(suc_raw, lat, lng, pid, cp, sucs):
     """Corre la MISMA cadena del generador de Excel y devuelve (sucursal_oficial, via).
-    exacto → nombre de Envialo (HOP/sucursal) → coordenadas del punto → vivo → None (revisar)."""
+    exacto → coordenadas del punto → vivo → None (revisar). SOLO devuelve sucursales del desplegable
+    de Andreani (la carga masiva las exige); un punto que no está (ej San Martín 1927) → None → REVISAR
+    (ese se despacha por Envialo, no por el Excel)."""
     of = _and_suc_exacto(suc_raw)
     if of:
         return of, "exacto"
-    pt = _punto_passthrough(suc_raw)   # el nombre que da Envialo ES el punto que eligió el cliente
-    if pt:
-        return pt, "envialo"
     try:
         of = _and_suc_coord(lat, lng, "HOP" in str(suc_raw).upper(), pid, sucs)
     except Exception:
