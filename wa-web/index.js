@@ -320,4 +320,21 @@ app.post("/logout", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(PORT, () => console.log(`wa-web escuchando en :${PORT}  (data: ${DATA_DIR})`));
+// Auto-reconectar las sesiones guardadas en disco al arrancar
+// (así un redeploy/reinicio NO deja el WhatsApp "desconectado" esperando un /connect manual).
+function bootSessions() {
+  try {
+    const dirs = fs.readdirSync(DATA_DIR, { withFileTypes: true });
+    for (const d of dirs) {
+      if (!d.isDirectory()) continue;
+      if (fs.existsSync(path.join(DATA_DIR, d.name, "creds.json"))) {
+        startSession(d.name).catch(() => {});
+      }
+    }
+  } catch {}
+}
+
+app.listen(PORT, () => {
+  console.log(`wa-web escuchando en :${PORT}  (data: ${DATA_DIR})`);
+  setTimeout(bootSessions, 1500);
+});
