@@ -3787,7 +3787,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-subir-envialo"})
+    return jsonify({"ok": True, "v": "2026-08-24-domicilio-limpio"})
 
 
 @app.get("/pf-diag")
@@ -4917,22 +4917,26 @@ ANDREANI_TPL = RAIZ / "EnvioMasivoExcelPaquetes.xlsx"
 
 
 def _split_nombre(nm):
-    p = (nm or "").strip().split()
+    # el cliente a veces mete el MAIL en el nombre ('juan@gmail.com Delfino Juan Carlos') → lo sacamos
+    p = [t for t in (nm or "").strip().split() if "@" not in t]
+    if not p:
+        p = (nm or "").strip().split()
     if len(p) <= 1:
-        return (nm or ""), ""
+        return (" ".join(p) if p else (nm or "")), ""
     return " ".join(p[:-1]), p[-1]
 
 
 def _calle_num(dir_):
     import re
     d = (dir_ or "").strip()
-    m = re.search(r"(\d+)\s*$", d)
-    if m:
-        return (d[:m.start()].strip().rstrip(",") or d), m.group(1)
-    m2 = re.search(r"\d+", d)
-    if m2:
-        return (d.replace(m2.group(0), "").strip() or d), m2.group(0)
-    return d, ""
+    nums = [(m.start(), m.group()) for m in re.finditer(r"\d+", d)]
+    if not nums:
+        return d, ""
+    # la altura suele ser el número MÁS LARGO ('Las virjenes 1743 ... casa4' → 1743, no el 4;
+    # 'Calle 44 665' → 665). Desempate por longitud → el primero.
+    pos, val = max(nums, key=lambda x: (len(x[1]), -x[0]))
+    calle = (d[:pos].strip().rstrip(", ") or d.replace(val, "", 1).strip() or d)
+    return calle, val
 
 
 _AND_GRAVE = {"à": "á", "è": "é", "ì": "í", "ò": "ó", "ù": "ú", "À": "Á", "È": "É", "Ì": "Í",
@@ -5237,6 +5241,8 @@ def _and_domicilio(calle, numero, extra):
     calle = str(calle or "").strip()
     numero = str(numero or "").strip()
     extra = str(extra or "").strip()
+    if not _re_and.search(r"\d", numero):   # 'SN', 'S/N', 'sin número' → vacío, así recupera la altura real
+        numero = ""
     calle_ph = calle.lower() in _AND_DOM_PH
     # "Calle 60" / "Calle 39" / "17 n" sola = nombre de calle numerada (NO es la altura) → altura del apto
     _num_sola = bool(_re_and.match(r"^\d{1,4}\s*(n|n°|nº|bis)?\s*$",
