@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-variante"})
+    return jsonify({"ok": True, "v": "2026-08-25-variante-attrs"})
 
 
 @app.get("/pf-diag")
@@ -9241,6 +9241,27 @@ def meli_duplicar():
     if sku_nuevo:
         attrs.append({"id": "SELLER_SKU", "value_name": sku_nuevo})
         payload["seller_custom_field"] = sku_nuevo
+
+    # Atributos del PACK (variante por unidades): unidades, mililitros, peso. Pisan el atributo del original
+    # que corresponda (matcheando por id de la categoría) o lo agregan. Best-effort.
+    def _ovr_attr(matchers, default_id, value):
+        for a in attrs:
+            if any(x in (a.get("id") or "").upper() for x in matchers):
+                a.pop("value_id", None)
+                a["value_name"] = value
+                return
+        attrs.append({"id": default_id, "value_name": value})
+    pack = (d.get("pack") or "").strip()
+    ml = (d.get("ml") or "").strip()
+    peso = (d.get("peso") or "").strip()
+    if pack:
+        _ovr_attr(["UNITS_PER_PACK", "PACKAGE_UNITS"], "UNITS_PER_PACK", pack)
+    if ml:
+        _ovr_attr(["VOLUME_CAPACITY", "NET_VOLUME", "NET_CONTENT", "CONTENT"], "VOLUME_CAPACITY",
+                  ml if ml.lower().rstrip().endswith("ml") else (ml + " ml"))
+    if peso:
+        _ovr_attr(["NET_WEIGHT", "WEIGHT"], "NET_WEIGHT",
+                  peso if any(peso.lower().rstrip().endswith(u) for u in ("g", "kg")) else (peso + " g"))
     if attrs:
         payload["attributes"] = attrs
     if s.get("shipping"):
@@ -9689,8 +9710,9 @@ function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows
   +'<div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
   +(DUPMODE==='variante'
      ? ('<div style="'+lb+';margin-top:8px">SKU de esta variante (unidades)</div><input class="dupk" placeholder="ej: x3 30ml" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px">'
+        +'<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1;min-width:0"><div style="'+lb+'">Unidades/pack</div><input class="dupu" type="number" placeholder="3" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Mililitros</div><input class="dupml" type="number" placeholder="30" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Peso (g)</div><input class="duppe" type="number" placeholder="150" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div></div>'
         +'<div style="'+lb+';margin-top:8px">Primera foto (opcional — cambia la principal)</div><input class="dupf" type="file" accept="image/*" style="width:100%;color:#9fb3cc;font-size:12px">'
-        +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">Esta variante cambia título, precio, cuotas, SKU y foto principal. El resto (categoría, descripción, demás fotos) se copia del original.</div>')
+        +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">Esta variante cambia título, precio, cuotas, SKU, unidades/ml/peso y foto principal. El resto (categoría, descripción, demás fotos) se copia del original.</div>')
      : '<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">El resto (SKU, cantidad, fotos, categoría, descripción) se copia igual del original.</div>')
   +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:6px"></div>';
  wrap.appendChild(row);
@@ -9708,10 +9730,11 @@ function duplicarPub(id){ dupAbrir(id,'simple'); }
 function variantePub(id){ dupAbrir(id,'variante'); }
 function dupClose(){ document.getElementById('dupov').style.display='none'; }
 function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice.call(document.querySelectorAll('#dup-rows .dup-row'));
- var jobs=rows.map(function(r){ var kf=r.querySelector('.dupk'), ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:(kf?kf.value.trim():''),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
+ function gv(r,c){ var e=r.querySelector(c); return e?e.value.trim():''; }
+ var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
- function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,first_pic:picid||''}).then(function(r){
+ function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,peso:j.peso,first_pic:picid||''}).then(function(r){
     if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
     else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
     i++; next();
