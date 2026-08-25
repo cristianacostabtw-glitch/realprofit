@@ -1,12 +1,13 @@
 // RealProfit — Servicio WhatsApp Web (Baileys)
 // Una sesión por CUENTA (email). Aislado: cada cuenta guarda su auth en su carpeta y solo ve SUS chats.
 // Endpoints (todos requieren header  x-wa-secret: <WA_WEB_SECRET>):
-//   POST /connect   {acc}          -> arranca/retoma la sesión; devuelve {status, qr?}
-//   GET  /status?acc=..            -> {status: 'qr'|'connected'|'connecting'|'logged_out', me?}
-//   GET  /qr?acc=..                -> {qr} (data URL PNG) mientras esté esperando escaneo
-//   GET  /chats?acc=..&limit=..    -> [{id, name, photo, last, ts, unread}]
-//   POST /send      {acc,to,text}  -> envía un mensaje (lo usa el bot para responder)
-//   POST /logout    {acc}          -> cierra sesión y borra credenciales
+//   POST /connect   {acc}              -> arranca/retoma la sesión; devuelve {status, qr?}
+//   GET  /status?acc=..                -> {status: 'qr'|'connected'|'connecting'|'logged_out', me?}
+//   GET  /qr?acc=..                    -> {qr} (data URL PNG) mientras esté esperando escaneo
+//   GET  /chats?acc=..&limit=..        -> [{id, name, photo, last, ts, unread}]
+//   GET  /messages?acc=..&chat=..      -> {messages:[{id, fromMe, text, ts, kind}]}  (conversación 1:1)
+//   POST /send      {acc,to,text}      -> envía un mensaje (lo usa el bot y el chat manual)
+//   POST /logout    {acc}              -> cierra sesión y borra credenciales
 //
 // Si WA_WEB_HOOK está seteado, cada mensaje ENTRANTE nuevo (1:1) se POSTea ahí
 // ({acc, from, tel, name, text, ts}) para que RealProfit decida si el bot responde.
@@ -29,12 +30,13 @@ const PORT = process.env.PORT || 8090;
 const SECRET = process.env.WA_WEB_SECRET || "";
 const DATA_DIR = process.env.WA_DATA_DIR || "/var/data/wa-web";
 const HOOK = process.env.WA_WEB_HOOK || "";   // URL de RealProfit que decide si responde el bot
+const MAX_MSGS = 300;                          // máx mensajes guardados por chat (memoria acotada)
 const log = pino({ level: process.env.LOG_LEVEL || "warn" });
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 // --- estado en memoria por cuenta ---
-const sessions = new Map(); // acc -> { sock, status, qr, me, chats:Map, starting }
+const sessions = new Map(); // acc -> { sock, status, qr, me, chats:Map, msgs:Map, starting }
 
 function accDir(acc) {
   const safe = String(acc).replace(/[^a-zA-Z0-9._@-]/g, "_");
@@ -46,6 +48,19 @@ function pub(s) {
   return { status: s.status, me: s.me || null, hasQr: !!s.qr };
 }
 
+// Texto legible de un mensaje de Baileys (lo que se muestra en el chat)
+function msgText(m) {
+  const mm = m.message || {};
+  return mm.conversation
+    || mm.extendedTextMessage?.text
+    || (mm.imageMessage ? (mm.imageMessage.caption || "📷 Foto") : "")
+    || (mm.videoMessage ? (mm.videoMessage.caption || "🎥 Video") : "")
+    || (mm.documentMessage ? ("📄 " + (mm.documentMessage.fileName || "Documento")) : "")
+    || (mm.audioMessage ? "🎤 Audio" : "")
+    || (mm.stickerMessage ? "🎟️ Sticker" : "")
+    || "";
+}
+
 async function startSession(acc) {
   let s = sessions.get(acc);
   if (s && (s.status === "connected" || s.starting)) return s;
@@ -55,7 +70,8 @@ async function startSession(acc) {
   const { state, saveCreds } = await useMultiFileAuthState(dir);
   const { version } = await fetchLatestBaileysVersion();
 
-  s = s || { chats: new Map() };
+  s = s || { chats: new Map(), msgs: new Map() };
+  if (!s.msgs) s.msgs = new Map();
   s.status = "connecting";
   s.qr = null;
   s.starting = true;
@@ -66,7 +82,7 @@ async function startSession(acc) {
     auth: state,
     logger: log,
     printQRInTerminal: false,
-    syncFullHistory: false,
+    syncFullHistory: false,   // WhatsApp igual manda el historial reciente al vincular (lo guardamos abajo)
     markOnlineOnConnect: false,
     browser: ["RealProfit", "Chrome", "1.0"],
   });
@@ -115,6 +131,17 @@ async function startSession(acc) {
     s.chats.set(jid, c);
   };
 
+  // guardar un mensaje en la conversación del chat (para la vista de chat completa)
+  const pushMsg = (jid, id, fromMe, text, ts, kind) => {
+    if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
+    if (!text) return;
+    let arr = s.msgs.get(jid);
+    if (!arr) { arr = []; s.msgs.set(jid, arr); }
+    if (id && arr.some((x) => x.id === id)) return;   // evitar duplicados
+    arr.push({ id: id || "", fromMe: !!fromMe, text: String(text), ts: ts || 0, kind: kind || "text" });
+    if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
+  };
+
   sock.ev.on("chats.upsert", (chats) => {
     for (const c of chats) touch(c.id, c.name, undefined, Number(c.conversationTimestamp) || 0, c.unreadCount);
   });
@@ -124,16 +151,26 @@ async function startSession(acc) {
   sock.ev.on("contacts.upsert", (cs) => {
     for (const c of cs) touch(c.id, c.notify || c.name, undefined, 0, undefined);
   });
+
+  // HISTORIAL RECIENTE que WhatsApp sincroniza al vincular → lo guardamos para ver la conversación
+  sock.ev.on("messaging-history.set", ({ messages }) => {
+    if (!messages) return;
+    for (const m of messages) {
+      const jid = m.key?.remoteJid;
+      const t = msgText(m);
+      if (!t) continue;
+      pushMsg(jid, m.key?.id, m.key?.fromMe, t, Number(m.messageTimestamp) || 0, "text");
+      touch(jid, m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
+    }
+  });
+
   sock.ev.on("messages.upsert", ({ messages, type }) => {
     for (const m of messages) {
       const jid = m.key?.remoteJid;
       if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue; // solo 1:1
-      const t = m.message?.conversation
-        || m.message?.extendedTextMessage?.text
-        || (m.message?.imageMessage ? "📷 Foto" : "")
-        || (m.message?.documentMessage ? "📄 Documento" : "")
-        || (m.message?.audioMessage ? "🎤 Audio" : "");
+      const t = msgText(m);
       touch(jid, m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
+      pushMsg(jid, m.key?.id, m.key?.fromMe, t, Number(m.messageTimestamp) || 0, "text");
       // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
       const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
       if (HOOK && type === "notify" && !m.key?.fromMe && texto) {
@@ -231,6 +268,19 @@ app.get("/chats", async (req, res) => {
   res.json({ ok: true, status: "connected", me: s.me || null, chats: out });
 });
 
+// Conversación completa de un chat 1:1 (lo guardado: historial reciente + en vivo)
+app.get("/messages", (req, res) => {
+  const acc = (req.query.acc || "").trim();
+  const chat = (req.query.chat || "").trim();
+  const s = sessions.get(acc);
+  if (!s || s.status !== "connected") return res.json({ ok: false, status: s?.status || "disconnected", messages: [] });
+  // marcar como leído (baja el badge)
+  const c = s.chats.get(chat);
+  if (c) { c.unread = 0; s.chats.set(chat, c); }
+  const arr = (s.msgs.get(chat) || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  res.json({ ok: true, name: c?.name || (chat.split("@")[0]), messages: arr });
+});
+
 app.post("/send", async (req, res) => {
   const acc = (req.body?.acc || "").trim();
   let to = (req.body?.to || "").trim();
@@ -240,8 +290,14 @@ app.post("/send", async (req, res) => {
   if (!s || s.status !== "connected") return res.status(409).json({ ok: false, msg: "sesion no conectada" });
   if (!to.includes("@")) to = to.replace(/\D/g, "") + "@s.whatsapp.net"; // acepta solo el número
   try {
-    await s.sock.sendMessage(to, { text });
+    const sent = await s.sock.sendMessage(to, { text });
     touch_send(s, to, text);
+    // guardar el mensaje enviado en la conversación
+    if (!s.msgs) s.msgs = new Map();
+    let arr = s.msgs.get(to);
+    if (!arr) { arr = []; s.msgs.set(to, arr); }
+    arr.push({ id: sent?.key?.id || "", fromMe: true, text: String(text), ts: Math.floor(Date.now() / 1000), kind: "text" });
+    if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, msg: String(e).slice(0, 200) });
@@ -251,6 +307,7 @@ app.post("/send", async (req, res) => {
 function touch_send(s, jid, text) {
   const c = s.chats.get(jid) || { id: jid };
   c.last = text;
+  c.ts = Math.floor(Date.now() / 1000);
   s.chats.set(jid, c);
 }
 
