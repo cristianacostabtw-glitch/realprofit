@@ -104,7 +104,7 @@ async function startSession(acc) {
     auth: state,
     logger: log,
     printQRInTerminal: false,
-    syncFullHistory: false,   // WhatsApp igual manda el historial reciente al vincular (lo guardamos abajo)
+    syncFullHistory: true,    // traer TODO el historial que WhatsApp tenga al vincular
     markOnlineOnConnect: false,
     browser: ["RealProfit", "Chrome", "1.0"],
   });
@@ -184,7 +184,8 @@ async function startSession(acc) {
       const t = msgText(m);
       if (!t) continue;
       pushMsg(jid, m.key?.id, m.key?.fromMe, t, Number(m.messageTimestamp) || 0, "text");
-      touch(jid, m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
+      // el nombre del chat sale del CLIENTE (mensaje entrante), nunca del remitente saliente (el negocio)
+      touch(jid, m.key?.fromMe ? undefined : m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
     }
   });
 
@@ -193,7 +194,7 @@ async function startSession(acc) {
       const jid = m.key?.remoteJid;
       if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue; // solo 1:1
       const t = msgText(m);
-      touch(jid, m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
+      touch(jid, m.key?.fromMe ? undefined : m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
       pushMsg(jid, m.key?.id, m.key?.fromMe, t, Number(m.messageTimestamp) || 0, "text");
       // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
       const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
@@ -263,32 +264,34 @@ app.get("/qr", (req, res) => {
   res.json({ ok: true, status: s?.status || "disconnected", qr: s?.qr || null });
 });
 
-app.get("/chats", async (req, res) => {
+app.get("/chats", (req, res) => {
   const acc = (req.query.acc || "").trim();
   const limit = Math.min(parseInt(req.query.limit || "50", 10) || 50, 200);
   const s = sessions.get(acc);
   if (!s || s.status !== "connected") return res.json({ ok: false, status: s?.status || "disconnected", chats: [] });
   const arr = [...s.chats.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
-  // foto de perfil on-demand (con caché simple)
+  // La foto de perfil se busca en BACKGROUND (NO se espera) → /chats responde al toque, no cuelga a RealProfit.
   s.photos = s.photos || new Map();
-  const out = [];
-  for (const c of arr) {
-    let photo = s.photos.get(c.id);
-    if (photo === undefined) {
-      try { photo = await s.sock.profilePictureUrl(c.id, "preview"); }
-      catch { photo = null; }
-      s.photos.set(c.id, photo);
+  s._photoPend = s._photoPend || new Set();
+  const out = arr.map((c) => {
+    const photo = s.photos.get(c.id);
+    if (photo === undefined && !s._photoPend.has(c.id)) {
+      s._photoPend.add(c.id);
+      s.sock.profilePictureUrl(c.id, "preview")
+        .then((u) => s.photos.set(c.id, u || null))
+        .catch(() => s.photos.set(c.id, null))
+        .finally(() => s._photoPend.delete(c.id));
     }
-    out.push({
+    return {
       id: c.id,
       tel: (c.id || "").split("@")[0],
       name: c.name || (c.id || "").split("@")[0],
-      photo: photo || null,
+      photo: photo === undefined ? null : photo,
       last: c.last || "",
       ts: c.ts || 0,
       unread: c.unread || 0,
-    });
-  }
+    };
+  });
   res.json({ ok: true, status: "connected", me: s.me || null, chats: out });
 });
 
