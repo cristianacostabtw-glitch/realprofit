@@ -1783,7 +1783,7 @@ _SOLO_DASH = r"""
    (costos viejos). Sobreescribo esas 2 tarjetas con los valores reales del backend
    (be_roas = facturación / contribución antes de ads · be_cpa = contribución antes de ads / pedidos). */
 (function(){
-  var _raw=null, _of=window.fetch;
+  var _raw=null, _painted=false, _of=window.fetch;
   window.fetch=function(){ var args=arguments, p=_of.apply(this,args);
     try{ var u=(args[0]&&args[0].url)||args[0];
       if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
@@ -1822,7 +1822,9 @@ _SOLO_DASH = r"""
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
-    try{ hookCur(); }catch(e){} }
+    try{ hookCur(); }catch(e){}
+    // Primer paint OK (ya hay tarjetas con valores reales) → revelar la grilla con fade.
+    if(!_painted){ var _g=findGrid(); if(_g && _g.querySelector('[class*="rounded-2xl"]')){ _painted=true; _g.style.opacity='1'; } } }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
   // Busca (UNA vez) el elemento hoja del monto del KPI 'Facturación' VISIBLE. Ignora la pestaña oculta del
@@ -1906,6 +1908,9 @@ _SOLO_DASH = r"""
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
+    // Hasta que paint() deje los KPIs con los valores REALES, ocultamos la grilla (evita ver ROAS/margen
+    // remapeados mal por unos segundos). Se revela con fade al final del primer paint OK (o a los 5s de fallback).
+    if(!_painted && grid.style.opacity!=='0'){ grid.style.transition='opacity .28s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
       if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
       if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
@@ -2165,6 +2170,7 @@ _SOLO_DASH = r"""
   try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
+  setTimeout(function(){ if(!_painted){ _painted=true; try{ var g=findGrid(); if(g) g.style.opacity='1'; }catch(e){} } }, 5000);   // fallback: nunca dejar la grilla oculta
   // Al tocar un chip de canal (Todas/Shopify/MercadoLibre) React re-renderiza → re-aplico mis parches.
   document.addEventListener('click', function(e){ var el=e.target;
     for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
@@ -3791,7 +3797,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-restart1"})
+    return jsonify({"ok": True, "v": "2026-08-25-kpi-noflicker"})
 
 
 @app.get("/pf-diag")
