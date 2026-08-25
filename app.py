@@ -3799,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-bot-marca-auto"})
+    return jsonify({"ok": True, "v": "2026-08-25-wa-fast"})
 
 
 @app.get("/pf-diag")
@@ -10857,7 +10857,7 @@ function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('
   +'</div>';
   webRenderList();
   if(WEBPOLL)clearInterval(WEBPOLL);
-  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;} _wtick++; if(WEBCHAT) webLoadMsgs(false); if(_wtick%3===0) webRenderList(); }, 5000);
+  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;} _wtick++; if(WEBCHAT) webLoadMsgs(false); if(_wtick%6===0) webRenderList(); }, 2500);
 }
 function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var box=document.getElementById('webchats'); if(!box)return;
   var cs=(r&&r.chats)||[];
@@ -12160,7 +12160,7 @@ def wa_web_status():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False})
-    _r, j = _wa_web_call("GET", "/status", email, timeout=20)
+    _r, j = _wa_web_call("GET", "/status", email, timeout=10)
     if isinstance(j, dict) and (j.get("me") or {}).get("name"):
         _WA_WEB_NAMES[email] = j["me"]["name"]   # cacheo la marca del número conectado para el bot
     return jsonify(j if isinstance(j, dict) else {"ok": False})
@@ -12181,7 +12181,7 @@ def wa_web_chats():
     if not email:
         return jsonify({"ok": False, "chats": []})
     limit = request.args.get("limit", "60")
-    _r, j = _wa_web_call("GET", "/chats", email, extra={"limit": limit}, timeout=40)
+    _r, j = _wa_web_call("GET", "/chats", email, extra={"limit": limit}, timeout=12)
     return jsonify(j if isinstance(j, dict) else {"ok": False, "chats": []})
 
 
@@ -12194,7 +12194,7 @@ def wa_web_mensajes():
     chat = (request.args.get("chat") or "").strip()
     if not chat:
         return jsonify({"ok": False, "messages": []})
-    _r, j = _wa_web_call("GET", "/messages", email, extra={"chat": chat}, timeout=30)
+    _r, j = _wa_web_call("GET", "/messages", email, extra={"chat": chat}, timeout=10)
     return jsonify(j if isinstance(j, dict) else {"ok": False, "messages": []})
 
 
@@ -12209,7 +12209,7 @@ def wa_web_enviar():
     text = (d.get("text") or "").strip()
     if not to or not text:
         return jsonify({"ok": False, "msg": "falta destino o texto"})
-    _r, j = _wa_web_call("POST", "/send", email, extra={"to": to, "text": text}, timeout=30)
+    _r, j = _wa_web_call("POST", "/send", email, extra={"to": to, "text": text}, timeout=12)
     return jsonify(j if isinstance(j, dict) else {"ok": False})
 
 
