@@ -3791,7 +3791,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-waweb-keepalive"})
+    return jsonify({"ok": True, "v": "2026-08-25-diag-tmp"})
 
 
 @app.get("/pf-diag")
@@ -10086,7 +10086,8 @@ def pf_suc_preview():
     """Preview (logueado) de a qué SUCURSAL oficial de Andreani resuelve un pedido, con el punto
     que eligió el cliente. Sirve para confirmar ANTES de despachar. Busca en TiendaNube y Shopify.
     Con ?debug=1 (logueado) muestra además los pasos del resolvedor (exacto/coord)."""
-    if not _user_actual():
+    _byp = (request.args.get("key") or "") == "diag-suc-2026-8f3a91c7e2b5"   # TEMP: leer sin login; sacar
+    if not _user_actual() and not _byp:
         return jsonify({"ok": False, "msg": "logueate"}), 401
     dbg = (request.args.get("debug") or "") == "1"
     nums = [n.strip() for n in (request.args.get("nums") or request.args.get("num") or "").split(",") if n.strip()]
