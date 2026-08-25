@@ -3799,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-wa-fast"})
+    return jsonify({"ok": True, "v": "2026-08-25-wa-media"})
 
 
 @app.get("/pf-diag")
@@ -10862,11 +10862,11 @@ function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('
 function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var box=document.getElementById('webchats'); if(!box)return;
   var cs=(r&&r.chats)||[];
   if(!cs.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:#667;font-size:13px">Sin chats todav&iacute;a. Apenas te escriban aparecen.</div>'; return; }
-  box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#00a884;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">'+esc((c.name||'?').trim().charAt(0).toUpperCase())+'</div>');
+  box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#cdd5d9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px">&#128100;</div>');
     var un=(c.unread>0)?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;text-align:center">'+c.unread+'</span>'):'';
     var sel=(WEBCHAT&&WEBCHAT.id===c.id)?';background:#f0f2f5':'';
-    return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(c.name||c.tel)+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
-      +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(c.name||c.tel)+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
+    return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(c.tel||c.name||'')+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
+      +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(c.tel||c.name||'')+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
   }).join('');
   }).catch(function(){ var box=document.getElementById('webchats'); if(box&&!box.querySelector('.wl-row'))box.innerHTML='<div style="padding:24px;text-align:center;color:#c0392b">No se pudieron traer los chats.</div>'; });
 }
@@ -10888,10 +10888,21 @@ function webLoadMsgs(force){ if(!WEBCHAT)return; var cid=WEBCHAT.id;
     _webMsgCount=ms.length;
     if(!ms.length){ box.innerHTML='<div style="text-align:center;color:#8696a0;padding:20px;font-size:13px">Sin mensajes guardados de esta conversaci&oacute;n todav&iacute;a. Los nuevos aparecen ac&aacute;.</div>'; return; }
     box.innerHTML=ms.map(function(m){ var mine=m.fromMe;
-      return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:'+(mine?'#d9fdd3':'#fff')+';color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+esc(m.text)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(m.ts)+'</div></div></div>';
+      return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:'+(mine?'#d9fdd3':'#fff')+';color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+webBody(m)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(m.ts)+'</div></div></div>';
     }).join('');
     box.scrollTop=box.scrollHeight;
   }).catch(function(){});
+}
+var _WPH=['📷 Foto','🎥 Video','🎤 Audio','🎞️ GIF','📄 Documento'];
+function webBody(m){
+  if(m && m.media){ var src='/wa-web-media?id='+encodeURIComponent(m.media);
+    var cap=(m.text && _WPH.indexOf(m.text)<0)?('<div style="margin-top:4px">'+esc(m.text)+'</div>'):'';
+    if(m.kind==='image'||m.kind==='sticker') return '<img src="'+src+'" loading="lazy" style="max-width:240px;max-height:300px;border-radius:6px;display:block;cursor:pointer" onclick="window.open(this.src)">'+cap;
+    if(m.kind==='video'||m.kind==='gif') return '<video src="'+src+'" controls '+(m.kind==='gif'?'autoplay loop muted':'')+' style="max-width:240px;border-radius:6px;display:block"></video>'+cap;
+    if(m.kind==='audio') return '<audio src="'+src+'" controls style="max-width:230px;display:block"></audio>';
+    return '<a href="'+src+'" target="_blank" style="color:#027eb5;text-decoration:none">&#128196; '+esc(m.text||'Documento')+'</a>';
+  }
+  return esc((m&&m.text)||'');
 }
 function webSend(){ var i=document.getElementById('webinput'); if(!i||!WEBCHAT)return; var t=(i.value||'').trim(); if(!t)return; i.value=''; i.style.height='auto';
   var box=document.getElementById('webmsgs'); if(box){ if(box.querySelector('div')&&box.textContent.indexOf('Sin mensajes')>=0)box.innerHTML=''; box.insertAdjacentHTML('beforeend','<div style="display:flex;justify-content:flex-end;margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:#d9fdd3;color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+esc(t)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(Math.floor(Date.now()/1000))+'</div></div></div>'); box.scrollTop=box.scrollHeight; _webMsgCount++; }
@@ -12196,6 +12207,26 @@ def wa_web_mensajes():
         return jsonify({"ok": False, "messages": []})
     _r, j = _wa_web_call("GET", "/messages", email, extra={"chat": chat}, timeout=10)
     return jsonify(j if isinstance(j, dict) else {"ok": False, "messages": []})
+
+
+@app.get("/wa-web-media")
+def wa_web_media():
+    """Sirve un archivo de medio del WhatsApp Web (foto/audio/video/etc), en streaming."""
+    email = _user_actual()
+    if not email:
+        return Response(status=401)
+    mid = (request.args.get("id") or "").strip()
+    if not mid or not WA_WEB_URL:
+        return Response(status=404)
+    try:
+        r = requests.get(WA_WEB_URL + "/media", headers={"x-wa-secret": WA_WEB_SECRET},
+                         params={"acc": email, "id": mid}, timeout=30, stream=True)
+        if r.status_code != 200:
+            return Response(status=r.status_code)
+        return Response(r.iter_content(chunk_size=16384),
+                        content_type=r.headers.get("Content-Type", "application/octet-stream"))
+    except Exception:
+        return Response(status=502)
 
 
 @app.post("/wa-web-enviar")
