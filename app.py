@@ -3799,7 +3799,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-kpi-gate2"})
+    return jsonify({"ok": True, "v": "2026-08-25-bot-marca-auto"})
 
 
 @app.get("/pf-diag")
@@ -10306,6 +10306,14 @@ WA_GRAPH = "https://graph.facebook.com/v21.0"
 # Servicio WhatsApp Web (Baileys), corre aparte en Render. RealProfit le habla por HTTP.
 WA_WEB_URL = _os.environ.get("WA_WEB_URL", "").rstrip("/")     # ej https://realprofit-wa-web.onrender.com
 WA_WEB_SECRET = _os.environ.get("WA_WEB_SECRET", "")           # mismo secret que el servicio Node
+_WA_WEB_NAMES = {}   # email -> nombre del número conectado por Web (ej "NoxaLab Argentina") para la marca del bot
+
+
+def _wa_marca_auto(email, cfg):
+    """Marca del bot: la cargada por el dueño, o si no, el nombre del número de WhatsApp conectado
+    (así el bot responde como el negocio de la cuenta, nunca hardcodeado)."""
+    m = (cfg.get("bot_marca") or "").strip() if isinstance(cfg, dict) else ""
+    return m or (_WA_WEB_NAMES.get(email) or "").strip()
 
 
 def _wa_web_keepalive():
@@ -10498,7 +10506,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
 
     d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
                           extra_instr=conf.get("bot_instr", ""),
-                          marca=conf.get("bot_marca", ""),
+                          marca=_wa_marca_auto(email, conf),
                           pago={"titular": conf.get("bot_pago_titular", ""),
                                 "alias": conf.get("bot_pago_alias", ""),
                                 "cuit": conf.get("bot_pago_cuit", "")})
@@ -12076,7 +12084,7 @@ def wa_bot_probar():
         return jsonify({"ok": False, "msg": "Falta ANTHROPIC_API_KEY en el servidor (Render → Environment)"})
     hist = [{"dir": "in", "texto": txt}]
     d = agente_ia.decidir(hist, nombre=nombre, extra_instr=c.get("bot_instr", ""),
-                          marca=c.get("bot_marca", ""),
+                          marca=_wa_marca_auto(email, c),
                           pago={"titular": c.get("bot_pago_titular", ""),
                                 "alias": c.get("bot_pago_alias", ""),
                                 "cuit": c.get("bot_pago_cuit", "")})
@@ -12142,6 +12150,8 @@ def wa_web_connect():
         toks[email] = {"web": True}
         _wa_save_tokens(toks)
     _r, j = _wa_web_call("POST", "/connect", email)
+    if isinstance(j, dict) and (j.get("me") or {}).get("name"):
+        _WA_WEB_NAMES[email] = j["me"]["name"]
     return jsonify(j if isinstance(j, dict) else {"ok": False})
 
 
@@ -12151,6 +12161,8 @@ def wa_web_status():
     if not email:
         return jsonify({"ok": False})
     _r, j = _wa_web_call("GET", "/status", email, timeout=20)
+    if isinstance(j, dict) and (j.get("me") or {}).get("name"):
+        _WA_WEB_NAMES[email] = j["me"]["name"]   # cacheo la marca del número conectado para el bot
     return jsonify(j if isinstance(j, dict) else {"ok": False})
 
 
