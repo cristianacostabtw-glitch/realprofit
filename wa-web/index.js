@@ -24,6 +24,7 @@ import {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
+  downloadMediaMessage,
 } from "@whiskeysockets/baileys";
 
 const PORT = process.env.PORT || 8090;
@@ -69,6 +70,37 @@ function saveStoreDebounced(acc, s) {
   }, 4000));
 }
 
+// --- MEDIOS (fotos, video, audio, sticker/gif, documento) ---
+function mediaDir(acc) { return path.join(accDir(acc), "media"); }
+function mediaKind(m) {
+  const mm = m.message || {};
+  if (mm.imageMessage) return { kind: "image", ext: (mm.imageMessage.mimetype || "").includes("png") ? "png" : "jpg", mime: mm.imageMessage.mimetype || "image/jpeg", caption: mm.imageMessage.caption || "" };
+  if (mm.stickerMessage) return { kind: "sticker", ext: "webp", mime: "image/webp", caption: "" };
+  if (mm.videoMessage) return { kind: (mm.videoMessage.gifPlayback ? "gif" : "video"), ext: "mp4", mime: mm.videoMessage.mimetype || "video/mp4", caption: mm.videoMessage.caption || "" };
+  if (mm.audioMessage) return { kind: "audio", ext: (mm.audioMessage.mimetype || "").includes("mpeg") ? "mp3" : "ogg", mime: mm.audioMessage.mimetype || "audio/ogg", caption: "" };
+  if (mm.documentMessage) return { kind: "document", ext: "bin", mime: mm.documentMessage.mimetype || "application/octet-stream", caption: mm.documentMessage.fileName || "Documento" };
+  return null;
+}
+// descarga el medio y lo guarda en disco; devuelve {mediaId, mime} o null
+async function saveMedia(sock, m, acc) {
+  const mk = mediaKind(m);
+  if (!mk) return null;
+  const id = (m.key?.id || String(Date.now())).replace(/[^a-zA-Z0-9._-]/g, "");
+  const fname = id + "." + mk.ext;
+  const dir = mediaDir(acc);
+  const file = path.join(dir, fname);
+  try {
+    if (!fs.existsSync(file)) {
+      fs.mkdirSync(dir, { recursive: true });
+      const buff = await downloadMediaMessage(m, "buffer", {}, { logger: log, reuploadRequest: sock.updateMediaMessage });
+      fs.writeFileSync(file, buff);
+    }
+    return { mediaId: fname, mime: mk.mime };
+  } catch {
+    return null;
+  }
+}
+
 // Texto legible de un mensaje de Baileys (lo que se muestra en el chat)
 function msgText(m) {
   const mm = m.message || {};
@@ -80,6 +112,9 @@ function msgText(m) {
     || (mm.audioMessage ? "🎤 Audio" : "")
     || (mm.stickerMessage ? "🎟️ Sticker" : "")
     || "";
+}
+function placeholderTxt(k) {
+  return k === "audio" ? "🎤 Audio" : k === "video" ? "🎥 Video" : k === "gif" ? "🎞️ GIF" : k === "document" ? "📄 Documento" : "📷 Foto";
 }
 
 async function startSession(acc) {
@@ -104,7 +139,7 @@ async function startSession(acc) {
     auth: state,
     logger: log,
     printQRInTerminal: false,
-    syncFullHistory: true,    // traer TODO el historial que WhatsApp tenga al vincular
+    syncFullHistory: false,   // historial reciente (con full a veces se cuelga por volumen)
     markOnlineOnConnect: false,
     browser: ["RealProfit", "Chrome", "1.0"],
   });
@@ -155,15 +190,36 @@ async function startSession(acc) {
   };
 
   // guardar un mensaje en la conversación del chat (para la vista de chat completa)
-  const pushMsg = (jid, id, fromMe, text, ts, kind) => {
+  const pushMsg = (jid, id, fromMe, text, ts, kind, media) => {
     if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
-    if (!text) return;
+    if (!text && !media) return;
     let arr = s.msgs.get(jid);
     if (!arr) { arr = []; s.msgs.set(jid, arr); }
-    if (id && arr.some((x) => x.id === id)) return;   // evitar duplicados
-    arr.push({ id: id || "", fromMe: !!fromMe, text: String(text), ts: ts || 0, kind: kind || "text" });
+    const ex = id ? arr.find((x) => x.id === id) : null;
+    if (ex) {   // ya existía (ej placeholder) → si ahora bajó el medio, se lo agrego
+      if (media && !ex.media) { ex.media = media.mediaId; ex.mime = media.mime || ""; saveStoreDebounced(acc, s); }
+      return;
+    }
+    const item = { id: id || "", fromMe: !!fromMe, text: String(text || ""), ts: ts || 0, kind: kind || "text" };
+    if (media) { item.media = media.mediaId; item.mime = media.mime || ""; }
+    arr.push(item);
     if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
     saveStoreDebounced(acc, s);
+  };
+  // guarda un mensaje: si es medio, pushea placeholder y baja el archivo en background
+  const pushAny = (m) => {
+    const jid = m.key?.remoteJid;
+    if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
+    const t = msgText(m);
+    const id = m.key?.id, fromMe = m.key?.fromMe, ts = Number(m.messageTimestamp) || 0;
+    touch(jid, fromMe ? undefined : m.pushName, t, ts, undefined);
+    const mk = mediaKind(m);
+    if (mk) {
+      pushMsg(jid, id, fromMe, t || placeholderTxt(mk.kind), ts, mk.kind, null);
+      saveMedia(sock, m, acc).then((md) => { if (md) pushMsg(jid, id, fromMe, t || placeholderTxt(mk.kind), ts, mk.kind, md); }).catch(() => {});
+    } else {
+      pushMsg(jid, id, fromMe, t, ts, "text", null);
+    }
   };
 
   sock.ev.on("chats.upsert", (chats) => {
@@ -181,11 +237,8 @@ async function startSession(acc) {
     if (!messages) return;
     for (const m of messages) {
       const jid = m.key?.remoteJid;
-      const t = msgText(m);
-      if (!t) continue;
-      pushMsg(jid, m.key?.id, m.key?.fromMe, t, Number(m.messageTimestamp) || 0, "text");
-      // el nombre del chat sale del CLIENTE (mensaje entrante), nunca del remitente saliente (el negocio)
-      touch(jid, m.key?.fromMe ? undefined : m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
+      if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue;
+      pushAny(m);   // texto o medio (baja fotos/audios/videos)
     }
   });
 
@@ -193,9 +246,7 @@ async function startSession(acc) {
     for (const m of messages) {
       const jid = m.key?.remoteJid;
       if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue; // solo 1:1
-      const t = msgText(m);
-      touch(jid, m.key?.fromMe ? undefined : m.pushName, t, Number(m.messageTimestamp) || 0, undefined);
-      pushMsg(jid, m.key?.id, m.key?.fromMe, t, Number(m.messageTimestamp) || 0, "text");
+      pushAny(m);   // texto o medio (baja fotos/audios/videos en background)
       // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
       const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
       if (HOOK && type === "notify" && !m.key?.fromMe && texto) {
@@ -306,6 +357,16 @@ app.get("/messages", (req, res) => {
   if (c) { c.unread = 0; s.chats.set(chat, c); }
   const arr = (s.msgs.get(chat) || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
   res.json({ ok: true, name: c?.name || (chat.split("@")[0]), messages: arr });
+});
+
+// Sirve un archivo de medio (foto/audio/video/sticker/documento) guardado en disco
+app.get("/media", (req, res) => {
+  const acc = (req.query.acc || "").trim();
+  const id = (req.query.id || "").replace(/[^a-zA-Z0-9._-]/g, "");
+  if (!acc || !id) return res.status(400).end();
+  const file = path.join(mediaDir(acc), id);
+  if (!fs.existsSync(file)) return res.status(404).end();
+  res.sendFile(file, (err) => { if (err && !res.headersSent) res.status(404).end(); });
 });
 
 app.post("/send", async (req, res) => {
