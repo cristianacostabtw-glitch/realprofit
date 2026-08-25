@@ -3787,7 +3787,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-24-suc-solo-desplegable"})
+    return jsonify({"ok": True, "v": "2026-08-24-botify"})
 
 
 @app.get("/pf-diag")
@@ -4003,6 +4003,308 @@ def _desp_save(email, st) -> None:
 
 
 SKUS_FILE = DATA_DIR / "prod_skus.json"   # {email: {product_id: {"tipo": "xn|spray|fijo", "base": "..."}}}
+
+
+# ==================== BOTIFY — copiloto del dueño (genio del negocio) ====================
+BOTIFY_FILE = DATA_DIR / "botify.json"   # {email: {"instr": str, "chats":[{rol,texto}], "conocimiento":[{fuente,texto}]}}
+
+
+def _botify_load(email) -> dict:
+    try:
+        d = _json.loads(BOTIFY_FILE.read_text(encoding="utf-8")).get(str(email), {})
+    except Exception:
+        d = {}
+    d.setdefault("instr", "")
+    d.setdefault("chats", [])
+    d.setdefault("conocimiento", [])
+    return d
+
+
+def _botify_save(email, d) -> None:
+    try:
+        alld = _json.loads(BOTIFY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        alld = {}
+    alld[str(email)] = d
+    BOTIFY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    BOTIFY_FILE.write_text(_json.dumps(alld, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _botify_texto_de_html(html):
+    """Saca el texto legible de una página web (para que BOTIFY se lo aprenda)."""
+    t = _re_and.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", str(html or ""))
+    t = _re_and.sub(r"(?s)<[^>]+>", " ", t)
+    import html as _htmlmod
+    t = _htmlmod.unescape(t)
+    return _re_and.sub(r"\s+", " ", t).strip()
+
+
+def _botify_sistema(email, d):
+    """System prompt de BOTIFY: genio del negocio + lo que sabe de ESTA tienda + la base de conocimiento."""
+    marca = ""
+    try:
+        marca = (_botify_marca(email) or "").strip()
+    except Exception:
+        marca = ""
+    instr = (d.get("instr") or "").strip()
+    kb = []
+    for k in (d.get("conocimiento") or []):
+        txt = (k.get("texto") or "").strip()
+        if txt:
+            kb.append("### Fuente: %s\n%s" % (k.get("fuente", "info"), txt[:8000]))
+    kb_txt = "\n\n".join(kb) if kb else "(todavía no cargaron material; pedile al dueño un link o PDF si te falta info)"
+    tienda = ("la tienda \"%s\"" % marca) if marca else "la tienda del dueño"
+    return f"""Sos **BOTIFY**, el copiloto y ASESOR de negocios del dueño de {tienda}, adentro de la app RealProfit.
+Hablás en argentino, directo, con criterio comercial afilado — como un genio de la respuesta directa y el ecommerce
+(pensás en vender, márgenes, conversión, ads, logística, atención al cliente, y en hacer crecer la marca).
+
+# QUIÉN SOS
+- Sos el asistente del DUEÑO (no de los clientes): te habla el que maneja el negocio. Tuteá, sé cercano y concreto.
+- Das consejos accionables, con números cuando podés. Nada de vueltas ni relleno. Si algo no conviene, se lo decís.
+- Si te preguntan algo del negocio y tenés la data en la BASE DE CONOCIMIENTO, usala. Si no la tenés, decilo y pedí
+  el dato o el link/PDF — NO inventes precios, stock, ni políticas de la marca.
+
+# CÓMO RESPONDER SEGÚN LA MARCA
+El dueño te deja INSTRUCCIONES (abajo) de cómo quiere que respondas y qué tono usar para su marca. Respetalas siempre.
+
+# INSTRUCCIONES DEL DUEÑO (máxima prioridad)
+{instr or "(sin instrucciones específicas todavía — usá tu mejor criterio de negocio)"}
+
+# BASE DE CONOCIMIENTO (lo que el dueño te fue enseñando: web, PDFs, notas)
+{kb_txt}
+
+# ESTILO
+Respuestas claras y al grano, en argentino. Podés usar listas cortas y ejemplos. Si te piden un texto para publicar
+(anuncio, respuesta a cliente, descripción), entregалo listo para copiar y pegar."""
+
+
+def _botify_marca(email):
+    """Nombre de la marca/tienda de la cuenta (para que BOTIFY sepa de quién habla)."""
+    try:
+        c = (_wa_conf(email) or {})
+        if c.get("bot_marca"):
+            return c["bot_marca"]
+    except Exception:
+        pass
+    try:
+        tk = _tn_tokens().get(email) or {}
+        if tk.get("name"):
+            return tk["name"]
+    except Exception:
+        pass
+    return ""
+
+
+@app.get("/pf-botify-estado")
+def pf_botify_estado():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = _botify_load(email)
+    return jsonify({"ok": True, "instr": d.get("instr", ""), "chats": d.get("chats", [])[-120:],
+                    "conocimiento": [{"fuente": k.get("fuente", ""), "chars": len(k.get("texto", ""))}
+                                     for k in d.get("conocimiento", [])],
+                    "marca": _botify_marca(email)})
+
+
+@app.post("/pf-botify")
+def pf_botify():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    msg = (request.get_json(silent=True) or {}).get("mensaje", "").strip()
+    if not msg:
+        return jsonify({"ok": False, "msg": "escribí algo"}), 400
+    d = _botify_load(email)
+    d["chats"] = (d.get("chats") or []) + [{"rol": "user", "texto": msg}]
+    try:
+        import agente_ia
+        msgs = [{"role": ("assistant" if c.get("rol") == "bot" else "user"), "content": c.get("texto", "")}
+                for c in d["chats"]]
+        resp = agente_ia.chat(msgs, _botify_sistema(email, d))
+    except Exception as e:
+        resp = "No pude responder ahora (%s). Probá de nuevo." % type(e).__name__
+    d["chats"] = (d["chats"] + [{"rol": "bot", "texto": resp}])[-300:]
+    _botify_save(email, d)
+    return jsonify({"ok": True, "respuesta": resp})
+
+
+@app.post("/pf-botify-config")
+def pf_botify_config():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    instr = (request.get_json(silent=True) or {}).get("instr", "")
+    d = _botify_load(email)
+    d["instr"] = str(instr)[:8000]
+    _botify_save(email, d)
+    return jsonify({"ok": True})
+
+
+@app.post("/pf-botify-reset")
+def pf_botify_reset():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = _botify_load(email)
+    d["chats"] = []
+    _botify_save(email, d)
+    return jsonify({"ok": True})
+
+
+@app.post("/pf-botify-link")
+def pf_botify_link():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    url = (request.get_json(silent=True) or {}).get("url", "").strip()
+    if not url:
+        return jsonify({"ok": False, "msg": "pegá un link"}), 400
+    if not url.startswith("http"):
+        url = "https://" + url
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=25)
+        texto = _botify_texto_de_html(r.text)[:20000]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude abrir el link: " + str(e)[:120]}), 400
+    if not texto:
+        return jsonify({"ok": False, "msg": "el link no tenía texto para aprender"}), 400
+    d = _botify_load(email)
+    d["conocimiento"] = [k for k in d.get("conocimiento", []) if k.get("fuente") != url]
+    d["conocimiento"].append({"fuente": url, "texto": texto})
+    _botify_save(email, d)
+    return jsonify({"ok": True, "chars": len(texto), "fuente": url})
+
+
+@app.post("/pf-botify-pdf")
+def pf_botify_pdf():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    f = request.files.get("pdf") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "subí un PDF"}), 400
+    nombre = f.filename or "documento.pdf"
+    try:
+        import pymupdf
+        doc = pymupdf.open(stream=f.read(), filetype="pdf")
+        texto = "\n".join(pg.get_text() for pg in doc)[:40000]
+        doc.close()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude leer el PDF: " + str(e)[:120]}), 400
+    if not texto.strip():
+        return jsonify({"ok": False, "msg": "el PDF no tenía texto (¿es escaneado?)"}), 400
+    d = _botify_load(email)
+    d["conocimiento"] = [k for k in d.get("conocimiento", []) if k.get("fuente") != nombre]
+    d["conocimiento"].append({"fuente": nombre, "texto": texto})
+    _botify_save(email, d)
+    return jsonify({"ok": True, "chars": len(texto), "fuente": nombre})
+
+
+@app.post("/pf-botify-olvidar")
+def pf_botify_olvidar():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    fuente = (request.get_json(silent=True) or {}).get("fuente", "")
+    d = _botify_load(email)
+    d["conocimiento"] = [k for k in d.get("conocimiento", []) if k.get("fuente") != fuente]
+    _botify_save(email, d)
+    return jsonify({"ok": True})
+
+
+# Widget flotante de BOTIFY (se inyecta en el dashboard). Botón circular abajo-derecha + panel de chat.
+_BOTIFY_WIDGET = r"""
+<style>
+#botify-fab{position:fixed;right:22px;bottom:22px;z-index:100080;width:60px;height:60px;border-radius:50%;
+ background:linear-gradient(135deg,#7c3aed,#4f46e5);box-shadow:0 14px 34px -8px rgba(124,58,237,.7);border:none;
+ cursor:pointer;display:flex;align-items:center;justify-content:center;transition:transform .18s,box-shadow .18s}
+#botify-fab:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 20px 40px -8px rgba(124,58,237,.85)}
+#botify-fab svg{width:30px;height:30px}
+#botify-fab .pulse{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 0 rgba(124,58,237,.6);animation:botifyp 2.2s infinite}
+@keyframes botifyp{0%{box-shadow:0 0 0 0 rgba(124,58,237,.55)}70%{box-shadow:0 0 0 16px rgba(124,58,237,0)}100%{box-shadow:0 0 0 0 rgba(124,58,237,0)}}
+#botify-panel{position:fixed;right:22px;bottom:94px;z-index:100081;width:392px;max-width:calc(100vw - 30px);height:640px;
+ max-height:calc(100vh - 130px);background:#0e1424;border:1px solid #26304a;border-radius:20px;box-shadow:0 30px 70px -20px rgba(0,0,0,.75);
+ display:none;flex-direction:column;overflow:hidden;font-family:system-ui,-apple-system,sans-serif;color:#e9eef7}
+#botify-panel.on{display:flex;animation:botifyup .22s ease}
+@keyframes botifyup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+#botify-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#4f46e5,#7c3aed)}
+#botify-head b{font-size:16px}#botify-head small{display:block;color:#d7d2ff;font-size:11px;font-weight:600;margin-top:1px}
+#botify-head button{background:rgba(255,255,255,.14);border:none;color:#fff;width:30px;height:30px;border-radius:9px;cursor:pointer;font-size:15px;margin-left:6px}
+#botify-head button:hover{background:rgba(255,255,255,.28)}
+#botify-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:11px}
+.botify-m{max-width:86%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+.botify-m.u{align-self:flex-end;background:#4f46e5;color:#fff;border-bottom-right-radius:5px}
+.botify-m.b{align-self:flex-start;background:#1a2236;border:1px solid #26304a;border-bottom-left-radius:5px}
+#botify-bar{display:flex;gap:8px;padding:12px;border-top:1px solid #26304a;background:#0b101d}
+#botify-input{flex:1;background:#161d30;border:1px solid #2a3550;color:#eef3fb;border-radius:12px;padding:10px 12px;font-size:13.5px;resize:none;max-height:110px;outline:none;font-family:inherit}
+#botify-send{background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;color:#fff;border-radius:12px;width:44px;cursor:pointer;font-size:17px;flex-shrink:0}
+#botify-cfg{display:none;padding:14px 16px;border-top:1px solid #26304a;background:#0b101d;overflow-y:auto;max-height:290px}
+#botify-cfg h4{margin:2px 0 7px;font-size:12px;color:#a9b4c9;text-transform:uppercase;letter-spacing:.4px}
+#botify-cfg textarea,#botify-cfg input[type=text]{width:100%;box-sizing:border-box;background:#161d30;border:1px solid #2a3550;color:#eef3fb;border-radius:10px;padding:9px 11px;font-size:13px;font-family:inherit;outline:none}
+#botify-cfg textarea{resize:vertical;min-height:70px}
+.botify-b2{background:#4f46e5;border:none;color:#fff;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;margin-top:7px}
+.botify-b2.gh{background:#1a2236;border:1px solid #2a3550;color:#c7d2e6}
+.botify-kbrow{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#141b2c;border:1px solid #26304a;border-radius:8px;padding:6px 9px;font-size:12px;margin-top:6px;color:#cfd8ea}
+.botify-kbrow button{background:none;border:none;color:#f87171;cursor:pointer;font-size:15px}
+#botify-note{font-size:11.5px;color:#8f9bb3;margin:5px 2px 0}
+</style>
+<button id="botify-fab" title="BOTIFY — tu genio del negocio"><span class="pulse"></span>
+ <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="7" width="16" height="12" rx="4" fill="#fff"/><circle cx="9" cy="13" r="1.6" fill="#4f46e5"/><circle cx="15" cy="13" r="1.6" fill="#4f46e5"/><path d="M12 3v4M8 19v2M16 19v2" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="3" r="1.5" fill="#fff"/></svg>
+</button>
+<div id="botify-panel">
+ <div id="botify-head">
+  <div><b>BOTIFY</b><small id="botify-sub">tu genio del negocio</small></div>
+  <div style="display:flex"><button id="botify-cfgbtn" title="Enseñarle / configurar">&#9881;</button><button id="botify-x" title="Cerrar">&#10005;</button></div>
+ </div>
+ <div id="botify-cfg">
+  <h4>Cómo quiero que responda (por marca)</h4>
+  <textarea id="botify-instr" placeholder="Ej: Sos el asesor de VisionPure. Tono cálido, argentino. Enfocate en vender el spray de luteína a mayores de 65..."></textarea>
+  <button class="botify-b2" id="botify-saveinstr">Guardar instrucciones</button>
+  <h4 style="margin-top:14px">Enseñarle con un link</h4>
+  <input type="text" id="botify-link" placeholder="pegá el link de tu web/producto">
+  <button class="botify-b2" id="botify-addlink">Que lo aprenda</button>
+  <h4 style="margin-top:14px">Enseñarle con un PDF</h4>
+  <label class="botify-b2 gh" style="display:inline-block">Subir PDF<input type="file" id="botify-pdf" accept=".pdf" style="display:none"></label>
+  <div id="botify-kb"></div>
+  <div id="botify-note"></div>
+ </div>
+ <div id="botify-msgs"></div>
+ <div id="botify-bar">
+  <textarea id="botify-input" rows="1" placeholder="Preguntale a BOTIFY…"></textarea>
+  <button id="botify-send">&#10148;</button>
+ </div>
+</div>
+<script>
+(function(){
+ var loaded=false;
+ function $(id){return document.getElementById(id);}
+ function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+ function add(rol,txt){var m=document.createElement('div');m.className='botify-m '+(rol==='user'?'u':'b');m.innerHTML=esc(txt);$('botify-msgs').appendChild(m);$('botify-msgs').scrollTop=$('botify-msgs').scrollHeight;return m;}
+ function note(t,ok){var n=$('botify-note');n.textContent=t;n.style.color=ok?'#34d399':'#f0b429';}
+ function renderKB(kb){var c=$('botify-kb');c.innerHTML='';(kb||[]).forEach(function(k){var r=document.createElement('div');r.className='botify-kbrow';r.innerHTML='<span>📎 '+esc(k.fuente.slice(0,42))+'</span>';var b=document.createElement('button');b.innerHTML='&#128465;';b.onclick=function(){fetch('/pf-botify-olvidar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fuente:k.fuente})}).then(function(){cargar();});};r.appendChild(b);c.appendChild(r);});}
+ function cargar(){fetch('/pf-botify-estado').then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
+   if(j.marca)$('botify-sub').textContent='genio de '+j.marca;
+   $('botify-instr').value=j.instr||'';renderKB(j.conocimiento);
+   var m=$('botify-msgs');m.innerHTML='';
+   if(!(j.chats||[]).length){add('bot','¡Hola! Soy BOTIFY, tu copiloto del negocio. 🤖\n\nPreguntame lo que quieras sobre tu tienda, ventas, ads, atención al cliente o qué responderle a alguien. En el ⚙ podés enseñarme con un link o un PDF y decirme cómo querés que responda por tu marca.');}
+   else{(j.chats||[]).forEach(function(c){add(c.rol==='user'?'user':'bot',c.texto);});}
+ });}
+ function toggle(open){var p=$('botify-panel');if(open){p.classList.add('on');if(!loaded){loaded=true;cargar();}setTimeout(function(){$('botify-input').focus();},100);}else{p.classList.remove('on');}}
+ function enviar(){var i=$('botify-input');var t=(i.value||'').trim();if(!t)return;i.value='';i.style.height='auto';add('user',t);var w=add('bot','…');$('botify-send').disabled=true;
+   fetch('/pf-botify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mensaje:t})}).then(function(r){return r.json();}).then(function(j){w.innerHTML=esc((j&&j.respuesta)||'No pude responder, probá de nuevo.');$('botify-msgs').scrollTop=$('botify-msgs').scrollHeight;}).catch(function(){w.innerHTML='Error de conexión.';}).finally(function(){$('botify-send').disabled=false;});}
+ $('botify-fab').onclick=function(){toggle(!$('botify-panel').classList.contains('on'));};
+ $('botify-x').onclick=function(){toggle(false);};
+ $('botify-cfgbtn').onclick=function(){var c=$('botify-cfg');c.style.display=c.style.display==='block'?'none':'block';};
+ $('botify-send').onclick=enviar;
+ $('botify-input').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();enviar();}});
+ $('botify-input').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,110)+'px';});
+ $('botify-saveinstr').onclick=function(){fetch('/pf-botify-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({instr:$('botify-instr').value})}).then(function(){note('✓ Instrucciones guardadas.',true);});};
+ $('botify-addlink').onclick=function(){var u=($('botify-link').value||'').trim();if(!u){note('Pegá un link primero.');return;}note('⏳ Leyendo el link…',true);fetch('/pf-botify-link',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok){note('✓ Aprendido ('+j.chars+' caracteres).',true);$('botify-link').value='';cargar();}else{note((j&&j.msg)||'No pude leer el link.');}});};
+ $('botify-pdf').onchange=function(){var f=this.files&&this.files[0];if(!f)return;note('⏳ Leyendo el PDF…',true);var fd=new FormData();fd.append('pdf',f);this.value='';fetch('/pf-botify-pdf',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){if(j&&j.ok){note('✓ Aprendido "'+j.fuente+'" ('+j.chars+' car.).',true);cargar();}else{note((j&&j.msg)||'No pude leer el PDF.');}});};
+})();
+</script>
+"""
 
 
 def _skus_map(email) -> dict:
@@ -8153,7 +8455,7 @@ def home():
                '</span><span class="rp-lbl"><span class="em">WhatsApp</span></span></a>')
     # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
     # (El link de WhatsApp ahora es un ítem del menú, se agrega en el JS de _SOLO_DASH.)
-    extra = _SOLO_DASH + userbox
+    extra = _SOLO_DASH + userbox + _BOTIFY_WIDGET
     if "</body>" in html:
         html = html.replace("</body>", extra + "</body>", 1)
     else:
