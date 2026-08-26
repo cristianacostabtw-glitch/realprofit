@@ -1539,13 +1539,23 @@ _SOLO_DASH = r"""
      +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
    var _tn=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
-   res.innerHTML='<div style="color:#fb7185;font-size:12.5px">⏳ Leyendo el PDF (N° Interno + seguimiento) y sincronizando con '+_tn+'…</div>';
+   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Leyendo el PDF…</div>';
    var fd=new FormData(); fd.append('pdf',f); fd.append('tienda',_dSegTienda||'tn');
+   // El backend arranca un JOB y devuelve al toque; acá consultamos el progreso (no cuelga nunca).
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-     if(!j||!j.ok||!(j.pedidos&&j.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer pedidos del PDF')+'.</div>'; return; }
-     if(j.tienda){ _dSegTienda=j.tienda; rpDSegTiendaRender(); }   // backend auto-detectó la tienda (Shopify/TN)
-     _dSeg=j.pedidos; _dSegWppOn=(j.wpp_on!==false); _dSegRender();
-   }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error leyendo el PDF.</div>'; }); inp.value=''; };
+     if(!j||!j.ok||!j.job){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer el PDF')+'.</div>'; return; }
+     var total=j.total||0, t0=Date.now();
+     var poll=setInterval(function(){
+       fetch('/pf-despachos-seg-progreso?job='+j.job).then(function(r){return r.json();}).then(function(p){
+         if(!p||!p.ok){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((p&&p.msg)||'No se pudo procesar')+'.</div>'; return; }
+         if(!p.listo){ var s=Math.round((Date.now()-t0)/1000); res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Buscando '+(total||'los')+' pedidos en '+_tn+'… ('+s+'s)</div>'; return; }
+         clearInterval(poll);
+         if(!(p.pedidos&&p.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No encontré esos pedidos en '+_tn+'. ¿Es la tienda correcta?</div>'; return; }
+         if(p.tienda){ _dSegTienda=p.tienda; rpDSegTiendaRender(); }
+         _dSeg=p.pedidos; _dSegWppOn=(p.wpp_on!==false); _dSegRender();
+       }).catch(function(){ /* reintenta en el próximo tick, no corta */ });
+     }, 1500);
+   }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error subiendo el PDF.</div>'; }); inp.value=''; };
  window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
@@ -3831,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-restart-0910"})
+    return jsonify({"ok": True, "v": "2026-08-26-seg-job-async"})
 
 
 @app.get("/pf-diag")
@@ -6456,12 +6466,25 @@ def pf_despachos_seg_leer():
             pass
     if not items:
         return jsonify({"ok": False, "msg": "no encontré etiquetas (N° Interno + seguimiento) en ese PDF"})
-    nums = [it["pedido"] for it in items]
+    # JOB EN SEGUNDO PLANO: buscar los pedidos en la tienda (Shopify/TN) puede tardar. NO lo hacemos
+    # dentro del request (colgaba el server 5 min y saturaba los hilos si tocabas subir varias veces).
+    # El request vuelve YA con un job; el frontend consulta /pf-despachos-seg-progreso hasta que termina.
+    import uuid as _uuid
+    job = _uuid.uuid4().hex[:12]
+    _SEG_JOBS[job] = {"listo": False, "error": None, "pedidos": None, "resumen": None,
+                      "tienda": tienda, "total": len(items), "done": 0}
+    threading.Thread(target=_seg_leer_run, args=(job, items, email, tienda, store, hdr), daemon=True).start()
+    return jsonify({"ok": True, "job": job, "total": len(items)})
+
+
+_SEG_JOBS = {}   # job_id → estado del lector de seguimientos (corre en un hilo aparte, no bloquea el request)
+
+
+def _seg_leer_run(job, items, email, tienda, store, hdr):
+    """Corre en un hilo: matchea el PDF con la tienda y arma la lista. Guarda el resultado en _SEG_JOBS."""
     try:
+        nums = [it["pedido"] for it in items]
         mapa = _seg_mapa_orders_shopify(email, nums) if tienda == "shopify" else _seg_mapa_orders(store, hdr, nums)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": "error buscando pedidos en %s (%s: %s)" % (tienda, type(e).__name__, str(e)[:150])})
-    try:
         wpp_env = _wa_seg_all().get(email, {})
         pedidos = []
         n_tn = n_wpp = n_ambos = n_falta = 0
@@ -6474,9 +6497,8 @@ def pf_despachos_seg_leer():
                           or (o.get("shipping_address") or {}).get("name") or it.get("dest", ""))
                 u = sum(int(float(li.get("quantity") or 0)) for li in (o.get("line_items") or []))
                 tel = _seg_shop_tel(o)
-                # "ya hecho" = YA tiene tracking cargado (NO solo "preparado"): preparado sin tracking → falta enviar
                 tn_ok = any((f.get("tracking_number") for f in (o.get("fulfillments") or [])))
-                es_suc = _txt_es_sucursal(_st)                          # misma regla central (no substring)
+                es_suc = _txt_es_sucursal(_st)
                 oid = o.get("id"); fo_id = None
                 match = bool(oid)
             else:
@@ -6498,6 +6520,7 @@ def pf_despachos_seg_leer():
                 "order_id": oid, "fo_id": fo_id, "es_sucursal": es_suc,
                 "tn": tn_ok, "wpp": wpp_ok, "match": match, "tienda": tienda,
             })
+            _SEG_JOBS[job]["done"] = len(pedidos)
             if tn_ok and wpp_ok:
                 n_ambos += 1
             elif tn_ok:
@@ -6506,13 +6529,28 @@ def pf_despachos_seg_leer():
                 n_wpp += 1
             else:
                 n_falta += 1
+        _wc = _wa_conf(email) or {}
+        wpp_on = bool(_wc.get("token") and _wc.get("phone_id"))
+        _SEG_JOBS[job].update({"listo": True, "pedidos": pedidos, "wpp_on": wpp_on,
+                               "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
+                                           "solo_wpp": n_wpp, "ninguno": n_falta}})
     except Exception as e:
-        return jsonify({"ok": False, "msg": "error armando la lista (%s: %s)" % (type(e).__name__, str(e)[:180])})
-    _wc = _wa_conf(email) or {}
-    wpp_on = bool(_wc.get("token") and _wc.get("phone_id"))   # ¿hay WhatsApp conectado en esta cuenta?
-    return jsonify({"ok": True, "pedidos": pedidos, "tienda": tienda, "wpp_on": wpp_on,
-                    "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
-                                "solo_wpp": n_wpp, "ninguno": n_falta}})
+        _SEG_JOBS[job].update({"listo": True, "error": "%s: %s" % (type(e).__name__, str(e)[:180])})
+
+
+@app.get("/pf-despachos-seg-progreso")
+def pf_despachos_seg_progreso():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    st = _SEG_JOBS.get((request.args.get("job") or "").strip())
+    if not st:
+        return jsonify({"ok": False, "msg": "el proceso venció, subí el PDF de nuevo"})
+    if not st.get("listo"):
+        return jsonify({"ok": True, "listo": False, "done": st.get("done", 0), "total": st.get("total", 0)})
+    if st.get("error"):
+        return jsonify({"ok": False, "msg": "error buscando en la tienda (%s)" % st["error"]})
+    return jsonify({"ok": True, "listo": True, "pedidos": st["pedidos"], "tienda": st.get("tienda"),
+                    "wpp_on": st.get("wpp_on", False), "resumen": st["resumen"]})
 
 
 _WA_TPL_CACHE = {}
