@@ -3841,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-seg-diag"})
+    return jsonify({"ok": True, "v": "2026-08-26-seg-recientes-primero"})
 
 
 @app.get("/pf-diag")
@@ -6270,28 +6270,39 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     faltan = want - set(mapa)
     if not faltan:
         return mapa
-    # 2) Traigo pedidos recientes por REST (status=any → incluye ya despachados) y matcheo localmente.
-    desde = (_dt.datetime.utcnow() - _dt.timedelta(days=120)).date().isoformat()
-    params = {"status": "any", "limit": 250, "created_at_min": desde + "T00:00:00-03:00",
-              "fields": "id,order_number,name,total_price,current_total_price,financial_status,"
-                        "fulfillment_status,cancelled_at,line_items,created_at,shipping_lines,"
-                        "shipping_address,customer,contact_email,note_attributes,fulfillments"}
-    since = 0
+    # 2) Traigo los pedidos MÁS NUEVOS primero (sortKey CREATED_AT, reverse) por GraphQL — SIN el search
+    #    por nombre (que timeoutea en tiendas grandes). Tus pedidos son los últimos ~200 → 2-4 páginas y
+    #    matcheo local por número. Corta apenas encontró todos. Query barata para no chocar el límite.
+    gql = "https://%s/admin/api/2026-07/graphql.json" % shop
+    HG = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
+    Q = ("query($cursor:String){orders(first:50,sortKey:CREATED_AT,reverse:true,after:$cursor){"
+         "pageInfo{hasNextPage endCursor} edges{node{"
+         "legacyResourceId name email phone customer{firstName lastName phone} "
+         "shippingAddress{name phone} shippingLines(first:2){edges{node{title}}} "
+         "lineItems(first:2){edges{node{quantity}}} fulfillments(first:3){trackingInfo{number} status}"
+         "}}}}")
+    import time as _tsleep
+    cursor = None
     try:
-        for _ in range(15):                                  # hasta 15 págs (3750 pedidos); corta al encontrarlos
-            params["since_id"] = since
-            r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
-                             headers=H, params=params, timeout=15)
-            lote = (r.json() or {}).get("orders") or []
-            if not lote:
-                break
-            for o in lote:
-                k = str(o.get("order_number") or "").strip()
+        for _pag in range(8):                                # hasta 8 págs (400 recientes); corta al encontrarlos
+            r = requests.post(gql, headers=HG, data=_json.dumps({"query": Q, "variables": {"cursor": cursor}}), timeout=20)
+            if r.status_code == 429 or r.status_code >= 500:
+                _tsleep.sleep(1.5); continue
+            j = r.json() if r.content else {}
+            if j.get("errors") and any("throttl" in str(e).lower() for e in j["errors"]):
+                _tsleep.sleep(2.0); continue
+            data = (j.get("data") or {}).get("orders") or {}
+            for e in (data.get("edges") or []):
+                node = e.get("node") or {}
+                k = str(node.get("name") or "").lstrip("#").strip()
                 if k in faltan and k not in mapa:
-                    mapa[k] = o
-            since = lote[-1]["id"]
-            if len(lote) < 250 or faltan <= set(mapa):       # última página o ya los tengo todos
+                    mapa[k] = _seg_gql_a_rest(node)
+            if faltan <= set(mapa):
                 break
+            pi = data.get("pageInfo") or {}
+            if not pi.get("hasNextPage"):
+                break
+            cursor = pi.get("endCursor")
     except Exception:
         pass
     return mapa
