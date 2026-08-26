@@ -3841,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-seg-gql-barato"})
+    return jsonify({"ok": True, "v": "2026-08-26-seg-rest-local"})
 
 
 @app.get("/pf-diag")
@@ -6251,68 +6251,49 @@ def _seg_gql_a_rest(node):
 
 
 def _seg_mapa_orders_shopify(email, numeros) -> dict:
-    """number(str) → order dict de Shopify. Trae los pedidos en LOTES por GraphQL (40 nombres por
-    query) en vez de 1 request REST por pedido: baja de cientos de llamadas a unas pocas → segundos
-    en vez de minutos. Devuelve la MISMA forma REST (vía _seg_gql_a_rest) que consume el resto."""
+    """number(str) → order dict de Shopify. En vez del SEARCH por nombre de GraphQL (lento: en tiendas
+    con muchos pedidos cada query tarda >15s y timeoutea), traigo los pedidos RECIENTES por REST en
+    lotes de 250 (como Despachos) y matcheo localmente por order_number. Rápido y sin throttle."""
     shop, atok = _seg_shop_conn(email)
     if not shop:
         return {}
-    H = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
-    gql = "https://%s/admin/api/2026-07/graphql.json" % shop
-    unicos = list(dict.fromkeys(str(x) for x in numeros))  # SIN tope: se buscan TODOS
-    import time as _tsleep
-
-    # ATAJO: los pedidos a despachar YA están en el caché de Despachos (misma forma REST, con line_items,
-    # customer, shipping, fulfillments). Los resuelvo de ahí SIN pegarle a Shopify → instantáneo. Solo los
-    # que falten (ej. un pedido ya despachado que no está en el caché) van por GraphQL.
+    H = {"X-Shopify-Access-Token": atok}
+    want = set(str(x).strip() for x in numeros if str(x).strip())
     mapa = {}
-    _c = _DESP_CACHE.get(email)   # si Despachos está abierto, resuelvo de ahí lo que pueda (instantáneo); NO hago fetch pesado
+    # 1) Lo que ya está en el caché de Despachos (instantáneo).
+    _c = _DESP_CACHE.get(email)
     if _c and _c.get("orders"):
-        _byn = {}
         for o in _c["orders"]:
             k = str(o.get("order_number") or "").strip()
-            if k:
-                _byn[k] = o
-        for n in unicos:
-            o = _byn.get(n)
-            if o:
-                mapa[n] = o
-        unicos = [n for n in unicos if n not in mapa]   # solo pido a Shopify los que faltan
-    if not unicos:
+            if k in want and k not in mapa:
+                mapa[k] = o
+    faltan = want - set(mapa)
+    if not faltan:
         return mapa
-
-    def _lote(chunk):
-        q = " OR ".join("name:%s" % n for n in chunk)      # 1 sola query trae hasta 40 pedidos
-        want = set(chunk)
-        for intento in range(4):                            # reintentos acotados (throttle/timeout), sin colgar minutos
-            try:
-                r = requests.post(gql, headers=H, data=_json.dumps({"query": _SEG_GQL, "variables": {"q": q}}), timeout=15)
-                if r.status_code == 429 or r.status_code >= 500:
-                    _tsleep.sleep(min(2.0, float(r.headers.get("Retry-After", 1))))
-                    continue
-                j = r.json() if r.content else {}
-            except Exception:
-                _tsleep.sleep(0.5 * (intento + 1))
-                continue
-            # throttle de GraphQL (costo) → esperar y reintentar
-            if (j.get("errors") and any("THROTTLED" in str(e.get("extensions", {}).get("code", "")).upper()
-                                        or "throttl" in str(e.get("message", "")).lower() for e in j["errors"])):
-                _tsleep.sleep(1.0 + 0.5 * intento)
-                continue
-            out = {}
-            for e in (((j.get("data") or {}).get("orders") or {}).get("edges") or []):
-                node = e.get("node") or {}
-                n = str(node.get("name") or "").lstrip("#")
-                if n in want:                                # match exacto por nombre
-                    out[n] = _seg_gql_a_rest(node)
-            return out
-        return {}
-
-    chunks = [unicos[i:i + 30] for i in range(0, len(unicos), 30)]   # lotes de 30 nombres por query
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=2) as ex:       # solo 2 en paralelo: no revienta el límite de costo de Shopify
-        for res in ex.map(_lote, chunks):
-            mapa.update(res or {})
+    # 2) Traigo pedidos recientes por REST (status=any → incluye ya despachados) y matcheo localmente.
+    desde = (_dt.datetime.utcnow() - _dt.timedelta(days=120)).date().isoformat()
+    params = {"status": "any", "limit": 250, "created_at_min": desde + "T00:00:00-03:00",
+              "fields": "id,order_number,name,total_price,current_total_price,financial_status,"
+                        "fulfillment_status,cancelled_at,line_items,created_at,shipping_lines,"
+                        "shipping_address,customer,contact_email,note_attributes,fulfillments"}
+    since = 0
+    try:
+        for _ in range(15):                                  # hasta 15 págs (3750 pedidos); corta al encontrarlos
+            params["since_id"] = since
+            r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                             headers=H, params=params, timeout=15)
+            lote = (r.json() or {}).get("orders") or []
+            if not lote:
+                break
+            for o in lote:
+                k = str(o.get("order_number") or "").strip()
+                if k in faltan and k not in mapa:
+                    mapa[k] = o
+            since = lote[-1]["id"]
+            if len(lote) < 250 or faltan <= set(mapa):       # última página o ya los tengo todos
+                break
+    except Exception:
+        pass
     return mapa
 
 
