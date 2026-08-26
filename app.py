@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-tn-paralelo"})
+    return jsonify({"ok": True, "v": "2026-08-26-tn-paralelo2"})
 
 
 @app.get("/pf-diag")
@@ -6739,31 +6739,12 @@ def pf_seg_timing():
     out = {"ok": True, "email": email, "nums": len(nums)}
     store, hdr = _seg_tn_store(email)
     if store and solo != "shopify":
-        # Instrumentado: mido cada página (cuántos trae y cuánto tarda) para ver el cuello.
-        faltan = set(str(n) for n in nums); found = {}; pags = []
-        pg = 1
+        t0 = _t.time()
         try:
-            while pg <= int(request.args.get("maxpg") or 4) and faltan:
-                tp = _t.time()
-                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                    "per_page": int(request.args.get("pp") or 200), "page": pg, "sort": "-id",
-                    "fields": "id,number,customer,total,fulfillments,products,shipping_status,contact_phone,billing_phone,shipping_address"}, timeout=40)
-                lote = r.json() if r.status_code == 200 else []
-                dt = round(_t.time() - tp, 1)
-                n_lote = len(lote) if isinstance(lote, list) else 0
-                pags.append({"pg": pg, "http": r.status_code, "trajo": n_lote, "seg": dt})
-                if not isinstance(lote, list) or not lote:
-                    break
-                for o in lote:
-                    nn = str(o.get("number"))
-                    if nn in faltan:
-                        found[nn] = 1; faltan.discard(nn)
-                if n_lote < int(request.args.get("pp") or 200):
-                    break
-                pg += 1
-            out["tn"] = {"paginas": pags, "encontrados": len(found), "faltan": len(faltan)}
+            m = _seg_mapa_orders(store, hdr, nums)   # función REAL (paralela)
+            out["tn"] = {"seg": round(_t.time() - t0, 1), "encontrados": len(m)}
         except Exception as e:
-            out["tn"] = {"paginas": pags, "error": str(e)[:150]}
+            out["tn"] = {"seg": round(_t.time() - t0, 1), "error": str(e)[:150]}
     sh, at = _seg_shop_conn(email)
     if sh and solo != "tn":
         t0 = _t.time()
