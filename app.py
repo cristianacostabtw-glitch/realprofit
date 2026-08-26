@@ -1891,23 +1891,28 @@ _SOLO_DASH = r"""
       var hdr=sp[i]; for(var k=0;k<6 && hdr;k++){ hdr=hdr.parentElement; if(esHeader(hdr)) break; }
       if(esHeader(hdr) && hdr.parentElement) return hdr.parentElement; } }
     return null; }
+  function _cardLbl(card){ var sps=card.querySelectorAll('span');
+    for(var i=0;i<sps.length;i++){ var cn=sps[i].className||''; if(/uppercase/.test(cn)&&/tracking/.test(cn)) return (sps[i].textContent||''); } return ''; }
+  function _norm(s){ return (s||'').toUpperCase().replace(/\s+/g,' ').trim(); }
+  function _setVal(card,val){ var dvs=card.querySelectorAll('div');
+    for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ if(dvs[d].textContent!==val) dvs[d].textContent=val; return true; } } return false; }
   function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
-    // Recolecto las tarjetas de la sección PUBLICIDAD (entre su header y el próximo) y remapeo POR POSICIÓN.
+    // Recolecto las tarjetas de PUBLICIDAD y mapeo CADA UNA POR SU ETIQUETA (no por posición: la SPA
+    // agregó TRUE ROAS y el mapeo posicional metía el valor/etiqueta en la tarjeta equivocada). Toco
+    // SOLO el número, nunca la etiqueta ni el subtítulo → sin parpadeo de "Margen" donde va ROAS.
     var inPub=false, cards=[], kids=grid.children;
     for(var i=0;i<kids.length;i++){ var el=kids[i];
       if(esHeader(el)){ inPub = (el.textContent||'').toUpperCase().indexOf('PUBLICIDAD')>=0; continue; }
       if(inPub){ var c=/rounded-2xl/.test(el.className||'')?el:(el.querySelector?el.querySelector('[class*=\"rounded-2xl\"]'):null); if(c) cards.push(c); } }
     if(!cards.length) return false;
-    var seq=[['Gasto Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
-             ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
-             ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
-             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'],
-             ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
-             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
-             ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
-             ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
-    for(var j=0;j<cards.length && j<seq.length;j++) setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]);
-    return true; }
+    var _ads=money(_raw.publi_ars||0), _fr=money(_raw.fact_recompra||0);
+    var M={'INVERSIÓN ADS':_ads,'INVERSION ADS':_ads,'GASTO ADS':_ads,
+           'ROAS':num(_raw.roas)+'x','BREAK EVEN ROAS':num(_raw.be_roas)+'x','MARGEN':num(_raw.margen)+'%',
+           'CPA':money(_raw.cpa||0),'BREAK EVEN CPA':money(_raw.be_cpa||0),
+           'RECOMPRAS':String(_raw.recompras||0),'FACTURACIÓN RECOMPRA':_fr,'FACTURACION RECOMPRA':_fr};
+    var hit=0;
+    for(var j=0;j<cards.length;j++){ var key=_norm(_cardLbl(cards[j])); if(M[key]!=null){ if(_setVal(cards[j],M[key])) hit++; } }
+    return hit>0; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
@@ -3800,7 +3805,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-seg-autodetect-tienda"})
+    return jsonify({"ok": True, "v": "2026-08-25-dash-kpi-por-etiqueta"})
 
 
 @app.get("/pf-diag")
