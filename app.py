@@ -3902,7 +3902,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-meli-marco"})
+    return jsonify({"ok": True, "v": "2026-08-26-dni-real"})
 
 
 @app.get("/pf-cfg")
@@ -4535,16 +4535,47 @@ def _es_sucursal_ship(o) -> bool:
     return _txt_es_sucursal(txt)
 
 
+def _solo_dig(v) -> str:
+    return "".join(ch for ch in str(v or "") if ch.isdigit())
+
+
 def _dni_de(o) -> str:
+    """DNI real del pedido de SHOPIFY, buscando en todos los lugares donde suele venir en AR:
+    note_attributes (dni/documento/cuil/cuit), y el campo 'company' del envío/facturación/cliente."""
     for na in (o.get("note_attributes") or []):
         n = (na.get("name") or "").lower()
-        if any(k in n for k in ("dni", "documento", "cuil", "cuit")):
-            v = "".join(ch for ch in str(na.get("value") or "") if ch.isdigit())
-            if v:
+        if any(k in n for k in ("dni", "documento", "cuil", "cuit", "identif")):
+            v = _solo_dig(na.get("value"))
+            if len(v) >= 7:
                 return v
-    sa = o.get("shipping_address") or {}
-    comp = "".join(ch for ch in str(sa.get("company") or "") if ch.isdigit())
-    return comp
+    # también en la nota libre del pedido
+    m = _re_and.search(r'(?:dni|documento|cuil|cuit)\D{0,4}(\d{7,11})', str(o.get("note") or ""), _re_and.I)
+    if m:
+        return m.group(1)
+    cust = o.get("customer") or {}
+    for src in (o.get("shipping_address") or {}, o.get("billing_address") or {},
+                cust.get("default_address") or {}):
+        comp = _solo_dig(src.get("company"))
+        if 7 <= len(comp) <= 11:
+            return comp
+    return ""
+
+
+def _tn_dni(o) -> str:
+    """DNI real del pedido de TIENDANUBE (contact_identification es el campo estándar; con respaldos)."""
+    cust = o.get("customer") or {}
+    for v in (o.get("contact_identification"), cust.get("identification"),
+              (o.get("billing_address") or {}).get("identification"),
+              (o.get("shipping_address") or {}).get("identification")):
+        d = _solo_dig(v)
+        if len(d) >= 7:
+            return d
+    # respaldo: buscar 'DNI 12345678' en la nota del cliente/pedido
+    for txt in (o.get("note"), o.get("owner_note")):
+        m = _re_and.search(r'(?:dni|documento|cuil|cuit)\D{0,4}(\d{7,11})', str(txt or ""), _re_and.I)
+        if m:
+            return m.group(1)
+    return ""
 
 
 def _despachos_orders(email, desde=None, hasta=None, refresh=False):
@@ -4693,7 +4724,7 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 suc_lng = pkad.get("longitude") or pkad.get("lng") or pkad.get("lon") or ""
                 suc_pid = str(o.get("shipping_option_reference") or "")
                 tel = _tn_tel(o)
-                dni = str(o.get("contact_identification") or cust.get("identification") or "").strip()
+                dni = _tn_dni(o)
                 incompleta = (not es_suc) and (not calle or not cp or not tel)
                 estado = st.get(num) or "empaquetar"
                 out.append({
