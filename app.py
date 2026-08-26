@@ -3902,7 +3902,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-meli-split"})
+    return jsonify({"ok": True, "v": "2026-08-26-meli-split2"})
 
 
 @app.get("/pf-cfg")
@@ -6264,76 +6264,53 @@ def _meli_etiquetas_procesar(data):
                 potes = max(1, u * max(1, cant))
                 if trak not in mapa:
                     mapa[trak] = {"sku": sku, "cant": cant, "buyer": buyer, "potes": potes}
-    # 2) Ubico cada tracking en su página + posición (las etiquetas de MELI vienen VARIAS por hoja).
+    # 2) POR CADA HOJA separo las etiquetas usando los PUNTOS MEDIOS entre los trackings de ESA hoja.
+    #    (Robusto: no depende de un umbral global; las columnas salen de las posiciones reales de cada
+    #    hoja. Antes el clustering global mezclaba columnas → salían 2-3 etiquetas juntas.)
     label_pages = [i for i in range(len(doc)) if i not in ident_pages]
-    W = doc[0].rect.width if len(doc) else 600.0
-    ubic = []   # (page_index, trak, xcenter, rect)
-    for i in label_pages:
-        pg = doc[i]
-        txt = pg.get_text()
-        for trak in mapa:
-            if trak not in txt:
-                continue
-            rects = pg.search_for(trak)
-            if rects:
-                r = rects[0]
-                ubic.append((i, trak, (r.x0 + r.x1) / 2.0, r))
-    # Columnas: agrupo los x de los trackings (una etiqueta = una columna en la hoja).
-    xs = sorted(u[2] for u in ubic)
-    centers = []
-    for x in xs:
-        if centers and abs(x - centers[-1]["c"]) < W * 0.14:
-            centers[-1]["xs"].append(x)
-            centers[-1]["c"] = sum(centers[-1]["xs"]) / len(centers[-1]["xs"])
-        else:
-            centers.append({"c": x, "xs": [x]})
-    cen = [c["c"] for c in centers] or [W / 2.0]
-
-    def _col_bounds(xc):
-        idx = min(range(len(cen)), key=lambda k: abs(cen[k] - xc))
-        lo = (cen[idx - 1] + cen[idx]) / 2.0 if idx > 0 else 0.0
-        hi = (cen[idx] + cen[idx + 1]) / 2.0 if idx < len(cen) - 1 else W
-        return lo, hi
-
-    def _label_bbox(pg, lo, hi):
-        r = None
-        for b in pg.get_text("blocks"):
-            cx = (b[0] + b[2]) / 2.0
-            if cx < lo or cx >= hi:
-                continue
-            rr = fitz.Rect(b[0], b[1], b[2], b[3])
-            r = rr if r is None else (r | rr)
-        try:
-            for im in pg.get_image_info():
-                bb = im.get("bbox")
-                if not bb:
-                    continue
-                cx = (bb[0] + bb[2]) / 2.0
-                if cx < lo or cx >= hi:
-                    continue
-                rr = fitz.Rect(bb[0], bb[1], bb[2], bb[3])
-                r = rr if r is None else (r | rr)
-        except Exception:
-            pass
-        return r
-
-    # 3) Estampo los potes en la fuente y armo la lista de etiquetas (con su recorte).
     labels = []
     seen = set()
-    for (i, trak, xc, r) in ubic:
-        if trak in seen:
+    for i in label_pages:
+        pg = doc[i]
+        W, H = pg.rect.width, pg.rect.height
+        txt = pg.get_text()
+        # trackings presentes en ESTA hoja, con su rect, ordenados por x (izq→der)
+        en_hoja = []
+        for trak in mapa:
+            if trak in seen or trak not in txt:
+                continue
+            rr = pg.search_for(trak)
+            if rr:
+                en_hoja.append(((rr[0].x0 + rr[0].x1) / 2.0, trak, rr[0]))
+        if not en_hoja:
             continue
-        seen.add(trak)
-        info = mapa[trak]
-        _meli_stamp(doc[i], r, info["potes"])
-        lo, hi = _col_bounds(xc)
-        bbox = _label_bbox(doc[i], lo, hi)
-        if bbox is None:
-            bbox = fitz.Rect(lo, 0, hi, doc[i].rect.height)
-        bbox = bbox + (-3, -3, 3, 6)                 # respiro (el estampado queda debajo del tracking)
-        bbox = bbox & doc[i].rect
-        labels.append({"page": i, "bbox": bbox, "potes": info["potes"],
-                       "trak": trak, "buyer": info["buyer"], "sku": info["sku"]})
+        en_hoja.sort(key=lambda z: z[0])
+        n = len(en_hoja)
+        for (_xc, trak, rr) in en_hoja:
+            _meli_stamp(pg, rr, mapa[trak]["potes"])
+        # Rango vertical del contenido de la hoja (para no dejar franjas blancas arriba/abajo).
+        blocks = pg.get_text("blocks")
+        ys0 = [b[1] for b in blocks] or [0.0]
+        ys1 = [b[3] for b in blocks] or [H]
+        top = max(0.0, min(ys0) - 4)
+        bot = min(H, max(ys1) + 8)                          # +8: cubre el estampado bajo el tracking
+        for k, (xc, trak, rr) in enumerate(en_hoja):
+            if n == 1:
+                # Una sola etiqueta en la hoja → recorto al contenido real (acá no hay mezcla de bloques).
+                lo = max(0.0, min(b[0] for b in blocks) - 4) if blocks else 0.0
+                hi = min(W, max(b[2] for b in blocks) + 4) if blocks else W
+            else:
+                # Franja horizontal = punto medio con el tracking vecino (borde real entre etiquetas).
+                # En los extremos espejo el gap. NO uso blocks (juntan las etiquetas de la misma fila).
+                lgap = (xc - en_hoja[k - 1][0]) if k > 0 else (en_hoja[k + 1][0] - xc)
+                rgap = (en_hoja[k + 1][0] - xc) if k < n - 1 else (xc - en_hoja[k - 1][0])
+                lo = max(0.0, xc - lgap / 2.0)
+                hi = min(W, xc + rgap / 2.0)
+            seen.add(trak)
+            info = mapa[trak]
+            bbox = fitz.Rect(lo, top, hi, bot) & pg.rect
+            labels.append({"page": i, "bbox": bbox, "potes": info["potes"],
+                           "trak": trak, "buyer": info["buyer"], "sku": info["sku"]})
 
     # 4) Una hoja de 10×15 cm por etiqueta, ORDENADAS por potes (x1, x2, x3…), sin deformar.
     CM = 28.3465
