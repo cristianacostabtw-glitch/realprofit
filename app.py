@@ -1959,7 +1959,12 @@ _SOLO_DASH = r"""
     if(_factEl){ var t=fmt(real); if(_factEl.textContent!==t) _factEl.textContent=t; } }
   function num(n){ return (Math.round((n||0)*100)/100); }
   function num(n){ return (Math.round((n||0)*100)/100); }
-  function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
+  function esHeader(el){ if(!el) return false;
+    if(/col-span-full/.test(el.className||'')) return true;
+    if(/rounded-2xl|rounded-xl/.test(el.className||'')) return false;   // una tarjeta NUNCA es header
+    // Respaldo por TEXTO: si el SPA compilado cambió 'col-span-full', igual reconozco el header de sección.
+    var t=(el.textContent||'').replace(/\s+/g,' ').trim();
+    return /^(finanzas|publicidad|costos)\b/i.test(t) && t.length<24; }
   // La grilla es PLANA: headers (Finanzas/Publicidad/Costos) son divs col-span-full y las tarjetas son hermanas.
   function findGrid(){ var sp=document.querySelectorAll('span,div,h2,h3,p');
     for(var i=0;i<sp.length;i++){ if(sp[i].children.length) continue;   // solo hojas de texto
@@ -2272,7 +2277,13 @@ _SOLO_DASH = r"""
   try{ new MutationObserver(function(){ if(_raw){ try{ metricas(); }catch(e){} } schedule(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
-  setTimeout(function(){ if(!_painted){ try{ metricas(); }catch(e){} _painted=true; try{ var g=findGrid(); if(g) g.style.opacity='1'; }catch(e){} } }, 5000);   // fallback: remapea y recién ahí destapa
+  // Fallback: NO destapo la grilla con las etiquetas nativas (ROAS mal + True ROAS). Reintento el remapeo
+  // hasta que funcione y recién ahí destapo. Último recurso ~12s (por si algo raro, mejor mostrar algo).
+  (function _revelar(intentos){ if(_painted) return;
+     var ok=false; try{ ok=metricas(); }catch(e){}
+     if(ok){ _painted=true; try{ var g=findGrid(); if(g) g.style.opacity='1'; }catch(e){} return; }
+     if(intentos<=0){ _painted=true; try{ var g2=findGrid(); if(g2) g2.style.opacity='1'; }catch(e){} return; }
+     setTimeout(function(){ _revelar(intentos-1); }, 700); })(14);
   // Al tocar un chip de canal (Todas/Shopify/MercadoLibre) React re-renderiza → re-aplico mis parches.
   document.addEventListener('click', function(e){ var el=e.target;
     for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
@@ -3902,7 +3913,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-dni-real"})
+    return jsonify({"ok": True, "v": "2026-08-26-dash-roas-fix"})
 
 
 @app.get("/pf-cfg")
