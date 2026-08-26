@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-tn-rapido-final"})
+    return jsonify({"ok": True, "v": "2026-08-26-shop-timing"})
 
 
 @app.get("/pf-diag")
@@ -6708,6 +6708,51 @@ def _seg_enviar_tn(email, pedidos) -> dict:
         except Exception as e:
             fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
+
+
+@app.get("/pf-shop-timing")
+def pf_shop_timing():
+    """TEMPORAL (clave): mide el buscador de Shopify por página. /pf-shop-timing?k=medir2608"""
+    if request.args.get("k") != "medir2608":
+        return jsonify({"ok": False}), 403
+    import time as _t
+    email = None
+    for _e in (_shop_tokens() or {}):
+        if (_shop_tokens().get(_e) or {}).get("access_token"):
+            email = _e; break
+    if not email:
+        return jsonify({"ok": False, "msg": "no hay Shopify conectado"})
+    shop, atok = _seg_shop_conn(email)
+    nums = set((request.args.get("nums") or "1713,1706,1867,1739,1845,1810,1780,1720").split(","))
+    gql = "https://%s/admin/api/2026-07/graphql.json" % shop
+    HG = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
+    Q = ("query($cursor:String){orders(first:50,sortKey:CREATED_AT,reverse:true,after:$cursor){"
+         "pageInfo{hasNextPage endCursor} edges{node{legacyResourceId name}}}}")
+    out = {"ok": True, "email": email, "shop": shop, "nums": len(nums)}
+    found = set(); pags = []; cursor = None
+    maxpg = int(request.args.get("maxpg") or 8)
+    try:
+        for pg in range(1, maxpg + 1):
+            tp = _t.time()
+            r = requests.post(gql, headers=HG, data=_json.dumps({"query": Q, "variables": {"cursor": cursor}}), timeout=25)
+            dt = round(_t.time() - tp, 1)
+            j = r.json() if r.content else {}
+            data = (j.get("data") or {}).get("orders") or {}
+            edges = data.get("edges") or []
+            for e in edges:
+                nm = str((e.get("node") or {}).get("name") or "").lstrip("#")
+                if nm in nums:
+                    found.add(nm)
+            thr = bool(j.get("errors"))
+            pags.append({"pg": pg, "http": r.status_code, "trajo": len(edges), "seg": dt, "err": (str(j.get("errors"))[:80] if thr else None)})
+            pi = data.get("pageInfo") or {}
+            if found >= nums or not pi.get("hasNextPage"):
+                break
+            cursor = pi.get("endCursor")
+        out["shopify"] = {"paginas": pags, "encontrados": len(found), "faltan": len(nums - found)}
+    except Exception as e:
+        out["shopify"] = {"paginas": pags, "error": "%s: %s" % (type(e).__name__, str(e)[:150])}
+    return jsonify(out)
 
 
 @app.post("/pf-despachos-seg-enviar")
