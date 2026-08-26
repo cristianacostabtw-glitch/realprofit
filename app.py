@@ -2287,7 +2287,7 @@ _SOLO_DASH = r"""
 #rp-stock-ov .ps .v{font-size:19px;font-weight:800;margin-top:6px;letter-spacing:-.4px}
 #rp-stock-ov .ps .v small{font-size:11px;color:var(--ink2);font-weight:600}
 #rp-stock-ov .chart{margin:18px 0 6px}
-#rp-stock-ov .chart svg{width:100%;height:60px;display:block}
+#rp-stock-ov .chart svg{width:100%;height:74px;display:block}
 #rp-stock-ov .chart .lb{display:flex;justify-content:space-between;font-size:10px;color:var(--ink3);margin-top:5px}
 #rp-stock-ov .proj-sel{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
 #rp-stock-ov .proj-sel .lab{font-size:12.5px;color:var(--ink2)}
@@ -2362,7 +2362,7 @@ _SOLO_DASH = r"""
      '<div class="sec"><span class="bb"></span><h2>Proyección de ventas</h2><span class="x">ritmo actual '+rate+' '+u+'/día</span></div>'+
      '<div class="card proj">'+
        '<div class="pstats"><div class="ps"><div class="k">Últimos 7 días</div><div class="v">'+p.d7+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Últimos 14 días</div><div class="v">'+p.d14+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Promedio por día</div><div class="v">'+rate+' <small>'+u+'</small></div></div></div>'+
-       '<div class="chart"><svg id="spark-'+id+'" viewBox="0 0 700 60" preserveAspectRatio="none"></svg><div class="lb"><span>hace 14 días</span><span>hoy</span></div></div>'+
+       '<div class="chart"><svg id="spark-'+id+'" viewBox="0 0 700 74" preserveAspectRatio="none"></svg><div class="lb"><span>hace 14 días</span><span>hoy</span></div></div>'+
        '<div class="proj-sel"><span class="lab">Proyectar a</span><span class="chips" id="chips-'+id+'"></span><input id="ndias-'+id+'" class="f sm cinput" type="number" value="30" oninput="proj(\''+p.id+'\')"><span class="lab">días</span></div>'+
        '<div class="proj-out" id="pout-'+id+'"></div>'+
      '</div>'+
@@ -2377,8 +2377,11 @@ _SOLO_DASH = r"""
      '<div class="plist">'+plist+'</div>';
  }
  function renderProj(pid){ var p=prod(pid); if(!p)return; var id=sid(pid), v=p.ventas14||[];
-   var W=700,H=60,n=v.length,gap=7,bw=(W-gap*(n-1))/n,mx=Math.max.apply(null,v),mn=Math.min.apply(null,v),svg='';
-   for(var i=0;i<n;i++){var fr=(v[i]-mn)/((mx-mn)||1),h=(H-4)*(0.32+0.68*fr),x=i*(bw+gap),y=H-h,last=i===n-1; svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3" fill="'+(last?'#54a8f0':'#2a3c54')+'"/>';}
+   // Barras con el NÚMERO de ventas de cada día arriba. TP = espacio superior para el número.
+   var W=700,H=74,TP=16,BASE=H-2,n=v.length,gap=7,bw=(W-gap*(n-1))/n,mx=Math.max.apply(null,v),mn=Math.min.apply(null,v),svg='';
+   for(var i=0;i<n;i++){var fr=(v[i]-mn)/((mx-mn)||1),h=(BASE-TP)*(0.30+0.70*fr),x=i*(bw+gap),y=BASE-h,last=i===n-1;
+     svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3" fill="'+(last?'#54a8f0':'#2a3c54')+'"/>';
+     if(v[i]>0){ svg+='<text x="'+(x+bw/2).toFixed(1)+'" y="'+Math.max(10,y-3).toFixed(1)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+(last?'#8fc5ff':'#93a3ba')+'">'+v[i]+'</text>'; } }
    var sp=$('spark-'+id); if(sp)sp.innerHTML=svg;
    var ch=$('chips-'+id); if(ch)ch.innerHTML=[15,30,60,90].map(function(x){return '<button onclick="rpStkSetN(\''+pid+'\','+x+')">'+x+'</button>';}).join('');
  }
@@ -3568,7 +3571,7 @@ def _stock_seed(email, pid, link_pid=None):
 
 
 def _stock_metrics(email, pid, orders, split=None, link_pid=None):
-    hoy = _dt.datetime.utcnow().date()
+    hoy = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date()   # hora ARGENTINA (UTC-3): si no, las ventas de la noche caen en "ayer" y la barra de hoy sale vacía
     dias = {}
     for o in orders:
         if o["estado"] != "paid":
@@ -3817,7 +3820,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-seg-usa-cache-despachos"})
+    return jsonify({"ok": True, "v": "2026-08-25-stock-barras-numeros-hoy"})
 
 
 @app.get("/pf-diag")
