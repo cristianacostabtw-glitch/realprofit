@@ -3850,7 +3850,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-wpp-reenvio-forzado"})
+    return jsonify({"ok": True, "v": "2026-08-26-tn-perpage-200"})
 
 
 @app.get("/pf-diag")
@@ -6199,10 +6199,11 @@ def _seg_mapa_orders(store, hdr, numeros) -> dict:
     faltan = set(str(n) for n in numeros)
     mapa = {}
     page = 1
+    # per_page=200 (máximo de TiendaNube): así un pedido viejo del PDF no obliga a paginar 10+ veces.
     while page <= 15 and faltan:
         try:
             r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                "per_page": 50, "page": page, "sort": "-id",
+                "per_page": 200, "page": page, "sort": "-id",
                 "fields": ("id,number,customer,total,fulfillments,products,"
                            "shipping_status,contact_phone,billing_phone,shipping_address")}, timeout=40)
             lote = r.json() if r.status_code == 200 else []
@@ -6215,7 +6216,7 @@ def _seg_mapa_orders(store, hdr, numeros) -> dict:
             if num in faltan:
                 mapa[num] = o
                 faltan.discard(num)
-        if len(lote) < 50:
+        if len(lote) < 200:
             break
         page += 1
     return mapa
