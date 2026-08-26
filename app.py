@@ -3841,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-shopify-timeout-corto"})
+    return jsonify({"ok": True, "v": "2026-08-26-seg-gql-barato"})
 
 
 @app.get("/pf-diag")
@@ -6214,13 +6214,13 @@ def _seg_shop_conn(email):
     return (tk.get("shop"), tk.get("access_token")) if (tk.get("shop") and tk.get("access_token")) else (None, None)
 
 
-_SEG_GQL = ("query($q:String!){orders(first:50,query:$q){edges{node{"
+_SEG_GQL = ("query($q:String!){orders(first:30,query:$q){edges{node{"
             "legacyResourceId name email phone "
             "customer{firstName lastName phone} "
             "shippingAddress{name phone} "
-            "shippingLines(first:3){edges{node{title}}} "
-            "lineItems(first:10){edges{node{quantity}}} "
-            "fulfillments(first:5){trackingInfo{number} status}"
+            "shippingLines(first:2){edges{node{title}}} "
+            "lineItems(first:4){edges{node{quantity}}} "
+            "fulfillments(first:3){trackingInfo{number} status}"
             "}}}}")
 
 
@@ -6266,15 +6266,7 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     # customer, shipping, fulfillments). Los resuelvo de ahí SIN pegarle a Shopify → instantáneo. Solo los
     # que falten (ej. un pedido ya despachado que no está en el caché) van por GraphQL.
     mapa = {}
-    _c = _DESP_CACHE.get(email)
-    if not (_c and _c.get("orders")):
-        # Caché FRÍO (no abrió Despachos en este proceso) → lo caliento con 1 fetch de los NO despachados.
-        # Esto evita pedirle a Shopify los 157 pedidos por GraphQL (lento, cuelga) → los resuelve de acá.
-        try:
-            _despachos_orders_shopify(email)   # llena _DESP_CACHE[email]
-            _c = _DESP_CACHE.get(email)
-        except Exception:
-            _c = None
+    _c = _DESP_CACHE.get(email)   # si Despachos está abierto, resuelvo de ahí lo que pueda (instantáneo); NO hago fetch pesado
     if _c and _c.get("orders"):
         _byn = {}
         for o in _c["orders"]:
@@ -6288,16 +6280,11 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
         unicos = [n for n in unicos if n not in mapa]   # solo pido a Shopify los que faltan
     if not unicos:
         return mapa
-    # Tope de seguridad: si por lo que sea quedan MUCHOS sin resolver, no colgar el server buscándolos
-    # de a uno por GraphQL. Los del caché (los que hay que despachar) ya están; el resto se resuelve
-    # rápido o se saltea (probablemente ya despachados). Cap = 60 nombres por GraphQL.
-    if len(unicos) > 60:
-        unicos = unicos[:60]
 
     def _lote(chunk):
         q = " OR ".join("name:%s" % n for n in chunk)      # 1 sola query trae hasta 40 pedidos
         want = set(chunk)
-        for intento in range(2):                            # pocos reintentos: nunca colgar minutos
+        for intento in range(4):                            # reintentos acotados (throttle/timeout), sin colgar minutos
             try:
                 r = requests.post(gql, headers=H, data=_json.dumps({"query": _SEG_GQL, "variables": {"q": q}}), timeout=15)
                 if r.status_code == 429 or r.status_code >= 500:
@@ -6321,11 +6308,11 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             return out
         return {}
 
-    chunks = [unicos[i:i + 30] for i in range(0, len(unicos), 30)]   # lotes chicos = menos costo por query
+    chunks = [unicos[i:i + 30] for i in range(0, len(unicos), 30)]   # lotes de 30 nombres por query
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=5) as ex:       # queries baratas → más paralelo
+    with ThreadPoolExecutor(max_workers=2) as ex:       # solo 2 en paralelo: no revienta el límite de costo de Shopify
         for res in ex.map(_lote, chunks):
-            mapa.update(res or {})                       # suma a lo ya resuelto por caché
+            mapa.update(res or {})
     return mapa
 
 
