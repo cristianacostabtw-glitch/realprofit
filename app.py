@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-shop-timing"})
+    return jsonify({"ok": True, "v": "2026-08-26-shop-2pasos"})
 
 
 @app.get("/pf-diag")
@@ -6315,40 +6315,57 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     faltan = want - set(mapa)
     if not faltan:
         return mapa
-    # 2) Traigo los pedidos MÁS NUEVOS primero (sortKey CREATED_AT, reverse) por GraphQL — SIN el search
-    #    por nombre (que timeoutea en tiendas grandes). Tus pedidos son los últimos ~200 → 2-4 páginas y
-    #    matcheo local por número. Corta apenas encontró todos. Query barata para no chocar el límite.
+    # 2) DOS PASOS (medido: la query pesada tarda por costo de Shopify; la liviana 0.2s/página):
+    #    PASO 1 = scan LIVIANO (solo nombre+id), más nuevos primero, para UBICAR los pedidos (rápido).
+    #    PASO 2 = traigo los datos completos SOLO de los que matchearon (nodes por id) → barato.
     gql = "https://%s/admin/api/2026-07/graphql.json" % shop
     HG = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
-    Q = ("query($cursor:String){orders(first:50,sortKey:CREATED_AT,reverse:true,after:$cursor){"
-         "pageInfo{hasNextPage endCursor} edges{node{"
-         "legacyResourceId name email phone customer{firstName lastName phone} "
-         "shippingAddress{name phone} shippingLines(first:2){edges{node{title}}} "
-         "lineItems(first:2){edges{node{quantity}}} fulfillments(first:3){trackingInfo{number} status}"
-         "}}}}")
+    QL = ("query($cursor:String){orders(first:60,sortKey:CREATED_AT,reverse:true,after:$cursor){"
+          "pageInfo{hasNextPage endCursor} edges{node{legacyResourceId name}}}}")
     import time as _tsleep
+    gids = {}   # num → gid
     cursor = None
-    _got_sem = _SHOP_SEM.acquire(timeout=8)   # candado: bounded, no le pega a Shopify sin límite (ni de fondo)
+    _got_sem = _SHOP_SEM.acquire(timeout=8)
     try:
-        for _pag in range(8):                                # hasta 8 págs (400 recientes); corta al encontrarlos
-            r = requests.post(gql, headers=HG, data=_json.dumps({"query": Q, "variables": {"cursor": cursor}}), timeout=20)
+        for _pag in range(12):                               # scan liviano: hasta 12 págs (720 recientes)
+            r = requests.post(gql, headers=HG, data=_json.dumps({"query": QL, "variables": {"cursor": cursor}}), timeout=20)
             if r.status_code == 429 or r.status_code >= 500:
-                _tsleep.sleep(1.5); continue
+                _tsleep.sleep(1.0); continue
             j = r.json() if r.content else {}
-            if j.get("errors") and any("throttl" in str(e).lower() for e in j["errors"]):
-                _tsleep.sleep(2.0); continue
             data = (j.get("data") or {}).get("orders") or {}
             for e in (data.get("edges") or []):
                 node = e.get("node") or {}
                 k = str(node.get("name") or "").lstrip("#").strip()
-                if k in faltan and k not in mapa:
-                    mapa[k] = _seg_gql_a_rest(node)
-            if faltan <= set(mapa):
+                if k in faltan and k not in gids:
+                    gids[k] = "gid://shopify/Order/%s" % node.get("legacyResourceId")
+            if set(gids) >= faltan:
                 break
             pi = data.get("pageInfo") or {}
             if not pi.get("hasNextPage"):
                 break
             cursor = pi.get("endCursor")
+        # PASO 2: datos completos SOLO de los matcheados (nodes por id, en lotes de 40).
+        QF = ("query($ids:[ID!]!){nodes(ids:$ids){... on Order{"
+              "legacyResourceId name email phone customer{firstName lastName phone} "
+              "shippingAddress{name phone} shippingLines(first:2){edges{node{title}}} "
+              "lineItems(first:4){edges{node{quantity}}} fulfillments(first:3){trackingInfo{number} status}"
+              "}}}")
+        idlist = list(gids.values())
+        for _i in range(0, len(idlist), 40):
+            chunk = idlist[_i:_i + 40]
+            for _try in range(3):
+                r = requests.post(gql, headers=HG, data=_json.dumps({"query": QF, "variables": {"ids": chunk}}), timeout=25)
+                if r.status_code == 429 or r.status_code >= 500:
+                    _tsleep.sleep(1.5); continue
+                j = r.json() if r.content else {}
+                if j.get("errors") and any("throttl" in str(e).lower() for e in j["errors"]):
+                    _tsleep.sleep(2.0); continue
+                for node in ((j.get("data") or {}).get("nodes") or []):
+                    if not node:
+                        continue
+                    k = str(node.get("name") or "").lstrip("#").strip()
+                    mapa[k] = _seg_gql_a_rest(node)
+                break
     except Exception:
         pass
     finally:
@@ -6708,51 +6725,6 @@ def _seg_enviar_tn(email, pedidos) -> dict:
         except Exception as e:
             fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
-
-
-@app.get("/pf-shop-timing")
-def pf_shop_timing():
-    """TEMPORAL (clave): mide el buscador de Shopify por página. /pf-shop-timing?k=medir2608"""
-    if request.args.get("k") != "medir2608":
-        return jsonify({"ok": False}), 403
-    import time as _t
-    email = None
-    for _e in (_shop_tokens() or {}):
-        if (_shop_tokens().get(_e) or {}).get("access_token"):
-            email = _e; break
-    if not email:
-        return jsonify({"ok": False, "msg": "no hay Shopify conectado"})
-    shop, atok = _seg_shop_conn(email)
-    nums = set((request.args.get("nums") or "1713,1706,1867,1739,1845,1810,1780,1720").split(","))
-    gql = "https://%s/admin/api/2026-07/graphql.json" % shop
-    HG = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
-    Q = ("query($cursor:String){orders(first:50,sortKey:CREATED_AT,reverse:true,after:$cursor){"
-         "pageInfo{hasNextPage endCursor} edges{node{legacyResourceId name}}}}")
-    out = {"ok": True, "email": email, "shop": shop, "nums": len(nums)}
-    found = set(); pags = []; cursor = None
-    maxpg = int(request.args.get("maxpg") or 8)
-    try:
-        for pg in range(1, maxpg + 1):
-            tp = _t.time()
-            r = requests.post(gql, headers=HG, data=_json.dumps({"query": Q, "variables": {"cursor": cursor}}), timeout=25)
-            dt = round(_t.time() - tp, 1)
-            j = r.json() if r.content else {}
-            data = (j.get("data") or {}).get("orders") or {}
-            edges = data.get("edges") or []
-            for e in edges:
-                nm = str((e.get("node") or {}).get("name") or "").lstrip("#")
-                if nm in nums:
-                    found.add(nm)
-            thr = bool(j.get("errors"))
-            pags.append({"pg": pg, "http": r.status_code, "trajo": len(edges), "seg": dt, "err": (str(j.get("errors"))[:80] if thr else None)})
-            pi = data.get("pageInfo") or {}
-            if found >= nums or not pi.get("hasNextPage"):
-                break
-            cursor = pi.get("endCursor")
-        out["shopify"] = {"paginas": pags, "encontrados": len(found), "faltan": len(nums - found)}
-    except Exception as e:
-        out["shopify"] = {"paginas": pags, "error": "%s: %s" % (type(e).__name__, str(e)[:150])}
-    return jsonify(out)
 
 
 @app.post("/pf-despachos-seg-enviar")
