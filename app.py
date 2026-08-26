@@ -3841,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-restart-1333"})
+    return jsonify({"ok": True, "v": "2026-08-26-1job-por-vez"})
 
 
 @app.get("/pf-diag")
@@ -6298,6 +6298,7 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
          "}}}}")
     import time as _tsleep
     cursor = None
+    _got_sem = _SHOP_SEM.acquire(timeout=8)   # candado: bounded, no le pega a Shopify sin límite (ni de fondo)
     try:
         for _pag in range(8):                                # hasta 8 págs (400 recientes); corta al encontrarlos
             r = requests.post(gql, headers=HG, data=_json.dumps({"query": Q, "variables": {"cursor": cursor}}), timeout=20)
@@ -6320,6 +6321,9 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             cursor = pi.get("endCursor")
     except Exception:
         pass
+    finally:
+        if _got_sem:
+            _SHOP_SEM.release()
     return mapa
 
 
@@ -6463,10 +6467,19 @@ def pf_despachos_seg_leer():
     # JOB EN SEGUNDO PLANO: buscar los pedidos en la tienda (Shopify/TN) puede tardar. NO lo hacemos
     # dentro del request (colgaba el server 5 min y saturaba los hilos si tocabas subir varias veces).
     # El request vuelve YA con un job; el frontend consulta /pf-despachos-seg-progreso hasta que termina.
-    import uuid as _uuid
+    import uuid as _uuid, time as _t2
+    # GUARDIA: 1 solo job por cuenta a la vez. Si subís el PDF varias veces (o quedó uno colgado <120s),
+    # NO arranco otro hilo → evita acumular docenas de hilos parseando Shopify (ahogaban el server).
+    _ahora = _t2.time()
+    for _jid, _st in list(_SEG_JOBS.items()):
+        if _st.get("email") == email and not _st.get("listo") and (_ahora - _st.get("t0", 0) < 120):
+            return jsonify({"ok": True, "job": _jid, "total": _st.get("total", len(items))})
+    # limpio jobs viejos (>10 min) para que el dict no crezca infinito
+    for _jid in [k for k, v in list(_SEG_JOBS.items()) if _ahora - v.get("t0", 0) > 600]:
+        _SEG_JOBS.pop(_jid, None)
     job = _uuid.uuid4().hex[:12]
     _SEG_JOBS[job] = {"listo": False, "error": None, "pedidos": None, "resumen": None,
-                      "tienda": tienda, "total": len(items), "done": 0}
+                      "tienda": tienda, "total": len(items), "done": 0, "email": email, "t0": _ahora}
     threading.Thread(target=_seg_leer_run, args=(job, items, email, tienda, store, hdr), daemon=True).start()
     return jsonify({"ok": True, "job": job, "total": len(items)})
 
