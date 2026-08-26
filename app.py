@@ -3913,7 +3913,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-dash-roas-fix"})
+    return jsonify({"ok": True, "v": "2026-08-26-recup2"})
 
 
 @app.get("/pf-cfg")
