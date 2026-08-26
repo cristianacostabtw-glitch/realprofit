@@ -3817,7 +3817,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-seg-graphql-liviano"})
+    return jsonify({"ok": True, "v": "2026-08-25-seg-usa-cache-despachos"})
 
 
 @app.get("/pf-diag")
@@ -6238,6 +6238,25 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     unicos = list(dict.fromkeys(str(x) for x in numeros))  # SIN tope: se buscan TODOS
     import time as _tsleep
 
+    # ATAJO: los pedidos a despachar YA están en el caché de Despachos (misma forma REST, con line_items,
+    # customer, shipping, fulfillments). Los resuelvo de ahí SIN pegarle a Shopify → instantáneo. Solo los
+    # que falten (ej. un pedido ya despachado que no está en el caché) van por GraphQL.
+    mapa = {}
+    _c = _DESP_CACHE.get(email)
+    if _c and _c.get("orders"):
+        _byn = {}
+        for o in _c["orders"]:
+            k = str(o.get("order_number") or "").strip()
+            if k:
+                _byn[k] = o
+        for n in unicos:
+            o = _byn.get(n)
+            if o:
+                mapa[n] = o
+        unicos = [n for n in unicos if n not in mapa]   # solo pido a Shopify los que faltan
+    if not unicos:
+        return mapa
+
     def _lote(chunk):
         q = " OR ".join("name:%s" % n for n in chunk)      # 1 sola query trae hasta 40 pedidos
         want = set(chunk)
@@ -6266,11 +6285,10 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
         return {}
 
     chunks = [unicos[i:i + 30] for i in range(0, len(unicos), 30)]   # lotes chicos = menos costo por query
-    mapa = {}
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=5) as ex:       # queries baratas → más paralelo
         for res in ex.map(_lote, chunks):
-            mapa.update(res or {})
+            mapa.update(res or {})                       # suma a lo ya resuelto por caché
     return mapa
 
 
