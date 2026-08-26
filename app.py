@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-timing"})
+    return jsonify({"ok": True, "v": "2026-08-26-timing2"})
 
 
 @app.get("/pf-diag")
@@ -6726,9 +6726,10 @@ def pf_seg_timing():
     if not email:
         return jsonify({"ok": False, "msg": "no hay tienda conectada"})
     nums = (request.args.get("nums") or "3164,3123,3135,3136,3165,3153,2672,2985,3002,3005,3020,3025,3171,3170,3169").split(",")
+    solo = request.args.get("solo") or ""
     out = {"ok": True, "email": email, "nums": len(nums)}
     store, hdr = _seg_tn_store(email)
-    if store:
+    if store and solo != "shopify":
         t0 = _t.time()
         try:
             m = _seg_mapa_orders(store, hdr, nums)
@@ -6736,7 +6737,7 @@ def pf_seg_timing():
         except Exception as e:
             out["tn"] = {"seg": round(_t.time() - t0, 1), "error": str(e)[:150]}
     sh, at = _seg_shop_conn(email)
-    if sh:
+    if sh and solo != "tn":
         t0 = _t.time()
         try:
             m2 = _seg_mapa_orders_shopify(email, nums)
