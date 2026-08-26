@@ -3831,7 +3831,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-anti-cuelgue"})
+    return jsonify({"ok": True, "v": "2026-08-25-seg-calienta-cache"})
 
 
 @app.get("/pf-diag")
@@ -6257,6 +6257,14 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     # que falten (ej. un pedido ya despachado que no está en el caché) van por GraphQL.
     mapa = {}
     _c = _DESP_CACHE.get(email)
+    if not (_c and _c.get("orders")):
+        # Caché FRÍO (no abrió Despachos en este proceso) → lo caliento con 1 fetch de los NO despachados.
+        # Esto evita pedirle a Shopify los 157 pedidos por GraphQL (lento, cuelga) → los resuelve de acá.
+        try:
+            _despachos_orders_shopify(email)   # llena _DESP_CACHE[email]
+            _c = _DESP_CACHE.get(email)
+        except Exception:
+            _c = None
     if _c and _c.get("orders"):
         _byn = {}
         for o in _c["orders"]:
@@ -6270,15 +6278,20 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
         unicos = [n for n in unicos if n not in mapa]   # solo pido a Shopify los que faltan
     if not unicos:
         return mapa
+    # Tope de seguridad: si por lo que sea quedan MUCHOS sin resolver, no colgar el server buscándolos
+    # de a uno por GraphQL. Los del caché (los que hay que despachar) ya están; el resto se resuelve
+    # rápido o se saltea (probablemente ya despachados). Cap = 60 nombres por GraphQL.
+    if len(unicos) > 60:
+        unicos = unicos[:60]
 
     def _lote(chunk):
         q = " OR ".join("name:%s" % n for n in chunk)      # 1 sola query trae hasta 40 pedidos
         want = set(chunk)
-        for intento in range(5):
+        for intento in range(2):                            # pocos reintentos: nunca colgar minutos
             try:
-                r = requests.post(gql, headers=H, data=_json.dumps({"query": _SEG_GQL, "variables": {"q": q}}), timeout=40)
+                r = requests.post(gql, headers=H, data=_json.dumps({"query": _SEG_GQL, "variables": {"q": q}}), timeout=15)
                 if r.status_code == 429 or r.status_code >= 500:
-                    _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.5 * intento)
+                    _tsleep.sleep(min(2.0, float(r.headers.get("Retry-After", 1))))
                     continue
                 j = r.json() if r.content else {}
             except Exception:
