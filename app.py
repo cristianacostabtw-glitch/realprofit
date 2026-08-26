@@ -43,6 +43,49 @@ app.config["MAX_CONTENT_LENGTH"] = 35 * 1024 * 1024
 def _too_big(_e):
     return jsonify({"ok": False, "msg": "El archivo es muy grande (máx. 35 MB). Subí un PDF más chico."}), 413
 
+
+# --- Vigilante interno (auto-reinicio): si el server deja de responder ~80s SEGUIDOS, se mata y
+# Render lo relevanta en segundos → deja de quedar muerto hasta un redeploy manual. CLAVE de seguridad:
+# solo se ARMA después de comprobar que el server SÍ estaba sirviendo; así nunca se auto-mata en un
+# arranque lento ni en un contexto sin servidor, y no entra en loop de reinicios.
+_WATCHDOG_ON = False
+
+
+def _watchdog():
+    import time as _t
+    import sys as _sys
+    port = _os.getenv("PORT", "10000")
+    url = "http://127.0.0.1:%s/pf-version" % port
+    armed = False
+    fails = 0
+    _t.sleep(60)                                   # gracia de arranque
+    while True:
+        try:
+            ok = (requests.get(url, timeout=8).status_code == 200)
+        except Exception:
+            ok = False
+        if ok:
+            armed = True
+            fails = 0
+        elif armed:                                # solo cuenta fallos DESPUÉS de haber servido bien
+            fails += 1
+            if fails >= 4:                         # ~4 fallos seguidos (>80s) → reinicio
+                _sys.stderr.write("[watchdog] el server no responde hace >80s → me reinicio\n")
+                _sys.stderr.flush()
+                _os._exit(1)
+        _t.sleep(20)
+
+
+def _start_watchdog():
+    global _WATCHDOG_ON
+    if _WATCHDOG_ON:
+        return
+    _WATCHDOG_ON = True
+    threading.Thread(target=_watchdog, daemon=True, name="watchdog").start()
+
+
+_start_watchdog()
+
 # Rate limiting: frena a quien intente martillar los endpoints sensibles (OAuth) para tirar
 # la app o abusar. NO limita el dashboard (así no se rompe la carga normal).
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
@@ -3859,7 +3902,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-antihang"})
+    return jsonify({"ok": True, "v": "2026-08-26-watchdog"})
 
 
 @app.get("/pf-cfg")
