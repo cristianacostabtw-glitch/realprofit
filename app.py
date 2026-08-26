@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-timing3"})
+    return jsonify({"ok": True, "v": "2026-08-26-tn-paralelo"})
 
 
 @app.get("/pf-diag")
@@ -6213,30 +6213,39 @@ def _seg_tn_store(email):
 
 
 def _seg_mapa_orders(store, hdr, numeros) -> dict:
-    """number(str) → order dict, barriendo los pedidos recientes hasta encontrar todos los del PDF."""
+    """number(str) → order dict de TiendaNube. Cada página de TN tarda ~8s y trae 200; el PDF puede tener
+    pedidos viejos (500+ atrás). Antes se paginaba de a una (secuencial) → hasta 120s y timeout. Ahora trae
+    las páginas recientes EN PARALELO (7 pág = 1400 pedidos, cubre lo viejo) → ~8-16s en vez de minutos."""
+    import time as _tsleep
     faltan = set(str(n) for n in numeros)
     mapa = {}
-    page = 1
-    # per_page=200 (máximo de TiendaNube): así un pedido viejo del PDF no obliga a paginar 10+ veces.
-    while page <= 15 and faltan:
-        try:
-            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                "per_page": 200, "page": page, "sort": "-id",
-                "fields": ("id,number,customer,total,fulfillments,products,"
-                           "shipping_status,contact_phone,billing_phone,shipping_address")}, timeout=40)
-            lote = r.json() if r.status_code == 200 else []
-        except Exception:
-            lote = []
-        if not isinstance(lote, list) or not lote:
-            break
-        for o in lote:
-            num = str(o.get("number"))
-            if num in faltan:
-                mapa[num] = o
-                faltan.discard(num)
-        if len(lote) < 200:
-            break
-        page += 1
+    PAGS = 7   # 7 × 200 = 1400 pedidos recientes (cubre pedidos ~1400 atrás)
+
+    def _pag(pg):
+        for _try in range(2):
+            try:
+                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                    "per_page": 200, "page": pg, "sort": "-id",
+                    "fields": ("id,number,customer,total,fulfillments,products,"
+                               "shipping_status,contact_phone,billing_phone,shipping_address")}, timeout=30)
+                if r.status_code == 200:
+                    return r.json()
+                if r.status_code == 429:
+                    _tsleep.sleep(1.0 + _try); continue
+                return []
+            except Exception:
+                _tsleep.sleep(0.5)
+        return []
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as ex:   # 4 páginas a la vez (sin reventar el rate-limit de TN)
+        for lote in ex.map(_pag, range(1, PAGS + 1)):
+            if isinstance(lote, list):
+                for o in lote:
+                    num = str(o.get("number"))
+                    if num in faltan:
+                        mapa[num] = o
+                        faltan.discard(num)
     return mapa
 
 
