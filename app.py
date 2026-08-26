@@ -1536,6 +1536,7 @@ _SOLO_DASH = r"""
        +'<button onclick="rpDSeg(\'tn\')" style="'+b+';background:linear-gradient(160deg,#2563a8,#1c4a80);color:#dbeafe">'+(_dSegTienda==='shopify'?'🛍️ Enviar por Shopify':'🔵 Enviar por TN')+'</button>'
        +'<button onclick="rpDSeg(\'tn\',true)" style="'+b+';background:#3a2d0e;color:#fde68a;border:1px solid #6b551c">🧪 Probar 1</button>'
        +(_dSegWppOn?('<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'):'')
+       +(_dSegWppOn?('<button onclick="rpDSeg(\'wpp\',false,true)" style="'+b+';background:#2a0f2e;color:#f5d0fe;border:1px solid #6b2c74">🔁 Reenviar TODOS por WPP</button>'):'')
      +'</div></div>'; }
  window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
    var _tn=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
@@ -1556,15 +1557,16 @@ _SOLO_DASH = r"""
        }).catch(function(){ /* reintenta en el próximo tick, no corta */ });
      }, 1500);
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error subiendo el PDF.</div>'; }); inp.value=''; };
- window.rpDSeg=function(canal,solo1){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
+ window.rpDSeg=function(canal,solo1,force){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
-   // Mandar SOLO los pendientes del canal (no re-intentar los ya hechos):
+   if(force && canal=='wpp' && !confirm('Reenviar el WhatsApp a TODOS ('+_dSeg.filter(function(o){return o.wa_id;}).length+') con el tracking del PDF, incluso a los que ya lo recibieron. ¿Seguro?')) return;
+   // Mandar SOLO los pendientes del canal (no re-intentar los ya hechos), salvo force (WPP) = TODOS:
    var _pendStore=_dSeg.filter(function(o){return !o.tn;});       // faltan en la tienda
    var _pendWpp=_dSeg.filter(function(o){return !o.wpp;});        // faltan en WhatsApp
    var lote;
    if(solo1){ lote=[((canal=='wpp'?_pendWpp:_pendStore)[0]||_dSeg[0])]; }
-   else if(canal=='wpp'){ lote=_pendWpp; }
+   else if(canal=='wpp'){ lote= force ? _dSeg.filter(function(o){return o.wa_id;}) : _pendWpp; }
    else if(canal=='tn'){ lote=_pendStore; }
    else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
    if(!lote.length){ res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
@@ -1583,7 +1585,7 @@ _SOLO_DASH = r"""
      if(i>=lote.length){ fin(); return; }
      var chunk=lote.slice(i,i+CH); var hasta=Math.min(i+chunk.length,lote.length);
      res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando '+hasta+'/'+lote.length+' por '+lbl+'… (no cierres esto)</div>';
-     fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:chunk})}).then(function(r){return r.json();}).then(function(j){
+     fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:chunk,force:!!force})}).then(function(r){return r.json();}).then(function(j){
        if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
        if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
        else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
@@ -3848,7 +3850,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-findgrid-tolerante"})
+    return jsonify({"ok": True, "v": "2026-08-26-wpp-reenvio-forzado"})
 
 
 @app.get("/pf-diag")
@@ -6603,8 +6605,9 @@ def _wa_tpl_render(body, params):
     return _r.sub(r"\{\{(\d+)\}\}", _rep, body or "")
 
 
-def _seg_enviar_wpp(email, pedidos) -> dict:
-    """Manda el seguimiento por WhatsApp (template por unidades). Salta los ya enviados por WPP."""
+def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
+    """Manda el seguimiento por WhatsApp (template por unidades). Salta los ya enviados por WPP,
+    salvo force=True (reenvío forzado: p.ej. tracking NUEVO por paquete reenviado)."""
     c = _wa_conf(email)
     if not c:
         return {"ok": False, "msg": "WhatsApp no conectado", "enviados": 0}
@@ -6614,7 +6617,7 @@ def _seg_enviar_wpp(email, pedidos) -> dict:
     errores = []
     for p in pedidos:
         num = str(p.get("num"))
-        if wpp_env.get(num):
+        if (not force) and wpp_env.get(num):
             salt += 1
             continue
         wa = (p.get("wa_id") or "").strip()
@@ -6734,11 +6737,13 @@ def pf_seg_diag():
 
 @app.post("/pf-despachos-seg-wpp")
 def pf_despachos_seg_wpp():
-    """Manda el seguimiento por WhatsApp con el template por unidades (solo los que faltan en WPP)."""
+    """Manda el seguimiento por WhatsApp con el template por unidades (solo los que faltan en WPP,
+    o TODOS si force=True → reenvío forzado con tracking nuevo)."""
     if not (email := _user_actual()):
         return jsonify({"ok": False}), 401
-    pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
-    return jsonify(_seg_enviar_wpp(email, pedidos))
+    d = request.get_json(silent=True) or {}
+    pedidos = d.get("pedidos") or []
+    return jsonify(_seg_enviar_wpp(email, pedidos, force=bool(d.get("force"))))
 
 
 @app.post("/pf-despachos-seg-todos")
