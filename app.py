@@ -3817,7 +3817,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-despachos-cache"})
+    return jsonify({"ok": True, "v": "2026-08-25-seg-graphql-liviano"})
 
 
 @app.get("/pf-diag")
@@ -6190,13 +6190,13 @@ def _seg_shop_conn(email):
     return (tk.get("shop"), tk.get("access_token")) if (tk.get("shop") and tk.get("access_token")) else (None, None)
 
 
-_SEG_GQL = ("query($q:String!){orders(first:60,query:$q){edges{node{"
+_SEG_GQL = ("query($q:String!){orders(first:50,query:$q){edges{node{"
             "legacyResourceId name email phone "
             "customer{firstName lastName phone} "
             "shippingAddress{name phone} "
-            "shippingLines(first:5){edges{node{title}}} "
-            "lineItems(first:60){edges{node{quantity}}} "
-            "fulfillments(first:20){trackingInfo{number} status}"
+            "shippingLines(first:3){edges{node{title}}} "
+            "lineItems(first:10){edges{node{quantity}}} "
+            "fulfillments(first:5){trackingInfo{number} status}"
             "}}}}")
 
 
@@ -6265,10 +6265,10 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             return out
         return {}
 
-    chunks = [unicos[i:i + 40] for i in range(0, len(unicos), 40)]
+    chunks = [unicos[i:i + 30] for i in range(0, len(unicos), 30)]   # lotes chicos = menos costo por query
     mapa = {}
     from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=3) as ex:       # pocas queries, en paralelo
+    with ThreadPoolExecutor(max_workers=5) as ex:       # queries baratas → más paralelo
         for res in ex.map(_lote, chunks):
             mapa.update(res or {})
     return mapa
