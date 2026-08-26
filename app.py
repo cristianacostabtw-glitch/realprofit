@@ -34,6 +34,14 @@ except Exception:
     DATA_DIR = RAIZ
 app = Flask(__name__)
 app.secret_key = _os.getenv("SECRET_KEY", "profitflow-dev-key-cambiar-en-produccion")
+# Tope de subida: 35 MB. Un PDF gigante que se cargue entero en RAM podía OOM-ear el worker
+# (server abajo por minutos). Con esto Flask corta ANTES de leerlo y responde 413 limpio.
+app.config["MAX_CONTENT_LENGTH"] = 35 * 1024 * 1024
+
+
+@app.errorhandler(413)
+def _too_big(_e):
+    return jsonify({"ok": False, "msg": "El archivo es muy grande (máx. 35 MB). Subí un PDF más chico."}), 413
 
 # Rate limiting: frena a quien intente martillar los endpoints sensibles (OAuth) para tirar
 # la app o abusar. NO limita el dashboard (así no se rompe la carga normal).
@@ -3851,7 +3859,21 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-recuperar1"})
+    return jsonify({"ok": True, "v": "2026-08-26-antihang"})
+
+
+@app.get("/pf-cfg")
+def pf_cfg():
+    """TEMPORAL (clave): confirma el comando real de arranque (timeout/threads) que usa Render."""
+    if request.args.get("k") != "medir2608":
+        return jsonify({"ok": False}), 403
+    cmd = ""
+    try:
+        with open("/proc/self/cmdline", "rb") as fh:
+            cmd = fh.read().replace(b"\x00", b" ").decode(errors="ignore").strip()
+    except Exception as e:
+        cmd = "n/d: %s" % e
+    return jsonify({"ok": True, "cmdline": cmd, "hilos_activos": threading.active_count()})
 
 
 @app.get("/pf-diag")
@@ -4651,9 +4673,10 @@ def _tiendanube_orders(email, desde=None, hasta=None):
 
 _DESP_CACHE = {}      # {email: {"key": (desde,hasta), "ts": epoch, "orders": [...]}} — cachea lo LENTO (traer de Shopify)
 _DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instantáneo); "Sincronizar" lo refresca.
-# Candado: máximo N llamadas concurrentes a Shopify. Si Shopify está throttleado (lento), esto EVITA que
-# las cargas pesadas ocupen los 20 hilos del server → siempre quedan hilos libres para navegar/abrir.
-_SHOP_SEM = threading.BoundedSemaphore(8)
+# Candado: máximo N operaciones PESADAS concurrentes (Shopify/TN/PDF). Tope DEBAJO del nº de hilos
+# (5 < 12) → aunque las 5 pesadas queden colgadas, SIEMPRE quedan ~7 hilos libres para navegar/abrir.
+# Esto es lo que evita que el server quede muerto para todos (HTTP 000) cuando algo externo se cuelga.
+_SHOP_SEM = threading.BoundedSemaphore(5)
 
 
 def _heavy(fn):
@@ -6206,7 +6229,10 @@ def _meli_etiquetas_procesar(data):
         if i in ident_pages:
             continue
         pg = doc[i]
+        txt = pg.get_text()                      # 1 sola lectura por página
         for trak, info in mapa.items():
+            if trak not in txt:                  # evito search_for si el tracking no está en esta página
+                continue
             rects = pg.search_for(trak)
             if not rects:
                 continue
@@ -6230,6 +6256,7 @@ def _meli_etiquetas_procesar(data):
 
 
 @app.post("/meli/etiquetas")
+@_heavy
 def meli_etiquetas():
     email = _user_actual()
     if not email:
