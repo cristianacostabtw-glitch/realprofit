@@ -591,7 +591,7 @@ _SOLO_DASH = r"""
 
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:8px">
    <label style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="rp-d-all" onclick="rpDAll(this)" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">Todas</label>
-   <button id="rp-d-sync" onclick="rpDLoad()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">sync</span>Sincronizar</button>
+   <button id="rp-d-sync" onclick="rpDLoad(true)" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">sync</span>Sincronizar</button>
    <button onclick="rpDExcel()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#4c3a8f,#3a2c73);border:1px solid #4a3a86;color:#e5ddff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">download</span>Generar Excel Andreani</button>
    <label title="Subí el Excel de Envialo: las sucursales de Envialo mandan (1=1)" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">verified</span>Subir Excel de Envialo<input type="file" accept=".xlsx" onchange="rpDEnvialo(this)" style="display:none"></label>
    <button onclick="rpDActSku()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">barcode</span>Actualizar SKUs</button>
@@ -1364,9 +1364,9 @@ _SOLO_DASH = r"""
      box.innerHTML='<div style="text-align:center;padding:20px 10px"><div style="width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#052e1c;font-size:30px">&#10003;</div><div style="font-size:18px;font-weight:800;margin-bottom:6px">'+(j.reuso?'Historial ya guardado':'Historial guardado')+' ('+j.pagos+' pagos)</div>'+(j.reuso?'<div style="color:#7CE7A6;font-size:12px;margin-bottom:4px">No se volvi&oacute; a bajar (ya estaba congelado)</div>':'')+'<div style="color:#8ba0bd;font-size:13.5px;line-height:1.6;max-width:410px;margin:0 auto 20px">Congelado hasta el <b style="color:#e7eef8">'+_rpFmtD(j.congelado_hasta)+'</b>. Ahora conect&aacute; la cuenta NUEVA de MercadoPago.</div><a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="display:inline-block;background:#00b1ea;color:#062230;border-radius:10px;padding:13px 22px;font-weight:800;text-decoration:none">Conectar cuenta nueva &#8594;</a></div>';
    }).catch(function(){ _rpMpRender(); alert('Error de conexi&oacute;n'); });
  };
- window.rpDLoad=function(){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
-   _dStat('Trayendo pedidos de tu tienda…','#38bdf8');
-   var qs=[]; if(_dDesde)qs.push('desde='+_dDesde); if(_dHasta)qs.push('hasta='+_dHasta);
+ window.rpDLoad=function(refresh){ var b=document.getElementById('rp-d-sync'); var bh=b?b.innerHTML:''; if(b){b.style.opacity='.6';}
+   _dStat(refresh?'Sincronizando con tu tienda…':'Trayendo pedidos…','#38bdf8');
+   var qs=[]; if(_dDesde)qs.push('desde='+_dDesde); if(_dHasta)qs.push('hasta='+_dHasta); if(refresh)qs.push('refresh=1');
    fetch('/pf-despachos'+(qs.length?('?'+qs.join('&')):'')).then(function(r){return r.json();}).then(function(j){
      if(b)b.style.opacity='';
      if(!j||!j.ok){ _dStat('No se pudo cargar.', '#fb7185'); return; }
@@ -3817,7 +3817,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-dash-kpi-nunca-bug"})
+    return jsonify({"ok": True, "v": "2026-08-25-despachos-cache"})
 
 
 @app.get("/pf-diag")
@@ -4448,11 +4448,11 @@ def _dni_de(o) -> str:
     return comp
 
 
-def _despachos_orders(email, desde=None, hasta=None):
+def _despachos_orders(email, desde=None, hasta=None, refresh=False):
     """TODOS los pedidos a despachar del usuario: Shopify + Tiendanube juntos, ya
     mapeados a la MISMA forma (para que pasen por el MISMO resolver Andreani, intacto)."""
     out = []
-    sh = _despachos_orders_shopify(email, desde, hasta)
+    sh = _despachos_orders_shopify(email, desde, hasta, refresh=refresh)
     tn = _tiendanube_orders(email, desde, hasta)
     if sh is None and tn is None:
         return None                      # ninguna tienda conectada
@@ -4615,40 +4615,57 @@ def _tiendanube_orders(email, desde=None, hasta=None):
     return out
 
 
-def _despachos_orders_shopify(email, desde=None, hasta=None):
+_DESP_CACHE = {}      # {email: {"key": (desde,hasta), "ts": epoch, "orders": [...]}} — cachea lo LENTO (traer de Shopify)
+_DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instantáneo); "Sincronizar" lo refresca.
+
+
+def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
     """Órdenes de Shopify PAGADAS y NO despachadas (para despachar por Andreani).
-    Solo entran las PAGADAS (si no está paga, no aparece). Filtra por fecha si se pasa desde/hasta."""
+    Solo entran las PAGADAS (si no está paga, no aparece). Filtra por fecha si se pasa desde/hasta.
+    Los pedidos crudos de Shopify se CACHEAN (lo lento); la lista final se rearma siempre (rápido)
+    con el estado local actualizado. refresh=True fuerza volver a bajar todo."""
+    import time as _t
     tk = _shop_tokens().get(email)
     if not tk or not tk.get("access_token"):
         return None
     shop, token = tk.get("shop"), tk.get("access_token")
-    params = {"status": "open", "financial_status": "paid",
-              "fulfillment_status": "unshipped", "limit": 250,
-              "fields": "id,order_number,name,total_price,current_total_price,"
-                        "financial_status,fulfillment_status,cancelled_at,line_items,"
-                        "created_at,shipping_lines,shipping_address,customer,contact_email,"
-                        "note_attributes,fulfillments"}
-    if desde:
-        params["created_at_min"] = desde + "T00:00:00-03:00"
-    if hasta:
-        params["created_at_max"] = hasta + "T23:59:59-03:00"
-    orders = []
-    since = 0
-    try:
-        for _ in range(20):                                  # paginar: traer TODOS, no solo 250
-            params["since_id"] = since
-            r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
-                             headers={"X-Shopify-Access-Token": token},
-                             params=params, timeout=40)
-            lote = (r.json() or {}).get("orders") or []
-            if not lote:
-                break
-            orders.extend(lote)
-            since = lote[-1]["id"]
-            if len(lote) < 250:
-                break
-    except Exception:
-        return []
+    ckey = (desde or "", hasta or "")
+    _c = _DESP_CACHE.get(email)
+    orders = None
+    if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
+        orders = _c.get("orders")                            # caché fresco → NO vuelve a pegarle a Shopify
+    if orders is None:
+        params = {"status": "open", "financial_status": "paid",
+                  "fulfillment_status": "unshipped", "limit": 250,
+                  "fields": "id,order_number,name,total_price,current_total_price,"
+                            "financial_status,fulfillment_status,cancelled_at,line_items,"
+                            "created_at,shipping_lines,shipping_address,customer,contact_email,"
+                            "note_attributes,fulfillments"}
+        if desde:
+            params["created_at_min"] = desde + "T00:00:00-03:00"
+        if hasta:
+            params["created_at_max"] = hasta + "T23:59:59-03:00"
+        orders = []
+        since = 0
+        try:
+            for _ in range(20):                                  # paginar: traer TODOS, no solo 250
+                params["since_id"] = since
+                r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                                 headers={"X-Shopify-Access-Token": token},
+                                 params=params, timeout=40)
+                lote = (r.json() or {}).get("orders") or []
+                if not lote:
+                    break
+                orders.extend(lote)
+                since = lote[-1]["id"]
+                if len(lote) < 250:
+                    break
+        except Exception:
+            if _c and _c.get("orders") is not None:
+                orders = _c["orders"]                        # si Shopify falla, uso el último caché
+            else:
+                return []
+        _DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "orders": orders}
     st = _desp_state(email)
     out = []
     for o in orders:
@@ -4694,7 +4711,8 @@ def pf_despachos_list():
         return jsonify({"ok": False, "rows": []})
     desde = request.args.get("desde") or None
     hasta = request.args.get("hasta") or None
-    rows = _despachos_orders(email, desde, hasta)
+    refresh = request.args.get("refresh") in ("1", "true", "yes")
+    rows = _despachos_orders(email, desde, hasta, refresh=refresh)
     if rows is None:
         return jsonify({"ok": True, "shopify": False, "rows": []})
 
