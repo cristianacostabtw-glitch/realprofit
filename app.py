@@ -1586,6 +1586,7 @@ _SOLO_DASH = r"""
      var chunk=lote.slice(i,i+CH); var hasta=Math.min(i+chunk.length,lote.length);
      res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando '+hasta+'/'+lote.length+' por '+lbl+'… (no cierres esto)</div>';
      fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:chunk,force:!!force})}).then(function(r){return r.json();}).then(function(j){
+       if(j&&j.busy){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Servidor ocupado, reintentando '+hasta+'/'+lote.length+'…</div>'; setTimeout(paso,3000); return; }   // ocupado → reintenta la MISMA tanda
        if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
        if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
        else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
@@ -3850,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-restart-246"})
+    return jsonify({"ok": True, "v": "2026-08-26-heavy-guard"})
 
 
 @app.get("/pf-diag")
@@ -4653,6 +4654,23 @@ _DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instant�
 # Candado: máximo N llamadas concurrentes a Shopify. Si Shopify está throttleado (lento), esto EVITA que
 # las cargas pesadas ocupen los 20 hilos del server → siempre quedan hilos libres para navegar/abrir.
 _SHOP_SEM = threading.BoundedSemaphore(8)
+
+
+def _heavy(fn):
+    """Endpoints que pegan a APIs externas (envíos): a lo sumo 8 a la vez. Si está saturado, responde
+    'ocupado' YA (libera el hilo) en vez de encolar → el server nunca se tilda; el front reintenta."""
+    from functools import wraps as _wraps
+
+    @_wraps(fn)
+    def _w(*a, **k):
+        got = _SHOP_SEM.acquire(timeout=4)
+        if not got:
+            return jsonify({"ok": False, "busy": True, "msg": "servidor ocupado, reintentá en unos segundos"})
+        try:
+            return fn(*a, **k)
+        finally:
+            _SHOP_SEM.release()
+    return _w
 
 
 def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
@@ -6691,6 +6709,7 @@ def _seg_enviar_tn(email, pedidos) -> dict:
 
 
 @app.post("/pf-despachos-seg-enviar")
+@_heavy
 def pf_despachos_seg_enviar():
     """Carga el tracking en TiendaNube y le avisa al cliente por mail (solo los que faltan en TN)."""
     if not (email := _user_actual()):
@@ -6737,6 +6756,7 @@ def pf_seg_diag():
 
 
 @app.post("/pf-despachos-seg-wpp")
+@_heavy
 def pf_despachos_seg_wpp():
     """Manda el seguimiento por WhatsApp con el template por unidades (solo los que faltan en WPP,
     o TODOS si force=True → reenvío forzado con tracking nuevo)."""
@@ -6748,6 +6768,7 @@ def pf_despachos_seg_wpp():
 
 
 @app.post("/pf-despachos-seg-todos")
+@_heavy
 def pf_despachos_seg_todos():
     """Envía por los DOS canales (TiendaNube + WhatsApp), cada uno salteando lo que ya está hecho."""
     if not (email := _user_actual()):
