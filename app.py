@@ -3841,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-seg-job-async"})
+    return jsonify({"ok": True, "v": "2026-08-26-shopify-timeout-corto"})
 
 
 @app.get("/pf-diag")
@@ -4672,11 +4672,11 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
         orders = []
         since = 0
         try:
-            for _ in range(20):                                  # paginar: traer TODOS, no solo 250
+            for _ in range(12):                                  # paginar (cap 12 págs = 3000 pedidos)
                 params["since_id"] = since
                 r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
                                  headers={"X-Shopify-Access-Token": token},
-                                 params=params, timeout=40)
+                                 params=params, timeout=12)   # timeout corto: no colgar el hilo del server
                 lote = (r.json() or {}).get("orders") or []
                 if not lote:
                     break
