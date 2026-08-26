@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-tn-secuencial-cap6"})
+    return jsonify({"ok": True, "v": "2026-08-26-tn-rapido-final"})
 
 
 @app.get("/pf-diag")
@@ -6710,45 +6710,6 @@ def _seg_enviar_tn(email, pedidos) -> dict:
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
-@app.get("/pf-seg-timing")
-def pf_seg_timing():
-    """TEMPORAL (clave): mide cuánto tarda buscar los pedidos del PDF en TN y en Shopify, para diagnosticar."""
-    if request.args.get("k") != "medir2608":
-        return jsonify({"ok": False}), 403
-    import time as _t
-    email = None
-    for _e in (_tn_tokens() or {}):
-        _tk = _tn_tokens().get(_e) or {}
-        if _tk.get("access_token") and _tk.get("store_id"):
-            email = _e; break
-    if not email:
-        for _e in (_shop_tokens() or {}):
-            if (_shop_tokens().get(_e) or {}).get("access_token"):
-                email = _e; break
-    if not email:
-        return jsonify({"ok": False, "msg": "no hay tienda conectada"})
-    nums = (request.args.get("nums") or "3164,3123,3135,3136,3165,3153,2672,2985,3002,3005,3020,3025,3171,3170,3169").split(",")
-    solo = request.args.get("solo") or ""
-    out = {"ok": True, "email": email, "nums": len(nums)}
-    store, hdr = _seg_tn_store(email)
-    if store and solo != "shopify":
-        t0 = _t.time()
-        try:
-            m = _seg_mapa_orders(store, hdr, nums)   # función REAL (paralela)
-            out["tn"] = {"seg": round(_t.time() - t0, 1), "encontrados": len(m)}
-        except Exception as e:
-            out["tn"] = {"seg": round(_t.time() - t0, 1), "error": str(e)[:150]}
-    sh, at = _seg_shop_conn(email)
-    if sh and solo != "tn":
-        t0 = _t.time()
-        try:
-            m2 = _seg_mapa_orders_shopify(email, nums)
-            out["shopify"] = {"seg": round(_t.time() - t0, 1), "encontrados": len(m2)}
-        except Exception as e:
-            out["shopify"] = {"seg": round(_t.time() - t0, 1), "error": str(e)[:150]}
-    return jsonify(out)
-
-
 @app.post("/pf-despachos-seg-enviar")
 @_heavy
 def pf_despachos_seg_enviar():
@@ -6758,42 +6719,6 @@ def pf_despachos_seg_enviar():
     pedidos = (request.get_json(silent=True) or {}).get("pedidos") or []
     es_shop = any(p.get("tienda") == "shopify" for p in pedidos)   # ruteo por tienda: no mezcla
     return jsonify(_seg_enviar_shopify(email, pedidos) if es_shop else _seg_enviar_tn(email, pedidos))
-
-
-@app.get("/pf-seg-diag")
-def pf_seg_diag():
-    """TEMPORAL: diagnóstico de un pedido para seguimiento. Muestra a qué tienda pega, si lo encuentra,
-    el cliente, el estado de fulfillment y por qué no puede cargar el tracking. /pf-seg-diag?num=1713"""
-    if not (email := _user_actual()):
-        return jsonify({"ok": False}), 401
-    num = (request.args.get("num") or "1713").strip()
-    shop, atok = _seg_shop_conn(email)
-    out = {"ok": True, "shop": shop, "num": num}
-    if not shop:
-        out["err"] = "Shopify no conectado"; return jsonify(out)
-    H = {"X-Shopify-Access-Token": atok}
-    base = "https://%s/admin/api/2026-07" % shop
-    mapa = _seg_mapa_orders_shopify(email, [num])
-    o = mapa.get(num)
-    if not o:
-        out["encontrado"] = False; out["msg"] = "no lo encontré en %s (¿tienda equivocada?)" % shop
-        return jsonify(out)
-    cust = o.get("customer") or {}
-    out["encontrado"] = True
-    out["order_id"] = o.get("id")
-    out["nombre"] = ((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip() or (o.get("shipping_address") or {}).get("name")
-    out["fulfillment_status"] = o.get("fulfillment_status")
-    out["financial_status"] = o.get("financial_status")
-    out["fulfillments"] = [{"id": f.get("id"), "status": f.get("status"), "trk": f.get("tracking_number")} for f in (o.get("fulfillments") or [])]
-    try:
-        rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, o.get("id")), headers=H, timeout=15)
-        out["fo_http"] = rr.status_code
-        out["fulfillment_orders"] = [{"id": f.get("id"), "status": f.get("status")} for f in (rr.json().get("fulfillment_orders", []) if rr.status_code == 200 else [])]
-        if rr.status_code != 200:
-            out["fo_body"] = rr.text[:200]
-    except Exception as e:
-        out["fo_err"] = str(e)[:160]
-    return jsonify(out)
 
 
 @app.post("/pf-despachos-seg-wpp")
