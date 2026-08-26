@@ -3902,7 +3902,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-meli-split2"})
+    return jsonify({"ok": True, "v": "2026-08-26-meli-marco"})
 
 
 @app.get("/pf-cfg")
@@ -6232,6 +6232,26 @@ def _meli_stamp(pg, rect, potes):
     pg.insert_text(fitz.Point(x0, y), txt, fontsize=fs, fontname="hebo", color=(1, 1, 1))
 
 
+def _meli_frames(pg):
+    """Rectángulos-marco de cada etiqueta en la hoja (dan el borde EXACTO, sin astillas del vecino)."""
+    import fitz
+    W, H = pg.rect.width, pg.rect.height
+    fr = []
+    for dr in pg.get_drawings():
+        r = dr.get("rect")
+        if r and (W * 0.15) < r.width < (W * 0.95) and r.height > (H * 0.4):
+            fr.append(fitz.Rect(r))
+    fr.sort(key=lambda r: r.x0)
+    ded = []
+    for r in fr:
+        if ded and abs(r.x0 - ded[-1].x0) < 6:
+            if r.width > ded[-1].width:
+                ded[-1] = r
+            continue
+        ded.append(r)
+    return ded
+
+
 def _meli_etiquetas_procesar(data):
     """Devuelve (pdf_bytes, orders, stats). Lee la hoja 'Identificación Productos' para el SKU/cantidad,
     estampa los potes en cada etiqueta y agrega la hoja PARA EMPAQUETAR."""
@@ -6292,16 +6312,20 @@ def _meli_etiquetas_procesar(data):
         blocks = pg.get_text("blocks")
         ys0 = [b[1] for b in blocks] or [0.0]
         ys1 = [b[3] for b in blocks] or [H]
-        top = max(0.0, min(ys0) - 4)
+        top = max(0.0, min(ys0) - 5)
         bot = min(H, max(ys1) + 8)                          # +8: cubre el estampado bajo el tracking
+        frames = _meli_frames(pg)                           # marcos reales de cada etiqueta (borde exacto)
         for k, (xc, trak, rr) in enumerate(en_hoja):
-            if n == 1:
-                # Una sola etiqueta en la hoja → recorto al contenido real (acá no hay mezcla de bloques).
+            fr = next((f for f in frames if f.x0 - 3 <= xc <= f.x1 + 3), None)
+            if fr is not None:
+                # Ancho EXACTO por el marco de la etiqueta (sin astillas del vecino ni cortes).
+                lo = max(0.0, fr.x0 - 2)
+                hi = min(W, fr.x1 + 2)
+            elif n == 1:
                 lo = max(0.0, min(b[0] for b in blocks) - 4) if blocks else 0.0
                 hi = min(W, max(b[2] for b in blocks) + 4) if blocks else W
             else:
-                # Franja horizontal = punto medio con el tracking vecino (borde real entre etiquetas).
-                # En los extremos espejo el gap. NO uso blocks (juntan las etiquetas de la misma fila).
+                # Fallback (sin marco): punto medio con el tracking vecino.
                 lgap = (xc - en_hoja[k - 1][0]) if k > 0 else (en_hoja[k + 1][0] - xc)
                 rgap = (en_hoja[k + 1][0] - xc) if k < n - 1 else (xc - en_hoja[k - 1][0])
                 lo = max(0.0, xc - lgap / 2.0)
