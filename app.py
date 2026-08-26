@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-shop-2pasos"})
+    return jsonify({"ok": True, "v": "2026-08-26-meli-etiquetas"})
 
 
 @app.get("/pf-diag")
@@ -6128,6 +6128,148 @@ def pf_despachos_sku_descargar():
     _SKU_JOBS.pop(job, None)          # libero memoria una vez descargado
     return send_file(io.BytesIO(pdf), as_attachment=True,
                      download_name="etiquetas-con-sku.pdf", mimetype="application/pdf")
+
+
+# ---------- MercadoLibre: etiquetas → estampar SKU (potes) + hoja PARA EMPAQUETAR ----------
+# Las etiquetas de MELI ya traen al final una hoja "Identificación Productos" con el SKU y la
+# cantidad de cada tracking (HC…AR). De ahí sacamos los potes SIN depender de la API de MELI.
+_MELI_ETQ = {}      # token → {"pdf": bytes, "ts": epoch, "email"}
+
+
+def _meli_units_from_sku(sku):
+    """Potes por unidad a partir del SKU/variante de MELI. Ej: 'SP-2-30ML'→2, 'x3 30ml'→3, 'SP-1-30ML'→1."""
+    s = str(sku or "").strip()
+    m = _re_and.search(r'SP-(\d+)-', s, _re_and.I)          # SP-2-30ML  → 2
+    if m:
+        return max(1, int(m.group(1)))
+    m = _re_and.search(r'\bx\s*(\d+)', s, _re_and.I)        # x3 30ml    → 3
+    if m:
+        return max(1, int(m.group(1)))
+    m = _re_and.search(r'(\d+)\s*pote', s, _re_and.I)       # 2 potes    → 2
+    if m:
+        return max(1, int(m.group(1)))
+    return 1
+
+
+def _meli_stamp(pg, rect, potes):
+    """Estampa 'X2 POTES' (caja negra, texto blanco) justo debajo del tracking HC…AR de la etiqueta."""
+    import fitz
+    txt = "X%d %s" % (potes, "POTE" if potes == 1 else "POTES")
+    fs = 13.0
+    w = fitz.get_text_length(txt, fontname="hebo", fontsize=fs)
+    x0 = rect.x0
+    y = rect.y1 + 20.0
+    cap = fs * 0.72
+    padx, pady = 4.5, 3.5
+    caja = fitz.Rect(x0 - padx, y - cap - pady, x0 + w + padx, y + pady)
+    pg.draw_rect(caja, fill=(0, 0, 0), color=(0, 0, 0), width=0)
+    pg.insert_text(fitz.Point(x0, y), txt, fontsize=fs, fontname="hebo", color=(1, 1, 1))
+
+
+def _meli_etiquetas_procesar(data):
+    """Devuelve (pdf_bytes, orders, stats). Lee la hoja 'Identificación Productos' para el SKU/cantidad,
+    estampa los potes en cada etiqueta y agrega la hoja PARA EMPAQUETAR."""
+    import fitz
+    import io
+    doc = fitz.open(stream=data, filetype="pdf")
+    # 1) Mapa tracking → {sku, cantidad, comprador, potes} desde las hojas de identificación.
+    ident_pages = set()
+    mapa = {}
+    for i in range(len(doc)):
+        t = doc[i].get_text()
+        if ("SKU:" in t) and ("Cantidad:" in t):
+            ident_pages.add(i)
+            trk = list(_re_and.finditer(r'HC[0-9A-Z]+AR', t))
+            for j, mt in enumerate(trk):
+                trak = mt.group(0)
+                fin = trk[j + 1].start() if j + 1 < len(trk) else len(t)
+                blk = t[mt.start():fin]
+                msku = _re_and.search(r'SKU:\s*(.+)', blk)
+                mcant = _re_and.search(r'Cantidad:\s*(\d+)', blk)
+                sku = (msku.group(1).strip() if msku else "")
+                cant = int(mcant.group(1)) if mcant else 1
+                lineas = [l.strip() for l in blk.splitlines() if l.strip()]
+                buyer = ""
+                for idx, l in enumerate(lineas):
+                    if l.startswith("SKU:") and idx > 0:
+                        buyer = lineas[idx - 1]
+                        break
+                u = _meli_units_from_sku(sku)
+                potes = max(1, u * max(1, cant))
+                if trak not in mapa:
+                    mapa[trak] = {"sku": sku, "cant": cant, "buyer": buyer, "potes": potes}
+    # 2) Estampo los potes en cada etiqueta (páginas que NO son de identificación).
+    orders = []
+    detalle = []
+    seen = set()
+    for i in range(len(doc)):
+        if i in ident_pages:
+            continue
+        pg = doc[i]
+        for trak, info in mapa.items():
+            rects = pg.search_for(trak)
+            if not rects:
+                continue
+            _meli_stamp(pg, rects[0], info["potes"])
+            if trak not in seen:
+                seen.add(trak)
+                sku_fmt = "X%d %s" % (info["potes"], "POTE" if info["potes"] == 1 else "POTES")
+                detalle.append({"sku": sku_fmt})
+                orders.append({"tracking": trak, "buyer": info["buyer"],
+                               "sku_meli": info["sku"], "potes": info["potes"]})
+    # 3) Hoja PARA EMPAQUETAR (misma que Andreani: cuántas bolsas de cada SKU).
+    if detalle:
+        _sku_hoja_empaquetar(doc, detalle)
+    buf = io.BytesIO()
+    doc.save(buf, garbage=3, deflate=True)
+    doc.close()
+    total_potes = sum(o["potes"] for o in orders)
+    stats = {"paquetes": len(orders), "potes": total_potes,
+             "sin_estampar": max(0, len(mapa) - len(seen))}
+    return buf.getvalue(), orders, stats
+
+
+@app.post("/meli/etiquetas")
+def meli_etiquetas():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    f = request.files.get("pdf") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "subí el PDF de etiquetas de MercadoLibre"}), 400
+    try:
+        import fitz  # noqa: F401
+    except Exception:
+        return jsonify({"ok": False, "msg": "falta PyMuPDF en el servidor (esperá el redeploy)"}), 500
+    data = f.read()
+    try:
+        pdf, orders, stats = _meli_etiquetas_procesar(data)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude leer el PDF: %s" % (str(e)[:120])}), 500
+    if not orders:
+        return jsonify({"ok": False, "msg": ("No encontré la hoja «Identificación Productos» con los SKU. "
+                                             "Bajá las etiquetas de MercadoLibre incluyendo esa hoja.")})
+    import uuid
+    import time as _t
+    tok = uuid.uuid4().hex[:12]
+    _MELI_ETQ[tok] = {"pdf": pdf, "ts": _t.time(), "email": email}
+    for k in list(_MELI_ETQ):                              # limpio los viejos (>30 min)
+        if _t.time() - _MELI_ETQ[k].get("ts", 0) > 1800:
+            _MELI_ETQ.pop(k, None)
+    return jsonify({"ok": True, "token": tok, "orders": orders, "stats": stats})
+
+
+@app.get("/meli/etiquetas-descargar")
+def meli_etiquetas_descargar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    tok = (request.args.get("t") or "").strip()
+    st = _MELI_ETQ.get(tok)
+    if not st or not st.get("pdf"):
+        return jsonify({"ok": False, "msg": "el archivo expiró, procesá de nuevo"}), 404
+    import io
+    return send_file(io.BytesIO(st["pdf"]), as_attachment=True,
+                     download_name="MELI-etiquetas-SKU.pdf", mimetype="application/pdf")
 
 
 # ---------- Seguimientos (Despachos): leer PDF Andreani + enviar por WhatsApp y/o TiendaNube ----------
@@ -9902,6 +10044,7 @@ var FEATURES=[
  {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Estado de los envíos (Mercado Envíos) y tracking de cada venta.',soon:false},
  {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
  {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock unificado en botellas de 30 ml. Un Pack X2 descuenta 2. Sincronizá a ML con un clic.',soon:false},
+ {k:'etiquetas',ic:'🏷️',bg:'#241a10',t:'Etiquetas + SKU',d:'Subí el PDF de etiquetas de Mercado Libre: le estampo el SKU (potes) a cada una y agrego la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
  {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Reputación, nivel y salud de tu cuenta.',soon:false}
 ];
 function renderSide(){
@@ -9915,6 +10058,7 @@ function vacio(t){ return '<div style="color:#5b6b82;font-size:12.5px">'+esc(t)+
 var TH='<th style="text-align:left">';
 function renderMain(){
  var m=document.getElementById('main'); var f=FEATURES.filter(function(x){return x.k===SEL;})[0]||FEATURES[0];
+ if(f.k==='etiquetas'){ renderEtiquetas(); return; }
  if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
  var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
  m.innerHTML=head+'<div class="card"><div id="mlc" style="color:#5b6b82;font-size:12.5px">Cargando…</div></div>';
@@ -10065,6 +10209,39 @@ function cargarMetr(){ var box=document.getElementById('mlc'); if(!box)return;
    +tile('👎 Negativas',Math.round((rt.negative||0)*100)+'%','#e0637f')
    +'</div>';
  }).catch(function(){ box.innerHTML=err(); });
+}
+function renderEtiquetas(){
+ var m=document.getElementById('main'); if(!m)return;
+ m.innerHTML='<h1>Etiquetas + SKU (MercadoLibre)</h1>'
+  +'<p class="lead">Subí el PDF de etiquetas que bajás de Mercado Libre (con la hoja «Identificación Productos» al final). Le estampo el SKU en <b>potes</b> a cada etiqueta y agrego la hoja <b>PARA EMPAQUETAR</b> con el total de bolsas.</p>'
+  +'<div class="card">'
+  +'<input type="file" id="etqf" accept="application/pdf" style="display:block;margin-bottom:14px;color:#9fb3cc;font-size:13px">'
+  +'<button id="etqb" onclick="etqProc()" style="background:#ffe600;color:#2d3277;border:0;border-radius:10px;padding:12px 22px;font-weight:800;font-size:14px;cursor:pointer">🏷️ Procesar etiquetas</button>'
+  +' <span id="etqm" style="font-size:12.5px;font-weight:600;margin-left:8px"></span>'
+  +'<div id="etqres" style="margin-top:16px"></div>'
+  +'</div>';
+}
+function etqProc(){
+ var f=document.getElementById('etqf'), m=document.getElementById('etqm'), b=document.getElementById('etqb');
+ if(!f||!f.files||!f.files[0]){ if(m){m.textContent='Elegí primero el PDF de etiquetas';m.style.color='#e0637f';} return; }
+ if(b)b.disabled=true; if(m){m.textContent='Procesando el PDF…';m.style.color='#7aa2c8';}
+ var fd=new FormData(); fd.append('pdf',f.files[0]);
+ fetch('/meli/etiquetas',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+  if(b)b.disabled=false;
+  if(!j||!j.ok){ if(m){m.textContent=(j&&j.msg)||'No se pudo procesar';m.style.color='#e0637f';} return; }
+  var st=j.stats||{};
+  if(m){ m.innerHTML='✓ '+(st.paquetes||0)+' paquetes · '+(st.potes||0)+' potes en total'+((st.sin_estampar>0)?(' · <span style="color:#ffb35a">'+st.sin_estampar+' sin ubicar en las etiquetas</span>'):''); m.style.color='#34d399'; }
+  var res=document.getElementById('etqres'); if(!res)return;
+  var rows=(j.orders||[]).map(function(o){ return '<tr><td>'+esc(o.buyer||'')+'</td><td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td><td style="font-size:11.5px">'+esc(o.sku_meli||'')+'</td><td style="text-align:center;font-weight:800;color:#ffe600">X'+o.potes+'</td></tr>'; }).join('');
+  res.innerHTML='<button onclick="etqDown(\''+j.token+'\')" class="btn" style="border:0;cursor:pointer">⬇ Descargar PDF (SKU + PARA EMPAQUETAR)</button>'
+   +'<div style="overflow:auto;margin-top:14px"><table><thead><tr>'+TH+'Cliente</th>'+TH+'Tracking</th>'+TH+'SKU MELI</th><th style="text-align:center">Potes</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+ }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
+}
+function etqDown(t){
+ fetch('/meli/etiquetas-descargar?t='+encodeURIComponent(t)).then(function(r){return r.blob();}).then(function(b){
+  var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='MELI-etiquetas-SKU.pdf';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},1500);
+ }).catch(function(){ alert('No se pudo descargar, procesá de nuevo.'); });
 }
 function boot(){ renderSide(); renderMain();
  fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
