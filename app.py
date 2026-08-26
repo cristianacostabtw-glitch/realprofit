@@ -3841,7 +3841,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-seg-recientes-primero"})
+    return jsonify({"ok": True, "v": "2026-08-26-candado-shopify"})
 
 
 @app.get("/pf-diag")
@@ -4641,6 +4641,9 @@ def _tiendanube_orders(email, desde=None, hasta=None):
 
 _DESP_CACHE = {}      # {email: {"key": (desde,hasta), "ts": epoch, "orders": [...]}} — cachea lo LENTO (traer de Shopify)
 _DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instantáneo); "Sincronizar" lo refresca.
+# Candado: máximo N llamadas concurrentes a Shopify. Si Shopify está throttleado (lento), esto EVITA que
+# las cargas pesadas ocupen los 20 hilos del server → siempre quedan hilos libres para navegar/abrir.
+_SHOP_SEM = threading.BoundedSemaphore(8)
 
 
 def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
@@ -4659,36 +4662,48 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
     if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
         orders = _c.get("orders")                            # caché fresco → NO vuelve a pegarle a Shopify
     if orders is None:
-        params = {"status": "open", "financial_status": "paid",
-                  "fulfillment_status": "unshipped", "limit": 250,
-                  "fields": "id,order_number,name,total_price,current_total_price,"
-                            "financial_status,fulfillment_status,cancelled_at,line_items,"
-                            "created_at,shipping_lines,shipping_address,customer,contact_email,"
-                            "note_attributes,fulfillments"}
-        if desde:
-            params["created_at_min"] = desde + "T00:00:00-03:00"
-        if hasta:
-            params["created_at_max"] = hasta + "T23:59:59-03:00"
-        orders = []
-        since = 0
+        _got = _SHOP_SEM.acquire(timeout=3)
+    if orders is None and not _got:
+        # Shopify saturado/throttleado (muchas llamadas en curso) → uso el último caché si hay, sin colgar
+        # el hilo esperando. Mejor mostrar lo último conocido que dejar la web tildada.
+        if _c and _c.get("orders") is not None:
+            orders = _c["orders"]
+        else:
+            return None
+    if orders is None:                     # conseguí lugar en el candado → bajo de Shopify
         try:
-            for _ in range(12):                                  # paginar (cap 12 págs = 3000 pedidos)
-                params["since_id"] = since
-                r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
-                                 headers={"X-Shopify-Access-Token": token},
-                                 params=params, timeout=12)   # timeout corto: no colgar el hilo del server
-                lote = (r.json() or {}).get("orders") or []
-                if not lote:
-                    break
-                orders.extend(lote)
-                since = lote[-1]["id"]
-                if len(lote) < 250:
-                    break
-        except Exception:
-            if _c and _c.get("orders") is not None:
-                orders = _c["orders"]                        # si Shopify falla, uso el último caché
-            else:
-                return []
+            params = {"status": "open", "financial_status": "paid",
+                      "fulfillment_status": "unshipped", "limit": 250,
+                      "fields": "id,order_number,name,total_price,current_total_price,"
+                                "financial_status,fulfillment_status,cancelled_at,line_items,"
+                                "created_at,shipping_lines,shipping_address,customer,contact_email,"
+                                "note_attributes,fulfillments"}
+            if desde:
+                params["created_at_min"] = desde + "T00:00:00-03:00"
+            if hasta:
+                params["created_at_max"] = hasta + "T23:59:59-03:00"
+            orders = []
+            since = 0
+            try:
+                for _ in range(8):                                   # paginar (cap 8 págs = 2000 pedidos)
+                    params["since_id"] = since
+                    r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
+                                     headers={"X-Shopify-Access-Token": token},
+                                     params=params, timeout=10)   # timeout corto: no colgar el hilo del server
+                    lote = (r.json() or {}).get("orders") or []
+                    if not lote:
+                        break
+                    orders.extend(lote)
+                    since = lote[-1]["id"]
+                    if len(lote) < 250:
+                        break
+            except Exception:
+                if _c and _c.get("orders") is not None:
+                    orders = _c["orders"]                        # si Shopify falla, uso el último caché
+                else:
+                    return []
+        finally:
+            _SHOP_SEM.release()
         _DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "orders": orders}
     st = _desp_state(email)
     out = []
