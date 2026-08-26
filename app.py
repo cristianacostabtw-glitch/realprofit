@@ -1559,7 +1559,7 @@ _SOLO_DASH = r"""
    else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
    if(!lote.length){ res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
    // TANDAS de 25: cada request termina rápido y NO se corta por timeout aunque sean 150+ pedidos.
-   var CH=25, i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
+   var CH=15, i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
    function markChunk(chunk,ch){ chunk.forEach(function(o){ if(ch=='wpp'&&o.wa_id)o.wpp=true; if(ch=='tn'&&o.order_id)o.tn=true; }); }
    function fin(){
      var errBox = errs.length ? ('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ '+errs.length+' fallaron. Ej #'+(errs[0].num||'')+':</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>') : '';
@@ -3831,7 +3831,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-restart-1145"})
+    return jsonify({"ok": True, "v": "2026-08-25-anti-cuelgue"})
 
 
 @app.get("/pf-diag")
