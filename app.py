@@ -1907,10 +1907,17 @@ _SOLO_DASH = r"""
   function num(n){ return (Math.round((n||0)*100)/100); }
   function esHeader(el){ return !!(el && /col-span-full/.test(el.className||'')); }
   // La grilla es PLANA: headers (Finanzas/Publicidad/Costos) son divs col-span-full y las tarjetas son hermanas.
-  function findGrid(){ var sp=document.querySelectorAll('span');
-    for(var i=0;i<sp.length;i++){ var cn=sp[i].className||''; if((sp[i].textContent||'').trim()==='Publicidad' && /uppercase/.test(cn) && /tracking/.test(cn)){
-      var hdr=sp[i]; for(var k=0;k<6 && hdr;k++){ hdr=hdr.parentElement; if(esHeader(hdr)) break; }
-      if(esHeader(hdr) && hdr.parentElement) return hdr.parentElement; } }
+  function findGrid(){ var sp=document.querySelectorAll('span,div,h2,h3,p');
+    for(var i=0;i<sp.length;i++){ if(sp[i].children.length) continue;   // solo hojas de texto
+      var t=(sp[i].textContent||'').trim().toLowerCase();
+      // "Publicidad" o "Publicidad 6" (con el contador) → tolerante a mayúsculas y al número
+      if(t==='publicidad' || (t.indexOf('publicidad')===0 && t.length<16)){
+        var hdr=sp[i]; for(var k=0;k<8 && hdr;k++){ hdr=hdr.parentElement; if(esHeader(hdr)) break; }
+        if(esHeader(hdr) && hdr.parentElement) return hdr.parentElement;
+        // fallback: subir hasta un ancestro que tenga varias tarjetas (por si cambió col-span-full)
+        var el=sp[i]; for(var m=0;m<8 && el;m++){ el=el.parentElement;
+          if(el && el.querySelectorAll && el.querySelectorAll('[class*="rounded-2xl"]').length>=4) return el; }
+      } }
     return null; }
   function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
     // Recolecto las tarjetas de PUBLICIDAD (entre su header y el próximo) y remapeo POR POSICIÓN.
@@ -3841,7 +3848,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-1job-por-vez"})
+    return jsonify({"ok": True, "v": "2026-08-26-findgrid-tolerante"})
 
 
 @app.get("/pf-diag")
