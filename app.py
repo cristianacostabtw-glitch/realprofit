@@ -3831,7 +3831,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-seg-enviar-tandas"})
+    return jsonify({"ok": True, "v": "2026-08-25-restart-1145"})
 
 
 @app.get("/pf-diag")
