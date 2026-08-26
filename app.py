@@ -3851,7 +3851,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-heavy-guard"})
+    return jsonify({"ok": True, "v": "2026-08-26-timing"})
 
 
 @app.get("/pf-diag")
@@ -6706,6 +6706,44 @@ def _seg_enviar_tn(email, pedidos) -> dict:
         except Exception as e:
             fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
+
+
+@app.get("/pf-seg-timing")
+def pf_seg_timing():
+    """TEMPORAL (clave): mide cuánto tarda buscar los pedidos del PDF en TN y en Shopify, para diagnosticar."""
+    if request.args.get("k") != "medir2608":
+        return jsonify({"ok": False}), 403
+    import time as _t
+    email = None
+    for _e in (_tn_tokens() or {}):
+        _tk = _tn_tokens().get(_e) or {}
+        if _tk.get("access_token") and _tk.get("store_id"):
+            email = _e; break
+    if not email:
+        for _e in (_shop_tokens() or {}):
+            if (_shop_tokens().get(_e) or {}).get("access_token"):
+                email = _e; break
+    if not email:
+        return jsonify({"ok": False, "msg": "no hay tienda conectada"})
+    nums = (request.args.get("nums") or "3164,3123,3135,3136,3165,3153,2672,2985,3002,3005,3020,3025,3171,3170,3169").split(",")
+    out = {"ok": True, "email": email, "nums": len(nums)}
+    store, hdr = _seg_tn_store(email)
+    if store:
+        t0 = _t.time()
+        try:
+            m = _seg_mapa_orders(store, hdr, nums)
+            out["tn"] = {"seg": round(_t.time() - t0, 1), "encontrados": len(m)}
+        except Exception as e:
+            out["tn"] = {"seg": round(_t.time() - t0, 1), "error": str(e)[:150]}
+    sh, at = _seg_shop_conn(email)
+    if sh:
+        t0 = _t.time()
+        try:
+            m2 = _seg_mapa_orders_shopify(email, nums)
+            out["shopify"] = {"seg": round(_t.time() - t0, 1), "encontrados": len(m2)}
+        except Exception as e:
+            out["shopify"] = {"seg": round(_t.time() - t0, 1), "error": str(e)[:150]}
+    return jsonify(out)
 
 
 @app.post("/pf-despachos-seg-enviar")
