@@ -1891,27 +1891,26 @@ _SOLO_DASH = r"""
       var hdr=sp[i]; for(var k=0;k<6 && hdr;k++){ hdr=hdr.parentElement; if(esHeader(hdr)) break; }
       if(esHeader(hdr) && hdr.parentElement) return hdr.parentElement; } }
     return null; }
-  function _cardLbl(card){ var sps=card.querySelectorAll('span');
-    for(var i=0;i<sps.length;i++){ var cn=sps[i].className||''; if(/uppercase/.test(cn)&&/tracking/.test(cn)) return (sps[i].textContent||''); } return ''; }
-  function _norm(s){ return (s||'').toUpperCase().replace(/\s+/g,' ').trim(); }
-  function _setVal(card,val){ var dvs=card.querySelectorAll('div');
-    for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ if(dvs[d].textContent!==val) dvs[d].textContent=val; return true; } } return false; }
   function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
-    // Recolecto las tarjetas de PUBLICIDAD y mapeo CADA UNA POR SU ETIQUETA (no por posición: la SPA
-    // agregó TRUE ROAS y el mapeo posicional metía el valor/etiqueta en la tarjeta equivocada). Toco
-    // SOLO el número, nunca la etiqueta ni el subtítulo → sin parpadeo de "Margen" donde va ROAS.
+    // Recolecto las tarjetas de PUBLICIDAD (entre su header y el próximo) y remapeo POR POSICIÓN.
+    // La SPA renderiza [Inversión, ROAS, True ROAS, Break Even ROAS, ...] pero NOSOTROS queremos
+    // [Inversión, MARGEN, ROAS, Break Even ROAS, ...]: por eso renombramos la tarjeta 2 a "Margen"
+    // y la 3 a "ROAS" (la "True ROAS" nativa NO va). El mapeo posicional es idempotente.
     var inPub=false, cards=[], kids=grid.children;
     for(var i=0;i<kids.length;i++){ var el=kids[i];
       if(esHeader(el)){ inPub = (el.textContent||'').toUpperCase().indexOf('PUBLICIDAD')>=0; continue; }
       if(inPub){ var c=/rounded-2xl/.test(el.className||'')?el:(el.querySelector?el.querySelector('[class*=\"rounded-2xl\"]'):null); if(c) cards.push(c); } }
     if(!cards.length) return false;
-    var _ads=money(_raw.publi_ars||0), _fr=money(_raw.fact_recompra||0);
-    var M={'INVERSIÓN ADS':_ads,'INVERSION ADS':_ads,'GASTO ADS':_ads,
-           'ROAS':num(_raw.roas)+'x','BREAK EVEN ROAS':num(_raw.be_roas)+'x','MARGEN':num(_raw.margen)+'%',
-           'CPA':money(_raw.cpa||0),'BREAK EVEN CPA':money(_raw.be_cpa||0),
-           'RECOMPRAS':String(_raw.recompras||0),'FACTURACIÓN RECOMPRA':_fr,'FACTURACION RECOMPRA':_fr};
+    var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
+             ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
+             ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
+             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'],
+             ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
+             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
+             ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
+             ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     var hit=0;
-    for(var j=0;j<cards.length;j++){ var key=_norm(_cardLbl(cards[j])); if(M[key]!=null){ if(_setVal(cards[j],M[key])) hit++; } }
+    for(var j=0;j<cards.length && j<seq.length;j++){ setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
     return hit>0; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
@@ -1973,11 +1972,22 @@ _SOLO_DASH = r"""
       }
     } }
   function setCard(card,label,val,sub){
+    // Busca la etiqueta y el valor por CLASE y, si la SPA cambió las clases, por ESTILO COMPUTADO
+    // (uppercase = etiqueta / font más grande = valor). Así el renombrado no depende de nombres de
+    // clase frágiles → funciona aunque React re-renderice con otra estructura.
     var sps=card.querySelectorAll('span'), lab=null;
     for(var i=0;i<sps.length;i++){ var cn=sps[i].className||''; if(/uppercase/.test(cn)&&/tracking/.test(cn)){ lab=sps[i]; break; } }
-    if(lab && lab.textContent!==label) lab.textContent=label;
     var dvs=card.querySelectorAll('div'), v=null;
     for(var d=0;d<dvs.length;d++){ var cd=dvs[d].className||''; if(/font-bold/.test(cd)&&/(text-2xl|text-xl)/.test(cd)){ v=dvs[d]; break; } }
+    if(!lab || !v){   // fallback robusto: recorrer hojas de texto y decidir por estilo computado
+      var all=card.querySelectorAll('span,div,p'), maxF=0, minUpF=999;
+      for(var k=0;k<all.length;k++){ var e=all[k]; if(e.children.length) continue;
+        var txt=(e.textContent||'').trim(); if(!txt) continue;
+        var cs; try{ cs=getComputedStyle(e); }catch(_){ continue; } var fs=parseFloat(cs.fontSize)||0;
+        var up=(/uppercase/.test(e.className||'')) || cs.textTransform==='uppercase';
+        if(!lab && up && fs<=minUpF){ lab=e; minUpF=fs; }
+        if(!v && fs>maxF){ maxF=fs; v=e; } } }
+    if(lab && lab.textContent!==label) lab.textContent=label;
     if(v && v.textContent!==val) v.textContent=val;
     var ps=card.querySelectorAll('p'); if(ps.length){ var p=ps[ps.length-1]; if(p.textContent!==sub) p.textContent=sub; } }
   // ===== Modal de detalle de orden (al tocar una fila de "Últimas ventas") =====
@@ -2175,10 +2185,12 @@ _SOLO_DASH = r"""
         if(chips[j].style.display!=='none') chips[j].style.display='none'; } } }
   function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} try{ hookCur(); }catch(e){} try{ sacarCanales(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
-  try{ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  // En CADA mutación de React re-aplico los KPIs de PUBLICIDAD SINCRÓNICAMENTE (antes de que el navegador
+  // pinte) → las etiquetas nativas (ROAS/True ROAS) nunca llegan a verse; el resto va throttleado.
+  try{ new MutationObserver(function(){ if(_raw){ try{ metricas(); }catch(e){} } schedule(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
-  setTimeout(function(){ if(!_painted){ _painted=true; try{ var g=findGrid(); if(g) g.style.opacity='1'; }catch(e){} } }, 5000);   // fallback: nunca dejar la grilla oculta
+  setTimeout(function(){ if(!_painted){ try{ metricas(); }catch(e){} _painted=true; try{ var g=findGrid(); if(g) g.style.opacity='1'; }catch(e){} } }, 5000);   // fallback: remapea y recién ahí destapa
   // Al tocar un chip de canal (Todas/Shopify/MercadoLibre) React re-renderiza → re-aplico mis parches.
   document.addEventListener('click', function(e){ var el=e.target;
     for(var k=0;k<4&&el;k++){ var t=(el.textContent||'').replace(/\s+/g,' ').trim();
@@ -3805,7 +3817,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-dash-kpi-por-etiqueta"})
+    return jsonify({"ok": True, "v": "2026-08-25-dash-kpi-nunca-bug"})
 
 
 @app.get("/pf-diag")
