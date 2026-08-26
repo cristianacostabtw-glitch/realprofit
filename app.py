@@ -1557,19 +1557,30 @@ _SOLO_DASH = r"""
    else if(canal=='wpp'){ lote=_pendWpp; }
    else if(canal=='tn'){ lote=_pendStore; }
    else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
-   res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+(solo1?('PROBANDO con 1 pedido (#'+(lote[0]&&lote[0].num)+')'):('Enviando '+lote.length))+' por '+lbl+'… (no cierres esto)</div>';
-   fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:lote})}).then(function(r){return r.json();}).then(function(j){
-     if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
-     var errs=(j.errores||(j.tn&&j.tn.errores)||[]);
-     var errBox = errs.length ? ('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ Error real de Shopify (pedido #'+(errs[0].num||'')+'):</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>') : '';
-     function mark(ch){ _dSeg.forEach(function(o){ if(ch=='wpp'&&o.wa_id&&!o.wpp)o.wpp=true; if(ch=='tn'&&o.order_id&&!o.tn)o.tn=true; }); }
-     var msg='';
-     if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; mark('tn'); mark('wpp');
-       msg='🔵 TN '+(t.enviados||0)+' cargados'+(t.saltados?(' ('+t.saltados+' ya estaban)'):'')+' · 🟢 WPP '+(w.enviados||0)+' enviados'+(w.saltados?(' ('+w.saltados+' ya estaban)'):''); }
-     else { mark(canal); msg=(canal=='wpp'?'🟢 WhatsApp ':(_dSegTienda==='shopify'?'🛍️ Shopify ':'🔵 TiendaNube '))+(j.enviados||0)+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); }
+   if(!lote.length){ res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
+   // TANDAS de 25: cada request termina rápido y NO se corta por timeout aunque sean 150+ pedidos.
+   var CH=25, i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
+   function markChunk(chunk,ch){ chunk.forEach(function(o){ if(ch=='wpp'&&o.wa_id)o.wpp=true; if(ch=='tn'&&o.order_id)o.tn=true; }); }
+   function fin(){
+     var errBox = errs.length ? ('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ '+errs.length+' fallaron. Ej #'+(errs[0].num||'')+':</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>') : '';
+     var msg = (canal=='todos')
+       ? ('🔵 TN '+acc.tn_e+' cargados'+(acc.tn_s?(' ('+acc.tn_s+' ya estaban)'):'')+' · 🟢 WPP '+acc.wpp_e+' enviados'+(acc.wpp_s?(' ('+acc.wpp_s+' ya estaban)'):''))
+       : ((canal=='wpp'?'🟢 WhatsApp ':(_dSegTienda==='shopify'?'🛍️ Shopify ':'🔵 TiendaNube '))+acc.env+' enviados'+(acc.salt?(' · '+acc.salt+' ya estaban'):'')+(acc.fail?(' · '+acc.fail+' fallaron'):''));
      _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+errBox+res.innerHTML;
      _dLoaded=false; rpDLoad();
-   }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error de conexión.</div>'; }); };
+   }
+   function paso(){
+     if(i>=lote.length){ fin(); return; }
+     var chunk=lote.slice(i,i+CH); var hasta=Math.min(i+chunk.length,lote.length);
+     res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando '+hasta+'/'+lote.length+' por '+lbl+'… (no cierres esto)</div>';
+     fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:chunk})}).then(function(r){return r.json();}).then(function(j){
+       if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
+       if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
+       else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
+       i=hasta; paso();
+     }).catch(function(){ _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó en '+hasta+'/'+lote.length+'. Volvé a tocar Enviar: sigue desde donde quedó (los ya cargados se saltan).</div>'; });
+   }
+   paso(); };
  // ===================== FACTURACIÓN =====================
  var _fRows=[], _fFilter='todas', _fPage=1, _fSel={}, _fPer=50, _fAutoOn=false;
  function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
@@ -3820,7 +3831,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-25-stock-barras-numeros-hoy"})
+    return jsonify({"ok": True, "v": "2026-08-25-seg-enviar-tandas"})
 
 
 @app.get("/pf-diag")
