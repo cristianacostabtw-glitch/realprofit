@@ -2299,7 +2299,9 @@ _SOLO_DASH = r"""
   function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
   // En CADA mutación de React re-aplico los KPIs de PUBLICIDAD SINCRÓNICAMENTE (antes de que el navegador
   // pinte) → las etiquetas nativas (ROAS/True ROAS) nunca llegan a verse; el resto va throttleado.
-  try{ new MutationObserver(function(){ if(_raw){ try{ metricas(); }catch(e){} } schedule(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  // NO llamar metricas() acá: hacía un querySelectorAll de TODO el doc en CADA mutación → tormenta que
+  // jankeaba otras pantallas (Despachos). El self-heal (más abajo) reaplica los KPIs solo, cacheado.
+  try{ new MutationObserver(function(){ schedule(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
   // Fallback: NO destapo la grilla con las etiquetas nativas (ROAS mal + True ROAS). Reintento el remapeo
@@ -2338,20 +2340,35 @@ _SOLO_DASH = r"""
       if((/uppercase/.test(e.className||'')||getComputedStyle(e).textTransform==='uppercase')&&(e.textContent||'').trim()) return e; }
     return null; }
   function subLeaf(c){ var ps=c.querySelectorAll('p'); return ps.length?ps[ps.length-1]:null; }
-  function kpi(l){ var c=cardByLabel(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }
+  // CACHE de tarjetas: mientras la tarjeta cacheada siga viva y visible, NO se reescanea el documento.
+  // Un querySelectorAll de todo el doc solo ocurre (rate-limited) cuando faltan → así fuera del Dashboard
+  // (ej. Despachos) el parche hace 1 escaneo cada 1,5-3s y sale, en vez de martillar cada tick.
+  var _C={}, _lastScan=0, _present=false;
+  function _get(l){ var c=_C[l]; return (c&&c.isConnected&&c.offsetParent!==null)?c:null; }
+  function _rescan(){ ['Facturación','Ganancia','Inversión Ads','True ROAS','Margen','Break Even ROAS'].forEach(function(l){ var c=cardByLabel(l); if(c) _C[l]=c; }); }
+  function _val(l){ var c=_get(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }
+  function _dashOk(){ return _get('Inversión Ads') && (_get('True ROAS')||_get('Margen')) && _get('Break Even ROAS'); }
   function fix(){
-    var fa=kpi('Facturación'), ga=kpi('Ganancia'), iv=kpi('Inversión Ads'); if(!fa) return;
+    var now=Date.now();
+    if(!_dashOk()){                                   // sin tarjetas vivas cacheadas → reescaneo LIMITADO
+      if(now-_lastScan < (_present?1500:3000)) return;
+      _lastScan=now; _rescan();
+      _present=!!_get('Inversión Ads');
+      if(!_dashOk()) return;                           // no estamos en el Dashboard → salida barata
+    }
+    _present=true;
+    var fa=_val('Facturación'), ga=_val('Ganancia'), iv=_val('Inversión Ads'); if(!fa) return;
     var mg=Math.round(ga/fa*1000)/10, br=(ga+iv)>0?Math.round(fa/(ga+iv)*100)/100:0;
-    var m=cardByLabel('True ROAS')||cardByLabel('Margen');
+    var m=_get('True ROAS')||_get('Margen');
     if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
       var v=bigLeaf(m); var mv=mg+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
       var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; }
-    var b=cardByLabel('Break Even ROAS');
+    var b=_get('Break Even ROAS');
     if(b){ var w=bigLeaf(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
   }
   function loop(){ try{ fix(); }catch(e){} }
-  [200,600,1200,2000,3200].forEach(function(ms){ setTimeout(loop,ms); });
-  setInterval(loop, 900);
+  [300,800,1600,2600].forEach(function(ms){ setTimeout(loop,ms); });
+  setInterval(loop, 700);
 })();
 </script>
 
@@ -3976,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-dash-selfheal"})
+    return jsonify({"ok": True, "v": "2026-08-27-dash-light"})
 
 
 @app.get("/pf-cfg")
