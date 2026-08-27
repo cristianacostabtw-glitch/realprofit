@@ -3913,7 +3913,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-wa-fmt-tick"})
+    return jsonify({"ok": True, "v": "2026-08-26-wa-badge"})
 
 
 @app.get("/pf-cfg")
@@ -11534,7 +11534,10 @@ function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var bo
   var cs=(r&&r.chats)||[];
   if(!cs.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:#667;font-size:13px">Sin chats todav&iacute;a. Apenas te escriban aparecen.</div>'; return; }
   box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#cdd5d9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px">&#128100;</div>');
-    var un=(c.unread>0)?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;text-align:center">'+c.unread+'</span>'):'';
+    // "Falta responder": badge SOLO si el último mensaje es del cliente (no nuestro).
+    // Si el último es nuestro (ya contestaste) → sin badge. Datos viejos (lastFromMe indefinido) → cae a unread.
+    var falta=(c.lastFromMe===true)?false:((c.lastFromMe===false)?true:(c.unread>0));
+    var un=falta?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center">'+(c.unread>0?c.unread:'')+'</span>'):'';
     var sel=(WEBCHAT&&WEBCHAT.id===c.id)?';background:#f0f2f5':'';
     return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(c.tel||c.name||'')+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
       +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(webFmtTel(c.tel||c.name||''))+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
