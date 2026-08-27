@@ -2001,10 +2001,12 @@ _SOLO_DASH = r"""
     var cInv=_cardByLabel('Inversión Ads')||_cardByLabel('Inversión en ads')||_cardByLabel('Inversión');
     var cTrue=_cardByLabel('True ROAS');
     var cBe=_cardByLabel('Break Even ROAS');
-    if(cTrue){                                   // NATIVO → la 2 (ROAS→Margen) y la 3 (True ROAS→ROAS)
-      setCard(cTrue,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++;   // True ROAS → ROAS
-      var cRoasN=_adjCard(cTrue,'prev');         // el ROAS nativo es la tarjeta ANTERIOR (misma fila) → Margen
-      if(cRoasN){ setCard(cRoasN,'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }
+    if(cTrue){                                   // NATIVO: [..,ROAS,True ROAS,Break Even ROAS] → renombro
+      // Lista PLANA de todas las tarjetas en orden DOM → la de JUSTO ANTES del True ROAS es el ROAS nativo → Margen.
+      var _all=[].slice.call(document.querySelectorAll('[class*="rounded-2xl"],[class*="rounded-xl"]'));
+      var _ix=_all.indexOf(cTrue);
+      setCard(cTrue,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++;         // True ROAS → ROAS
+      if(_ix>0){ setCard(_all[_ix-1],'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }  // la de ANTES → Margen
       if(cBe){ setCard(cBe,'Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'); hit++; }
     } else {                                     // YA remapeado → mantengo los valores (por si React repintó)
       var cM=_cardByLabel('Margen'), cR=_cardByLabel('ROAS');
@@ -3932,7 +3934,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-dash-vecino"})
+    return jsonify({"ok": True, "v": "2026-08-26-dash-idx"})
 
 
 @app.get("/pf-cfg")
