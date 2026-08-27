@@ -178,13 +178,14 @@ async function startSession(acc) {
   });
 
   // acumular chats (nombre + último mensaje). Las fotos se piden on-demand en /chats.
-  const touch = (jid, name, text, ts, unread) => {
+  const touch = (jid, name, text, ts, unread, fromMe) => {
     if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return; // solo 1:1 por ahora
     const c = s.chats.get(jid) || { id: jid };
     if (name) c.name = name;
     if (text != null) c.last = text;
     if (ts) c.ts = Math.max(c.ts || 0, ts);
     if (unread != null) c.unread = unread;
+    if (fromMe != null) c.lastFromMe = !!fromMe;
     s.chats.set(jid, c);
     saveStoreDebounced(acc, s);
   };
@@ -212,7 +213,7 @@ async function startSession(acc) {
     if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
     const t = msgText(m);
     const id = m.key?.id, fromMe = m.key?.fromMe, ts = Number(m.messageTimestamp) || 0;
-    touch(jid, fromMe ? undefined : m.pushName, t, ts, undefined);
+    touch(jid, fromMe ? undefined : m.pushName, t, ts, undefined, fromMe);
     const mk = mediaKind(m);
     if (mk) {
       pushMsg(jid, id, fromMe, t || placeholderTxt(mk.kind), ts, mk.kind, null);
@@ -358,6 +359,7 @@ app.get("/chats", (req, res) => {
       last: c.last || "",
       ts: c.ts || 0,
       unread: c.unread || 0,
+      lastFromMe: !!c.lastFromMe,
     };
   });
   res.json({ ok: true, status: "connected", me: s.me || null, chats: out });
