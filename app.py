@@ -1993,32 +1993,23 @@ _SOLO_DASH = r"""
       if(/rounded-2xl|rounded-xl/.test(e.className||'')) return e;
       var q=e.querySelector&&e.querySelector('[class*="rounded-2xl"]'); if(q) return q; }
     return null; }
-  function metricas(){ if(!_raw)return false;
-    // La SPA nativa muestra [Inversión, ROAS, True ROAS, Break Even ROAS, ...]. NOSOTROS queremos
-    // [Inversión, MARGEN, ROAS, Break Even ROAS, ...]. Remapeo POR ETIQUETA (no por posición/grilla).
-    // IDEMPOTENTE: si "True ROAS" está presente → estado nativo → remapeo; si no → ya está, refresco valores.
+  function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
+    // POSICIONAL (como antes): recolecto las tarjetas de PUBLICIDAD en orden y renombro por posición.
+    var inPub=false, cards=[], kids=grid.children;
+    for(var i=0;i<kids.length;i++){ var el=kids[i];
+      if(esHeader(el)){ inPub = (el.textContent||'').toUpperCase().indexOf('PUBLICIDAD')>=0; continue; }
+      if(inPub){ var c=/rounded-2xl/.test(el.className||'')?el:(el.querySelector?el.querySelector('[class*=\"rounded-2xl\"]'):null); if(c) cards.push(c); } }
+    if(!cards.length) return false;
+    var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
+             ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
+             ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
+             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'],
+             ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
+             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
+             ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
+             ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     var hit=0;
-    var cInv=_cardByLabel('Inversión Ads')||_cardByLabel('Inversión en ads')||_cardByLabel('Inversión');
-    var cTrue=_cardByLabel('True ROAS');
-    var cBe=_cardByLabel('Break Even ROAS');
-    if(cTrue){                                   // NATIVO: [..,ROAS,True ROAS,Break Even ROAS] → renombro
-      // Lista PLANA de todas las tarjetas en orden DOM → la de JUSTO ANTES del True ROAS es el ROAS nativo → Margen.
-      var _all=[].slice.call(document.querySelectorAll('[class*="rounded-2xl"],[class*="rounded-xl"]'));
-      var _ix=_all.indexOf(cTrue);
-      setCard(cTrue,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++;         // True ROAS → ROAS
-      if(_ix>0){ setCard(_all[_ix-1],'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }  // la de ANTES → Margen
-      if(cBe){ setCard(cBe,'Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'); hit++; }
-    } else {                                     // YA remapeado → mantengo los valores (por si React repintó)
-      var cM=_cardByLabel('Margen'), cR=_cardByLabel('ROAS');
-      if(cM){ setCard(cM,'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }
-      if(cR){ setCard(cR,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++; }
-      if(cBe){ setCard(cBe,'Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'); hit++; }
-    }
-    if(cInv){ setCard(cInv,'Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'); hit++; }
-    var cCpa=_cardByLabel('CPA'); if(cCpa){ setCard(cCpa,'CPA',money(_raw.cpa||0),'Costo por cada venta'); hit++; }
-    var cBc=_cardByLabel('Break Even CPA'); if(cBc){ setCard(cBc,'Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'); hit++; }
-    var cRe=_cardByLabel('Recompras'); if(cRe){ setCard(cRe,'Recompras',String(_raw.recompras||0),'Clientes que recompraron'); hit++; }
-    var cFr=_cardByLabel('Facturación Recompra'); if(cFr){ setCard(cFr,'Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron'); hit++; }
+    for(var j=0;j<cards.length && j<seq.length;j++){ setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
     return hit>0; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
@@ -3934,7 +3925,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-dash-idx"})
+    return jsonify({"ok": True, "v": "2026-08-26-dash-revert"})
 
 
 @app.get("/pf-cfg")
