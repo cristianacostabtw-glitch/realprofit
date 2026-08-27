@@ -3913,7 +3913,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-wa-toggle"})
+    return jsonify({"ok": True, "v": "2026-08-26-wa-fmt-tick"})
 
 
 @app.get("/pf-cfg")
@@ -11496,6 +11496,26 @@ function webPollStatus(){ if(WEBPOLL)clearInterval(WEBPOLL);
 }
 var WEBCHAT=null, WEBMPOLL=null, _wtick=0, _webMsgCount=-1;
 function webHora(ts){ try{ if(!ts)return''; var d=new Date(ts*1000); return d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+// Formatea el teléfono: +54 9 11 xxxx-xxxx (celular AR) o +54 area xxxx-xxxx. Si no es un teléfono real
+// (LID largo de WhatsApp), lo deja tal cual. NO inventa: solo agrupa dígitos para que se lea bien.
+function webFmtTel(x){ x=String(x||'').trim(); if(x.indexOf('@')>=0) x=x.split('@')[0];
+  var d=x.replace(/\\D/g,'');
+  if(/^54/.test(d) && (d.length===12||d.length===13)){
+    var r=d.slice(2); if(r[0]==='9') r=r.slice(1);   // r = área+número
+    if(r.length===10){ var area=(r.slice(0,2)==='11')?r.slice(0,2):r.slice(0,3); var n=r.slice(area.length);
+      return '+54 9 '+area+' '+n.slice(0,n.length-4)+'-'+n.slice(-4); }
+    return '+54 9 '+r;
+  }
+  if(d.length>=8 && d.length<=13) return '+'+d;      // otro país
+  return x;                                          // LID / no-teléfono → tal cual
+}
+// Tilde de estado del mensaje propio: ✓ enviado · ✓✓ entregado · ✓✓ azul leído. ack indefinido → ✓.
+function webTick(m){ if(!m||!m.fromMe) return '';
+  var a=m.ack; var dbl='&#10003;&#10003;', sgl='&#10003;';
+  if(a>=4) return '<span style="color:#53bdeb;font-size:12px;margin-left:3px">'+dbl+'</span>';
+  if(a===3) return '<span style="color:#8696a0;font-size:12px;margin-left:3px">'+dbl+'</span>';
+  return '<span style="color:#8696a0;font-size:12px;margin-left:3px">'+sgl+'</span>';
+}
 function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('panel'); WEBCHAT=null; _webMsgCount=-1;
   var me=(s&&s.me&&s.me.name)?esc(s.me.name):'';
   p.style.padding='0'; p.style.maxWidth='none'; p.style.display='block';
@@ -11517,7 +11537,7 @@ function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var bo
     var un=(c.unread>0)?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;text-align:center">'+c.unread+'</span>'):'';
     var sel=(WEBCHAT&&WEBCHAT.id===c.id)?';background:#f0f2f5':'';
     return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(c.tel||c.name||'')+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
-      +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(c.tel||c.name||'')+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
+      +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(webFmtTel(c.tel||c.name||''))+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
   }).join('');
   }).catch(function(){ var box=document.getElementById('webchats'); if(box&&!box.querySelector('.wl-row'))box.innerHTML='<div style="padding:24px;text-align:center;color:#c0392b">No se pudieron traer los chats.</div>'; });
 }
@@ -11525,7 +11545,7 @@ function webRowClick(el){ webOpenChat(el.getAttribute('data-id'), el.getAttribut
 function webOpenChat(id,name){ WEBCHAT={id:id,name:name}; _webMsgCount=-1;
   var rows=document.querySelectorAll('#webchats .wl-row'); for(var i=0;i<rows.length;i++){ rows[i].style.background=(rows[i].getAttribute('data-id')===id)?'#f0f2f5':''; }
   var conv=document.getElementById('webconv'); if(!conv)return;
-  conv.innerHTML='<div style="padding:12px 16px;background:#f0f2f5;font-weight:700;color:#111b21;border-bottom:1px solid #e9edef">'+esc(name||id.split('@')[0])+'</div>'
+  conv.innerHTML='<div style="padding:12px 16px;background:#f0f2f5;font-weight:700;color:#111b21;border-bottom:1px solid #e9edef">'+esc(webFmtTel(name||id.split('@')[0]))+'</div>'
     +'<div id="webmsgs" style="flex:1;overflow-y:auto;padding:14px 16px;background:#efeae2"><div style="text-align:center;color:#8696a0;padding:20px">Cargando&#8230;</div></div>'
     +'<div style="padding:10px 14px;background:#f0f2f5;display:flex;gap:8px;align-items:flex-end"><textarea id="webinput" rows="1" placeholder="Escrib&iacute; un mensaje&#8230;" style="flex:1;border:1px solid #d1d7db;border-radius:20px;padding:9px 14px;font-size:13.5px;resize:none;max-height:100px;outline:none;font-family:inherit;background:#fff"></textarea><button onclick="webSend()" style="background:#00a884;border:0;color:#fff;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:17px;flex-shrink:0">&#10148;</button></div>';
   var inp=document.getElementById('webinput'); if(inp){ inp.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); webSend(); } }); inp.addEventListener('input',function(){ this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,100)+'px'; }); inp.focus(); }
@@ -11539,7 +11559,7 @@ function webLoadMsgs(force){ if(!WEBCHAT)return; var cid=WEBCHAT.id;
     _webMsgCount=ms.length;
     if(!ms.length){ box.innerHTML='<div style="text-align:center;color:#8696a0;padding:20px;font-size:13px">Sin mensajes guardados de esta conversaci&oacute;n todav&iacute;a. Los nuevos aparecen ac&aacute;.</div>'; return; }
     box.innerHTML=ms.map(function(m){ var mine=m.fromMe;
-      return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:'+(mine?'#d9fdd3':'#fff')+';color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+webBody(m)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(m.ts)+'</div></div></div>';
+      return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:'+(mine?'#d9fdd3':'#fff')+';color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+webBody(m)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(m.ts)+webTick(m)+'</div></div></div>';
     }).join('');
     box.scrollTop=box.scrollHeight;
   }).catch(function(){});
