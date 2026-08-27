@@ -2318,6 +2318,44 @@ _SOLO_DASH = r"""
 </script>
 
 <script>
+/* PATCH DASHBOARD A PRUEBA DE FALLOS (independiente del remapeo anterior): arregla las 2 tarjetas
+   rotas de PUBLICIDAD leyendo TODO de las tarjetas que YA se ven bien (Facturación, Ganancia,
+   Inversión Ads). No depende de _raw ni de findGrid/metricas → corre aunque aquello falle.
+     · True ROAS (en blanco)  -> "Margen" = Ganancia ÷ Facturación
+     · Break Even ROAS (0.00x) = Facturación ÷ (Ganancia + Inversión Ads)   [= fact/_pre del backend] */
+(function(){
+  function n(s){ s=(s||'').replace(/[^\d.,-]/g,'').replace(/\./g,'').replace(',','.'); return parseFloat(s)||0; }
+  function cardByLabel(lbl){ lbl=lbl.toLowerCase(); var a=document.querySelectorAll('span,div,p');
+    for(var i=0;i<a.length;i++){ var e=a[i]; if(e.children.length) continue;
+      if((e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()===lbl){ if(e.offsetParent===null) continue;
+        var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) return c; } } }
+    return null; }
+  function bigLeaf(c){ var d=c.querySelectorAll('span,div,p'), b=null, f=0;
+    for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue; if(!(e.textContent||'').trim()) continue;
+      var s=parseFloat(getComputedStyle(e).fontSize)||0; if(s>f){ f=s; b=e; } } return b; }
+  function labelLeaf(c){ var d=c.querySelectorAll('span,div,p');
+    for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue;
+      if((/uppercase/.test(e.className||'')||getComputedStyle(e).textTransform==='uppercase')&&(e.textContent||'').trim()) return e; }
+    return null; }
+  function subLeaf(c){ var ps=c.querySelectorAll('p'); return ps.length?ps[ps.length-1]:null; }
+  function kpi(l){ var c=cardByLabel(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }
+  function fix(){
+    var fa=kpi('Facturación'), ga=kpi('Ganancia'), iv=kpi('Inversión Ads'); if(!fa) return;
+    var mg=Math.round(ga/fa*1000)/10, br=(ga+iv)>0?Math.round(fa/(ga+iv)*100)/100:0;
+    var m=cardByLabel('True ROAS')||cardByLabel('Margen');
+    if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
+      var v=bigLeaf(m); var mv=mg+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
+      var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; }
+    var b=cardByLabel('Break Even ROAS');
+    if(b){ var w=bigLeaf(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
+  }
+  function loop(){ try{ fix(); }catch(e){} }
+  [200,600,1200,2000,3200].forEach(function(ms){ setTimeout(loop,ms); });
+  setInterval(loop, 900);
+})();
+</script>
+
+<script>
 /* RealProfit — ÍCONO + TEXTO de tienda del dashboard reflejan lo realmente conectado.
    MÉTODO: SOLO CSS (content:url / font-size:0 + ::after / display:none). NO se muta el DOM de React →
    (1) el chip de canal sigue 100% clickeable (no le tocamos el botón ni su texto), y
@@ -3938,7 +3976,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-dash-pubcards"})
+    return jsonify({"ok": True, "v": "2026-08-27-dash-selfheal"})
 
 
 @app.get("/pf-cfg")
