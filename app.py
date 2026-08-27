@@ -1993,13 +1993,26 @@ _SOLO_DASH = r"""
       if(/rounded-2xl|rounded-xl/.test(e.className||'')) return e;
       var q=e.querySelector&&e.querySelector('[class*="rounded-2xl"]'); if(q) return q; }
     return null; }
-  function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
-    // POSICIONAL (como antes): recolecto las tarjetas de PUBLICIDAD en orden y renombro por posición.
-    var inPub=false, cards=[], kids=grid.children;
-    for(var i=0;i<kids.length;i++){ var el=kids[i];
-      if(esHeader(el)){ inPub = (el.textContent||'').toUpperCase().indexOf('PUBLICIDAD')>=0; continue; }
-      if(inPub){ var c=/rounded-2xl/.test(el.className||'')?el:(el.querySelector?el.querySelector('[class*=\"rounded-2xl\"]'):null); if(c) cards.push(c); } }
-    if(!cards.length) return false;
+  // Header de sección por su TEXTO hoja (Publicidad/Costos/Finanzas). No depende de col-span-full.
+  function _hdrLeaf(name){ var all=document.querySelectorAll('span,div,p,h2,h3');
+    for(var i=0;i<all.length;i++){ var e=all[i]; if(e.children.length) continue;
+      var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if(t===name || (t.indexOf(name)===0 && t.length<name.length+6)) return e; }
+    return null; }
+  // Tarjetas de PUBLICIDAD por POSICIÓN en el documento (entre el header PUBLICIDAD y el de COSTOS).
+  // ROBUSTO: no depende de que la grilla sea plana (grid.children) → funciona aunque el SPA anide las tarjetas.
+  function _pubCards(){ var pub=_hdrLeaf('publicidad'); if(!pub) return [];
+    var cost=_hdrLeaf('costos');   // Finanzas va ANTES de Publicidad → alcanza con cortar en Costos
+    var all=document.querySelectorAll('[class*="rounded-2xl"]'), out=[], F=Node.DOCUMENT_POSITION_FOLLOWING;
+    for(var i=0;i<all.length;i++){ var c=all[i];
+      if(c.querySelector && c.querySelector('[class*="rounded-2xl"]')) continue;   // solo la tarjeta hoja (no wrappers)
+      if(c.offsetParent===null) continue;                                          // visible (excluye Finanzas/Reembolsos ocultos)
+      if(!(pub.compareDocumentPosition(c)&F)) continue;                            // debe venir DESPUÉS de PUBLICIDAD
+      if(cost && !(c.compareDocumentPosition(cost)&F)) continue;                   // y ANTES de COSTOS
+      out.push(c); }
+    return out; }
+  function metricas(){ if(!_raw)return false;
+    var cards=_pubCards(); if(cards.length<4) return false;   // <4 = grilla todavía no montada → no destapar
     var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
              ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
@@ -2010,7 +2023,7 @@ _SOLO_DASH = r"""
              ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     var hit=0;
     for(var j=0;j<cards.length && j<seq.length;j++){ setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
-    return hit>0; }
+    return hit>=seq.length; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
@@ -3925,7 +3938,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-wa-nomix"})
+    return jsonify({"ok": True, "v": "2026-08-27-dash-pubcards"})
 
 
 @app.get("/pf-cfg")
