@@ -1978,26 +1978,38 @@ _SOLO_DASH = r"""
           if(el && el.querySelectorAll && el.querySelectorAll('[class*="rounded-2xl"]').length>=4) return el; }
       } }
     return null; }
-  function metricas(){ if(!_raw)return false; var grid=findGrid(); if(!grid) return false;
-    // Recolecto las tarjetas de PUBLICIDAD (entre su header y el próximo) y remapeo POR POSICIÓN.
-    // La SPA renderiza [Inversión, ROAS, True ROAS, Break Even ROAS, ...] pero NOSOTROS queremos
-    // [Inversión, MARGEN, ROAS, Break Even ROAS, ...]: por eso renombramos la tarjeta 2 a "Margen"
-    // y la 3 a "ROAS" (la "True ROAS" nativa NO va). El mapeo posicional es idempotente.
-    var inPub=false, cards=[], kids=grid.children;
-    for(var i=0;i<kids.length;i++){ var el=kids[i];
-      if(esHeader(el)){ inPub = (el.textContent||'').toUpperCase().indexOf('PUBLICIDAD')>=0; continue; }
-      if(inPub){ var c=/rounded-2xl/.test(el.className||'')?el:(el.querySelector?el.querySelector('[class*=\"rounded-2xl\"]'):null); if(c) cards.push(c); } }
-    if(!cards.length) return false;
-    var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
-             ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
-             ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
-             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'],
-             ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
-             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
-             ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
-             ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
+  // Encuentra la TARJETA (rounded) cuyo LEAF de texto sea EXACTAMENTE ese label. NO depende de la
+  // estructura de la grilla (que el SPA compilado a veces cambia) → por eso es robusto y no intermitente.
+  function _cardByLabel(lbl){ lbl=(lbl||'').toLowerCase();
+    var all=document.querySelectorAll('span,div,p');
+    for(var i=0;i<all.length;i++){ var e=all[i]; if(e.children.length) continue;
+      if((e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()===lbl){
+        var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) return c; } } }
+    return null; }
+  function metricas(){ if(!_raw)return false;
+    // La SPA nativa muestra [Inversión, ROAS, True ROAS, Break Even ROAS, ...]. NOSOTROS queremos
+    // [Inversión, MARGEN, ROAS, Break Even ROAS, ...]. Remapeo POR ETIQUETA (no por posición/grilla).
+    // IDEMPOTENTE: si "True ROAS" está presente → estado nativo → remapeo; si no → ya está, refresco valores.
     var hit=0;
-    for(var j=0;j<cards.length && j<seq.length;j++){ setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
+    var cInv=_cardByLabel('Inversión Ads')||_cardByLabel('Inversión en ads')||_cardByLabel('Inversión');
+    var cTrue=_cardByLabel('True ROAS');
+    var cBe=_cardByLabel('Break Even ROAS');
+    if(cTrue){                                   // NATIVO → renombro la 2 (ROAS→Margen) y la 3 (True ROAS→ROAS)
+      var cRoasN=_cardByLabel('ROAS');
+      if(cRoasN){ setCard(cRoasN,'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }
+      setCard(cTrue,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++;
+      if(cBe){ setCard(cBe,'Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'); hit++; }
+    } else {                                     // YA remapeado → mantengo los valores (por si React repintó)
+      var cM=_cardByLabel('Margen'), cR=_cardByLabel('ROAS');
+      if(cM){ setCard(cM,'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }
+      if(cR){ setCard(cR,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++; }
+      if(cBe){ setCard(cBe,'Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'); hit++; }
+    }
+    if(cInv){ setCard(cInv,'Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'); hit++; }
+    var cCpa=_cardByLabel('CPA'); if(cCpa){ setCard(cCpa,'CPA',money(_raw.cpa||0),'Costo por cada venta'); hit++; }
+    var cBc=_cardByLabel('Break Even CPA'); if(cBc){ setCard(cBc,'Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'); hit++; }
+    var cRe=_cardByLabel('Recompras'); if(cRe){ setCard(cRe,'Recompras',String(_raw.recompras||0),'Clientes que recompraron'); hit++; }
+    var cFr=_cardByLabel('Facturación Recompra'); if(cFr){ setCard(cFr,'Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron'); hit++; }
     return hit>0; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
@@ -3913,7 +3925,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-wa-badge"})
+    return jsonify({"ok": True, "v": "2026-08-26-dash-badge2"})
 
 
 @app.get("/pf-cfg")
@@ -11536,7 +11548,7 @@ function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var bo
   box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#cdd5d9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px">&#128100;</div>');
     // "Falta responder": badge SOLO si el último mensaje es del cliente (no nuestro).
     // Si el último es nuestro (ya contestaste) → sin badge. Datos viejos (lastFromMe indefinido) → cae a unread.
-    var falta=(c.lastFromMe===true)?false:((c.lastFromMe===false)?true:(c.unread>0));
+    var falta=(c.unread>0) && (c.lastFromMe!==true);   // hay sin abrir Y el último NO fue mío
     var un=falta?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center">'+(c.unread>0?c.unread:'')+'</span>'):'';
     var sel=(WEBCHAT&&WEBCHAT.id===c.id)?';background:#f0f2f5':'';
     return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(c.tel||c.name||'')+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
