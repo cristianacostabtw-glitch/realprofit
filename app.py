@@ -3925,7 +3925,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-dash-revert"})
+    return jsonify({"ok": True, "v": "2026-08-27-wa-num-tab"})
 
 
 @app.get("/pf-cfg")
@@ -11355,7 +11355,14 @@ function unlock(){ document.body.classList.remove('locked'); }
 // La API guarda su token y el Web su sesión (disco) → saltar de una a otra no apaga ninguna.
 function _chanPaint(which){ var w=document.getElementById('chWeb'), a=document.getElementById('chApi');
   if(w){ w.style.background=(which==='web')?'#25D366':'transparent'; w.style.color=(which==='web')?'#fff':'#dff5e6'; }
-  if(a){ a.style.background=(which==='api')?'#25D366':'transparent'; a.style.color=(which==='api')?'#fff':'#dff5e6'; } }
+  if(a){ a.style.background=(which==='api')?'#25D366':'transparent'; a.style.color=(which==='api')?'#fff':'#dff5e6'; }
+  _setHeaderNum(which); }
+var WEBNUM='';   // número/nombre del WhatsApp Web (QR) — para mostrar el número CORRECTO por pestaña
+// El encabezado muestra el número de la PESTAÑA activa: Web = número del QR, API = número de la Cloud API.
+// (Antes mostraba siempre el del API → parecía que se "mezclaban" los dos canales.)
+function _setHeaderNum(which){ var el=document.getElementById('num'); if(!el)return;
+  if(which==='web'){ el.innerHTML=WEBNUM?('&#127760; '+esc(WEBNUM)):'&#127760; WhatsApp Web (QR)'; }
+  else { el.innerHTML=(EST&&EST.numero)?('&#128241; '+esc(EST.numero)):''; } }
 function showWeb(){ _chanPaint('web'); document.body.classList.remove('locked'); waTab('web'); }
 function showApi(){ _chanPaint('api');
   if(EST&&EST.conectado){ document.body.classList.remove('locked'); waTab('chats'); }   // API ya conectada → sus chats
@@ -11418,8 +11425,7 @@ function doDisc(){ post('/wa-desconectar',{}).then(function(){ EST={conectado:fa
 function val(id){ return (document.getElementById(id)||{}).value||''; }
 
 function renderApp(){
- document.getElementById('num').textContent=EST.numero?('&#128241; '+EST.numero):'';
- document.getElementById('num').innerHTML=EST.numero?('&#128241; '+esc(EST.numero)):'';
+ _setHeaderNum((typeof TAB!=='undefined'&&TAB==='web')?'web':'api');   // número de la pestaña activa (no siempre el del API)
  var conn=!!(EST&&EST.conectado);
  var v=function(id,show){ var el=document.getElementById(id); if(el) el.style.display=show?'':'none'; };
  v('bWeb',true); v('bBot',true);                          // Web (QR) y Bot: siempre disponibles
@@ -11530,6 +11536,9 @@ function webTick(m){ if(!m||!m.fromMe) return '';
 }
 function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('panel'); WEBCHAT=null; _webMsgCount=-1;
   var me=(s&&s.me&&s.me.name)?esc(s.me.name):'';
+  // Número REAL del WhatsApp Web (del id de la sesión, ej "5491123460702:12@...") → header correcto por pestaña.
+  try{ var mid=(s&&s.me&&s.me.id)?String(s.me.id).split(':')[0].split('@')[0]:''; var mnm=(s&&s.me&&s.me.name)||'';
+       WEBNUM = (mid?webFmtTel(mid):'') + (mnm?((mid?' · ':'')+mnm):''); if(TAB==='web') _setHeaderNum('web'); }catch(e){}
   p.style.padding='0'; p.style.maxWidth='none'; p.style.display='block';
   p.innerHTML='<div style="height:calc(100vh - 52px);display:flex;background:#fff;overflow:hidden">'
     +'<div style="width:340px;min-width:340px;border-right:1px solid #e9edef;display:flex;flex-direction:column;background:#fff">'
