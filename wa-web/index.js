@@ -200,7 +200,7 @@ async function startSession(acc) {
       if (media && !ex.media) { ex.media = media.mediaId; ex.mime = media.mime || ""; saveStoreDebounced(acc, s); }
       return;
     }
-    const item = { id: id || "", fromMe: !!fromMe, text: String(text || ""), ts: ts || 0, kind: kind || "text" };
+    const item = { id: id || "", fromMe: !!fromMe, text: String(text || ""), ts: ts || 0, kind: kind || "text", ack: 0 };
     if (media) { item.media = media.mediaId; item.mime = media.mime || ""; }
     arr.push(item);
     if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
@@ -221,6 +221,23 @@ async function startSession(acc) {
       pushMsg(jid, id, fromMe, t, ts, "text", null);
     }
   };
+
+  // Estado (ack) de MIS mensajes: 2=enviado, 3=entregado, 4=leido. Actualiza el item guardado.
+  sock.ev.on("messages.update", (updates) => {
+    try {
+      for (const u of (updates || [])) {
+        const jid = u.key && u.key.remoteJid, id = u.key && u.key.id;
+        const st = u.update && u.update.status;
+        if (!jid || !id || st == null) continue;
+        const arr = s.msgs.get(jid);
+        if (!arr) continue;
+        for (let i = arr.length - 1; i >= 0; i--) {
+          if (arr[i].id === id) { if ((arr[i].ack || 0) < st) arr[i].ack = st; break; }
+        }
+      }
+      saveStoreDebounced(acc, s);
+    } catch (e) {}
+  });
 
   sock.ev.on("chats.upsert", (chats) => {
     for (const c of chats) touch(c.id, c.name, undefined, Number(c.conversationTimestamp) || 0, c.unreadCount);
