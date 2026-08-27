@@ -3925,7 +3925,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-wa-num-tab"})
+    return jsonify({"ok": True, "v": "2026-08-27-wa-nomix"})
 
 
 @app.get("/pf-cfg")
@@ -12682,11 +12682,19 @@ def wa_chats():
     out = []
     for wid, conv in emap.items():
         msgs = conv.get("messages", [])
-        last = msgs[-1] if msgs else {}
+        # Excluir las conversaciones que son SOLO del canal WEB (Baileys las reenvía a este mismo store
+        # para que las procese el bot, pero NO deben mostrarse en la pestaña API → esas van en la Web).
+        ins = [m for m in msgs if m.get("dir") == "in"]
+        if ins and all(m.get("canal") == "web" for m in ins):
+            continue
+        apimsgs = [m for m in msgs if m.get("canal") != "web"]   # en la pestaña API, solo lo del API
+        if not apimsgs:
+            continue
+        last = apimsgs[-1]
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
                     "unread": conv.get("unread", 0),
-                    "messages": msgs[-300:]})
+                    "messages": apimsgs[-300:]})
     out.sort(key=lambda x: x.get("ts", ""), reverse=True)
     return jsonify({"ok": True, "chats": out})
 
