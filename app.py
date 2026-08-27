@@ -1986,6 +1986,13 @@ _SOLO_DASH = r"""
       if((e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()===lbl){
         var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded-2xl|rounded-xl/.test(c.className||'')) return c; } } }
     return null; }
+  // Tarjeta vecina (misma fila) hacia 'prev'/'next'. Evita ambigüedades de etiqueta al ubicar la de al lado.
+  function _adjCard(card,dir){ var e=card;
+    for(var g=0; g<6 && e; g++){ e=(dir==='prev')?e.previousElementSibling:e.nextElementSibling;
+      if(!e) return null;
+      if(/rounded-2xl|rounded-xl/.test(e.className||'')) return e;
+      var q=e.querySelector&&e.querySelector('[class*="rounded-2xl"]'); if(q) return q; }
+    return null; }
   function metricas(){ if(!_raw)return false;
     // La SPA nativa muestra [Inversión, ROAS, True ROAS, Break Even ROAS, ...]. NOSOTROS queremos
     // [Inversión, MARGEN, ROAS, Break Even ROAS, ...]. Remapeo POR ETIQUETA (no por posición/grilla).
@@ -1994,10 +2001,10 @@ _SOLO_DASH = r"""
     var cInv=_cardByLabel('Inversión Ads')||_cardByLabel('Inversión en ads')||_cardByLabel('Inversión');
     var cTrue=_cardByLabel('True ROAS');
     var cBe=_cardByLabel('Break Even ROAS');
-    if(cTrue){                                   // NATIVO → renombro la 2 (ROAS→Margen) y la 3 (True ROAS→ROAS)
-      var cRoasN=_cardByLabel('ROAS');
+    if(cTrue){                                   // NATIVO → la 2 (ROAS→Margen) y la 3 (True ROAS→ROAS)
+      setCard(cTrue,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++;   // True ROAS → ROAS
+      var cRoasN=_adjCard(cTrue,'prev');         // el ROAS nativo es la tarjeta ANTERIOR (misma fila) → Margen
       if(cRoasN){ setCard(cRoasN,'Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'); hit++; }
-      setCard(cTrue,'ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'); hit++;
       if(cBe){ setCard(cBe,'Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'); hit++; }
     } else {                                     // YA remapeado → mantengo los valores (por si React repintó)
       var cM=_cardByLabel('Margen'), cR=_cardByLabel('ROAS');
@@ -3925,7 +3932,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-26-dash-badge2"})
+    return jsonify({"ok": True, "v": "2026-08-26-dash-vecino"})
 
 
 @app.get("/pf-cfg")
