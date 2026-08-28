@@ -2348,10 +2348,14 @@ _SOLO_DASH = r"""
   function _rescan(){ ['Facturación','Ganancia','Inversión Ads','True ROAS','Margen','Break Even ROAS'].forEach(function(l){ var c=cardByLabel(l); if(c) _C[l]=c; }); }
   function _val(l){ var c=_get(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }
   function _dashOk(){ return _get('Inversión Ads') && (_get('True ROAS')||_get('Margen')) && _get('Break Even ROAS'); }
+  var _t0=Date.now();
   function fix(){
     var now=Date.now();
-    if(!_dashOk()){                                   // sin tarjetas vivas cacheadas → reescaneo LIMITADO
-      if(now-_lastScan < (_present?1500:3000)) return;
+    if(!_dashOk()){                                   // sin tarjetas vivas cacheadas → reescaneo
+      // RÁPIDO los primeros 10s (rescanea cada 0,4s) → se acomoda casi al instante, no en 15s.
+      // Después baja a 1,5-3s (protección para Despachos/otras pantallas donde no hay tarjetas).
+      var gap=(now-_t0<10000)?400:(_present?1500:3000);
+      if(now-_lastScan < gap) return;
       _lastScan=now; _rescan();
       _present=!!_get('Inversión Ads');
       if(!_dashOk()) return;                           // no estamos en el Dashboard → salida barata
@@ -2367,8 +2371,8 @@ _SOLO_DASH = r"""
     if(b){ var w=bigLeaf(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
   }
   function loop(){ try{ fix(); }catch(e){} }
-  [300,800,1600,2600].forEach(function(ms){ setTimeout(loop,ms); });
-  setInterval(loop, 700);
+  [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
+  setInterval(loop, 500);
 })();
 </script>
 
@@ -3993,7 +3997,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carritos-solo-pendientes"})
+    return jsonify({"ok": True, "v": "2026-08-28-dash-selfheal-rapido"})
 
 
 @app.get("/pf-cfg")
