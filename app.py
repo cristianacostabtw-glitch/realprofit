@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-dash-light"})
+    return jsonify({"ok": True, "v": "2026-08-27-sku-suma"})
 
 
 @app.get("/pf-cfg")
@@ -6013,16 +6013,33 @@ def _sku_de_items(items, skus):
     """SKU a estampar = qué empaquetar, según la config de Productos del usuario (tipo
     spray/fijo/xN por CADA producto). NO hardcodea VisionPure: usa lo que el usuario cargó.
     items: [(sku_key, cantidad, nombre_producto)]."""
-    partes = []
+    # Los UNITARIOS con la misma base se SUMAN (2 renglones de 'x1 Pote' → 'x2 Pote', no 'x1 + x1').
+    # Los variable/fijo se dejan tal cual (el 'spray' usa su propio ' + ', ej '3 60ML + 1 30ML').
+    uni = {}          # base_norm -> [base_display, total_qty]  (mantiene orden con uni_ord)
+    uni_ord = []
+    otras = []
     for key, qty, pname in items:
         if not qty or qty <= 0:
             continue
         cfg = skus.get(str(key))
         if cfg is None:
             cfg = {"tipo": "xn", "base": (pname or "").strip()}   # sin configurar → 'xN nombre'
-        s = _sku_calc(cfg, qty)
-        if s:
-            partes.append(s)
+        c = _sku_cfg(cfg)
+        if c["tipo"] == "unitario":
+            base = (c["base"] or "").strip()
+            k = base.lower()
+            if k not in uni:
+                uni[k] = [base, 0]; uni_ord.append(k)
+            uni[k][1] += int(qty)
+        else:
+            s = _sku_calc(cfg, qty)
+            if s:
+                otras.append(s)
+    partes = []
+    for k in uni_ord:
+        base, tot = uni[k]
+        partes.append((("x%d %s" % (tot, base)).strip()) if base else ("x%d" % tot))
+    partes += otras
     return " + ".join(partes)
 
 
