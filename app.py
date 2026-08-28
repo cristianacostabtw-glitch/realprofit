@@ -2330,9 +2330,13 @@ _SOLO_DASH = r"""
      · Break Even ROAS (0.00x) = Facturación ÷ (Ganancia + Inversión Ads)   [= fact/_pre del backend] */
 (function(){
   function n(s){ s=(s||'').replace(/[^\d.,-]/g,'').replace(/\./g,'').replace(',','.'); return parseFloat(s)||0; }
-  function cardByLabel(lbl){ lbl=lbl.toLowerCase(); var a=document.querySelectorAll('span,div,p');
+  // CAUSA RAÍZ del bug: "Inversión"/"Facturación" en el DOM pueden venir con el acento DESCOMPUESTO
+  // (o + tilde combinante) → bytes distintos a mi string compuesto → el === fallaba → cardByLabel null →
+  // el parche NO corría (en NINGUNA cuenta con acentos descompuestos). _na() saca acentos → matchea siempre.
+  function _na(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+  function cardByLabel(lbl){ lbl=_na(lbl); var a=document.querySelectorAll('span,div,p');
     for(var i=0;i<a.length;i++){ var e=a[i]; if(e.children.length) continue;
-      if((e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()===lbl){ if(e.offsetParent===null) continue;
+      if(_na(e.textContent)===lbl){ if(e.offsetParent===null) continue;
         var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) return c; } } }
     return null; }
   function bigLeaf(c){ var d=c.querySelectorAll('span,div,p'), b=null, f=0;
@@ -4007,7 +4011,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-dash-infixeable"})
+    return jsonify({"ok": True, "v": "2026-08-28-dash-acentos-raiz"})
 
 
 @app.get("/pf-cfg")
