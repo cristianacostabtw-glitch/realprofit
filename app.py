@@ -2343,10 +2343,17 @@ _SOLO_DASH = r"""
       if((/uppercase/.test(e.className||'')||getComputedStyle(e).textTransform==='uppercase')&&(e.textContent||'').trim()) return e; }
     return null; }
   function subLeaf(c){ var ps=c.querySelectorAll('p'); return ps.length?ps[ps.length-1]:null; }
+  // Slot del VALOR (para SETEAR): la hoja de fuente más grande, AUNQUE esté vacía (True ROAS viene en blanco),
+  // ignorando el ícono y la etiqueta. bigLeaf (arriba) salteaba vacíos → no podía llenar el True ROAS.
+  function valueSlot(c){ var d=c.querySelectorAll('span,div,p'), b=null, f=-1;
+    for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue; var cn=e.className||'';
+      if(/material-symbols/.test(cn)) continue;
+      if(/uppercase/.test(cn)||getComputedStyle(e).textTransform==='uppercase') continue;
+      var s=parseFloat(getComputedStyle(e).fontSize)||0; if(s>f){ f=s; b=e; } } return b; }
   // CACHE de tarjetas: mientras la tarjeta cacheada siga viva y visible, NO se reescanea el documento.
   // Un querySelectorAll de todo el doc solo ocurre (rate-limited) cuando faltan → así fuera del Dashboard
   // (ej. Despachos) el parche hace 1 escaneo cada 1,5-3s y sale, en vez de martillar cada tick.
-  var _C={}, _lastScan=0, _present=false;
+  var _C={}, _lastScan=0, _miss=0;
   function _get(l){ var c=_C[l]; return (c&&c.isConnected&&c.offsetParent!==null)?c:null; }
   function _rescan(){ ['Facturación','Ganancia','Inversión Ads','True ROAS','Margen','Break Even ROAS'].forEach(function(l){ var c=cardByLabel(l); if(c) _C[l]=c; }); }
   function _val(l){ var c=_get(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }
@@ -2354,24 +2361,22 @@ _SOLO_DASH = r"""
   var _t0=Date.now();
   function fix(){
     var now=Date.now();
-    if(!_dashOk()){                                   // sin tarjetas vivas cacheadas → reescaneo
-      // RÁPIDO los primeros 10s (rescanea cada 0,4s) → se acomoda casi al instante, no en 15s.
-      // Después baja a 1,5-3s (protección para Despachos/otras pantallas donde no hay tarjetas).
-      var gap=(now-_t0<10000)?400:(_present?1500:3000);
+    if(!_dashOk()){                                   // tarjetas no encontradas (o re-render por cambio de fecha/cuenta)
+      // En el Dashboard re-detecta RÁPIDO (para re-aplicar en CADA cambio de fecha/cuenta/re-render).
+      // Tras 3 fallos seguidos (estamos en otra pantalla, ej Despachos) baja a 2,5s → sin jank ahí.
+      var gap=(now-_t0<10000)?350:(_miss<3?500:2500);
       if(now-_lastScan < gap) return;
       _lastScan=now; _rescan();
-      _present=!!_get('Inversión Ads');
-      if(!_dashOk()) return;                           // no estamos en el Dashboard → salida barata
-    }
-    _present=true;
+      if(_dashOk()){ _miss=0; } else { _miss++; return; }
+    } else { _miss=0; }
     var fa=_val('Facturación'), ga=_val('Ganancia'), iv=_val('Inversión Ads'); if(!fa) return;
     var mg=Math.round(ga/fa*1000)/10, br=(ga+iv)>0?Math.round(fa/(ga+iv)*100)/100:0;
     var m=_get('True ROAS')||_get('Margen');
     if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-      var v=bigLeaf(m); var mv=mg+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
+      var v=valueSlot(m); var mv=mg+'%'; if(v&&v.textContent!==mv) v.textContent=mv;   // valueSlot: llena aunque venga vacío
       var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; }
     var b=_get('Break Even ROAS');
-    if(b){ var w=bigLeaf(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
+    if(b){ var w=valueSlot(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
     window._rpDashOK=true;   // ya corregí Margen + Break Even → estructura() puede revelar la grilla
   }
   function loop(){ try{ fix(); }catch(e){} }
@@ -4002,7 +4007,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carrito-link-corto"})
+    return jsonify({"ok": True, "v": "2026-08-28-dash-infixeable"})
 
 
 @app.get("/pf-cfg")
