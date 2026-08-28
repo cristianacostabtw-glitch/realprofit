@@ -2398,7 +2398,18 @@ _SOLO_DASH = r"""
     for(var j=0;j<cand.length;j++){ if(cand[j].lab && cand[j].lab.indexOf(word)>=0) return cand[j].val; }  // por título (preciso)
     var hits=cand.filter(function(x){ return x.full.indexOf(word)>=0; });                                   // por texto, solo si único
     if(hits.length===1) return hits[0].val;
+    // FALLBACK POSICIONAL para GANANCIA: en muchas cuentas los KPI de arriba salen con título vacío. El grupo de
+    // arriba (título vacío, ANTES de las tarjetas de costos que sí tienen título) es [Facturación, Ticket, Ganancia]
+    // → la GANANCIA es la ÚLTIMA de ese grupo. Robusto sin depender del label.
+    if(word.indexOf('ganancia')>=0){
+      var top=[]; for(var q=0;q<cand.length;q++){ if(!cand[q].lab) top.push(cand[q]); else break; }
+      if(top.length>=2) return top[top.length-1].val;
+    }
   }catch(e){} return 0; }
+  // Número "X.XXx" que trae el SUBTÍTULO de una tarjeta (ej Break Even: "…tu ROAS real es 2.70x"). 100% confiable
+  // porque el SPA lo renderiza aunque el valor grande venga roto (0.00x).
+  function _subNum(c){ if(!c) return null; var s=subLeaf(c); if(!s) return null;
+    var m=(s.textContent||'').match(/(\d+(?:[.,]\d+)?)\s*x/i); return m?parseFloat(m[1].replace(',','.')):null; }
   function _val(l){ var w=_na(l).split(' ')[0]; var v=_kpiVal(w); if(v) return v;   // 1) posicional (robusto)
     var c=cardByLabel(l); if(c){ var b=bigLeaf(c); if(b){ var x=n(b.textContent); if(x) return x; } } return 0; }  // 2) fallback viejo
   function _dashOk(){ return _get('Inversión Ads') && (_get('True ROAS')||_get('Margen')) && _get('Break Even ROAS'); }
@@ -2407,26 +2418,29 @@ _SOLO_DASH = r"""
     var inv=cardByLabel('Inversión Ads');
     if(!inv){ var now=Date.now(); if(now-_lastScan < (_miss<3?400:2500)) return; _lastScan=now; _miss++; return; }
     _miss=0;
-    // VALORES: uso los del BACKEND (window.__RP: margen=ganancia/fact*100, be_roas=fact/pre_ads) — son EXACTOS y
-    // ya alimentan los subtítulos. Fallback: cálculo desde el DOM. Si no tengo ninguno de los dos, NO escribo
-    // (evita "0%"/"0.00x" y el TITILEO). Escribir siempre el MISMO valor (guardado por !==) = FIJO, no parpadea.
+    // El SPA usa XHR (no fetch) en muchas cuentas → window.__RP viene null. Por eso saco los valores del DOM, que
+    // SIEMPRE están: Facturación (KPI), Ganancia (KPI, por posición si el título viene vacío), y el Break Even del
+    // SUBTÍTULO ("…tu ROAS real es 2.70x") que el SPA renderiza aunque el valor grande esté 0.00x.
     var R=window.__RP||null;
-    var mg=null, br=null;
+    var fa=_val('Facturación'), ga=_val('Ganancia'), iv2=_val('Inversión Ads');
+    // MARGEN = Ganancia ÷ Facturación (%). Backend si está; si no, cálculo del DOM.
+    var mg=null;
     if(R && R.margen!=null) mg=R.margen;
+    else if(fa && ga) mg=Math.round(ga/fa*1000)/10;
+    // BREAK EVEN: backend → subtítulo (2.70x) → último recurso fa/(ga+inv).
+    var bcard=cardByLabel('Break Even ROAS');
+    var br=null;
     if(R && R.be_roas!=null) br=R.be_roas;
-    if(mg==null || br==null){                        // fallback DOM (solo si el backend no llegó)
-      var fa=_val('Facturación'), ga=_val('Ganancia'), iv2=_val('Inversión Ads');
-      if(fa && ga){ if(mg==null) mg=Math.round(ga/fa*1000)/10; if(br==null && (ga+iv2)>0) br=Math.round(fa/(ga+iv2)*100)/100; }
-    }
-    if(mg==null && br==null) return;                 // sin datos reales no toco nada
+    else { var sb=_subNum(bcard); if(sb!=null) br=sb;
+           else if(fa && (ga+iv2)>0) br=Math.round(fa/(ga+iv2)*100)/100; }
+    if(mg==null && br==null) return;                 // sin datos reales no toco nada (anti-titileo)
     // TARJETA MARGEN (era "True ROAS" → la renombro a "Margen" y le pongo el %). Elimina "True ROAS" del sistema.
     if(mg!=null){ var m=cardByLabel('Margen')||cardByLabel('True ROAS');
       if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
         var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
         var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; } }
-    // TARJETA BREAK EVEN ROAS
-    if(br!=null){ var b=cardByLabel('Break Even ROAS');
-      if(b){ var w=valueSlot(b); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; } }
+    // TARJETA BREAK EVEN ROAS (relleno el valor grande; el subtítulo lo dejo como está)
+    if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
     window._rpDashOK=true;
   }
   function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
@@ -4058,7 +4072,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-sku-cache-persist"})
+    return jsonify({"ok": True, "v": "2026-08-28-roas-dom-sub"})
 
 
 @app.get("/pf-cfg")
