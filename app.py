@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-num-sync-tab"})
+    return jsonify({"ok": True, "v": "2026-08-28-carritos-cache-sem"})
 
 
 @app.get("/pf-cfg")
@@ -4842,6 +4842,8 @@ _DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instant�
 # (5 < 12) → aunque las 5 pesadas queden colgadas, SIEMPRE quedan ~7 hilos libres para navegar/abrir.
 # Esto es lo que evita que el server quede muerto para todos (HTTP 000) cuando algo externo se cuelga.
 _SHOP_SEM = threading.BoundedSemaphore(5)
+_CARR_CACHE = {}      # {email: {"dias": n, "ts": epoch, "items": [...]}} — cachea el fetch pesado de carritos
+_CARR_TTL = 300       # 5 min. Abrir/recargar Carritos usa el caché; enviar o refresh=1 lo refresca.
 
 
 def _heavy(fn):
@@ -12224,15 +12226,21 @@ def _wa_carritos_list(email, dias=14):
     tks = _shop_tokens().get(email) or {}
     if tks.get("access_token") and tks.get("shop"):
         shop, token = tks["shop"], tks["access_token"]
-        try:
-            st, sm = _shopify_buyers(shop, token, 25)
-            compr_t |= st; compr_m |= sm
-        except Exception:
-            pass
-        try:
-            abandonados = _shopify_abandoned(shop, token, dias)
-        except Exception:
-            abandonados = []
+        abandonados = []
+        _got = _SHOP_SEM.acquire(timeout=4)   # tope de ops pesadas → NUNCA cuelga todos los hilos del server
+        if _got:
+            try:
+                try:
+                    st, sm = _shopify_buyers(shop, token, dias)
+                    compr_t |= st; compr_m |= sm
+                except Exception:
+                    pass
+                try:
+                    abandonados = _shopify_abandoned(shop, token, dias)
+                except Exception:
+                    abandonados = []
+            finally:
+                _SHOP_SEM.release()
         for co in abandonados:
             if co.get("completed_at"):
                 continue
@@ -12325,7 +12333,14 @@ def wa_carritos():
         dias = max(1, min(30, int(request.args.get("dias") or 14)))
     except Exception:
         dias = 14
-    items = _wa_carritos_list(email, dias)
+    import time as _t
+    refresh = request.args.get("refresh") in ("1", "true", "yes")
+    _c = _CARR_CACHE.get(email)
+    if (not refresh) and _c and _c.get("dias") == dias and (_t.time() - _c.get("ts", 0) < _CARR_TTL):
+        items = _c["items"]                                  # caché fresco → no rebaja Shopify de nuevo
+    else:
+        items = _wa_carritos_list(email, dias)
+        _CARR_CACHE[email] = {"dias": dias, "ts": _t.time(), "items": items}
     nsh = sum(1 for x in items if x.get("tienda") == "shopify")
     ntn = sum(1 for x in items if x.get("tienda") == "tn")
     n_pend = sum(1 for x in items if not x.get("enviado"))
@@ -12349,6 +12364,7 @@ def wa_carritos_enviar():
         dias = max(1, min(30, int(data.get("dias") or 14)))
     except Exception:
         dias = 14
+    _CARR_CACHE.pop(email, None)                    # al enviar, invalido el caché (cambia el estado Enviado)
     ya = _wa_marca_enviados(email, "carrito")      # re-chequeo anti-duplicado al momento de mandar
     env = salt = fail = 0
     errores = []
