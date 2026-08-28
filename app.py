@@ -4058,7 +4058,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-desp-deadline"})
+    return jsonify({"ok": True, "v": "2026-08-28-desp-strfix"})
 
 
 @app.get("/pf-cfg")
@@ -4709,20 +4709,27 @@ def _dni_de(o) -> str:
     if m:
         return m.group(1)
     cust = o.get("customer") or {}
-    for src in (o.get("shipping_address") or {}, o.get("billing_address") or {},
-                cust.get("default_address") or {}):
+    for src in (_D(o.get("shipping_address")), _D(o.get("billing_address")),
+                _D(cust.get("default_address"))):
         comp = _solo_dig(src.get("company"))
         if 7 <= len(comp) <= 11:
             return comp
     return ""
 
 
+def _D(x):
+    """Devuelve x si es dict, si no {}. CLAVE: en Tiendanube billing_address/shipping_address
+    a veces vienen como STRING (no dict) → `x or {}` NO protege (un string no vacío es truthy) y
+    el .get() explota (AttributeError), tirando abajo TODO el fetch de despachos. _D() lo blinda."""
+    return x if isinstance(x, dict) else {}
+
+
 def _tn_dni(o) -> str:
     """DNI real del pedido de TIENDANUBE (contact_identification es el campo estándar; con respaldos)."""
-    cust = o.get("customer") or {}
+    cust = _D(o.get("customer"))
     for v in (o.get("contact_identification"), cust.get("identification"),
-              (o.get("billing_address") or {}).get("identification"),
-              (o.get("shipping_address") or {}).get("identification")):
+              _D(o.get("billing_address")).get("identification"),
+              _D(o.get("shipping_address")).get("identification")):
         d = _solo_dig(v)
         if len(d) >= 7:
             return d
@@ -4797,7 +4804,7 @@ def _tn_pickup_nombre(o):
                 break
         return nom
     # sin nombre → armo con la dirección del punto (calle + localidad + CP)
-    ad = pd.get("address") or {}
+    ad = _D(pd.get("address"))
     partes = [ad.get("address"), ad.get("locality") or ad.get("city"), ad.get("zipcode")]
     s = " ".join(str(p) for p in partes if p).strip()
     return s
@@ -4805,7 +4812,7 @@ def _tn_pickup_nombre(o):
 
 def _tn_tel(o):
     """Primer teléfono usable del cliente de Tiendanube."""
-    sa = o.get("shipping_address") or {}
+    sa = _D(o.get("shipping_address"))
     cust = o.get("customer") or {}
     for p in (sa.get("phone"), o.get("contact_phone"), o.get("billing_phone"), cust.get("phone")):
         p = (p or "").strip()
@@ -4877,7 +4884,7 @@ def _tiendanube_orders(email, desde=None, hasta=None, refresh=False, deadline=No
                 es_suc = ((o.get("shipping_pickup_type") == "pickup") or (sh.get("type") == "pickup")
                           or bool(pk)
                           or _txt_es_sucursal((o.get("shipping_option") or "") + " " + suc_nom))
-                sa = o.get("shipping_address") or {}
+                sa = _D(o.get("shipping_address"))
                 cust = o.get("customer") or {}
                 nombre = (sa.get("name") or o.get("contact_name") or cust.get("name") or "—")
                 # TiendaNube trae calle y número en campos SEPARADOS → los uso tal cual (no adivino).
@@ -4885,7 +4892,7 @@ def _tiendanube_orders(email, desde=None, hasta=None, refresh=False, deadline=No
                 numero = str(sa.get("number") or "").strip()
                 floor = str(sa.get("floor") or "").strip()
                 # Para SUCURSAL, la localidad/CP posta son las del PUNTO (el shipping_address suele venir "No informado").
-                pkad = pk.get("address") or {}
+                pkad = _D(pk.get("address"))
                 localidad = ((pkad.get("locality") or pkad.get("city")) if es_suc and pkad else "") or (sa.get("locality") or sa.get("city") or "").strip()
                 cp = (str(pkad.get("zipcode") or "") if es_suc and pkad else "") or str(sa.get("zipcode") or "").strip()
                 prov = ((pkad.get("province") or "") if es_suc and pkad else "") or (sa.get("province") or "").strip()
@@ -5072,7 +5079,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             continue
         tiene_trk = any(f.get("tracking_number") for f in (o.get("fulfillments") or []))
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-        sa = o.get("shipping_address") or {}
+        sa = _D(o.get("shipping_address"))
         cust = o.get("customer") or {}
         nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip())
                   or o.get("contact_email") or "—")
@@ -5429,7 +5436,7 @@ def _facturacion_orders(email, desde=None, hasta=None):
         if (o.get("financial_status") or "").lower() != "paid":
             continue
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-        ba = o.get("billing_address") or o.get("shipping_address") or {}
+        ba = _D(o.get("billing_address")) or _D(o.get("shipping_address"))
         cust = o.get("customer") or {}
         nombre = (ba.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip())
                   or o.get("contact_email") or "—")
@@ -6328,7 +6335,7 @@ def _sku_pedidos_map(email):
                     if isinstance(nm, dict):
                         nm = nm.get("es") or next(iter(nm.values()), "") if nm else ""
                     items.append(("tn:%s" % p.get("product_id"), int(p.get("quantity") or 0), nm or ""))
-                nom = ((o.get("shipping_address") or {}).get("name") or o.get("contact_name") or "")
+                nom = ((_D(o.get("shipping_address"))).get("name") or o.get("contact_name") or "")
                 mapa.setdefault(str(o.get("number")), []).append({"nom": nom, "items": items, "tienda": "tn"})
             if len(d) < 200:
                 break
@@ -6348,7 +6355,7 @@ def _sku_pedidos_map(email):
                     for li in (o.get("line_items") or []):
                         items.append((str(li.get("product_id") or ""), int(li.get("quantity") or 0),
                                       li.get("title") or li.get("name") or ""))
-                    sa = o.get("shipping_address") or {}
+                    sa = _D(o.get("shipping_address"))
                     cu = o.get("customer") or {}
                     nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
                     mapa.setdefault(num, []).append({"nom": nom, "items": items, "tienda": "shopify"})
@@ -6771,7 +6778,7 @@ def _seg_presentacion(u: int) -> str:
 
 
 def _seg_tel_real(o: dict) -> str:
-    sa = o.get("shipping_address") or {}
+    sa = _D(o.get("shipping_address"))
     cust = o.get("customer") or {}
     import re
     for p in (sa.get("phone"), o.get("contact_phone"), o.get("billing_phone"), cust.get("phone")):
@@ -6973,7 +6980,7 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
 
 
 def _seg_shop_tel(o):
-    sa = o.get("shipping_address") or {}
+    sa = _D(o.get("shipping_address"))
     cust = o.get("customer") or {}
     for p in (sa.get("phone"), o.get("phone"), cust.get("phone")):
         p = (p or "").strip()
@@ -7146,7 +7153,7 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 cust = o.get("customer") or {}
                 _st = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).lower()
                 nombre = (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()
-                          or (o.get("shipping_address") or {}).get("name") or it.get("dest", ""))
+                          or (_D(o.get("shipping_address"))).get("name") or it.get("dest", ""))
                 u = sum(int(float(li.get("quantity") or 0)) for li in (o.get("line_items") or []))
                 tel = _seg_shop_tel(o)
                 tn_ok = any((f.get("tracking_number") for f in (o.get("fulfillments") or [])))
@@ -7523,7 +7530,7 @@ def _tn_hist_orders(email, hasta):
         if (o.get("payment_status") or "").lower() != "paid" or o.get("cancelled_at"):
             continue
         cu = o.get("customer") or {}
-        sa = o.get("shipping_address") or {}
+        sa = _D(o.get("shipping_address"))
         hist.append({"fecha": o.get("created_at") or "", "total": float(o.get("total") or 0),
                      "email": o.get("contact_email") or cu.get("email") or "",
                      "tel": o.get("contact_phone") or o.get("billing_phone") or cu.get("phone") or sa.get("phone") or "",
@@ -7561,8 +7568,8 @@ def _shop_hist_orders(email, hasta):
             break
         for o in (r.json().get("orders") or []):
             cu = o.get("customer") or {}
-            ba = o.get("billing_address") or {}
-            sa = o.get("shipping_address") or {}
+            ba = _D(o.get("billing_address"))
+            sa = _D(o.get("shipping_address"))
             hist.append({"fecha": o.get("created_at") or "", "total": float(o.get("total_price") or 0),
                          "email": o.get("email") or o.get("contact_email") or cu.get("email") or "",
                          "tel": cu.get("phone") or ba.get("phone") or sa.get("phone") or "",
@@ -11033,12 +11040,12 @@ def pf_suc_preview():
             for o in (arr if isinstance(arr, list) else []):
                 if str(o.get("number")) != num:
                     continue
-                pk = _tn_pickup(o); pkad = pk.get("address") or {}
+                pk = _tn_pickup(o); pkad = _D(pk.get("address"))
                 suc_raw = _tn_pickup_nombre(o)
                 lat = pkad.get("latitude") or pkad.get("lat") or ""
                 lng = pkad.get("longitude") or pkad.get("lng") or ""
                 pid = str(o.get("shipping_option_reference") or "")
-                cp = str(pkad.get("zipcode") or (o.get("shipping_address") or {}).get("zipcode") or "")
+                cp = str(pkad.get("zipcode") or (_D(o.get("shipping_address"))).get("zipcode") or "")
                 of, via = _resolver_suc_completo(suc_raw, lat, lng, pid, cp, sucs)
                 item = {"tienda": "TiendaNube", "cuenta": email, "num": num,
                         "punto_elegido": pk.get("name") or suc_raw, "punto_extraido": suc_raw,
@@ -11074,7 +11081,7 @@ def pf_suc_preview():
                 if str(o.get("order_number")) != num:
                     continue
                 suc_raw = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip()
-                cp = str((o.get("shipping_address") or {}).get("zip") or "")
+                cp = str((_D(o.get("shipping_address"))).get("zip") or "")
                 of, via = _resolver_suc_completo(suc_raw, "", "", "", cp, sucs)
                 item = {"tienda": "Shopify", "cuenta": email, "num": num,
                         "punto_elegido": suc_raw, "punto_extraido": suc_raw,
@@ -12329,7 +12336,7 @@ def _wa_transfers_list(email):
         if not isinstance(d, list) or not d:
             break
         for o in d:
-            sa = o.get("shipping_address") or {}
+            sa = _D(o.get("shipping_address"))
             tel = sa.get("phone") or o.get("contact_phone") or o.get("billing_phone") or ""
             if not re.sub(r"\D", "", tel or ""):
                 continue
@@ -12387,8 +12394,8 @@ def _shopify_buyers(shop, token, dias=25):
                           "orders")
     for o in ords:
         ph = (o.get("phone") or (o.get("customer") or {}).get("phone")
-              or (o.get("shipping_address") or {}).get("phone")
-              or (o.get("billing_address") or {}).get("phone"))
+              or (_D(o.get("shipping_address"))).get("phone")
+              or (_D(o.get("billing_address"))).get("phone"))
         if ph:
             tels.add(_wa_e164(ph))
         em = (o.get("email") or (o.get("customer") or {}).get("email") or "").lower()
@@ -12491,8 +12498,8 @@ def _wa_carritos_list(email, dias=14):
                 continue
             cust = co.get("customer") or {}
             tel = (co.get("phone") or cust.get("phone")
-                   or (co.get("shipping_address") or {}).get("phone")
-                   or (co.get("billing_address") or {}).get("phone"))
+                   or (c_D(o.get("shipping_address"))).get("phone")
+                   or (c_D(o.get("billing_address"))).get("phone"))
             if not tel or not re.sub(r"\D", "", tel):
                 continue
             url = co.get("abandoned_checkout_url")
@@ -12505,8 +12512,8 @@ def _wa_carritos_list(email, dias=14):
             if k in ya or k in compr_t or (mail and mail in compr_m):   # ya enviado o ya compró → FUERA
                 continue
             nombre = (cust.get("first_name")
-                      or (co.get("shipping_address") or {}).get("first_name")
-                      or (co.get("shipping_address") or {}).get("name") or "cliente")
+                      or (c_D(o.get("shipping_address"))).get("first_name")
+                      or (c_D(o.get("shipping_address"))).get("name") or "cliente")
             if k not in cand or cr > cand[k]["cr"]:
                 cand[k] = {"cr": cr, "nombre": nombre, "url": url,
                            "total": co.get("total_price"), "dias": (now - cr).days, "tienda": "shopify"}
@@ -12753,7 +12760,7 @@ def pf_diag_excel():
                 continue                                         # ya despachado (tiene tracking)
             if str(n) in excluir:
                 continue                                         # ya tiene etiqueta buena para reusar
-            sa = o.get("shipping_address") or {}; cust = o.get("customer") or {}
+            sa = _D(o.get("shipping_address")); cust = o.get("customer") or {}
             nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip()) or "—")
             sel.append({"num": str(n), "nombre": nombre.strip(),
                         "tipo": "sucursal" if _es_sucursal_ship(o) else "domicilio",
@@ -12936,7 +12943,7 @@ def pf_diag_resol():
             n = o.get("order_number") or 0
             if n < lo or n > hi:
                 continue
-            sa = o.get("shipping_address") or {}
+            sa = _D(o.get("shipping_address"))
             suc_raw = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip()
             if _es_sucursal_ship(o):
                 of = _and_suc_exacto(suc_raw)
@@ -12987,7 +12994,7 @@ def pf_diag_suc():
         return jsonify({"ok": False, "msg": "no encontré #%s" % num})
     sl = o.get("shipping_lines") or [{}]
     metodo = " ".join(str((x or {}).get("title") or "") for x in sl).strip()
-    sa = o.get("shipping_address") or {}
+    sa = _D(o.get("shipping_address"))
     es_suc = _es_sucursal_ship(o)
     resuelto = capa = None
     if es_suc:
