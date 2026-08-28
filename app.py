@@ -2387,6 +2387,14 @@ _SOLO_DASH = r"""
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
+  // ── DIAGNÓSTICO TEMPORAL: badge abajo-izquierda con qué encuentra el parche (para cazar la causa). Se saca luego. ──
+  setTimeout(function(){ try{
+    var st='inv:'+(!!cardByLabel('Inversión Ads'))+' fa:'+(!!cardByLabel('Facturación'))+' ga:'+(!!cardByLabel('Ganancia'))+' tr:'+(!!cardByLabel('True ROAS'))+' be:'+(!!cardByLabel('Break Even ROAS'));
+    var d=document.getElementById('_rpdbg')||document.createElement('div'); d.id='_rpdbg';
+    d.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#0b0b0b;color:#5fff87;font:10px/1.4 monospace;padding:4px 9px;border-radius:6px;opacity:.92';
+    d.textContent='RP-DBG '+st+' | fa='+_val('Facturación')+' ga='+_val('Ganancia')+' inv='+_val('Inversión Ads');
+    document.body.appendChild(d);
+  }catch(e){ var d2=document.createElement('div'); d2.id='_rpdbg'; d2.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#a00;color:#fff;font:10px monospace;padding:4px 9px'; d2.textContent='RP-DBG ERR: '+(e&&e.message); document.body.appendChild(d2); } }, 5500);
 })();
 </script>
 
@@ -4011,7 +4019,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-tn-desp-nocuelga"})
+    return jsonify({"ok": True, "v": "2026-08-28-dbg-roas"})
 
 
 @app.get("/pf-cfg")
