@@ -2027,9 +2027,12 @@ _SOLO_DASH = r"""
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
-    // NUNCA esconder la grilla: antes se ponía opacity 0 esperando un "paint" que a veces no llegaba →
-    // "Resumen del período" quedaba EN BLANCO. Ahora se muestra siempre; el self-heal corrige los valores.
-    if(grid.style.opacity==='0') grid.style.opacity='1'; _painted=true;
+    // Esconde la grilla SOLO mientras el self-heal corrige (True ROAS→Margen · Break Even) → así NUNCA se
+    // ven los valores nativos rotos NI queda en blanco: se revela apenas está corregida, o a los 2,6s (tope duro).
+    if(!window._rpT0) window._rpT0=Date.now();
+    var _ok = window._rpDashOK || (Date.now()-window._rpT0 > 2600);
+    if(_ok){ if(grid.style.opacity!=='1'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='1'; } _painted=true; }
+    else if(grid.style.opacity!=='0'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
       if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
       if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
@@ -2369,10 +2372,12 @@ _SOLO_DASH = r"""
       var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; }
     var b=_get('Break Even ROAS');
     if(b){ var w=bigLeaf(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
+    window._rpDashOK=true;   // ya corregí Margen + Break Even → estructura() puede revelar la grilla
   }
   function loop(){ try{ fix(); }catch(e){} }
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
+  setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
 })();
 </script>
 
@@ -3997,7 +4002,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-dash-selfheal-rapido"})
+    return jsonify({"ok": True, "v": "2026-08-28-dash-sin-flash"})
 
 
 @app.get("/pf-cfg")
