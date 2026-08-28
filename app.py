@@ -4076,7 +4076,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carr-clean"})
+    return jsonify({"ok": True, "v": "2026-08-28-seg-cache"})
 
 
 @app.get("/pf-cfg")
@@ -6944,7 +6944,9 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     H = {"X-Shopify-Access-Token": atok}
     want = set(str(x).strip() for x in numeros if str(x).strip())
     mapa = {}
-    # 1) Lo que ya está en el caché de Despachos (instantáneo).
+    # 1) Lo que ya está en el caché de Despachos (instantáneo). Cargo el caché de DISCO primero → tras un
+    #    redeploy la memoria arranca vacía, pero el disco tiene los pedidos → el seguimiento NO se recontra-cuelga.
+    _desp_cache_load()
     _c = _DESP_CACHE.get(email)
     if _c and _c.get("orders"):
         for o in _c["orders"]:
