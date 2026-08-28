@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-sku-suma"})
+    return jsonify({"ok": True, "v": "2026-08-27-carritos-shopify"})
 
 
 @app.get("/pf-cfg")
@@ -11718,11 +11718,14 @@ function sendTransfers(soloTildados){ var tels=soloTildados?Object.keys(TSEL).fi
  }); }
 function loadCarritos(){ get('/wa-carritos?dias=14').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
  TDATA=r.items||[]; renderCarritos(r); }); }
+function _cbadge(t){ if(t==='shopify') return '<span style="background:#e7f6ec;color:#0a7d3c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Shopify</span>';
+  if(t==='tn') return '<span style="background:#e8f0fe;color:#1a56db;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Tiendanube</span>'; return ''; }
 function renderCarritos(r){ var rows=TDATA.map(function(o){ var ck='<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
-  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+'</td><td style="padding:9px 8px;color:#667">'+esc(o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+o.dias+'d</td></tr>'; }).join('');
+  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+_cbadge(o.tienda)+'</td><td style="padding:9px 8px;color:#667">'+esc((typeof webFmtTel==='function')?webFmtTel(o.tel):o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+o.dias+'d</td></tr>'; }).join('');
+ var porTienda=[]; if(r.n_shopify) porTienda.push(r.n_shopify+' Shopify'); if(r.n_tn) porTienda.push(r.n_tn+' Tiendanube');
  var head='<div style="max-width:940px;margin:0 auto">'
-  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128722; Carritos abandonados</h2><span style="color:#667">no contactados · &#8804; '+r.dias+' días</span></div>'
-  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> (cupón REGALO10). <b>Filtro seguro:</b> excluye a los que ya recibieron carrito y a los que ya compraron, 1 por teléfono. No repite.</div>';
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128722; Carritos abandonados</h2><span style="color:#667">no contactados · &#8804; '+r.dias+' días'+(porTienda.length?(' · '+porTienda.join(' · ')):'')+'</span></div>'
+  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> — el link ya lleva el cupón <b>'+(r.cupon||'')+'</b> aplicado (10% OFF). <b>Filtro seguro:</b> excluye a los que ya recibieron carrito y a los que ya compraron, 1 por teléfono. Solo los que dejaron teléfono. No repite.</div>';
  if(!r.wpp_on) head+='<div style="background:#fdeaea;color:#c0392b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
  if(!TDATA.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay carritos sin contactar. &#9989;</div></div>'; return; }
  head+='<div style="display:flex;gap:10px;margin-bottom:12px"><button onclick="sendCarritos(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar a los '+TDATA.length+'</button>'
@@ -11997,6 +12000,7 @@ boot();
 # (_wa_chats_all), sembrado con lo que ya mandó la Mac. NUNCA duplicar (ver incidente 22-ago).
 WA_TPL_TRANSF = "datos_transferencia"      # params: nombre, pedido, cbu, titular, monto
 WA_TPL_CARRITO = "carrito_abandonado"      # params: nombre, url
+WA_CARRITO_DISCOUNT = "CARRITO10"          # cupón 10% que se AUTO-APLICA en el link de Shopify (&discount=)
 WA_TPL_LANG = "es_AR"
 WA_CBU_DEFAULT = "0070059730004102336598"
 WA_TITULAR_DEFAULT = "Cristian Acosta"
@@ -12088,70 +12092,169 @@ def _wa_transfers_list(email):
     return out
 
 
+def _shop_paginate(url, headers, params, key, cap=20):
+    """GET paginado de Shopify por Link header. Reintenta 429/5xx. Devuelve la lista de `key`."""
+    import time as _tsleep
+    out = []
+    for _ in range(cap):
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=30)
+        except Exception:
+            break
+        if r.status_code == 429 or r.status_code >= 500:
+            _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.3); continue
+        if r.status_code != 200:
+            break
+        out.extend((r.json() or {}).get(key, []))
+        link = r.headers.get("Link", "") or r.headers.get("link", "")
+        nxt = None
+        for part in link.split(","):
+            if 'rel="next"' in part and "<" in part and ">" in part:
+                nxt = part[part.find("<") + 1:part.find(">")]
+        if not nxt:
+            break
+        url = nxt; params = None
+    return out
+
+
+def _shopify_abandoned(shop, token, dias):
+    """Carritos abandonados de Shopify (checkouts NO completados) de los últimos `dias`."""
+    since = (_dt.date.today() - _dt.timedelta(days=dias + 1)).isoformat()
+    return _shop_paginate("https://%s/admin/api/2026-07/checkouts.json" % shop,
+                          {"X-Shopify-Access-Token": token},
+                          {"limit": 250, "status": "open", "created_at_min": since + "T00:00:00-03:00"},
+                          "checkouts")
+
+
+def _shopify_buyers(shop, token, dias=25):
+    """Teléfonos (E164) y emails de compradores Shopify recientes → para EXCLUIR del carrito."""
+    tels, mails = set(), set()
+    since = (_dt.date.today() - _dt.timedelta(days=dias)).isoformat()
+    ords = _shop_paginate("https://%s/admin/api/2026-07/orders.json" % shop,
+                          {"X-Shopify-Access-Token": token},
+                          {"status": "any", "limit": 250, "created_at_min": since + "T00:00:00-03:00",
+                           "fields": "phone,email,customer,shipping_address,billing_address"},
+                          "orders")
+    for o in ords:
+        ph = (o.get("phone") or (o.get("customer") or {}).get("phone")
+              or (o.get("shipping_address") or {}).get("phone")
+              or (o.get("billing_address") or {}).get("phone"))
+        if ph:
+            tels.add(_wa_e164(ph))
+        em = (o.get("email") or (o.get("customer") or {}).get("email") or "").lower()
+        if em:
+            mails.add(em)
+    return tels, mails
+
+
 def _wa_carritos_list(email, dias=14):
-    """Carritos abandonados NO contactados (filtro seguro: excluye ya-contactados, compradores, dedupe x tel)."""
-    tk = _tn_tokens().get(email) or {}
-    if not (tk.get("access_token") and tk.get("store_id")):
-        return []
-    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    """Carritos abandonados NO contactados (TiendaNube + Shopify) con filtro seguro:
+    excluye ya-contactados, compradores y dedupe por teléfono (1 por tel). Cada item trae `tienda`."""
     ya = _wa_marca_enviados(email, "carrito")
     compr_t, compr_m = set(), set()
-    for page in (1, 2, 3):
-        try:
-            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
-                "per_page": 200, "page": page, "fields": "contact_phone,contact_email",
-                "created_at_min": (_dt.date.today() - _dt.timedelta(days=25)).isoformat()}, timeout=30)
-            d = r.json() if r.content else []
-        except Exception:
-            d = []
-        if not isinstance(d, list) or not d:
-            break
-        for o in d:
-            if o.get("contact_phone"):
-                compr_t.add(_wa_e164(o["contact_phone"]))
-            if o.get("contact_email"):
-                compr_m.add((o["contact_email"] or "").lower())
-        if len(d) < 200:
-            break
     now = _dt.datetime.now(_dt.timezone.utc)
     cand = {}
-    parar = False
-    for page in range(1, 15):
-        if parar:
-            break
-        try:
-            r = requests.get("%s/%s/checkouts" % (TN_API, store), headers=hdr,
-                             params={"per_page": 100, "page": page}, timeout=30)
-            d = r.json() if r.content else []
-        except Exception:
-            d = []
-        if not isinstance(d, list) or not d:
-            break
-        for o in d:
+    # ───────────── TiendaNube ─────────────
+    tk = _tn_tokens().get(email) or {}
+    if tk.get("access_token") and tk.get("store_id"):
+        store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+        for page in (1, 2, 3):
             try:
-                cr = _dt.datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                    "per_page": 200, "page": page, "fields": "contact_phone,contact_email",
+                    "created_at_min": (_dt.date.today() - _dt.timedelta(days=25)).isoformat()}, timeout=30)
+                d = r.json() if r.content else []
+            except Exception:
+                d = []
+            if not isinstance(d, list) or not d:
+                break
+            for o in d:
+                if o.get("contact_phone"):
+                    compr_t.add(_wa_e164(o["contact_phone"]))
+                if o.get("contact_email"):
+                    compr_m.add((o["contact_email"] or "").lower())
+            if len(d) < 200:
+                break
+        parar = False
+        for page in range(1, 15):
+            if parar:
+                break
+            try:
+                r = requests.get("%s/%s/checkouts" % (TN_API, store), headers=hdr,
+                                 params={"per_page": 100, "page": page}, timeout=30)
+                d = r.json() if r.content else []
+            except Exception:
+                d = []
+            if not isinstance(d, list) or not d:
+                break
+            for o in d:
+                try:
+                    cr = _dt.datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if (now - cr).days > dias:
+                    parar = True; continue
+                if o.get("completed_at"):
+                    continue
+                tel = o.get("contact_phone") or o.get("shipping_phone")
+                if not tel or not re.sub(r"\D", "", tel):
+                    continue
+                if not o.get("abandoned_checkout_url"):
+                    continue
+                k = _wa_e164(tel)
+                mail = (o.get("contact_email") or "").lower()
+                if k in ya or k in compr_t or (mail and mail in compr_m):
+                    continue
+                if k not in cand or cr > cand[k]["cr"]:
+                    cand[k] = {"cr": cr, "nombre": o.get("contact_name") or o.get("shipping_name") or "cliente",
+                               "url": o.get("abandoned_checkout_url"), "total": o.get("total"),
+                               "dias": (now - cr).days, "tienda": "tn"}
+            if len(d) < 100:
+                break
+    # ───────────── Shopify ─────────────
+    tks = _shop_tokens().get(email) or {}
+    if tks.get("access_token") and tks.get("shop"):
+        shop, token = tks["shop"], tks["access_token"]
+        try:
+            st, sm = _shopify_buyers(shop, token, 25)
+            compr_t |= st; compr_m |= sm
+        except Exception:
+            pass
+        try:
+            abandonados = _shopify_abandoned(shop, token, dias)
+        except Exception:
+            abandonados = []
+        for co in abandonados:
+            if co.get("completed_at"):
+                continue
+            try:
+                cr = _dt.datetime.fromisoformat((co.get("created_at") or "").replace("Z", "+00:00"))
             except Exception:
                 continue
             if (now - cr).days > dias:
-                parar = True
                 continue
-            if o.get("completed_at"):
-                continue
-            tel = o.get("contact_phone") or o.get("shipping_phone")
+            cust = co.get("customer") or {}
+            tel = (co.get("phone") or cust.get("phone")
+                   or (co.get("shipping_address") or {}).get("phone")
+                   or (co.get("billing_address") or {}).get("phone"))
             if not tel or not re.sub(r"\D", "", tel):
                 continue
-            if not o.get("abandoned_checkout_url"):
+            url = co.get("abandoned_checkout_url")
+            if not url:
                 continue
+            url += ("&" if "?" in url else "?") + "discount=" + WA_CARRITO_DISCOUNT   # auto-aplica el cupón
             k = _wa_e164(tel)
-            mail = (o.get("contact_email") or "").lower()
+            mail = (co.get("email") or cust.get("email") or "").lower()
             if k in ya or k in compr_t or (mail and mail in compr_m):
                 continue
+            nombre = (cust.get("first_name")
+                      or (co.get("shipping_address") or {}).get("first_name")
+                      or (co.get("shipping_address") or {}).get("name") or "cliente")
             if k not in cand or cr > cand[k]["cr"]:
-                cand[k] = {"cr": cr, "nombre": o.get("contact_name") or o.get("shipping_name") or "cliente",
-                           "url": o.get("abandoned_checkout_url"), "total": o.get("total"), "dias": (now - cr).days}
-        if len(d) < 100:
-            break
-    return [{"tel": k, "nombre": v["nombre"], "url": v["url"], "total": v["total"], "dias": v["dias"]}
+                cand[k] = {"cr": cr, "nombre": nombre, "url": url,
+                           "total": co.get("total_price"), "dias": (now - cr).days, "tienda": "shopify"}
+    return [{"tel": k, "nombre": v["nombre"], "url": v["url"], "total": v["total"],
+             "dias": v["dias"], "tienda": v.get("tienda", "")}
             for k, v in sorted(cand.items(), key=lambda x: x[1]["cr"], reverse=True)]
 
 
@@ -12209,8 +12312,12 @@ def wa_carritos():
         dias = max(1, min(30, int(request.args.get("dias") or 14)))
     except Exception:
         dias = 14
+    items = _wa_carritos_list(email, dias)
+    ntn = sum(1 for x in items if x.get("tienda") == "tn")
+    nsh = sum(1 for x in items if x.get("tienda") == "shopify")
     return jsonify({"ok": True, "wpp_on": bool(conf.get("token") and conf.get("phone_id")),
-                    "dias": dias, "items": _wa_carritos_list(email, dias)})
+                    "dias": dias, "cupon": WA_CARRITO_DISCOUNT, "n_tn": ntn, "n_shopify": nsh,
+                    "items": items})
 
 
 @app.post("/wa-carritos-enviar")
