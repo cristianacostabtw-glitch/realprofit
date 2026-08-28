@@ -4002,7 +4002,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-dash-sin-flash"})
+    return jsonify({"ok": True, "v": "2026-08-28-carrito-link-corto"})
 
 
 @app.get("/pf-cfg")
@@ -12051,6 +12051,50 @@ boot();
 WA_TPL_TRANSF = "datos_transferencia"      # params: nombre, pedido, cbu, titular, monto
 WA_TPL_CARRITO = "carrito_abandonado"      # params: nombre, url
 WA_CARRITO_DISCOUNT = "CARRITO10"          # cupón 10% que se AUTO-APLICA en el link de Shopify (&discount=)
+
+# ── Acortador de links (para que el mensaje del carrito NO salga con "Ver más") ──
+CARR_LINKS_FILE = DATA_DIR / "carrito_links.json"   # {codigo: url_completa}  (persistente → los links viejos siguen andando)
+CARR_SHORT_BASE = "https://www.realprofitapp.com/c/"
+_CARR_LINKS = None
+_CARR_LINKS_LOCK = threading.Lock()
+
+
+def _carr_links():
+    global _CARR_LINKS
+    if _CARR_LINKS is None:
+        try:
+            _CARR_LINKS = _json.loads(CARR_LINKS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            _CARR_LINKS = {}
+    return _CARR_LINKS
+
+
+def _carr_short(url):
+    """URL CORTA (realprofitapp.com/c/xxxxx) para `url`. Código ESTABLE (mismo carrito → mismo código).
+    Actualiza en MEMORIA; el archivo se persiste una sola vez con _carr_links_save()."""
+    import hashlib
+    code = hashlib.sha1(url.encode("utf-8")).hexdigest()[:7]
+    _carr_links()[code] = url
+    return CARR_SHORT_BASE + code
+
+
+def _carr_links_save():
+    with _CARR_LINKS_LOCK:
+        try:
+            CARR_LINKS_FILE.write_text(_json.dumps(_carr_links()), encoding="utf-8")
+        except Exception:
+            pass
+
+
+@app.get("/c/<code>")
+def carr_redirect(code):
+    """Redirige el link corto del carrito al recover real de Shopify (con el descuento). PÚBLICO."""
+    url = _carr_links().get(code)
+    if not url:
+        return "Link no encontrado", 404
+    return redirect(url, code=302)
+
+
 WA_TPL_LANG = "es_AR"
 WA_CBU_DEFAULT = "0070059730004102336598"
 WA_TITULAR_DEFAULT = "Cristian Acosta"
@@ -12260,7 +12304,7 @@ def _wa_carritos_list(email, dias=14):
                     continue
                 if k not in cand or cr > cand[k]["cr"]:
                     cand[k] = {"cr": cr, "nombre": o.get("contact_name") or o.get("shipping_name") or "cliente",
-                               "url": o.get("abandoned_checkout_url"), "total": o.get("total"),
+                               "url": _carr_short(o.get("abandoned_checkout_url")), "total": o.get("total"),
                                "dias": (now - cr).days, "tienda": "tn"}
             if len(d) < 100:
                 break
@@ -12302,6 +12346,7 @@ def _wa_carritos_list(email, dias=14):
             if not url:
                 continue
             url += ("&" if "?" in url else "?") + "discount=" + WA_CARRITO_DISCOUNT   # auto-aplica el cupón
+            url = _carr_short(url)   # link CORTO → el mensaje no sale con "Ver más"
             k = _wa_e164(tel)
             mail = (co.get("email") or cust.get("email") or "").lower()
             if k in ya or k in compr_t or (mail and mail in compr_m):   # ya enviado o ya compró → FUERA
@@ -12316,6 +12361,7 @@ def _wa_carritos_list(email, dias=14):
               "dias": v["dias"], "tienda": v.get("tienda", "")}
              for k, v in cand.items()]
     items.sort(key=lambda it: it["dias"])   # solo PENDIENTES (no enviados) · más nuevos arriba
+    _carr_links_save()                       # persisto los links cortos generados (una sola vez)
     return items
 
 
