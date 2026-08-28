@@ -4076,7 +4076,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-sku-deadline"})
+    return jsonify({"ok": True, "v": "2026-08-28-sku-mapdbg"})
 
 
 @app.get("/pf-cfg")
@@ -6524,6 +6524,29 @@ def _sku_run(job, data, email):
     except Exception as e:
         st["error"] = str(e)
         st["listo"] = True
+
+
+@app.get("/pf-sku-map-debug")
+def pf_sku_map_debug():
+    """TEMPORAL: con los tokens del server, devuelve el SKU calculado por pedido (para verificar el estampado)."""
+    if request.args.get("k") != "skumap2608":
+        return jsonify({"ok": False}), 403
+    email = request.args.get("email") or _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "email"}), 400
+    try:
+        skus = _skus_map(email)
+        mapa = _sku_pedidos_map(email)
+    except Exception as e:
+        return jsonify({"ok": False, "err": "%s: %s" % (type(e).__name__, e)}), 200
+    out = {}
+    for num, cands in mapa.items():
+        c = (cands or [{}])[0]
+        items = c.get("items") or []
+        out[num] = {"sku": _sku_de_items(items, skus),
+                    "u": sum(int(i[1] or 0) for i in items),
+                    "nom": c.get("nom"), "tienda": c.get("tienda")}
+    return jsonify({"ok": True, "n": len(out), "map": out})
 
 
 @app.get("/pf-despachos-sku-progreso")
