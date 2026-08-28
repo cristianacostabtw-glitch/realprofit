@@ -4058,7 +4058,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-andreani-apellido"})
+    return jsonify({"ok": True, "v": "2026-08-28-sku-cache-persist"})
 
 
 @app.get("/pf-cfg")
@@ -4987,6 +4987,30 @@ _CARR_CACHE = {}      # {email: {"dias": n, "ts": epoch, "items": [...]}} — ca
 _CARR_TTL = 300       # 5 min. Abrir/recargar Carritos usa el caché; enviar o refresh=1 lo refresca.
 _SKU_PED_CACHE = {}   # {email: (ts, mapa)} — cachea los pedidos del "Insertar SKU" (no rebaja 60 días cada vez)
 _SKU_PED_TTL = 300    # 5 min
+_SKU_PED_FILE = DATA_DIR / "sku_ped_cache.json"   # PERSISTE a disco → un redeploy NO deja el "Insertar SKU" en frío
+_SKU_PED_LOADED = False
+
+
+def _sku_ped_load():
+    global _SKU_PED_LOADED
+    if _SKU_PED_LOADED:
+        return
+    _SKU_PED_LOADED = True
+    try:
+        d = _json.loads(_SKU_PED_FILE.read_text(encoding="utf-8"))
+        for k, v in d.items():
+            _SKU_PED_CACHE[k] = (v.get("ts", 0), v.get("mapa") or {})
+    except Exception:
+        pass
+
+
+def _sku_ped_save():
+    try:
+        d = {k: {"ts": v[0], "mapa": v[1]} for k, v in _SKU_PED_CACHE.items()}
+        _SKU_PED_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SKU_PED_FILE.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 _WA_LOG_LOCK = threading.Lock()   # serializa la escritura del log de chats (envíos en PARALELO seguros)
 
 
@@ -6295,6 +6319,7 @@ def _sku_pedidos_map(email):
     tiendas conectadas (Shopify + Tiendanube). Trae los PRODUCTOS de cada pedido para calcular
     el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO (cacheado)."""
     import time as _t
+    _sku_ped_load()                        # trae la caché de disco (tras deploy) → 1er sync NO arranca en frío
     _c = _SKU_PED_CACHE.get(email)
     if _c and (_t.time() - _c[0] < _SKU_PED_TTL):
         return _c[1]                       # caché fresco → no rebaja Shopify/TN de nuevo
@@ -6307,7 +6332,7 @@ def _sku_pedidos_map(email):
             try:
                 r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
                     "per_page": 200, "page": page, "sort": "-id", "payment_status": "paid",
-                    "fields": "number,products,contact_name,shipping_address"}, timeout=30)
+                    "fields": "number,products,contact_name,shipping_address"}, timeout=12)
                 d = r.json() if r.content else []
             except Exception:
                 d = []
@@ -6349,6 +6374,7 @@ def _sku_pedidos_map(email):
             finally:
                 _SHOP_SEM.release()
     _SKU_PED_CACHE[email] = (_t.time(), mapa)
+    _sku_ped_save()                        # persisto a disco → el próximo deploy no arranca frío
     return mapa
 
 
