@@ -3024,8 +3024,10 @@ def _blob_vacio() -> dict:
 
 
 # ---------------- Datos reales de Shopify → dashboard ----------------
-def _shopify_orders(shop, token, desde, hasta):
-    """Trae los pedidos de Shopify del período (paginado por Link header)."""
+def _shopify_orders(shop, token, desde, hasta, deadline=None, max_pages=80, timeout=30):
+    """Trae los pedidos de Shopify del período (paginado por Link header).
+    deadline/max_pages/timeout: topes opcionales para que un caller pesado (ej Insertar SKU) NO se cuelgue;
+    por default (None/80/30) se comporta EXACTAMENTE como antes para los demás usos."""
     out = []
     url = "https://%s/admin/api/2026-07/orders.json" % shop
     params = {"status": "any", "limit": 250,
@@ -3034,8 +3036,10 @@ def _shopify_orders(shop, token, desde, hasta):
               "fields": "id,order_number,name,total_price,current_total_price,financial_status,cancelled_at,line_items,refunds,created_at,shipping_lines,shipping_address"}
     headers = {"X-Shopify-Access-Token": token}
     import time as _tsleep
-    for _ in range(80):
-        r = requests.get(url, headers=headers, params=params, timeout=30)
+    for _ in range(max_pages):
+        if deadline and _tsleep.time() > deadline:     # se agotó el presupuesto de tiempo → corto con lo que tengo
+            break
+        r = requests.get(url, headers=headers, params=params, timeout=timeout)
         if r.status_code == 429 or r.status_code >= 500:   # límite/servidor: reintenta la MISMA página, NO corta
             _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.3)
             continue
@@ -4072,7 +4076,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-roas-dom-sub"})
+    return jsonify({"ok": True, "v": "2026-08-28-sku-deadline"})
 
 
 @app.get("/pf-cfg")
@@ -6337,12 +6341,16 @@ def _sku_pedidos_map(email):
     _c = _SKU_PED_CACHE.get(email)
     if _c and (_t.time() - _c[0] < _SKU_PED_TTL):
         return _c[1]                       # caché fresco → no rebaja Shopify/TN de nuevo
+    deadline = _t.time() + 22              # TOPE DURO: el sync NUNCA tarda más de ~22s (antes se colgaba hasta 40min
+    #                                        si Shopify tiraba 429 y reintentaba 80 veces × 30s)
     mapa = {}
     # --- Tiendanube (sku_key = 'tn:<product_id>', igual que en Productos) ---
     tk = _tn_tokens().get(email)
     if tk and tk.get("access_token") and tk.get("store_id"):
         store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
         for page in (1, 2):
+            if _t.time() > deadline:
+                break
             try:
                 r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
                     "per_page": 200, "page": page, "sort": "-id", "payment_status": "paid",
@@ -6365,13 +6373,14 @@ def _sku_pedidos_map(email):
                 break
     # --- Shopify (sku_key = '<product_id>') ---
     tks = _shop_tokens().get(email)
-    if tks and tks.get("access_token"):
+    if tks and tks.get("access_token") and _t.time() < deadline:
         hasta = _hoy()
-        desde = (_dt.date.today() - _dt.timedelta(days=60)).isoformat()
+        desde = (_dt.date.today() - _dt.timedelta(days=35)).isoformat()   # 60→35 días: las etiquetas son de pedidos recientes
         _got = _SHOP_SEM.acquire(timeout=4)     # tope de ops pesadas → no cuelga los hilos del server
         if _got:
             try:
-                for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta):
+                for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta,
+                                         deadline=deadline, max_pages=10, timeout=12):
                     num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
                     if not num:
                         continue
