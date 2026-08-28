@@ -2027,9 +2027,9 @@ _SOLO_DASH = r"""
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
-    // Hasta que paint() deje los KPIs con los valores REALES, ocultamos la grilla (evita ver ROAS/margen
-    // remapeados mal por unos segundos). Se revela con fade al final del primer paint OK (o a los 5s de fallback).
-    if(!_painted && grid.style.opacity!=='0'){ grid.style.transition='opacity .28s ease'; grid.style.opacity='0'; }
+    // NUNCA esconder la grilla: antes se ponía opacity 0 esperando un "paint" que a veces no llegaba →
+    // "Resumen del período" quedaba EN BLANCO. Ahora se muestra siempre; el self-heal corrige los valores.
+    if(grid.style.opacity==='0') grid.style.opacity='1'; _painted=true;
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
       if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
       if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-sku-cache-fast"})
+    return jsonify({"ok": True, "v": "2026-08-28-carritos-barra-paralelo"})
 
 
 @app.get("/pf-cfg")
@@ -4846,6 +4846,7 @@ _CARR_CACHE = {}      # {email: {"dias": n, "ts": epoch, "items": [...]}} — ca
 _CARR_TTL = 300       # 5 min. Abrir/recargar Carritos usa el caché; enviar o refresh=1 lo refresca.
 _SKU_PED_CACHE = {}   # {email: (ts, mapa)} — cachea los pedidos del "Insertar SKU" (no rebaja 60 días cada vez)
 _SKU_PED_TTL = 300    # 5 min
+_WA_LOG_LOCK = threading.Lock()   # serializa la escritura del log de chats (envíos en PARALELO seguros)
 
 
 def _heavy(fn):
@@ -11732,7 +11733,7 @@ function sendTransfers(soloTildados){ var tels=soloTildados?Object.keys(TSEL).fi
   if(msg){ msg.style.color='#0a7d3c'; msg.textContent='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.innerHTML=msg.textContent; }
   loadTransfers();
  }); }
-function loadCarritos(){ get('/wa-carritos?dias=14').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
+function loadCarritos(refresh){ get('/wa-carritos?dias=14'+(refresh?'&refresh=1':'')).then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
  TDATA=r.items||[]; renderCarritos(r); }); }
 function _cbadge(t){ if(t==='shopify') return '<span style="background:#e7f6ec;color:#0a7d3c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Shopify</span>';
   if(t==='tn') return '<span style="background:#e8f0fe;color:#1a56db;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Tiendanube</span>'; return ''; }
@@ -11754,14 +11755,35 @@ function renderCarritos(r){ var rows=TDATA.map(function(o){ var enviado=!!o.envi
   +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Antigüedad</th><th style="text-align:left;padding:9px 8px">Estado</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
  document.getElementById('panel').innerHTML=head;
 }
-function sendCarritos(soloTildados){ var tels=soloTildados?Object.keys(TSEL).filter(function(k){return TSEL[k];}):[];
- if(soloTildados && !tels.length){ alert('No tildaste ninguno.'); return; }
- var msg=document.getElementById('cmsg2'); if(msg){ msg.style.color='#556'; msg.textContent='Enviando…'; }
- fetch('/wa-carritos-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tels:tels,dias:14})}).then(function(r){return r.json();}).then(function(j){
-  if(!j.ok){ if(msg){msg.style.color='#c0392b';msg.textContent=j.msg||'error';} return; }
-  if(msg){ var tx='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.style.color='#0a7d3c'; msg.innerHTML=tx; }
-  loadCarritos();
- }); }
+function sendCarritos(soloTildados){
+ var tels;
+ if(soloTildados){ tels=Object.keys(TSEL).filter(function(k){return TSEL[k];}); if(!tels.length){ alert('No tildaste ninguno.'); return; } }
+ else { tels=TDATA.filter(function(o){return !o.enviado;}).map(function(o){return o.tel;}); }   // SOLO pendientes (nunca los ya enviados)
+ if(!tels.length){ alert('No hay pendientes para enviar.'); return; }
+ if(!confirm('¿Enviar el carrito a '+tels.length+' clientes? (no reenvía a los que ya recibieron)')) return;
+ var BATCH=30, i=0, env=0, salt=0, fail=0, total=tels.length, _bloq=false;
+ _carrBar(0,total,0,0);
+ function next(){
+  if(i>=total){ _carrBarDone(env,salt,fail); setTimeout(function(){ loadCarritos(true); },700); return; }
+  var lote=tels.slice(i, i+BATCH);
+  fetch('/wa-carritos-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tels:lote,dias:14})})
+   .then(function(r){return r.json();}).then(function(j){
+    if(j&&j.ok){ env+=j.enviados||0; salt+=j.saltados||0; fail+=j.fallaron||0; } else { fail+=lote.length; }
+    i+=lote.length; _carrBar(i,total,env,fail); next();
+   }).catch(function(){ fail+=lote.length; i+=lote.length; _carrBar(i,total,env,fail); next(); });
+ }
+ next();
+}
+function _carrBar(done,total,env,fail){ var box=document.getElementById('cmsg2'); if(!box)return;
+ var pct=total?Math.round(done/total*100):0;
+ var extra=fail?(' &middot; <span style="color:#c0392b">&#10007; '+fail+'</span>'):'';
+ box.style.fontWeight='400';
+ box.innerHTML='<div style="min-width:340px;display:inline-block;vertical-align:middle;text-align:left"><div style="display:flex;justify-content:space-between;font-size:12px;color:#334;margin-bottom:4px"><span>Enviando <b>'+done+' / '+total+'</b> &middot; '+pct+'%</span><span style="color:#0a7d3c;font-weight:700">&#9989; '+env+extra+'</span></div><div style="height:10px;background:#e3e8ec;border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#128C7E,#25D366);transition:width .3s;border-radius:6px"></div></div></div>';
+}
+function _carrBarDone(env,salt,fail){ var box=document.getElementById('cmsg2'); if(!box)return;
+ var x=fail?(' &middot; <span style="color:#c0392b">'+fail+' fallaron</span>'):'';
+ box.innerHTML='<span style="color:#0a7d3c;font-weight:800">&#9989; Listo &middot; '+env+' enviados'+(salt?(' &middot; '+salt+' ya estaban'):'')+x+'</span>';
+}
 var _lastMsgN=-1, _lastMsgId='';
 function loadChats(){
  get('/wa-chats').then(function(r){
@@ -12071,12 +12093,13 @@ def _wa_send_tpl(email, conf, wid, tpl_name, params, log_text):
         return False, str((j.get("error") or {}).get("message", "error"))[:160]
     mid = (j.get("messages") or [{}])[0].get("id", "")
     try:
-        chats = _wa_chats_all()
-        conv = chats.setdefault(email, {}).setdefault(wid, {"name": wid, "messages": []})
-        conv["messages"].append({"dir": "out", "text": log_text, "ts": _wa_now(),
-                                 "type": "template", "id": mid, "status": "sent"})
-        conv["updated"] = _wa_now()
-        _wa_save_chats(chats)
+        with _WA_LOG_LOCK:                       # write serializada → seguro con envíos concurrentes
+            chats = _wa_chats_all()
+            conv = chats.setdefault(email, {}).setdefault(wid, {"name": wid, "messages": []})
+            conv["messages"].append({"dir": "out", "text": log_text, "ts": _wa_now(),
+                                     "type": "template", "id": mid, "status": "sent"})
+            conv["updated"] = _wa_now()
+            _wa_save_chats(chats)
     except Exception:
         pass
     return True, "ok"
@@ -12375,10 +12398,10 @@ def wa_carritos_enviar():
         dias = max(1, min(30, int(data.get("dias") or 14)))
     except Exception:
         dias = 14
-    _CARR_CACHE.pop(email, None)                    # al enviar, invalido el caché (cambia el estado Enviado)
+    # NO invalido el caché acá (el front manda en lotes; si lo invalidara, cada lote rebajaría Shopify de nuevo).
     ya = _wa_marca_enviados(email, "carrito")      # re-chequeo anti-duplicado al momento de mandar
-    env = salt = fail = 0
-    errores = []
+    salt = 0
+    pendientes = []
     for it in _wa_carritos_list(email, dias):
         k = it["tel"]
         if solo and k not in solo:
@@ -12386,16 +12409,29 @@ def wa_carritos_enviar():
         if k in ya:
             salt += 1
             continue
+        pendientes.append(it)
+
+    def _envia_carrito(it):
         n = (it["nombre"] or "cliente").split()[0]
         # Se loguea el MENSAJE REAL (tal como lo recibe el cliente), no el texto interno feo.
         msg_log = ("¡Hola %s! \U0001F44B\n\nVimos que dejaste productos en tu carrito y no llegaste a "
                    "terminar la compra. Te lo guardamos \U0001F6D2\n\nEntrá acá y ya te aplicamos el "
                    "10%% OFF automático \U0001F447\n%s") % (n, it["url"])
-        ok, det = _wa_send_tpl(email, conf, k, WA_TPL_CARRITO, [n, it["url"]], msg_log)
-        if ok:
-            env += 1; ya.add(k)
-        else:
-            fail += 1; errores.append({"tel": k, "msg": det})
+        ok, det = _wa_send_tpl(email, conf, it["tel"], WA_TPL_CARRITO, [n, it["url"]], msg_log)
+        return (it["tel"], ok, det)
+
+    env = fail = 0
+    errores = []
+    if pendientes:
+        from concurrent.futures import ThreadPoolExecutor
+        # La Cloud API NO banea por volumen → mando en PARALELO (8 a la vez) = mucho más rápido.
+        with ThreadPoolExecutor(max_workers=8) as _ex:
+            for k, ok, det in _ex.map(_envia_carrito, pendientes):
+                if ok:
+                    env += 1
+                else:
+                    fail += 1; errores.append({"tel": k, "msg": det})
+    _CARR_CACHE.pop(email, None)                    # al terminar, invalido el caché (cambió el estado Enviado)
     return jsonify({"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:5]})
 
 
