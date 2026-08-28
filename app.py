@@ -2390,9 +2390,10 @@ _SOLO_DASH = r"""
     var inv=cardByLabel('Inversión Ads');
     if(!inv){ var now=Date.now(); if(now-_lastScan < (_miss<3?400:2500)) return; _lastScan=now; _miss++; return; }
     _miss=0;
-    // Leo TODO fresco (sin caché viejo → arregla el fa=0). Ganancia por label o, si falla, por posición (KPI 4°).
-    var fa=_val('Facturación'), ga=_val('Ganancia'), iv2=_val('Inversión Ads'); if(!fa) return;
-    if(!ga) ga=_gananciaFallback();                // si 'Ganancia' no matchea por label, la saco por posición
+    // Leo TODO fresco por posición (_val→_kpiVal). Si NO tengo Facturación Y Ganancia, NO escribo nada:
+    // escribir con ga=0 daba "0%" y hacía TITILAR las tarjetas (un tick 0%, otro el valor real).
+    var fa=_val('Facturación'), ga=_val('Ganancia'), iv2=_val('Inversión Ads');
+    if(!fa || !ga) return;                          // sin los dos números reales no toco el DOM (anti-titileo)
     var mg=Math.round(ga/fa*1000)/10, br=(ga+iv2)>0?Math.round(fa/(ga+iv2)*100)/100:0;
     var m=cardByLabel('True ROAS')||cardByLabel('Margen');
     if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
@@ -2407,15 +2408,26 @@ _SOLO_DASH = r"""
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
-  // ── DIAGNÓSTICO TEMPORAL: badge abajo-izquierda con qué encuentra el parche (para cazar la causa). Se saca luego. ──
-  setTimeout(function(){ try{
-    var st='inv:'+(!!cardByLabel('Inversión Ads'))+' fa:'+(!!cardByLabel('Facturación'))+' ga:'+(!!cardByLabel('Ganancia'))+' tr:'+(!!cardByLabel('True ROAS'))+' be:'+(!!cardByLabel('Break Even ROAS'));
+  // Lista TODAS las tarjetas con monto $ (título=valor) → para ver por qué en algunas cuentas no aparece Ganancia.
+  function _kpiDump(){ try{
+    var seen=[], out=[], leaves=document.querySelectorAll('span,div,p');
+    for(var i=0;i<leaves.length;i++){ var e=leaves[i]; if(e.children.length) continue;
+      var t=(e.textContent||'').trim(); if(!/^-?\$\s?-?[\d.]{3,}$/.test(t)) continue;
+      var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) break; }
+      if(!(c&&/rounded/.test(c.className||''))) continue;
+      if(seen.indexOf(c)>=0) continue; seen.push(c);
+      out.push((_cardLabel(c)||'?')+'='+n(t)); }
+    return out.join('  |  ')||'(sin tarjetas $)';
+  }catch(e){ return 'DUMP-ERR '+(e&&e.message); } }
+  // ── DIAGNÓSTICO TEMPORAL: badge abajo-izquierda, se refresca cada 1,5s (para cazar la causa). Se saca luego. ──
+  function _dbg(){ try{
+    var st='ga:'+(!!cardByLabel('Ganancia'))+' tr:'+(!!cardByLabel('True ROAS'))+' mg:'+(!!cardByLabel('Margen'));
     var d=document.getElementById('_rpdbg')||document.createElement('div'); d.id='_rpdbg';
-    d.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#0b0b0b;color:#5fff87;font:10px/1.4 monospace;padding:4px 9px;border-radius:6px;opacity:.92';
-    var _fa=_val('Facturación'),_ga=_val('Ganancia'),_iv=_val('Inversión Ads'),_gfb=_gananciaFallback();
-    d.textContent='RP-DBG '+st+' | fa='+_fa+' ga='+_ga+' gaFB='+_gfb+' inv='+_iv;
+    d.style.cssText='position:fixed;bottom:6px;left:6px;right:6px;z-index:99999;background:#0b0b0b;color:#5fff87;font:10px/1.5 monospace;padding:5px 9px;border-radius:6px;opacity:.94;white-space:normal';
+    d.textContent='RP-DBG '+st+' | fa='+_val('Facturación')+' ga='+_val('Ganancia')+' inv='+_val('Inversión Ads')+'  ▸ CARDS: '+_kpiDump();
     document.body.appendChild(d);
-  }catch(e){ var d2=document.createElement('div'); d2.id='_rpdbg'; d2.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#a00;color:#fff;font:10px monospace;padding:4px 9px'; d2.textContent='RP-DBG ERR: '+(e&&e.message); document.body.appendChild(d2); } }, 5500);
+  }catch(e){ var d2=document.getElementById('_rpdbg')||document.createElement('div'); d2.id='_rpdbg'; d2.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#a00;color:#fff;font:10px monospace;padding:4px 9px'; d2.textContent='RP-DBG ERR: '+(e&&e.message); document.body.appendChild(d2); } }
+  setTimeout(_dbg,2600); setInterval(_dbg,1500);
 })();
 </script>
 
@@ -4040,7 +4052,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-roas-posicional"})
+    return jsonify({"ok": True, "v": "2026-08-28-roas-dump"})
 
 
 @app.get("/pf-cfg")
