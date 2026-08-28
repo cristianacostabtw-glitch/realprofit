@@ -2360,7 +2360,30 @@ _SOLO_DASH = r"""
   var _C={}, _lastScan=0, _miss=0;
   function _get(l){ var c=_C[l]; return (c&&c.isConnected&&c.offsetParent!==null)?c:null; }
   function _rescan(){ ['Facturación','Ganancia','Inversión Ads','True ROAS','Margen','Break Even ROAS'].forEach(function(l){ var c=cardByLabel(l); if(c) _C[l]=c; }); }
-  function _val(l){ var c=cardByLabel(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }   // FRESCO (no caché viejo)
+  // Título de una tarjeta = 1ra hoja "con palabras" (ni número, ni %, ni ícono). Robusto sin depender de uppercase.
+  function _cardLabel(c){ var d=c.querySelectorAll('span,div,p');
+    for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue;
+      var t=(e.textContent||'').trim(); if(!t) continue;
+      if(/material-symbols/.test(e.className||'')) continue;
+      if(/^[\d$%.,+\-\s]+$/.test(t)) continue;   // saltea hojas que son puro número/símbolo/%
+      return _na(t); } return ''; }
+  // LECTURA POSICIONAL (causa raíz): escaneo TODA hoja que sea un monto $, subo a su tarjeta 'rounded', y matcheo
+  // por el TÍTULO de la tarjeta. Así da igual la estructura interna (bigLeaf fallaba en la tarjeta de Facturación
+  // de algunas cuentas → fa=0). Con esto Facturación/Ganancia/Inversión salen SIEMPRE, en cualquier cuenta.
+  function _kpiVal(word){ try{
+    var seen=[], cand=[], leaves=document.querySelectorAll('span,div,p');
+    for(var i=0;i<leaves.length;i++){ var e=leaves[i]; if(e.children.length) continue;
+      var t=(e.textContent||'').trim(); if(!/^-?\$\s?-?[\d.]{3,}$/.test(t)) continue;   // hoja = monto $
+      var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) break; }
+      if(!(c&&/rounded/.test(c.className||''))) continue;
+      if(seen.indexOf(c)>=0) continue; seen.push(c);
+      cand.push({val:n(t), lab:_cardLabel(c), full:_na(c.textContent)}); }
+    for(var j=0;j<cand.length;j++){ if(cand[j].lab && cand[j].lab.indexOf(word)>=0) return cand[j].val; }  // por título (preciso)
+    var hits=cand.filter(function(x){ return x.full.indexOf(word)>=0; });                                   // por texto, solo si único
+    if(hits.length===1) return hits[0].val;
+  }catch(e){} return 0; }
+  function _val(l){ var w=_na(l).split(' ')[0]; var v=_kpiVal(w); if(v) return v;   // 1) posicional (robusto)
+    var c=cardByLabel(l); if(c){ var b=bigLeaf(c); if(b){ var x=n(b.textContent); if(x) return x; } } return 0; }  // 2) fallback viejo
   function _dashOk(){ return _get('Inversión Ads') && (_get('True ROAS')||_get('Margen')) && _get('Break Even ROAS'); }
   function fix(){
     // GUARD barato: ¿estamos en el Dashboard? (busco la tarjeta Inversión Ads, FRESCO). Si no, rate-limit y salgo.
@@ -2379,23 +2402,7 @@ _SOLO_DASH = r"""
     if(b){ var w=valueSlot(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
     window._rpDashOK=true;
   }
-  // Ganancia por POSICIÓN: es el 4° KPI de arriba (Ventas, Facturación, Ticket, Ganancia). Robusto si el label
-  // no matchea. Tomo las tarjetas KPI de arriba (rounded con un valor $) y agarro la de la etiqueta 'ganancia'
-  // o, en última instancia, la 4°.
-  function _gananciaFallback(){
-    try{
-      var cards=[], seen=[];
-      var vals=document.querySelectorAll('span,div,p');
-      for(var i=0;i<vals.length;i++){ var e=vals[i]; if(e.children.length) continue;
-        var t=(e.textContent||'').trim(); if(!/^-?\$\s?-?[\d.]{3,}$/.test(t)) continue;   // hoja que es un monto $
-        var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) break; }
-        if(c&&/rounded/.test(c.className||'') && seen.indexOf(c)<0){ seen.push(c);
-          cards.push({card:c, val:n(t), txt:_na(c.textContent)}); } }
-      // la tarjeta cuyo texto contiene 'ganancia'
-      for(var j=0;j<cards.length;j++){ if(cards[j].txt.indexOf('ganancia')>=0) return cards[j].val; }
-    }catch(e){}
-    return 0;
-  }
+  function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
   function loop(){ try{ fix(); }catch(e){} }
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
@@ -4033,7 +4040,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-roas-fresh-ganancia"})
+    return jsonify({"ok": True, "v": "2026-08-28-roas-posicional"})
 
 
 @app.get("/pf-cfg")
