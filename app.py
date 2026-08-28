@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carrito-msg-lindo"})
+    return jsonify({"ok": True, "v": "2026-08-28-carrito-estado-header"})
 
 
 @app.get("/pf-cfg")
@@ -11411,9 +11411,9 @@ _WA_PAGE = """<!doctype html>
  <span class="spacer"></span>
  <span class="num" id="num"></span>
  <button id="botTop" class="util" style="display:none" onclick="botTopToggle()" title="Bot">&#129302; OFF</button>
- <button id="bBot" class="util" style="display:none" onclick="openBot()">&#129302; Bot</button>
- <button id="bTpl" class="util" style="display:none" onclick="openTpl()">Plantillas</button>
- <button id="bCfg" class="util" style="display:none" onclick="doDisc()">Desconectar</button>
+ <button id="bBot" class="util" style="display:none" onclick="openBot()" title="Configurar el bot (respuestas automáticas)">&#9881;&#65039; Config bot</button>
+ <button id="bTpl" class="util" style="display:none" onclick="openTpl()" title="Plantillas de WhatsApp aprobadas">&#128196; Plantillas</button>
+ <button id="bCfg" class="util" style="display:none" onclick="doDisc()" title="Desconectar la API oficial de esta cuenta">Desconectar API</button>
  <button class="back" onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
@@ -11446,8 +11446,9 @@ var WEBNUM='';   // número/nombre del WhatsApp Web (QR) — para mostrar el nú
 // El encabezado muestra el número de la PESTAÑA activa: Web = número del QR, API = número de la Cloud API.
 // (Antes mostraba siempre el del API → parecía que se "mezclaban" los dos canales.)
 function _setHeaderNum(which){ var el=document.getElementById('num'); if(!el)return;
-  if(which==='web'){ el.innerHTML=WEBNUM?('&#127760; '+esc(WEBNUM)):'&#127760; WhatsApp Web (QR)'; }
-  else { el.innerHTML=(EST&&EST.numero)?('&#128241; '+esc(EST.numero)):''; } }
+  var pill=function(txt,bg){ return '<span style="background:'+bg+';color:#fff;border-radius:7px;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:8px;vertical-align:middle">'+txt+'</span>'; };
+  if(which==='web'){ el.innerHTML=pill('&#127760; WEB · QR','#128C7E')+'<b style="color:#eaf7ef;font-weight:700">'+esc(WEBNUM||'sin conectar')+'</b>'; }
+  else { el.innerHTML=pill('&#128241; API OFICIAL','#0a7d3c')+'<b style="color:#eaf7ef;font-weight:700">'+((EST&&EST.numero)?esc(EST.numero):'sin conectar')+'</b>'; } }
 function showWeb(){ _chanPaint('web'); document.body.classList.remove('locked'); waTab('web'); }
 function showApi(){ _chanPaint('api');
   if(EST&&EST.conectado){ document.body.classList.remove('locked'); waTab('chats'); }   // API ya conectada → sus chats
@@ -11720,18 +11721,22 @@ function loadCarritos(){ get('/wa-carritos?dias=14').then(function(r){ if(!r||!r
  TDATA=r.items||[]; renderCarritos(r); }); }
 function _cbadge(t){ if(t==='shopify') return '<span style="background:#e7f6ec;color:#0a7d3c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Shopify</span>';
   if(t==='tn') return '<span style="background:#e8f0fe;color:#1a56db;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Tiendanube</span>'; return ''; }
-function renderCarritos(r){ var rows=TDATA.map(function(o){ var ck='<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
-  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+_cbadge(o.tienda)+'</td><td style="padding:9px 8px;color:#667">'+esc((typeof webFmtTel==='function')?webFmtTel(o.tel):o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+o.dias+'d</td></tr>'; }).join('');
- var porTienda=[]; if(r.n_shopify) porTienda.push(r.n_shopify+' Shopify'); if(r.n_tn) porTienda.push(r.n_tn+' Tiendanube');
- var head='<div style="max-width:940px;margin:0 auto">'
-  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128722; Carritos abandonados</h2><span style="color:#667">no contactados · &#8804; '+r.dias+' días'+(porTienda.length?(' · '+porTienda.join(' · ')):'')+'</span></div>'
-  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> — el link ya lleva el cupón <b>'+(r.cupon||'')+'</b> aplicado (10% OFF). <b>Filtro seguro:</b> excluye a los que ya recibieron carrito y a los que ya compraron, 1 por teléfono. Solo los que dejaron teléfono. No repite.</div>';
+function renderCarritos(r){ var rows=TDATA.map(function(o){ var enviado=!!o.enviado;
+  var ck=enviado?'':'<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
+  var estado=enviado?'<span style="background:#e7f6ec;color:#0a7d3c;border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:800">&#10003; Enviado</span>':'<span style="color:#c98a00;font-size:11px;font-weight:700">Pendiente</span>';
+  return '<tr style="border-top:1px solid #e3e8ec;'+(enviado?'opacity:.5':'')+'"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+_cbadge(o.tienda)+'</td><td style="padding:9px 8px;color:#667">'+esc((typeof webFmtTel==='function')?webFmtTel(o.tel):o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+o.dias+'d</td><td style="padding:9px 8px">'+estado+'</td></tr>'; }).join('');
+ var pend=r.n_pend||0, env=r.n_env||0;
+ var meta=[pend+' pendientes']; if(env) meta.push(env+' ya enviados'); if(r.n_shopify) meta.push(r.n_shopify+' Shopify'); if(r.n_tn) meta.push(r.n_tn+' Tiendanube');
+ var head='<div style="max-width:980px;margin:0 auto">'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128722; Carritos abandonados</h2><span style="color:#667">&#8804; '+r.dias+' días · '+meta.join(' · ')+'</span></div>'
+  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> — el link ya lleva el cupón <b>'+(r.cupon||'')+'</b> aplicado (10% OFF). Solo los que dejaron teléfono. Los <b style="color:#0a7d3c">&#10003; Enviado</b> quedan al final y no se remandan. Excluye a los que ya compraron.</div>';
  if(!r.wpp_on) head+='<div style="background:#fdeaea;color:#c0392b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
- if(!TDATA.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay carritos sin contactar. &#9989;</div></div>'; return; }
- head+='<div style="display:flex;gap:10px;margin-bottom:12px"><button onclick="sendCarritos(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar a los '+TDATA.length+'</button>'
+ if(!TDATA.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay carritos. &#9989;</div></div>'; return; }
+ head+='<div style="display:flex;gap:10px;margin-bottom:12px">'
+  +(pend?('<button onclick="sendCarritos(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar a los '+pend+' pendientes</button>'):'')
   +'<button onclick="sendCarritos(true)" style="background:#e8eef0;color:#243;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
   +'<span id="cmsg2" style="align-self:center;font-weight:700"></span></div>'
-  +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Antigüedad</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Antigüedad</th><th style="text-align:left;padding:9px 8px">Estado</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
  document.getElementById('panel').innerHTML=head;
 }
 function sendCarritos(soloTildados){ var tels=soloTildados?Object.keys(TSEL).filter(function(k){return TSEL[k];}):[];
@@ -11973,7 +11978,7 @@ function presetVP(){
   var mm=document.getElementById('botMsg'); if(mm) mm.innerHTML='<div class="msgline msgok">Preset cargado. Revisá y tocá Guardar.</div>';
 }
 // Toggle rápido del bot arriba (al lado del número)
-function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot encendido — tocá para apagar':'Bot apagado — tocá para encender'; t.innerHTML='&#129302; '+(BOTON?'ON':'OFF'); }
+function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot ENCENDIDO — responde solo. Tocá para apagar.':'Bot APAGADO — no responde. Tocá para encender.'; t.innerHTML='&#129302; Bot: '+(BOTON?'ON':'OFF'); }
 function botTopToggle(){ post('/wa-bot-config',{bot:BOTON?'0':'1'}).then(function(r){ if(r.ok){ BOTON=!!r.bot; syncBotTop(); } }); }
 function loadBotTop(){ get('/wa-bot-config').then(function(c){ if(c&&c.ok){ BOTON=!!c.bot; syncBotTop(); } }); }
 function probarBot(){
@@ -12205,12 +12210,12 @@ def _wa_carritos_list(email, dias=14):
                     continue
                 k = _wa_e164(tel)
                 mail = (o.get("contact_email") or "").lower()
-                if k in ya or k in compr_t or (mail and mail in compr_m):
+                if k in compr_t or (mail and mail in compr_m):   # ya compró → fuera
                     continue
                 if k not in cand or cr > cand[k]["cr"]:
                     cand[k] = {"cr": cr, "nombre": o.get("contact_name") or o.get("shipping_name") or "cliente",
                                "url": o.get("abandoned_checkout_url"), "total": o.get("total"),
-                               "dias": (now - cr).days, "tienda": "tn"}
+                               "dias": (now - cr).days, "tienda": "tn", "enviado": (k in ya)}
             if len(d) < 100:
                 break
     # ───────────── Shopify ─────────────
@@ -12247,17 +12252,21 @@ def _wa_carritos_list(email, dias=14):
             url += ("&" if "?" in url else "?") + "discount=" + WA_CARRITO_DISCOUNT   # auto-aplica el cupón
             k = _wa_e164(tel)
             mail = (co.get("email") or cust.get("email") or "").lower()
-            if k in ya or k in compr_t or (mail and mail in compr_m):
+            if k in compr_t or (mail and mail in compr_m):   # ya compró → fuera
                 continue
             nombre = (cust.get("first_name")
                       or (co.get("shipping_address") or {}).get("first_name")
                       or (co.get("shipping_address") or {}).get("name") or "cliente")
             if k not in cand or cr > cand[k]["cr"]:
                 cand[k] = {"cr": cr, "nombre": nombre, "url": url,
-                           "total": co.get("total_price"), "dias": (now - cr).days, "tienda": "shopify"}
-    return [{"tel": k, "nombre": v["nombre"], "url": v["url"], "total": v["total"],
-             "dias": v["dias"], "tienda": v.get("tienda", "")}
-            for k, v in sorted(cand.items(), key=lambda x: x[1]["cr"], reverse=True)]
+                           "total": co.get("total_price"), "dias": (now - cr).days,
+                           "tienda": "shopify", "enviado": (k in ya)}
+    items = [{"tel": k, "nombre": v["nombre"], "url": v["url"], "total": v["total"],
+              "dias": v["dias"], "tienda": v.get("tienda", ""), "enviado": v.get("enviado", False)}
+             for k, v in cand.items()]
+    # pendientes primero (por antigüedad, más nuevos arriba); los ya enviados al final
+    items.sort(key=lambda it: (it["enviado"], it["dias"]))
+    return items
 
 
 @app.get("/wa-transfers")
@@ -12315,11 +12324,13 @@ def wa_carritos():
     except Exception:
         dias = 14
     items = _wa_carritos_list(email, dias)
-    ntn = sum(1 for x in items if x.get("tienda") == "tn")
     nsh = sum(1 for x in items if x.get("tienda") == "shopify")
+    ntn = sum(1 for x in items if x.get("tienda") == "tn")
+    n_pend = sum(1 for x in items if not x.get("enviado"))
+    n_env = sum(1 for x in items if x.get("enviado"))
     return jsonify({"ok": True, "wpp_on": bool(conf.get("token") and conf.get("phone_id")),
                     "dias": dias, "cupon": WA_CARRITO_DISCOUNT, "n_tn": ntn, "n_shopify": nsh,
-                    "items": items})
+                    "n_pend": n_pend, "n_env": n_env, "items": items})
 
 
 @app.post("/wa-carritos-enviar")
