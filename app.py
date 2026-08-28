@@ -1420,7 +1420,8 @@ _SOLO_DASH = r"""
    var qs=[]; if(_dDesde)qs.push('desde='+_dDesde); if(_dHasta)qs.push('hasta='+_dHasta); if(refresh)qs.push('refresh=1');
    fetch('/pf-despachos'+(qs.length?('?'+qs.join('&')):'')).then(function(r){return r.json();}).then(function(j){
      if(b)b.style.opacity='';
-     if(!j||!j.ok){ _dStat('No se pudo cargar.', '#fb7185'); return; }
+     if(!j||!j.ok){ _dStat('No se pudo cargar'+((j&&j.err_detalle)?(' — '+j.err_detalle):'')+'.', '#fb7185'); return; }
+     if(j._err){ _dStat('⚠ Error trayendo pedidos: '+(j.err_detalle||'desconocido'), '#fb7185'); }   // muestra el error REAL
      if(j.shopify===false){ _dRows=[]; _dLoaded=true; rpDRender(); _dStat('Conectá tu tienda (Shopify) en Integraciones para ver los despachos.', '#f0b429'); return; }
      _dRows=j.rows||[]; _dLoaded=true; _dTiendas=j.tiendas||[]; rpDTiendasRender();
      var R=j.resumen||{};
@@ -1529,7 +1530,7 @@ _SOLO_DASH = r"""
      var job=j.job;
      var poll=setInterval(function(){
        fetch('/pf-despachos-sku-progreso?job='+job).then(function(r){return r.json();}).then(function(p){
-         if(!p||!p.ok){ return; }
+         if(!p||!p.ok){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((p&&p.msg)||'Se cortó el proceso')+' — probá de nuevo.</div>'; return; }   // job caído (ej reinicio): muestro y freno, NO poleo infinito
          if(p.error){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar: '+p.error+'</div>'; return; }
          var pct=p.total?Math.round(p.done/p.total*100):5; if(pct<2)pct=2; if(!p.listo&&pct>98)pct=98;
          res.innerHTML=rpDBarra(pct,p.msg||'Procesando…');
@@ -4076,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-seg-cache"})
+    return jsonify({"ok": True, "v": "2026-08-28-errores-reales"})
 
 
 @app.get("/pf-cfg")
@@ -5160,9 +5161,20 @@ def pf_despachos_list():
     refresh = request.args.get("refresh") in ("1", "true", "yes")
     try:
         rows = _despachos_orders(email, desde, hasta, refresh=refresh)
-    except Exception:
-        # NUNCA 500 (el front lo lee como "Error de conexión"). Si algo falla, devuelvo vacío sin romper.
+    except Exception as e:
+        # NUNCA 500 (el front lo lee como "Error de conexión"). Devuelvo vacío + el ERROR REAL (tipo: mensaje)
+        # así el front lo muestra y sabemos al toque qué falló (en vez de un genérico).
+        import traceback as _tb
+        _detalle = "%s: %s" % (type(e).__name__, str(e)[:200])
+        _linea = ""
+        try:
+            _tbl = _tb.extract_tb(e.__traceback__)
+            if _tbl:
+                _linea = " @ %s:%d" % (_tbl[-1].name, _tbl[-1].lineno)
+        except Exception:
+            pass
         return jsonify({"ok": True, "shopify": True, "rows": [], "tiendas": [], "_err": True,
+                        "err_detalle": _detalle + _linea,
                         "resumen": {"empaquetar": {"n": 0, "monto": 0}, "exportada": {"n": 0, "monto": 0},
                                     "enviada": {"n": 0, "monto": 0}, "todas": {"n": 0, "monto": 0}}})
     if rows is None:
