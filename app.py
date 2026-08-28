@@ -4076,7 +4076,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-sku-clean"})
+    return jsonify({"ok": True, "v": "2026-08-28-carr-rec"})
 
 
 @app.get("/pf-cfg")
@@ -6524,6 +6524,60 @@ def _sku_run(job, data, email):
     except Exception as e:
         st["error"] = str(e)
         st["listo"] = True
+
+
+@app.get("/pf-carr-recuperados")
+def pf_carr_recuperados():
+    """TEMPORAL: carritos RECUPERADOS = pedidos pagados que usaron un cupón 'CARRITO*' (el que auto-aplica
+    el link de recuperación). Recorre las tiendas Shopify conectadas y cuenta por tienda."""
+    if request.args.get("k") != "carr2608":
+        return jsonify({"ok": False}), 403
+    import time as _t
+    dias = int(request.args.get("dias") or 90)
+    desde = (_dt.date.today() - _dt.timedelta(days=dias)).isoformat()
+    hasta = _hoy()
+    out = []
+    for email, tk in (_shop_tokens() or {}).items():
+        token = (tk or {}).get("access_token"); shop = (tk or {}).get("shop")
+        if not token or not shop:
+            continue
+        url = "https://%s/admin/api/2026-07/orders.json" % shop
+        params = {"status": "any", "financial_status": "paid", "limit": 250,
+                  "created_at_min": desde + "T00:00:00-03:00", "created_at_max": hasta + "T23:59:59-03:00",
+                  "fields": "id,name,order_number,total_price,discount_codes,created_at,cancelled_at"}
+        rec, monto, tot, codes = 0, 0.0, 0, {}
+        deadline = _t.time() + 25
+        try:
+            for _ in range(12):
+                if _t.time() > deadline:
+                    break
+                r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=12)
+                if r.status_code != 200:
+                    break
+                ors = r.json().get("orders", [])
+                for o in ors:
+                    if o.get("cancelled_at"):
+                        continue
+                    tot += 1
+                    for dc in (o.get("discount_codes") or []):
+                        cod = (dc.get("code") or "").upper()
+                        if "CARRITO" in cod:
+                            rec += 1; monto += float(o.get("total_price") or 0)
+                            codes[cod] = codes.get(cod, 0) + 1
+                            break
+                link = r.headers.get("Link", "") or r.headers.get("link", "")
+                nxt = None
+                for part in link.split(","):
+                    if 'rel="next"' in part and "<" in part:
+                        nxt = part[part.find("<") + 1:part.find(">")]
+                if not nxt:
+                    break
+                url = nxt; params = None
+        except Exception as e:
+            out.append({"shop": shop, "err": "%s: %s" % (type(e).__name__, e)}); continue
+        out.append({"shop": shop, "pagados_recientes": tot, "recuperados": rec,
+                    "monto_recuperado": round(monto, 2), "cupones": codes})
+    return jsonify({"ok": True, "dias": dias, "tiendas": out})
 
 
 @app.get("/pf-despachos-sku-progreso")
