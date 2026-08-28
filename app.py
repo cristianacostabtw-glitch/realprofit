@@ -2022,8 +2022,20 @@ _SOLO_DASH = r"""
              ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     var hit=0;
-    for(var j=0;j<cards.length && j<seq.length;j++){ setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
+    for(var j=0;j<cards.length && j<seq.length;j++){
+      // True ROAS→Margen y Break Even ROAS los maneja SOLO el self-heal por-label (otro bloque). Si metricas los
+      // tocara —por su seq O porque el orden nativo NO coincide (acá ROAS y True ROAS están cruzados)— los dos
+      // writers se pisan y TITILA. Salteo por el label del seq Y por el label ACTUAL de la tarjeta destino.
+      var cur=_lblOf(cards[j]);
+      if(seq[j][0]==='Margen' || seq[j][0]==='Break Even ROAS' || /true\s*roas|margen|break\s*even\s*roas/.test(cur)){ hit++; continue; }
+      setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
     return hit>=seq.length; }
+  // Label ACTUAL de una tarjeta (hoja uppercase / con tracking), normalizado sin acentos → para no pisar cartas ajenas.
+  function _lblOf(card){ try{ var d=card.querySelectorAll('span,div,p');
+    for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue; var t=(e.textContent||'').trim(); if(!t) continue;
+      var up=/uppercase/.test(e.className||''); if(!up){ try{ up=getComputedStyle(e).textTransform==='uppercase'; }catch(_){}}
+      if(up) return t.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+  }catch(e){} return ''; }
   // ESTRUCTURA (no depende de los datos → corre de entrada, evita el parpadeo):
   // esconde la sección FINANZAS entera y las tarjetas de PUBLICIDAD sobrantes (Reembolsos, etc.).
   function estructura(){ var grid=findGrid(); if(!grid) return; var kids=grid.children, sec='', pub=0;
@@ -2360,22 +2372,27 @@ _SOLO_DASH = r"""
   var _C={}, _lastScan=0, _miss=0;
   function _get(l){ var c=_C[l]; return (c&&c.isConnected&&c.offsetParent!==null)?c:null; }
   function _rescan(){ ['Facturación','Ganancia','Inversión Ads','True ROAS','Margen','Break Even ROAS'].forEach(function(l){ var c=cardByLabel(l); if(c) _C[l]=c; }); }
-  // Título de una tarjeta = 1ra hoja "con palabras" (ni número, ni %, ni ícono). Robusto sin depender de uppercase.
+  // Título de una tarjeta = 1ra hoja CON LETRAS (ni monto "$6.104", ni "↑ +100%", ni ícono). No depende de uppercase.
   function _cardLabel(c){ var d=c.querySelectorAll('span,div,p');
     for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue;
       var t=(e.textContent||'').trim(); if(!t) continue;
       if(/material-symbols/.test(e.className||'')) continue;
-      if(/^[\d$%.,+\-\s]+$/.test(t)) continue;   // saltea hojas que son puro número/símbolo/%
+      if(!/[a-záéíóúñ]/i.test(t)) continue;   // DEBE tener letras (así descarta "$6.104" y "↑ +100%")
       return _na(t); } return ''; }
-  // LECTURA POSICIONAL (causa raíz): escaneo TODA hoja que sea un monto $, subo a su tarjeta 'rounded', y matcheo
-  // por el TÍTULO de la tarjeta. Así da igual la estructura interna (bigLeaf fallaba en la tarjeta de Facturación
-  // de algunas cuentas → fa=0). Con esto Facturación/Ganancia/Inversión salen SIEMPRE, en cualquier cuenta.
+  // CAUSA RAÍZ (cuentas donde no se leía la Ganancia): al subir desde el monto $ caía en un wrapper INTERNO que
+  // NO tiene la etiqueta (GANANCIA/FACTURACIÓN) → título "?" → no matcheaba. _cardOf sube hasta la tarjeta 'rounded'
+  // que SÍ tiene un título de texto (la tarjeta entera), no el wrapper del número.
+  function _cardOf(e){ var c=e, best=null;
+    for(var k=0;k<8&&c;k++){ c=c.parentElement; if(!c) break;
+      if(/rounded/.test(c.className||'')){ if(_cardLabel(c)) return c; if(!best) best=c; } }
+    return best; }
+  // LECTURA POSICIONAL: escaneo TODA hoja que sea un monto $, subo a su TARJETA-con-título (_cardOf) y matcheo por
+  // el título. Da igual la estructura interna → Facturación/Ganancia/Inversión salen SIEMPRE, en cualquier cuenta.
   function _kpiVal(word){ try{
     var seen=[], cand=[], leaves=document.querySelectorAll('span,div,p');
     for(var i=0;i<leaves.length;i++){ var e=leaves[i]; if(e.children.length) continue;
       var t=(e.textContent||'').trim(); if(!/^-?\$\s?-?[\d.]{3,}$/.test(t)) continue;   // hoja = monto $
-      var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) break; }
-      if(!(c&&/rounded/.test(c.className||''))) continue;
+      var c=_cardOf(e); if(!c) continue;
       if(seen.indexOf(c)>=0) continue; seen.push(c);
       cand.push({val:n(t), lab:_cardLabel(c), full:_na(c.textContent)}); }
     for(var j=0;j<cand.length;j++){ if(cand[j].lab && cand[j].lab.indexOf(word)>=0) return cand[j].val; }  // por título (preciso)
@@ -2413,8 +2430,7 @@ _SOLO_DASH = r"""
     var seen=[], out=[], leaves=document.querySelectorAll('span,div,p');
     for(var i=0;i<leaves.length;i++){ var e=leaves[i]; if(e.children.length) continue;
       var t=(e.textContent||'').trim(); if(!/^-?\$\s?-?[\d.]{3,}$/.test(t)) continue;
-      var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) break; }
-      if(!(c&&/rounded/.test(c.className||''))) continue;
+      var c=_cardOf(e); if(!c) continue;
       if(seen.indexOf(c)>=0) continue; seen.push(c);
       out.push((_cardLabel(c)||'?')+'='+n(t)); }
     return out.join('  |  ')||'(sin tarjetas $)';
@@ -4052,7 +4068,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-roas-dump"})
+    return jsonify({"ok": True, "v": "2026-08-28-roas-cardof"})
 
 
 @app.get("/pf-cfg")
