@@ -4058,7 +4058,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-roas-backend"})
+    return jsonify({"ok": True, "v": "2026-08-28-desp-deadline"})
 
 
 @app.get("/pf-cfg")
@@ -4736,10 +4736,14 @@ def _tn_dni(o) -> str:
 
 def _despachos_orders(email, desde=None, hasta=None, refresh=False):
     """TODOS los pedidos a despachar del usuario: Shopify + Tiendanube juntos, ya
-    mapeados a la MISMA forma (para que pasen por el MISMO resolver Andreani, intacto)."""
+    mapeados a la MISMA forma (para que pasen por el MISMO resolver Andreani, intacto).
+    DEADLINE compartido: el fetch total nunca supera ~30s → jamás lo mata el timeout de
+    gunicorn (90s) → nunca 'Error de conexión' aunque una tienda esté lenta/colgada."""
+    import time as _t
+    deadline = _t.time() + 30
     out = []
-    sh = _despachos_orders_shopify(email, desde, hasta, refresh=refresh)
-    tn = _tiendanube_orders(email, desde, hasta, refresh=refresh)
+    sh = _despachos_orders_shopify(email, desde, hasta, refresh=refresh, deadline=deadline)
+    tn = _tiendanube_orders(email, desde, hasta, refresh=refresh, deadline=deadline)
     if sh is None and tn is None:
         return None                      # ninguna tienda conectada
     if sh:
@@ -4810,7 +4814,7 @@ def _tn_tel(o):
     return ""
 
 
-def _tiendanube_orders(email, desde=None, hasta=None, refresh=False):
+def _tiendanube_orders(email, desde=None, hasta=None, refresh=False, deadline=None):
     """Pedidos de Tiendanube PAGADOS y NO despachados (por empaquetar + por enviar),
     mapeados a la MISMA forma que _despachos_orders_shopify. Devuelve None si el usuario
     no tiene Tiendanube conectada. CACHEADO (persistente) → no rebaja 40 páginas cada vez ni se cuelga."""
@@ -4836,6 +4840,8 @@ def _tiendanube_orders(email, desde=None, hasta=None, refresh=False):
     for filt in filtros:
         page = 1
         while page <= 5:                                   # tope 5 págs/filtro (era 20) → no se cuelga
+            if deadline and _t.time() > deadline:          # presupuesto de tiempo agotado → corto (no cuelga el server)
+                break
             params = {"per_page": 200, "page": page, **filt}
             if desde:
                 params["created_at_min"] = desde + "T00:00:00-03:00"
@@ -4994,7 +5000,7 @@ def _heavy(fn):
     return _w
 
 
-def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
+def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, deadline=None):
     """Órdenes de Shopify PAGADAS y NO despachadas (para despachar por Andreani).
     Solo entran las PAGADAS (si no está paga, no aparece). Filtra por fecha si se pasa desde/hasta.
     Los pedidos crudos de Shopify se CACHEAN (lo lento); la lista final se rearma siempre (rápido)
@@ -5035,6 +5041,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
             since = 0
             try:
                 for _ in range(8):                                   # paginar (cap 8 págs = 2000 pedidos)
+                    if deadline and _t.time() > deadline:            # se acabó el presupuesto de tiempo → corto
+                        break
                     params["since_id"] = since
                     r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
                                      headers={"X-Shopify-Access-Token": token},
@@ -5093,6 +5101,9 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
     return out
 
 
+_DESP_DIAG = []   # diag TEMPORAL: últimos errores/timings de /pf-despachos (para cazar la causa). Se saca luego.
+
+
 @app.get("/pf-despachos")
 def pf_despachos_list():
     email = _user_actual()
@@ -5101,7 +5112,21 @@ def pf_despachos_list():
     desde = request.args.get("desde") or None
     hasta = request.args.get("hasta") or None
     refresh = request.args.get("refresh") in ("1", "true", "yes")
-    rows = _despachos_orders(email, desde, hasta, refresh=refresh)
+    import time as _t, traceback as _tb
+    _t0 = _t.time()
+    try:
+        rows = _despachos_orders(email, desde, hasta, refresh=refresh)
+    except Exception as e:
+        # NUNCA 500 (el front lo lee como "Error de conexión"). Devuelvo vacío + registro la causa real.
+        _DESP_DIAG.append({"email": email, "ms": int((_t.time() - _t0) * 1000),
+                           "err": "%s: %s" % (type(e).__name__, e), "tb": _tb.format_exc()[-800:]})
+        del _DESP_DIAG[:-20]
+        return jsonify({"ok": True, "shopify": True, "rows": [], "tiendas": [], "_err": True,
+                        "resumen": {"empaquetar": {"n": 0, "monto": 0}, "exportada": {"n": 0, "monto": 0},
+                                    "enviada": {"n": 0, "monto": 0}, "todas": {"n": 0, "monto": 0}}})
+    _DESP_DIAG.append({"email": email, "ms": int((_t.time() - _t0) * 1000),
+                       "n": (len(rows) if rows else 0), "ok": True})
+    del _DESP_DIAG[:-20]
     if rows is None:
         return jsonify({"ok": True, "shopify": False, "rows": []})
 
@@ -5120,6 +5145,13 @@ def pf_despachos_list():
                         "exportada": {"n": len(grp["exportada"]), "monto": _suma(grp["exportada"])},
                         "enviada": {"n": len(grp["enviada"]), "monto": _suma(grp["enviada"])},
                         "todas": {"n": len(rows), "monto": _suma(rows)}}})
+
+
+@app.get("/pf-despachos-diag")
+def pf_despachos_diag():
+    if request.args.get("k") != "desp2608":
+        return jsonify({"ok": False}), 403
+    return jsonify({"ok": True, "diag": _DESP_DIAG})
 
 
 # ============================ FACTURACIÓN ============================
