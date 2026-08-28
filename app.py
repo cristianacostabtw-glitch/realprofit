@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-errores-reales"})
+    return jsonify({"ok": True, "v": "2026-08-28-jobs-disco"})
 
 
 @app.get("/pf-cfg")
@@ -6463,6 +6463,7 @@ def pf_despachos_sku():
     job = uuid.uuid4().hex[:12]
     _SKU_JOBS[job] = {"done": 0, "total": 0, "msg": "Leyendo el PDF…", "listo": False,
                       "error": None, "pdf": None, "email": email, "stats": {}}
+    _job_put(job, _SKU_JOBS[job])            # persisto YA → el otro worker de gunicorn ve el job
     threading.Thread(target=_sku_run, args=(job, data, email), daemon=True).start()
     return jsonify({"ok": True, "job": job})
 
@@ -6473,7 +6474,7 @@ def _sku_run(job, data, email):
     try:
         import fitz
         import io
-        st["msg"] = "Sincronizando pedidos de tu tienda…"
+        st["msg"] = "Sincronizando pedidos de tu tienda…"; _job_put(job, st)
         skus = _skus_map(email)                 # config de SKU por producto (lo que cargó el usuario)
         mapa = _sku_pedidos_map(email)          # {nº → nombre + productos} de Shopify + Tiendanube
         doc = fitz.open(stream=data, filetype="pdf")
@@ -6528,25 +6529,36 @@ def _sku_run(job, data, email):
         nuevo_doc.close()
         doc.close()
         st["pdf"] = buf.getvalue()
+        try:
+            _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+            (_JOBS_DIR / (job + ".pdf")).write_bytes(st["pdf"])   # PDF a disco → lo baja cualquier worker
+        except Exception:
+            pass
         st["done"] = total
         st["stats"] = {"total": total, "estampadas": estampadas,
                        "conflicto": conflicto, "sin_pedido": sin_pedido}
         st["msg"] = "¡Listo! %d de %d etiquetas con SKU." % (estampadas, total)
         st["listo"] = True
+        _job_put(job, st)
     except Exception as e:
-        st["error"] = str(e)
+        import traceback as _tb
+        _tbl = _tb.extract_tb(e.__traceback__)
+        _ln = (" @ %s:%d" % (_tbl[-1].name, _tbl[-1].lineno)) if _tbl else ""
+        st["error"] = "%s: %s%s" % (type(e).__name__, str(e)[:180], _ln)
         st["listo"] = True
+        _job_put(job, st)
 
 
 @app.get("/pf-despachos-sku-progreso")
 def pf_despachos_sku_progreso():
     if not _user_actual():
         return jsonify({"ok": False}), 401
-    st = _SKU_JOBS.get((request.args.get("job") or "").strip())
+    _jid = (request.args.get("job") or "").strip()
+    st = _SKU_JOBS.get(_jid) or _job_get(_jid)      # disco → sirve aunque caiga en otro worker
     if not st:
         return jsonify({"ok": False, "msg": "job no encontrado"}), 404
-    return jsonify({"ok": True, "done": st["done"], "total": st["total"], "msg": st["msg"],
-                    "listo": st["listo"], "error": st["error"], "stats": st.get("stats") or {}})
+    return jsonify({"ok": True, "done": st.get("done", 0), "total": st.get("total", 0), "msg": st.get("msg", ""),
+                    "listo": st.get("listo", False), "error": st.get("error"), "stats": st.get("stats") or {}})
 
 
 @app.get("/pf-despachos-sku-descargar")
@@ -6555,10 +6567,15 @@ def pf_despachos_sku_descargar():
         return jsonify({"ok": False}), 401
     job = (request.args.get("job") or "").strip()
     st = _SKU_JOBS.get(job)
-    if not st or not st.get("pdf"):
+    pdf = st.get("pdf") if st else None
+    if not pdf:                                    # otro worker: leo el PDF de disco
+        try:
+            pdf = (_JOBS_DIR / (job + ".pdf")).read_bytes()
+        except Exception:
+            pdf = None
+    if not pdf:
         return jsonify({"ok": False, "msg": "todavía no está listo"}), 404
     import io
-    pdf = st["pdf"]
     _SKU_JOBS.pop(job, None)          # libero memoria una vez descargado
     return send_file(io.BytesIO(pdf), as_attachment=True,
                      download_name="etiquetas-con-sku.pdf", mimetype="application/pdf")
@@ -7180,11 +7197,33 @@ def pf_despachos_seg_leer():
     job = _uuid.uuid4().hex[:12]
     _SEG_JOBS[job] = {"listo": False, "error": None, "pedidos": None, "resumen": None,
                       "tienda": tienda, "total": len(items), "done": 0, "email": email, "t0": _ahora}
+    _job_put(job, _SEG_JOBS[job])            # persisto YA → el OTRO worker de gunicorn también ve el job
     threading.Thread(target=_seg_leer_run, args=(job, items, email, tienda, store, hdr), daemon=True).start()
     return jsonify({"ok": True, "job": job, "total": len(items)})
 
 
 _SEG_JOBS = {}   # job_id → estado del lector de seguimientos (corre en un hilo aparte, no bloquea el request)
+
+# ── JOBS COMPARTIDOS ENTRE WORKERS ─────────────────────────────────────────────────────────
+# gunicorn corre 2 workers; un dict en memoria vive en UN worker → el poll del progreso puede caer
+# en el OTRO worker y NO encontrar el job ("el proceso venció"). Fix: persisto el estado a disco.
+_JOBS_DIR = DATA_DIR / "jobs"
+
+
+def _job_put(job, d):
+    try:
+        _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        dd = {k: v for k, v in d.items() if k != "pdf"}     # los bytes del PDF NO van al JSON
+        (_JOBS_DIR / (job + ".json")).write_text(_json.dumps(dd, ensure_ascii=False, default=str), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _job_get(job):
+    try:
+        return _json.loads((_JOBS_DIR / (job + ".json")).read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def _seg_leer_run(job, items, email, tienda, store, hdr):
@@ -7228,6 +7267,8 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 "tn": tn_ok, "wpp": wpp_ok, "match": match, "tienda": tienda,
             })
             _SEG_JOBS[job]["done"] = len(pedidos)
+            if len(pedidos) % 5 == 0:
+                _job_put(job, _SEG_JOBS[job])       # progreso visible aunque el poll caiga en el otro worker
             if tn_ok and wpp_ok:
                 n_ambos += 1
             elif tn_ok:
@@ -7241,15 +7282,21 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
         _SEG_JOBS[job].update({"listo": True, "pedidos": pedidos, "wpp_on": wpp_on,
                                "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
                                            "solo_wpp": n_wpp, "ninguno": n_falta}})
+        _job_put(job, _SEG_JOBS[job])            # resultado final a disco (lo lee cualquier worker)
     except Exception as e:
-        _SEG_JOBS[job].update({"listo": True, "error": "%s: %s" % (type(e).__name__, str(e)[:180])})
+        import traceback as _tb
+        _tbl = _tb.extract_tb(e.__traceback__)
+        _ln = (" @ %s:%d" % (_tbl[-1].name, _tbl[-1].lineno)) if _tbl else ""
+        _SEG_JOBS[job].update({"listo": True, "error": "%s: %s%s" % (type(e).__name__, str(e)[:180], _ln)})
+        _job_put(job, _SEG_JOBS[job])
 
 
 @app.get("/pf-despachos-seg-progreso")
 def pf_despachos_seg_progreso():
     if not _user_actual():
         return jsonify({"ok": False}), 401
-    st = _SEG_JOBS.get((request.args.get("job") or "").strip())
+    _jid = (request.args.get("job") or "").strip()
+    st = _SEG_JOBS.get(_jid) or _job_get(_jid)      # disco → sirve aunque el poll caiga en otro worker
     if not st:
         return jsonify({"ok": False, "msg": "el proceso venció, subí el PDF de nuevo"})
     if not st.get("listo"):
