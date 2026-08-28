@@ -2360,28 +2360,41 @@ _SOLO_DASH = r"""
   var _C={}, _lastScan=0, _miss=0;
   function _get(l){ var c=_C[l]; return (c&&c.isConnected&&c.offsetParent!==null)?c:null; }
   function _rescan(){ ['Facturación','Ganancia','Inversión Ads','True ROAS','Margen','Break Even ROAS'].forEach(function(l){ var c=cardByLabel(l); if(c) _C[l]=c; }); }
-  function _val(l){ var c=_get(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }
+  function _val(l){ var c=cardByLabel(l); if(!c) return 0; var v=bigLeaf(c); return v?n(v.textContent):0; }   // FRESCO (no caché viejo)
   function _dashOk(){ return _get('Inversión Ads') && (_get('True ROAS')||_get('Margen')) && _get('Break Even ROAS'); }
-  var _t0=Date.now();
   function fix(){
-    var now=Date.now();
-    if(!_dashOk()){                                   // tarjetas no encontradas (o re-render por cambio de fecha/cuenta)
-      // En el Dashboard re-detecta RÁPIDO (para re-aplicar en CADA cambio de fecha/cuenta/re-render).
-      // Tras 3 fallos seguidos (estamos en otra pantalla, ej Despachos) baja a 2,5s → sin jank ahí.
-      var gap=(now-_t0<10000)?350:(_miss<3?500:2500);
-      if(now-_lastScan < gap) return;
-      _lastScan=now; _rescan();
-      if(_dashOk()){ _miss=0; } else { _miss++; return; }
-    } else { _miss=0; }
-    var fa=_val('Facturación'), ga=_val('Ganancia'), iv=_val('Inversión Ads'); if(!fa) return;
-    var mg=Math.round(ga/fa*1000)/10, br=(ga+iv)>0?Math.round(fa/(ga+iv)*100)/100:0;
-    var m=_get('True ROAS')||_get('Margen');
+    // GUARD barato: ¿estamos en el Dashboard? (busco la tarjeta Inversión Ads, FRESCO). Si no, rate-limit y salgo.
+    var inv=cardByLabel('Inversión Ads');
+    if(!inv){ var now=Date.now(); if(now-_lastScan < (_miss<3?400:2500)) return; _lastScan=now; _miss++; return; }
+    _miss=0;
+    // Leo TODO fresco (sin caché viejo → arregla el fa=0). Ganancia por label o, si falla, por posición (KPI 4°).
+    var fa=_val('Facturación'), ga=_val('Ganancia'), iv2=_val('Inversión Ads'); if(!fa) return;
+    if(!ga) ga=_gananciaFallback();                // si 'Ganancia' no matchea por label, la saco por posición
+    var mg=Math.round(ga/fa*1000)/10, br=(ga+iv2)>0?Math.round(fa/(ga+iv2)*100)/100:0;
+    var m=cardByLabel('True ROAS')||cardByLabel('Margen');
     if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-      var v=valueSlot(m); var mv=mg+'%'; if(v&&v.textContent!==mv) v.textContent=mv;   // valueSlot: llena aunque venga vacío
+      var v=valueSlot(m); var mv=mg+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
       var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; }
-    var b=_get('Break Even ROAS');
+    var b=cardByLabel('Break Even ROAS');
     if(b){ var w=valueSlot(b); var bt=br.toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
-    window._rpDashOK=true;   // ya corregí Margen + Break Even → estructura() puede revelar la grilla
+    window._rpDashOK=true;
+  }
+  // Ganancia por POSICIÓN: es el 4° KPI de arriba (Ventas, Facturación, Ticket, Ganancia). Robusto si el label
+  // no matchea. Tomo las tarjetas KPI de arriba (rounded con un valor $) y agarro la de la etiqueta 'ganancia'
+  // o, en última instancia, la 4°.
+  function _gananciaFallback(){
+    try{
+      var cards=[], seen=[];
+      var vals=document.querySelectorAll('span,div,p');
+      for(var i=0;i<vals.length;i++){ var e=vals[i]; if(e.children.length) continue;
+        var t=(e.textContent||'').trim(); if(!/^-?\$\s?-?[\d.]{3,}$/.test(t)) continue;   // hoja que es un monto $
+        var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) break; }
+        if(c&&/rounded/.test(c.className||'') && seen.indexOf(c)<0){ seen.push(c);
+          cards.push({card:c, val:n(t), txt:_na(c.textContent)}); } }
+      // la tarjeta cuyo texto contiene 'ganancia'
+      for(var j=0;j<cards.length;j++){ if(cards[j].txt.indexOf('ganancia')>=0) return cards[j].val; }
+    }catch(e){}
+    return 0;
   }
   function loop(){ try{ fix(); }catch(e){} }
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
@@ -2392,7 +2405,8 @@ _SOLO_DASH = r"""
     var st='inv:'+(!!cardByLabel('Inversión Ads'))+' fa:'+(!!cardByLabel('Facturación'))+' ga:'+(!!cardByLabel('Ganancia'))+' tr:'+(!!cardByLabel('True ROAS'))+' be:'+(!!cardByLabel('Break Even ROAS'));
     var d=document.getElementById('_rpdbg')||document.createElement('div'); d.id='_rpdbg';
     d.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#0b0b0b;color:#5fff87;font:10px/1.4 monospace;padding:4px 9px;border-radius:6px;opacity:.92';
-    d.textContent='RP-DBG '+st+' | fa='+_val('Facturación')+' ga='+_val('Ganancia')+' inv='+_val('Inversión Ads');
+    var _fa=_val('Facturación'),_ga=_val('Ganancia'),_iv=_val('Inversión Ads'),_gfb=_gananciaFallback();
+    d.textContent='RP-DBG '+st+' | fa='+_fa+' ga='+_ga+' gaFB='+_gfb+' inv='+_iv;
     document.body.appendChild(d);
   }catch(e){ var d2=document.createElement('div'); d2.id='_rpdbg'; d2.style.cssText='position:fixed;bottom:6px;left:6px;z-index:99999;background:#a00;color:#fff;font:10px monospace;padding:4px 9px'; d2.textContent='RP-DBG ERR: '+(e&&e.message); document.body.appendChild(d2); } }, 5500);
 })();
@@ -4019,7 +4033,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-dbg-roas"})
+    return jsonify({"ok": True, "v": "2026-08-28-roas-fresh-ganancia"})
 
 
 @app.get("/pf-cfg")
