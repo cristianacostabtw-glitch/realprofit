@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-27-carritos-shopify"})
+    return jsonify({"ok": True, "v": "2026-08-28-carrito-msg-lindo"})
 
 
 @app.get("/pf-cfg")
@@ -12018,7 +12018,9 @@ def _wa_marca_enviados(email, tipo):
     """Set de teléfonos (E164) que YA recibieron ese tipo ('carrito'|'transfer'), del log de chats."""
     chats = _wa_chats_all().get(email, {})
     if tipo == "carrito":
-        marcas = ("[carrito", "regalo10", "no la finalizaste")
+        # detecta el formato viejo ([carrito ...) Y el mensaje lindo nuevo (por el texto y el link de recuperación)
+        marcas = ("[carrito", "regalo10", "carrito10", "no la finalizaste",
+                  "en tu carrito", "/checkouts/ac", "abandoned_checkout")
     else:
         marcas = ("[transfer", "cbu ", "transfer")
     ya = set()
@@ -12345,8 +12347,11 @@ def wa_carritos_enviar():
             salt += 1
             continue
         n = (it["nombre"] or "cliente").split()[0]
-        ok, det = _wa_send_tpl(email, conf, k, WA_TPL_CARRITO, [n, it["url"]],
-                               "[carrito] %s -> %s" % (n, it["url"]))
+        # Se loguea el MENSAJE REAL (tal como lo recibe el cliente), no el texto interno feo.
+        msg_log = ("¡Hola %s! \U0001F44B\n\nVimos que dejaste productos en tu carrito y no llegaste a "
+                   "terminar la compra. Te lo guardamos \U0001F6D2\n\nEntrá acá y ya te aplicamos el "
+                   "10%% OFF automático \U0001F447\n%s") % (n, it["url"])
+        ok, det = _wa_send_tpl(email, conf, k, WA_TPL_CARRITO, [n, it["url"]], msg_log)
         if ok:
             env += 1; ya.add(k)
         else:
