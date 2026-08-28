@@ -4076,7 +4076,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carr-rec"})
+    return jsonify({"ok": True, "v": "2026-08-28-carr-rec2"})
 
 
 @app.get("/pf-cfg")
@@ -6545,6 +6545,15 @@ def pf_carr_recuperados():
         params = {"status": "any", "financial_status": "paid", "limit": 250,
                   "created_at_min": desde + "T00:00:00-03:00", "created_at_max": hasta + "T23:59:59-03:00",
                   "fields": "id,name,order_number,total_price,discount_codes,created_at,cancelled_at"}
+        dominio = ""
+        try:
+            _sr = requests.get("https://%s/admin/api/2026-07/shop.json" % shop,
+                               headers={"X-Shopify-Access-Token": token},
+                               params={"fields": "name,domain"}, timeout=8)
+            _sj = (_sr.json() or {}).get("shop") or {}
+            dominio = "%s | %s" % (_sj.get("name") or "", _sj.get("domain") or "")
+        except Exception:
+            pass
         rec, monto, tot, codes = 0, 0.0, 0, {}
         deadline = _t.time() + 25
         try:
@@ -6575,7 +6584,7 @@ def pf_carr_recuperados():
                 url = nxt; params = None
         except Exception as e:
             out.append({"shop": shop, "err": "%s: %s" % (type(e).__name__, e)}); continue
-        out.append({"shop": shop, "pagados_recientes": tot, "recuperados": rec,
+        out.append({"shop": shop, "tienda": dominio, "pagados_recientes": tot, "recuperados": rec,
                     "monto_recuperado": round(monto, 2), "cupones": codes})
     return jsonify({"ok": True, "dias": dias, "tiendas": out})
 
