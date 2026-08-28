@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carrito-estado-header"})
+    return jsonify({"ok": True, "v": "2026-08-28-num-sync-tab"})
 
 
 @app.get("/pf-cfg")
@@ -11528,6 +11528,8 @@ function renderApp(){
 // ───── Pestañas Transferencias / Carritos ─────
 var TAB='chats', TDATA=[], TSEL={};
 function waTab(t){ TAB=t; var p=document.getElementById('panel');
+ // Sincroniza canal + número con la pestaña: Chats/Transferencias/Carritos = API · Web = Web (QR).
+ try{ _chanPaint(t==='web'?'web':'api'); }catch(e){}
  [['bChats','chats'],['bWeb','web'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.classList.toggle('on',x[1]===t); });
  if(WEBPOLL){ clearInterval(WEBPOLL); WEBPOLL=null; }
  // La pestaña WEB (QR) NO necesita la Cloud API → destraba y muestra el panel.
