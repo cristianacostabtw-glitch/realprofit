@@ -4011,7 +4011,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-desp-cache-disco"})
+    return jsonify({"ok": True, "v": "2026-08-28-tn-desp-nocuelga"})
 
 
 @app.get("/pf-cfg")
@@ -4692,7 +4692,7 @@ def _despachos_orders(email, desde=None, hasta=None, refresh=False):
     mapeados a la MISMA forma (para que pasen por el MISMO resolver Andreani, intacto)."""
     out = []
     sh = _despachos_orders_shopify(email, desde, hasta, refresh=refresh)
-    tn = _tiendanube_orders(email, desde, hasta)
+    tn = _tiendanube_orders(email, desde, hasta, refresh=refresh)
     if sh is None and tn is None:
         return None                      # ninguna tienda conectada
     if sh:
@@ -4763,10 +4763,10 @@ def _tn_tel(o):
     return ""
 
 
-def _tiendanube_orders(email, desde=None, hasta=None):
+def _tiendanube_orders(email, desde=None, hasta=None, refresh=False):
     """Pedidos de Tiendanube PAGADOS y NO despachados (por empaquetar + por enviar),
     mapeados a la MISMA forma que _despachos_orders_shopify. Devuelve None si el usuario
-    no tiene Tiendanube conectada."""
+    no tiene Tiendanube conectada. CACHEADO (persistente) → no rebaja 40 páginas cada vez ni se cuelga."""
     tk = _tn_tokens().get(email)
     if not tk or not tk.get("access_token"):
         return None
@@ -4775,12 +4775,20 @@ def _tiendanube_orders(email, desde=None, hasta=None):
         return None
     hdr = _tn_headers(token)
     st = _desp_state(email)
+    import time as _t
+    ckey = "%s|%s" % (desde or "", hasta or "")
+    _tn_desp_load()
+    _c = _TN_DESP_CACHE.get(email)
+    if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
+        for it in _c["out"]:                       # re-aplico el estado local → "marcar" se refleja SIN re-fetch
+            it["estado"] = st.get(str(it["num"])) or "empaquetar"
+        return _c["out"]
     out, vistos = [], set()
     filtros = [{"payment_status": "paid", "shipping_status": "unpacked"},     # por empaquetar
                {"payment_status": "paid", "shipping_status": "unfulfilled"}]  # packed → por enviar
     for filt in filtros:
         page = 1
-        while page <= 20:
+        while page <= 5:                                   # tope 5 págs/filtro (era 20) → no se cuelga
             params = {"per_page": 200, "page": page, **filt}
             if desde:
                 params["created_at_min"] = desde + "T00:00:00-03:00"
@@ -4788,7 +4796,7 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 params["created_at_max"] = hasta + "T23:59:59-03:00"
             try:
                 r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr,
-                                 params=params, timeout=40)
+                                 params=params, timeout=12)                # era 40s → 12s (no cuelga el hilo)
                 lote = r.json() if r.content else []
             except Exception:
                 lote = []
@@ -4851,6 +4859,8 @@ def _tiendanube_orders(email, desde=None, hasta=None):
                 break
             page += 1
     out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
+    _TN_DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "out": out}
+    _tn_desp_save()
     return out
 
 
@@ -4879,6 +4889,34 @@ def _desp_cache_load():
 def _desp_cache_save():
     try:
         _DESP_CACHE_FILE.write_text(_json.dumps(_DESP_CACHE), encoding="utf-8")
+    except Exception:
+        pass
+
+
+# Caché de despachos de TiendaNube (era lo que se colgaba: 40 págs × 40s sin caché). Persistente.
+_TN_DESP_CACHE = {}
+_TN_DESP_FILE = DATA_DIR / "tn_desp_cache.json"
+_TN_DESP_LOADED = False
+
+
+def _tn_desp_load():
+    global _TN_DESP_LOADED
+    if _TN_DESP_LOADED:
+        return
+    _TN_DESP_LOADED = True
+    try:
+        d = _json.loads(_TN_DESP_FILE.read_text(encoding="utf-8"))
+        if isinstance(d, dict):
+            for em, v in d.items():
+                if em not in _TN_DESP_CACHE:
+                    _TN_DESP_CACHE[em] = v
+    except Exception:
+        pass
+
+
+def _tn_desp_save():
+    try:
+        _TN_DESP_FILE.write_text(_json.dumps(_TN_DESP_CACHE), encoding="utf-8")
     except Exception:
         pass
 # Candado: máximo N operaciones PESADAS concurrentes (Shopify/TN/PDF). Tope DEBAJO del nº de hilos
