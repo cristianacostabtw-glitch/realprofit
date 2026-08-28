@@ -4011,7 +4011,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-dash-acentos-raiz"})
+    return jsonify({"ok": True, "v": "2026-08-28-desp-cache-disco"})
 
 
 @app.get("/pf-cfg")
@@ -4856,6 +4856,31 @@ def _tiendanube_orders(email, desde=None, hasta=None):
 
 _DESP_CACHE = {}      # {email: {"key": (desde,hasta), "ts": epoch, "orders": [...]}} — cachea lo LENTO (traer de Shopify)
 _DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instantáneo); "Sincronizar" lo refresca.
+_DESP_CACHE_FILE = DATA_DIR / "desp_cache.json"   # persiste el caché → tras un DEPLOY, Despachos carga al toque (no rebaja todo)
+_DESP_LOADED = False
+
+
+def _desp_cache_load():
+    """Carga el caché de despachos desde disco (una vez) → sobrevive reinicios/deploys."""
+    global _DESP_LOADED
+    if _DESP_LOADED:
+        return
+    _DESP_LOADED = True
+    try:
+        d = _json.loads(_DESP_CACHE_FILE.read_text(encoding="utf-8"))
+        if isinstance(d, dict):
+            for em, v in d.items():
+                if em not in _DESP_CACHE:
+                    _DESP_CACHE[em] = v
+    except Exception:
+        pass
+
+
+def _desp_cache_save():
+    try:
+        _DESP_CACHE_FILE.write_text(_json.dumps(_DESP_CACHE), encoding="utf-8")
+    except Exception:
+        pass
 # Candado: máximo N operaciones PESADAS concurrentes (Shopify/TN/PDF). Tope DEBAJO del nº de hilos
 # (5 < 12) → aunque las 5 pesadas queden colgadas, SIEMPRE quedan ~7 hilos libres para navegar/abrir.
 # Esto es lo que evita que el server quede muerto para todos (HTTP 000) cuando algo externo se cuelga.
@@ -4894,7 +4919,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
     if not tk or not tk.get("access_token"):
         return None
     shop, token = tk.get("shop"), tk.get("access_token")
-    ckey = (desde or "", hasta or "")
+    ckey = "%s|%s" % (desde or "", hasta or "")   # string (no tupla) → sobrevive el JSON del caché en disco
+    _desp_cache_load()                    # trae el caché de disco (tras deploy) → carga instantánea
     _c = _DESP_CACHE.get(email)
     orders = None
     if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
@@ -4943,6 +4969,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False):
         finally:
             _SHOP_SEM.release()
         _DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "orders": orders}
+        _desp_cache_save()                # persisto a disco → el próximo deploy no arranca frío
     st = _desp_state(email)
     out = []
     for o in orders:
