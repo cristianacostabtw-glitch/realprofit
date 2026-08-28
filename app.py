@@ -3993,7 +3993,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-carritos-cache-sem"})
+    return jsonify({"ok": True, "v": "2026-08-28-sku-cache-fast"})
 
 
 @app.get("/pf-cfg")
@@ -4844,6 +4844,8 @@ _DESP_TTL = 600       # 10 min. Abrir/recargar Despachos usa el caché (instant�
 _SHOP_SEM = threading.BoundedSemaphore(5)
 _CARR_CACHE = {}      # {email: {"dias": n, "ts": epoch, "items": [...]}} — cachea el fetch pesado de carritos
 _CARR_TTL = 300       # 5 min. Abrir/recargar Carritos usa el caché; enviar o refresh=1 lo refresca.
+_SKU_PED_CACHE = {}   # {email: (ts, mapa)} — cachea los pedidos del "Insertar SKU" (no rebaja 60 días cada vez)
+_SKU_PED_TTL = 300    # 5 min
 
 
 def _heavy(fn):
@@ -6136,7 +6138,11 @@ def _sku_label_nombre(texto):
 def _sku_pedidos_map(email):
     """{nº pedido → [ {'nom','items','tienda'}, ... ] } (lista: el mismo nº puede estar en las 2 tiendas) de las
     tiendas conectadas (Shopify + Tiendanube). Trae los PRODUCTOS de cada pedido para calcular
-    el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO."""
+    el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO (cacheado)."""
+    import time as _t
+    _c = _SKU_PED_CACHE.get(email)
+    if _c and (_t.time() - _c[0] < _SKU_PED_TTL):
+        return _c[1]                       # caché fresco → no rebaja Shopify/TN de nuevo
     mapa = {}
     # --- Tiendanube (sku_key = 'tn:<product_id>', igual que en Productos) ---
     tk = _tn_tokens().get(email)
@@ -6168,21 +6174,26 @@ def _sku_pedidos_map(email):
     if tks and tks.get("access_token"):
         hasta = _hoy()
         desde = (_dt.date.today() - _dt.timedelta(days=60)).isoformat()
-        try:
-            for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta):
-                num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-                if not num:
-                    continue
-                items = []
-                for li in (o.get("line_items") or []):
-                    items.append((str(li.get("product_id") or ""), int(li.get("quantity") or 0),
-                                  li.get("title") or li.get("name") or ""))
-                sa = o.get("shipping_address") or {}
-                cu = o.get("customer") or {}
-                nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
-                mapa.setdefault(num, []).append({"nom": nom, "items": items, "tienda": "shopify"})
-        except Exception:
-            pass
+        _got = _SHOP_SEM.acquire(timeout=4)     # tope de ops pesadas → no cuelga los hilos del server
+        if _got:
+            try:
+                for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta):
+                    num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+                    if not num:
+                        continue
+                    items = []
+                    for li in (o.get("line_items") or []):
+                        items.append((str(li.get("product_id") or ""), int(li.get("quantity") or 0),
+                                      li.get("title") or li.get("name") or ""))
+                    sa = o.get("shipping_address") or {}
+                    cu = o.get("customer") or {}
+                    nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
+                    mapa.setdefault(num, []).append({"nom": nom, "items": items, "tienda": "shopify"})
+            except Exception:
+                pass
+            finally:
+                _SHOP_SEM.release()
+    _SKU_PED_CACHE[email] = (_t.time(), mapa)
     return mapa
 
 
