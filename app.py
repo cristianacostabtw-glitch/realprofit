@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-header-orden"})
+    return jsonify({"ok": True, "v": "2026-08-29-bot-link-bot5"})
 
 
 @app.get("/pf-cfg")
@@ -12309,8 +12309,8 @@ function presetVP(){
 }
 var _NX_INSTR=`Qué vendemos: NoxaLab® Complejo de NAD+ 7 en 1 en polvo. Bienestar masculino en una sola fórmula (energía + rendimiento sexual + próstata). La fórmula trabaja en 3 puntos: NAD+, CoQ10 y cafeína acompañan la energía y el rendimiento; otros componentes favorecen la circulación (importante para la erección); el saw palmetto está orientado a la salud prostática y urinaria.
 Precio: $49.990 la unidad.
-REGLA CLAVE — si el cliente pregunta el PRECIO, cómo COMPRAR, por la WEB, ayuda para hacer la compra, promos, o "cuánto sale": respondé SIEMPRE con este texto EXACTO (no lo cambies ni saques el link):
-"En nuestra página podés ver toda la info, precios y promos. Hacemos envíos a todo el país por Andreani! https://noxalaboficial.com/discount/BOT5?redirect=/products/noxalab
+REGLA CLAVE — si el cliente pregunta el PRECIO, cómo COMPRAR, por la WEB, ayuda para hacer la compra, promos, "cuánto sale", "más info", "de [ciudad] dónde lo venden", o simplemente saluda/dice que tiene una consulta: respondé SIEMPRE con este texto EXACTO (no lo cambies ni saques el link). El código del link es BOT5 a propósito (sirve para medir cuántas ventas cierra el bot) — usá SIEMPRE BOT5, NUNCA otro código como BENEFICIO5 aunque lo veas en ejemplos viejos:
+"Buenas! ¿Qué tal? En nuestra página podés ver toda la info, precios y promos. Hacemos envíos a todo el país por Andreani! https://noxalaboficial.com/discount/BOT5?redirect=/products/noxalab
 *ENTRANDO POR ESTE LINK TENÉS 5% OFF ADICIONAL*"
 Pago (solo si preguntan): transferencia (5% OFF) o tarjeta por la web. Para transferencia pasás el alias y confirmás con el comprobante. Alias/CBU: [COMPLETAR].
 Envío (solo si preguntan): Andreani a todo el país. [COMPLETAR: gratis o costo + demora en días].
