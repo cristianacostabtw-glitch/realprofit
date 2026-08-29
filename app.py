@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-wa-web-warm"})
+    return jsonify({"ok": True, "v": "2026-08-29-wa-fix-js"})
 
 
 @app.get("/pf-cfg")
@@ -12255,7 +12255,7 @@ function renderBot(c){
   +'<div class="fld" style="margin:12px 0"><label>Aprender de charlas reales <span style="color:#94a3b8;font-weight:400">(opcional, muy potente)</span></label>'
   +'<div style="font-size:12px;color:#667781;margin:2px 0 6px">Subí un export de chats de WhatsApp (.txt). El bot aprende tu <b>tono</b>, tus respuestas t&iacute;picas y sobre todo <b>qu&eacute; deriv&aacute;s a humano</b>.'+(c.ejemplos_n?' <span style="color:#128C7E;font-weight:700">&#10003; '+c.ejemplos_n+' charlas aprendidas</span>':'')+'</div>'
   +'<input type="file" id="botLearnFile" accept=".txt" style="display:none" onchange="aprenderChats(this)">'
-  +'<button type="button" class="b ai" onclick="document.getElementById(\'botLearnFile\').click()">&#10024; Subir chats para aprender</button>'
+  +'<button type="button" class="b ai" onclick="pickLearn()">&#10024; Subir chats para aprender</button>'
   +'<div id="botLearnMsg" style="margin-top:8px"></div></div>'
   +'<div style="font-weight:700;margin:14px 0 4px;font-size:13px">Datos de pago (para leer comprobantes) <span style="color:#94a3b8;font-weight:400">opcional</span></div>'
   +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
@@ -12300,6 +12300,7 @@ function presetVP(){
 function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot ENCENDIDO — responde solo. Tocá para apagar.':'Bot APAGADO — no responde. Tocá para encender.'; t.innerHTML='&#129302; Bot: '+(BOTON?'ON':'OFF'); }
 function botTopToggle(){ post('/wa-bot-config',{bot:BOTON?'0':'1'}).then(function(r){ if(r.ok){ BOTON=!!r.bot; syncBotTop(); } }); }
 function loadBotTop(){ get('/wa-bot-config').then(function(c){ if(c&&c.ok){ BOTON=!!c.bot; syncBotTop(); } }); }
+function pickLearn(){ var e=document.getElementById('botLearnFile'); if(e) e.click(); }
 function aprenderChats(inp){
  var f=inp.files&&inp.files[0]; if(!f)return;
  var msg=document.getElementById('botLearnMsg'); msg.innerHTML='<div style="color:#7c3aed;font-size:12.5px">&#9203; Leyendo y aprendiendo de las charlas&#8230; (puede tardar unos segundos)</div>';
