@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-wa-nostore-errtrap"})
+    return jsonify({"ok": True, "v": "2026-08-29-preset-noxalab"})
 
 
 @app.get("/pf-cfg")
@@ -12271,7 +12271,8 @@ function renderBot(c){
   +'<input id="botPagCuit" value="'+esc(c.pago_cuit||'')+'" placeholder="CUIT" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px"></div>'
   +'<small style="color:#667781">Si los cargás, el bot valida el comprobante contra estos datos. Si no, deja las transferencias para que las confirmes vos.</small>'
   +'<div class="brow" style="margin-top:14px"><button type="button" class="b p" onclick="saveBot()">&#128190; Guardar</button>'
-  +'<button type="button" class="b g" onclick="presetVP()" title="Rellena marca, cerebro y datos de pago de VisionPure">&#9889; Preset VisionPure</button></div>'
+  +'<button type="button" class="b g" onclick="presetVP()" title="Rellena marca, cerebro y datos de pago de VisionPure">&#9889; Preset VisionPure</button>'
+  +'<button type="button" class="b g" onclick="presetNX()" title="Rellena marca y cerebro de NoxaLab (con la regla del link de precio)">&#9889; Preset NoxaLab</button></div>'
   +'<div id="botMsg" style="margin-top:8px"></div>'
   +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
   +'<div style="font-weight:700;margin-bottom:4px">&#129514; Probador (no manda nada)</div>'
@@ -12302,6 +12303,22 @@ function presetVP(){
   s('botMarca','VisionPure'); s('botPagTit','Maximo Benjamin Barrera'); s('botPagAli','visionpure1'); s('botPagCuit','20482009191');
   s('botInstr',_VP_INSTR);
   var mm=document.getElementById('botMsg'); if(mm) mm.innerHTML='<div class="msgline msgok">Preset cargado. Revisá y tocá Guardar.</div>';
+}
+var _NX_INSTR=`Qué vendemos: NoxaLab® Complejo de NAD+ 7 en 1 en polvo. Bienestar masculino en una sola fórmula (energía + rendimiento sexual + próstata). La fórmula trabaja en 3 puntos: NAD+, CoQ10 y cafeína acompañan la energía y el rendimiento; otros componentes favorecen la circulación (importante para la erección); el saw palmetto está orientado a la salud prostática y urinaria.
+Precio: $49.990 la unidad.
+REGLA CLAVE — si el cliente pregunta el PRECIO, cómo COMPRAR, por la WEB, ayuda para hacer la compra, promos, o "cuánto sale": respondé SIEMPRE con este texto EXACTO (no lo cambies ni saques el link):
+"En nuestra página podés ver toda la info, precios y promos. Hacemos envíos a todo el país por Andreani! https://noxalaboficial.com/discount/BOT5?redirect=/products/noxalab
+*ENTRANDO POR ESTE LINK TENÉS 5% OFF ADICIONAL*"
+Pago (solo si preguntan): transferencia (5% OFF) o tarjeta por la web. Para transferencia pasás el alias y confirmás con el comprobante. Alias/CBU: [COMPLETAR].
+Envío (solo si preguntan): Andreani a todo el país. [COMPLETAR: gratis o costo + demora en días].
+Cómo se toma (solo si preguntan): [COMPLETAR: ej 1 medida al día en agua].
+Salud: hablá en clave de bienestar ("acompaña", "favorece", "muchos notan"). NUNCA digas que cura enfermedades ni des indicaciones médicas.
+Derivar a humano: reclamos, "no me funcionó", pedidos ya despachados / seguimiento, y temas de salud delicados (enfermedad, medicación).`;
+function presetNX(){
+  var s=function(id,v){ var e=document.getElementById(id); if(e)e.value=v; };
+  s('botMarca','NoxaLab');
+  s('botInstr',_NX_INSTR);
+  var mm=document.getElementById('botMsg'); if(mm) mm.innerHTML='<div class="msgline msgok">Preset NoxaLab cargado. Completá los [COMPLETAR] y tocá Guardar.</div>';
 }
 // Toggle rápido del bot arriba (al lado del número)
 function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot ENCENDIDO — responde solo. Tocá para apagar.':'Bot APAGADO — no responde. Tocá para encender.'; t.innerHTML='&#129302; Bot: '+(BOTON?'ON':'OFF'); }
