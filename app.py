@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-carritos-oco-fix"})
+    return jsonify({"ok": True, "v": "2026-08-29-carritos-cD-fix"})
 
 
 @app.get("/pf-cfg")
@@ -12647,8 +12647,8 @@ def _wa_carritos_list(email, dias=14):
                 continue
             cust = co.get("customer") or {}
             tel = (co.get("phone") or cust.get("phone")
-                   or (c_D(co.get("shipping_address"))).get("phone")
-                   or (c_D(co.get("billing_address"))).get("phone"))
+                   or (_D(co.get("shipping_address"))).get("phone")
+                   or (_D(co.get("billing_address"))).get("phone"))
             if not tel or not re.sub(r"\D", "", tel):
                 continue
             url = co.get("abandoned_checkout_url")
@@ -12661,8 +12661,8 @@ def _wa_carritos_list(email, dias=14):
             if k in ya or k in compr_t or (mail and mail in compr_m):   # ya enviado o ya compró → FUERA
                 continue
             nombre = (cust.get("first_name")
-                      or (c_D(co.get("shipping_address"))).get("first_name")
-                      or (c_D(co.get("shipping_address"))).get("name") or "cliente")
+                      or (_D(co.get("shipping_address"))).get("first_name")
+                      or (_D(co.get("shipping_address"))).get("name") or "cliente")
             if k not in cand or cr > cand[k]["cr"]:
                 cand[k] = {"cr": cr, "nombre": nombre, "url": url,
                            "total": co.get("total_price"), "dias": (now - cr).days, "tienda": "shopify"}
