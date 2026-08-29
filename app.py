@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-preset-noxalab"})
+    return jsonify({"ok": True, "v": "2026-08-29-carritos-oco-fix"})
 
 
 @app.get("/pf-cfg")
@@ -12018,7 +12018,7 @@ function sendTransfers(soloTildados){ var tels=soloTildados?Object.keys(TSEL).fi
   if(msg){ msg.style.color='#0a7d3c'; msg.textContent='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.innerHTML=msg.textContent; }
   loadTransfers();
  }); }
-function loadCarritos(refresh){ get('/wa-carritos?dias=14'+(refresh?'&refresh=1':'')).then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
+function loadCarritos(refresh){ get('/wa-carritos?dias=14'+(refresh?'&refresh=1':'')).then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:20px auto;padding:14px;background:#fdeaea;border:1px solid #f5c2c2;border-radius:10px;color:#8a1f1f;font-size:13px"><b>No se pudo cargar los carritos.</b><br><span style="word-break:break-word">'+esc((r&&r.err)||'sin detalle')+'</span></div>'; return; }
  TDATA=r.items||[]; renderCarritos(r); }); }
 function _cbadge(t){ if(t==='shopify') return '<span style="background:#e7f6ec;color:#0a7d3c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Shopify</span>';
   if(t==='tn') return '<span style="background:#e8f0fe;color:#1a56db;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Tiendanube</span>'; return ''; }
@@ -12647,8 +12647,8 @@ def _wa_carritos_list(email, dias=14):
                 continue
             cust = co.get("customer") or {}
             tel = (co.get("phone") or cust.get("phone")
-                   or (c_D(o.get("shipping_address"))).get("phone")
-                   or (c_D(o.get("billing_address"))).get("phone"))
+                   or (c_D(co.get("shipping_address"))).get("phone")
+                   or (c_D(co.get("billing_address"))).get("phone"))
             if not tel or not re.sub(r"\D", "", tel):
                 continue
             url = co.get("abandoned_checkout_url")
@@ -12661,8 +12661,8 @@ def _wa_carritos_list(email, dias=14):
             if k in ya or k in compr_t or (mail and mail in compr_m):   # ya enviado o ya compró → FUERA
                 continue
             nombre = (cust.get("first_name")
-                      or (c_D(o.get("shipping_address"))).get("first_name")
-                      or (c_D(o.get("shipping_address"))).get("name") or "cliente")
+                      or (c_D(co.get("shipping_address"))).get("first_name")
+                      or (c_D(co.get("shipping_address"))).get("name") or "cliente")
             if k not in cand or cr > cand[k]["cr"]:
                 cand[k] = {"cr": cr, "nombre": nombre, "url": url,
                            "total": co.get("total_price"), "dias": (now - cr).days, "tienda": "shopify"}
@@ -12734,7 +12734,13 @@ def wa_carritos():
     if (not refresh) and _c and _c.get("dias") == dias and (_t.time() - _c.get("ts", 0) < _CARR_TTL):
         items = _c["items"]                                  # caché fresco → no rebaja Shopify de nuevo
     else:
-        items = _wa_carritos_list(email, dias)
+        try:
+            items = _wa_carritos_list(email, dias)
+        except Exception as e:
+            import traceback
+            tb = traceback.extract_tb(e.__traceback__)[-1]
+            det = "%s: %s @ %s:%d" % (type(e).__name__, str(e)[:200], tb.name, tb.lineno)
+            return jsonify({"ok": False, "err": det})
         _CARR_CACHE[email] = {"dias": dias, "ts": _t.time(), "items": items}
     nsh = sum(1 for x in items if x.get("tienda") == "shopify")
     ntn = sum(1 for x in items if x.get("tienda") == "tn")
