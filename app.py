@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-wa-fix-js"})
+    return jsonify({"ok": True, "v": "2026-08-29-wa-nostore-errtrap"})
 
 
 @app.get("/pf-cfg")
@@ -11715,6 +11715,13 @@ _WA_PAGE = """<!doctype html>
 <script>
 var EST=null, CHATS=[], SEL=null, POLL=null, BOTON=false;
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
+// Si algo se rompe al arrancar, en vez de dejar "Cargando…" mudo, mostramos el error REAL en pantalla.
+function _showErr(msg,where){ try{ var a=document.getElementById('app'); if(!a) return; if(!/Cargando/.test(a.textContent)) return;
+ a.innerHTML='<div style="max-width:640px;margin:40px auto;padding:18px;background:#fdeaea;border:1px solid #f5c2c2;border-radius:12px;color:#8a1f1f;font-family:system-ui">'
+  +'<b>&#9888; Se rompi&oacute; la pantalla</b><br><span style="font-size:12.5px;word-break:break-word">'+esc((msg||'error')+(where?(' @ '+where):''))+'</span><br>'
+  +'<button onclick="location.reload(true)" style="margin-top:12px;background:#25D366;color:#fff;border:0;border-radius:9px;padding:9px 16px;font-weight:700;cursor:pointer">Recargar</button></div>'; }catch(e){} }
+window.onerror=function(m,src,ln){ _showErr(''+m, ((src||'').split('/').pop())+(ln?(':'+ln):'')); };
+window.onunhandledrejection=function(ev){ var r=ev&&ev.reason; _showErr((r&&(r.message||r))||'promesa rechazada',''); };
 function hhmm(ts){ if(!ts)return''; var p=(''+ts).split(' ')[1]||''; return p.slice(0,5); }
 function ini(n){ n=(n||'?').trim(); return (n[0]||'?').toUpperCase(); }
 function form(o){ return Object.keys(o).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(o[k]==null?'':o[k]);}).join('&'); }
@@ -13147,7 +13154,9 @@ def pf_diag_suc():
 def wa_page():
     if not _user_actual():
         return redirect("/")
-    return Response(_WA_PAGE, mimetype="text/html")
+    resp = Response(_WA_PAGE, mimetype="text/html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
 
 
 @app.get("/wa-estado")
