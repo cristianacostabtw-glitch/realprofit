@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-jobs-disco"})
+    return jsonify({"ok": True, "v": "2026-08-28-bot-aprender"})
 
 
 @app.get("/pf-cfg")
@@ -11518,7 +11518,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             imagenes.append((data, mime))
 
     d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
-                          extra_instr=conf.get("bot_instr", ""),
+                          extra_instr=_bot_extra_instr(conf),
                           marca=_wa_marca_auto(email, conf),
                           pago={"titular": conf.get("bot_pago_titular", ""),
                                 "alias": conf.get("bot_pago_alias", ""),
@@ -12238,6 +12238,11 @@ function renderBot(c){
   +'<div class="fld"><label>Instrucciones para el bot (su cerebro)</label>'
   +'<textarea id="botInstr" rows="6" style="width:100%;font-family:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="Escribile indicaciones para que se entiendan. Ej: si preguntan por envío a Córdoba, decí 3-5 días. No ofrezcas descuentos. Si mandan un audio, avisá que ya lo escuchás.">'+esc(c.instr||'')+'</textarea>'
   +'<small style="color:#667781">Poné acá TODO lo de tu marca: qué vendés, precios, link de compra, envíos, formas de pago, promos y cómo se usa. El bot SOLO sabe lo que escribas acá (no inventa).</small></div>'
+  +'<div class="fld" style="margin:12px 0"><label>Aprender de charlas reales <span style="color:#94a3b8;font-weight:400">(opcional, muy potente)</span></label>'
+  +'<div style="font-size:12px;color:#667781;margin:2px 0 6px">Subí un export de chats de WhatsApp (.txt). El bot aprende tu <b>tono</b>, tus respuestas t&iacute;picas y sobre todo <b>qu&eacute; deriv&aacute;s a humano</b>.'+(c.ejemplos_n?' <span style="color:#128C7E;font-weight:700">&#10003; '+c.ejemplos_n+' charlas aprendidas</span>':'')+'</div>'
+  +'<input type="file" id="botLearnFile" accept=".txt" style="display:none" onchange="aprenderChats(this)">'
+  +'<button type="button" onclick="document.getElementById(\'botLearnFile\').click()" style="background:#eef2f4;color:#334;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer">&#128218; Subir chats para aprender</button>'
+  +'<div id="botLearnMsg" style="margin-top:8px"></div></div>'
   +'<div style="font-weight:700;margin:14px 0 4px;font-size:13px">Datos de pago (para leer comprobantes) <span style="color:#94a3b8;font-weight:400">opcional</span></div>'
   +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
   +'<input id="botPagTit" value="'+esc(c.pago_titular||'')+'" placeholder="Titular de la cuenta" style="flex:1;min-width:150px;padding:8px;border:1px solid var(--line);border-radius:8px">'
@@ -12281,6 +12286,16 @@ function presetVP(){
 function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot ENCENDIDO — responde solo. Tocá para apagar.':'Bot APAGADO — no responde. Tocá para encender.'; t.innerHTML='&#129302; Bot: '+(BOTON?'ON':'OFF'); }
 function botTopToggle(){ post('/wa-bot-config',{bot:BOTON?'0':'1'}).then(function(r){ if(r.ok){ BOTON=!!r.bot; syncBotTop(); } }); }
 function loadBotTop(){ get('/wa-bot-config').then(function(c){ if(c&&c.ok){ BOTON=!!c.bot; syncBotTop(); } }); }
+function aprenderChats(inp){
+ var f=inp.files&&inp.files[0]; if(!f)return;
+ var msg=document.getElementById('botLearnMsg'); msg.innerHTML='<div style="color:#7c3aed;font-size:12.5px">&#9203; Leyendo y aprendiendo de las charlas&#8230; (puede tardar unos segundos)</div>';
+ var fd=new FormData(); fd.append('file',f);
+ fetch('/wa-bot-aprender',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(r){
+  if(!r||!r.ok){ msg.innerHTML='<div class="msgline msgbad">'+esc((r&&r.msg)||'error')+'</div>'; return; }
+  msg.innerHTML='<div class="msgline msgok">&#10003; Aprendi&oacute; de '+r.pares+' charlas. Ya lo usa el bot (y el Probador).</div>'
+    +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#667781">Ver lo que aprendi&oacute;</summary><pre style="white-space:pre-wrap;font-size:11.5px;background:#f7faf9;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px">'+esc(r.resumen||'')+'</pre></details>';
+ }).catch(function(){ msg.innerHTML='<div class="msgline msgbad">Error subiendo el archivo.</div>'; }); inp.value='';
+}
 function probarBot(){
  var t=val('botTest'); if(!t)return;
  var out=document.getElementById('botTestOut'); out.innerHTML='Pensando&#8230;';
@@ -13314,6 +13329,8 @@ def wa_bot_config_get():
                     "pago_titular": c.get("bot_pago_titular", ""),
                     "pago_alias": c.get("bot_pago_alias", ""),
                     "pago_cuit": c.get("bot_pago_cuit", ""),
+                    "ejemplos_n": int(c.get("bot_ejemplos_n", 0)),
+                    "ejemplos_len": len(c.get("bot_ejemplos", "") or ""),
                     "activo_ahora": _bot_activo_ahora(c),
                     "conectado": bool(c.get("token") and c.get("phone_id"))})
 
@@ -13377,12 +13394,156 @@ def wa_bot_probar():
     if not agente_ia.disponible():
         return jsonify({"ok": False, "msg": "Falta ANTHROPIC_API_KEY en el servidor (Render → Environment)"})
     hist = [{"dir": "in", "texto": txt}]
-    d = agente_ia.decidir(hist, nombre=nombre, extra_instr=c.get("bot_instr", ""),
+    d = agente_ia.decidir(hist, nombre=nombre, extra_instr=_bot_extra_instr(c),
                           marca=_wa_marca_auto(email, c),
                           pago={"titular": c.get("bot_pago_titular", ""),
                                 "alias": c.get("bot_pago_alias", ""),
                                 "cuit": c.get("bot_pago_cuit", "")})
     return jsonify({"ok": True, "d": d})
+
+
+def _bot_extra_instr(c):
+    """Instrucciones del dueño + los EJEMPLOS aprendidos de chats reales (si cargó alguno). Es lo que
+    ve el cerebro además del rol base. Se lo pasamos como extra_instr en cada decisión."""
+    instr = (c or {}).get("bot_instr", "") or ""
+    ej = (c or {}).get("bot_ejemplos", "") or ""
+    if ej.strip():
+        instr = (instr + "\n\n# CÓMO RESPONDE EL DUEÑO EN LA REALIDAD (aprendido de chats humanos: tono, "
+                 "respuestas típicas y sobre todo QUÉ NO responde solo → escala). Imitá este estilo:\n" + ej.strip())
+    return instr
+
+
+def _wa_aprender_pares(text):
+    """Parsea un export de WhatsApp (formato 'CHAT n/N' + '[fecha hora] Quien: msg') y saca los pares
+    (mensaje del cliente → respuesta del dueño 'Yo'). Descarta multimedia/notificaciones/base64 y las
+    respuestas de PEDIDO PUNTUAL (seguimiento/tracking/reclamo) porque esas las maneja un humano."""
+    import re as _re
+    SKIP = ("[notificacion", "[imagen]", "[audio", "[documento", "[sticker]", "[llamada]", "[album]",
+            "[mensaje eliminado]", "[evento", "[protocol]", "[mensaje interactivo]")
+    hdr = _re.compile(r"^\[(\d{2}/\d{2}/\d{4}) (\d{1,2}:\d{2})\]\s+(.+?):\s?(.*)$")
+    chatsep = _re.compile(r"^CHAT \d+/\d+:")
+
+    def _malo(t):
+        tl = (t or "").lower()
+        if any(s in tl for s in SKIP):
+            return True
+        # base64 / blobs (corridas largas sin espacios) o vacío
+        if not t or len(t) < 2:
+            return True
+        for tok in t.split():
+            if len(tok) > 45:
+                return True
+        return False
+
+    def _es_pedido(t):
+        tl = (t or "").lower()
+        return ("andreani.com" in tl or "seguimiento" in tl or "reclamo" in tl
+                or bool(_re.search(r"\d{10,}", t)))
+
+    chats, cur, speaker, buf = [], [], None, []
+
+    def _flush():
+        nonlocal speaker, buf
+        if speaker is not None:
+            cur.append((speaker, "\n".join(buf).strip()))
+        speaker, buf = None, []
+
+    def _flushchat():
+        nonlocal cur
+        _flush()
+        if cur:
+            chats.append(cur)
+        cur = []
+
+    for ln in (text or "").splitlines():
+        s = ln.strip()
+        if chatsep.match(s):
+            _flushchat(); continue
+        if s.startswith("=========="):
+            continue
+        m = hdr.match(ln)
+        if m:
+            _flush()
+            speaker = "yo" if m.group(3).strip().lower() == "yo" else "cli"
+            buf = [m.group(4)]
+        elif speaker is not None:
+            buf.append(ln)
+    _flushchat()
+
+    pares, vistos = [], set()
+    for chat in chats:
+        i, n = 0, len(chat)
+        while i < n:
+            if chat[i][0] == "cli":
+                q = [chat[i][1]]; j = i + 1
+                while j < n and chat[j][0] == "cli":
+                    q.append(chat[j][1]); j += 1
+                a = []
+                while j < n and chat[j][0] == "yo":
+                    a.append(chat[j][1]); j += 1
+                if a:
+                    qt = " ".join(x for x in q if x).strip()
+                    at = "\n".join(x for x in a if x).strip()
+                    if qt and at and not _malo(qt) and not _malo(at) and not _es_pedido(at):
+                        key = _re.sub(r"\s+", " ", at.lower())[:80]
+                        if key not in vistos:
+                            vistos.add(key)
+                            pares.append((qt[:300], at[:700]))
+                i = j
+            else:
+                i += 1
+    return pares
+
+
+@app.post("/wa-bot-aprender")
+def wa_bot_aprender():
+    """Sube un export de chats de WhatsApp (.txt) → el bot APRENDE tu tono, tus respuestas típicas y qué
+    escalás. Destila los pares reales con el mismo cerebro (Claude) y lo guarda por cuenta."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    toks = _wa_tokens()
+    c = toks.get(email)
+    if not c:
+        return jsonify({"ok": False, "msg": "WhatsApp no conectado"})
+    f = request.files.get("file") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "subí el .txt de chats"})
+    try:
+        raw = f.read()
+        text = raw.decode("utf-8", "ignore") if isinstance(raw, (bytes, bytearray)) else str(raw)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude leer el archivo (%s)" % str(e)[:80]})
+    pares = _wa_aprender_pares(text)
+    if not pares:
+        return jsonify({"ok": False, "msg": "no encontré charlas con respuestas tuyas en ese archivo"})
+    try:
+        import agente_ia
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "cerebro no disponible: " + str(e)[:80]})
+    if not agente_ia.disponible():
+        return jsonify({"ok": False, "msg": "Falta ANTHROPIC_API_KEY en el servidor"})
+    # armo una muestra (deduplicada, acotada) para no reventar el contexto
+    muestra = pares[:180]
+    cuerpo = "\n\n".join("CLIENTE: %s\nDUEÑO: %s" % (q, a) for q, a in muestra)
+    sistema = (
+        "Sos un analista de atención al cliente. Abajo hay pares REALES de WhatsApp: lo que preguntó un "
+        "cliente y cómo respondió el DUEÑO de la tienda. Resumí, EN ARGENTINO y SOLO con lo que aparece "
+        "(no inventes precios, links ni datos), en máximo ~3500 caracteres y con este formato exacto:\n"
+        "## PREGUNTAS FRECUENTES\n- <pregunta>: <mejor respuesta corta, en el tono del dueño>\n"
+        "## EJEMPLOS DE TONO (8, textuales)\nCLIENTE: ...\nDUEÑO: ...\n"
+        "## NO RESPONDER SOLO (escalar a humano)\n- <situaciones donde el dueño deriva: pedidos puntuales, "
+        "'no me llegó', seguimiento, reclamos, comprobantes, cancelaciones, direcciones>\n"
+        "Sé fiel al estilo real del dueño (saludos, muletillas, cómo maneja objeciones)."
+    )
+    resumen = agente_ia.chat([{"role": "user", "content": cuerpo}], sistema, max_tokens=2200)
+    resumen = (resumen or "").strip()[:6000]
+    if not resumen or len(resumen) < 40:
+        return jsonify({"ok": False, "msg": "no pude destilar los chats, probá de nuevo"})
+    c["bot_ejemplos"] = resumen
+    c["bot_ejemplos_n"] = len(pares)
+    _wa_save_tokens(toks)
+    return jsonify({"ok": True, "pares": len(pares), "usados": len(muestra), "resumen": resumen})
 
 
 @app.post("/wa-web-hook")
