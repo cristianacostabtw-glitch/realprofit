@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-28-bot-aprender"})
+    return jsonify({"ok": True, "v": "2026-08-28-bot-ui"})
 
 
 @app.get("/pf-cfg")
@@ -11581,6 +11581,19 @@ _WA_PAGE = """<!doctype html>
  .btn:hover{background:var(--wa2)}
  .btn.sec{background:#eef1f2;color:#3b4a54;margin-top:8px}
  .btn.dng{background:#fdeaea;color:#c0392b}
+ .brow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+ .b{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;border-radius:11px;padding:10px 15px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1;transition:transform .06s,background .15s,box-shadow .15s,filter .15s;white-space:nowrap}
+ .b:active{transform:translateY(1px)}
+ .b.p{background:var(--wa);color:#fff;box-shadow:0 7px 16px -9px rgba(18,140,126,.75)}
+ .b.p:hover{background:var(--wa2)}
+ .b.g{background:#fff;color:#0a7d3c;border-color:#bbf7d0}
+ .b.g:hover{background:#f0fdf4;border-color:#86efac}
+ .b.ai{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;box-shadow:0 7px 16px -9px rgba(124,58,237,.75)}
+ .b.ai:hover{filter:brightness(1.07)}
+ .swch{position:relative;width:52px;height:30px;border-radius:16px;border:0;cursor:pointer;background:#cbd5e1;transition:background .2s;flex:none;padding:0}
+ .swch::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.25);transition:left .2s}
+ .swch.on{background:var(--g)}
+ .swch.on::after{left:25px}
  .hook{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-top:16px;font-size:13px}
  .hook b{color:#0a7d3c}
  .cprow{display:flex;align-items:center;gap:8px;margin:8px 0}
@@ -12228,7 +12241,7 @@ function renderBot(c){
  box.innerHTML=warn
   +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
   +'<label style="font-weight:700">Auto-respondedor</label>'
-  +'<button id="botTgl" onclick="toggleBot()" style="border:0;border-radius:20px;padding:7px 16px;font-weight:700;cursor:pointer;color:#fff;background:'+(BOTON?'#25D366':'#94a3b8')+'">'+(BOTON?'ENCENDIDO':'APAGADO')+'</button>'
+  +'<button id="botTgl" type="button" onclick="toggleBot()" class="swch'+(BOTON?' on':'')+'" title="Encender / apagar el bot"></button>'
   +'<span id="botTglTxt" style="font-size:12px;color:#667781">'+(BOTON?'está respondiendo solo':'apagado, no responde')+'</span></div>'
   +'<div class="fld" style="margin-bottom:10px"><label>Marca / nombre de la tienda</label><input id="botMarca" value="'+esc(c.marca||'')+'" placeholder="Ej: VisionPure" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><small style="color:#667781">Con este nombre se presenta el bot. Cada cuenta el suyo, no se mezcla.</small></div>'
   +'<div class="fld" style="margin-bottom:10px"><label>Modo</label><select id="botMode" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="auto"'+(c.mode!='draft'?' selected':'')+'>Auto-enviar (responde solo)</option><option value="draft"'+(c.mode=='draft'?' selected':'')+'>Borrador (lo escribe, lo mandás vos)</option></select></div>'
@@ -12241,7 +12254,7 @@ function renderBot(c){
   +'<div class="fld" style="margin:12px 0"><label>Aprender de charlas reales <span style="color:#94a3b8;font-weight:400">(opcional, muy potente)</span></label>'
   +'<div style="font-size:12px;color:#667781;margin:2px 0 6px">Subí un export de chats de WhatsApp (.txt). El bot aprende tu <b>tono</b>, tus respuestas t&iacute;picas y sobre todo <b>qu&eacute; deriv&aacute;s a humano</b>.'+(c.ejemplos_n?' <span style="color:#128C7E;font-weight:700">&#10003; '+c.ejemplos_n+' charlas aprendidas</span>':'')+'</div>'
   +'<input type="file" id="botLearnFile" accept=".txt" style="display:none" onchange="aprenderChats(this)">'
-  +'<button type="button" onclick="document.getElementById(\'botLearnFile\').click()" style="background:#eef2f4;color:#334;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer">&#128218; Subir chats para aprender</button>'
+  +'<button type="button" class="b ai" onclick="document.getElementById(\'botLearnFile\').click()">&#10024; Subir chats para aprender</button>'
   +'<div id="botLearnMsg" style="margin-top:8px"></div></div>'
   +'<div style="font-weight:700;margin:14px 0 4px;font-size:13px">Datos de pago (para leer comprobantes) <span style="color:#94a3b8;font-weight:400">opcional</span></div>'
   +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
@@ -12249,17 +12262,17 @@ function renderBot(c){
   +'<input id="botPagAli" value="'+esc(c.pago_alias||'')+'" placeholder="Alias" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px">'
   +'<input id="botPagCuit" value="'+esc(c.pago_cuit||'')+'" placeholder="CUIT" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px"></div>'
   +'<small style="color:#667781">Si los cargás, el bot valida el comprobante contra estos datos. Si no, deja las transferencias para que las confirmes vos.</small>'
-  +'<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" onclick="saveBot()">Guardar</button>'
-  +'<button onclick="presetVP()" style="background:#eef2f4;color:#334;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer" title="Rellena marca, cerebro y datos de pago de VisionPure">Cargar preset VisionPure</button></div>'
+  +'<div class="brow" style="margin-top:14px"><button type="button" class="b p" onclick="saveBot()">&#128190; Guardar</button>'
+  +'<button type="button" class="b g" onclick="presetVP()" title="Rellena marca, cerebro y datos de pago de VisionPure">&#9889; Preset VisionPure</button></div>'
   +'<div id="botMsg" style="margin-top:8px"></div>'
   +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
   +'<div style="font-weight:700;margin-bottom:4px">&#129514; Probador (no manda nada)</div>'
   +'<div style="font-size:12px;color:#667781;margin-bottom:6px">Escribí un mensaje como si fueras un cliente y mirá qué contestaría.</div>'
   +'<input id="botTest" placeholder="ej: hola, cuánto sale? es para mi mamá" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px">'
-  +'<button class="btn" onclick="probarBot()">Probar</button>'
+  +'<button type="button" class="b p" onclick="probarBot()">&#129514; Probar</button>'
   +'<div id="botTestOut" style="margin-top:10px"></div>';
 }
-function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); b.textContent=BOTON?'ENCENDIDO':'APAGADO'; b.style.background=BOTON?'#25D366':'#94a3b8'; var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; syncBotTop(); }
+function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); if(b)b.classList.toggle('on',BOTON); var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; syncBotTop(); }
 function schedUI(){ var b=document.getElementById('schedBox'); if(b) b.style.display=(val('botSched')=='franja')?'flex':'none'; }
 function saveBot(){
  post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),marca:val('botMarca'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit'),instr:document.getElementById('botInstr').value}).then(function(r){
