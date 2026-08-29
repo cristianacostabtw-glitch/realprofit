@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-carritos-cD-fix"})
+    return jsonify({"ok": True, "v": "2026-08-29-header-orden"})
 
 
 @app.get("/pf-cfg")
@@ -11695,7 +11695,6 @@ _WA_PAGE = """<!doctype html>
  </div>
  <div class="navtabs" id="navtabs">
   <button id="bChats" class="tab" style="display:none" onclick="waTab('chats')">&#128172; Chats</button>
-  <button id="bWeb" class="tab" style="display:none" onclick="waTab('web')">&#127760; Web</button>
   <button id="bTransf" class="tab" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
   <button id="bCarr" class="tab" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
  </div>
@@ -11740,6 +11739,8 @@ function unlock(){ document.body.classList.remove('locked'); }
 function _chanPaint(which){ var w=document.getElementById('chWeb'), a=document.getElementById('chApi');
   if(w){ w.style.background=(which==='web')?'#25D366':'transparent'; w.style.color=(which==='web')?'#fff':'#dff5e6'; }
   if(a){ a.style.background=(which==='api')?'#25D366':'transparent'; a.style.color=(which==='api')?'#fff':'#dff5e6'; }
+  // Las secciones (Chats/Transferencias/Carritos) son de la API → solo se muestran en el canal API conectado.
+  var nt=document.getElementById('navtabs'); if(nt) nt.style.display=(which==='api' && EST && EST.conectado)?'flex':'none';
   _setHeaderNum(which); }
 var WEBNUM='';   // número/nombre del WhatsApp Web (QR) — para mostrar el número CORRECTO por pestaña
 // El encabezado muestra el número de la PESTAÑA activa: Web = número del QR, API = número de la Cloud API.
@@ -11813,9 +11814,11 @@ function renderApp(){
  _setHeaderNum((typeof TAB!=='undefined'&&TAB==='web')?'web':'api');   // número de la pestaña activa (no siempre el del API)
  var conn=!!(EST&&EST.conectado);
  var v=function(id,show){ var el=document.getElementById(id); if(el) el.style.display=show?'':'none'; };
- v('bWeb',true); v('bBot',true);                          // Web (QR) y Bot: siempre disponibles
- v('bChats',conn); v('bTransf',conn); v('bCarr',conn);    // estas necesitan la Cloud API
+ v('bBot',true);                                          // Bot: siempre disponible (Web y API)
+ v('bChats',conn); v('bTransf',conn); v('bCarr',conn);    // secciones de la Cloud API
  v('bTpl',conn); v('bCfg',conn);
+ // marca "Chats" como sección activa por defecto (el #app ya muestra los chats)
+ var _bc=document.getElementById('bChats'); if(_bc) _bc.classList.toggle('on',conn);
  loadBotTop();
  var app=document.getElementById('app');
  app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
@@ -11829,7 +11832,7 @@ var TAB='chats', TDATA=[], TSEL={};
 function waTab(t){ TAB=t; var p=document.getElementById('panel');
  // Sincroniza canal + número con la pestaña: Chats/Transferencias/Carritos = API · Web = Web (QR).
  try{ _chanPaint(t==='web'?'web':'api'); }catch(e){}
- [['bChats','chats'],['bWeb','web'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.classList.toggle('on',x[1]===t); });
+ [['bChats','chats'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.classList.toggle('on',x[1]===t); });
  if(WEBPOLL){ clearInterval(WEBPOLL); WEBPOLL=null; }
  // La pestaña WEB (QR) NO necesita la Cloud API → destraba y muestra el panel.
  if(t==='web'){ document.body.classList.remove('locked'); p.style.display='block'; p.innerHTML='<div style="max-width:720px;margin:0 auto;color:#334">Cargando…</div>'; TSEL={}; loadWeb(); return; }
