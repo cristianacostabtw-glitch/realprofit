@@ -132,6 +132,7 @@ async function startSession(acc) {
   s.status = "connecting";
   s.qr = null;
   s.starting = true;
+  s.startedAt = Date.now();
   sessions.set(acc, s);
 
   const sock = makeWASocket({
@@ -455,6 +456,26 @@ function bootSessions() {
     }
   } catch {}
 }
+
+// WATCHDOG anti-cuelgue (sobre todo de madrugada): cada 90s revisa cada sesión y si NO está
+// "connected" la reconecta sola. Reintenta SIEMPRE (no una sola vez como el setTimeout del close),
+// así un blip de red no la deja colgada en "connecting" toda la noche.
+setInterval(() => {
+  try {
+    for (const [acc, s] of sessions) {
+      if (!s) continue;
+      if (s.status === "logged_out" || s.status === "qr") continue;   // necesitan QR/manual
+      if (s.starting && s.startedAt && (Date.now() - s.startedAt > 120000)) s.starting = false; // destrabar starting colgado
+      if (s.status !== "connected" && !s.starting) startSession(acc).catch(() => {});
+    }
+    // cuenta con creds en disco que quedó fuera de memoria → levantarla
+    for (const d of fs.readdirSync(DATA_DIR, { withFileTypes: true })) {
+      if (d.isDirectory() && !sessions.has(d.name) && fs.existsSync(path.join(DATA_DIR, d.name, "creds.json"))) {
+        startSession(d.name).catch(() => {});
+      }
+    }
+  } catch {}
+}, 90000);
 
 app.listen(PORT, () => {
   console.log(`wa-web escuchando en :${PORT}  (data: ${DATA_DIR})`);
