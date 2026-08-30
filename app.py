@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-bot-dedup-nota"})
+    return jsonify({"ok": True, "v": "2026-08-29-web-jid-nodup"})
 
 
 @app.get("/pf-cfg")
@@ -11540,7 +11540,8 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             conv["bot_nota"] = "📝 Borrador del bot listo"
         else:
             if canal == "web":
-                ok, mid, err = _wa_web_send(email, wid, msg)
+                # responder al MISMO jid que entró (ej "...@lid") → 1 solo chat por persona (sin duplicar)
+                ok, mid, err = _wa_web_send(email, conv.get("web_jid") or wid, msg)
             else:
                 ok, mid, err = _wa_bot_send(conf, wid, msg)
             if ok:
@@ -13623,6 +13624,11 @@ def wa_web_hook():
     conv = chats.setdefault(email, {}).setdefault(tel, {"name": d.get("name") or tel, "messages": []})
     if d.get("name"):
         conv["name"] = d["name"]
+    # Guardo el jid EXACTO con el que entró (ej "...@lid"). El bot DEBE responder a este mismo jid,
+    # si no WhatsApp lo manda al jid de teléfono (@s.whatsapp.net) y queda un chat DUPLICADO por persona.
+    _raw_from = (d.get("from") or "").strip()
+    if "@" in _raw_from:
+        conv["web_jid"] = _raw_from
     import hashlib as _hl
     # id ÚNICO por mensaje: si el puente manda un id real lo usamos; si no, tel+ts+hash del texto
     # (así el dedup del bot NO bloquea todos los mensajes de un mismo número cuando no viene ts).
