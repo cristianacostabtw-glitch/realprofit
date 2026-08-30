@@ -338,7 +338,13 @@ app.get("/chats", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "50", 10) || 50, 200);
   const s = sessions.get(acc);
   if (!s || s.status !== "connected") return res.json({ ok: false, status: s?.status || "disconnected", chats: [] });
-  const arr = [...s.chats.values()].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, limit);
+  // DEDUP por número: WhatsApp puede tener el mismo contacto con jid "@lid" Y "@s.whatsapp.net".
+  // Nos quedamos con UNA sola fila por número (la más reciente) para no mostrar chats duplicados.
+  const _seenTel = new Set();
+  const arr = [...s.chats.values()]
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .filter((c) => { const t = (c.id || "").split("@")[0]; if (!t || _seenTel.has(t)) return false; _seenTel.add(t); return true; })
+    .slice(0, limit);
   // La foto de perfil se busca en BACKGROUND (NO se espera) → /chats responde al toque, no cuelga a RealProfit.
   s.photos = s.photos || new Map();
   s._photoPend = s._photoPend || new Set();
@@ -371,11 +377,20 @@ app.get("/messages", (req, res) => {
   const chat = (req.query.chat || "").trim();
   const s = sessions.get(acc);
   if (!s || s.status !== "connected") return res.json({ ok: false, status: s?.status || "disconnected", messages: [] });
-  // marcar como leído (baja el badge)
-  const c = s.chats.get(chat);
-  if (c) { c.unread = 0; s.chats.set(chat, c); }
-  const arr = (s.msgs.get(chat) || []).slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  res.json({ ok: true, name: c?.name || (chat.split("@")[0]), messages: arr });
+  // Junto los mensajes de TODOS los jids del mismo número (@lid + @s.whatsapp.net) → conversación única.
+  const _tel = (chat || "").split("@")[0];
+  let _all = [], _name = "";
+  for (const [jid, marr] of (s.msgs || new Map()).entries()) {
+    if ((jid || "").split("@")[0] !== _tel) continue;
+    _all = _all.concat(marr || []);
+    const cc = s.chats.get(jid);
+    if (cc) { cc.unread = 0; s.chats.set(jid, cc); if (!_name) _name = cc.name; }   // baja el badge de los dos
+  }
+  const _seenId = new Set();
+  const arr = _all
+    .filter((m) => { const k = m.id || (String(m.ts) + m.text); if (_seenId.has(k)) return false; _seenId.add(k); return true; })
+    .sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  res.json({ ok: true, name: _name || _tel, messages: arr });
 });
 
 // Sirve un archivo de medio (foto/audio/video/sticker/documento) guardado en disco
