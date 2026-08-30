@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-seg-combo-fallback"})
+    return jsonify({"ok": True, "v": "2026-08-30-seg-solo-base"})
 
 
 @app.get("/pf-cfg")
@@ -7366,8 +7366,11 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         n = (p.get("nombre") or "cliente").split()[0]
         link = p.get("url") or ""
         u = int(p.get("unidades") or 0)
-        if u >= 2:
-            name = "seguimiento_despacho_combo"
+        # El template combo es OPCIONAL por cuenta (bot_tpl_combo). Si la cuenta no lo tiene
+        # (ej NoxaLab, que solo tiene 'seguimiento_despacho'), se usa SIEMPRE el base.
+        combo_tpl = (c.get("bot_tpl_combo") or "").strip()
+        if u >= 2 and combo_tpl:
+            name = combo_tpl
             params = [n, num, link, _seg_presentacion(u)]
         else:
             name = "seguimiento_despacho"
@@ -7383,7 +7386,7 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         try:
             r, j = _snd(name, params)
             # Si el template combo no existe/está aprobado en esta cuenta (132001), caigo al base.
-            if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and name == "seguimiento_despacho_combo":
+            if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and combo_tpl and name == combo_tpl:
                 name = "seguimiento_despacho"; params = [n, num, link]
                 r, j = _snd(name, params)
         except Exception as e:
