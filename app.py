@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-seg-solo-base"})
+    return jsonify({"ok": True, "v": "2026-08-30-tildes-refresh"})
 
 
 @app.get("/pf-cfg")
@@ -12089,14 +12089,18 @@ function _carrBarDone(env,salt,fail){ var box=document.getElementById('cmsg2'); 
  var x=fail?(' &middot; <span style="color:#c0392b">'+fail+' fallaron</span>'):'';
  box.innerHTML='<span style="color:#0a7d3c;font-weight:800">&#9989; Listo &middot; '+env+' enviados'+(salt?(' &middot; '+salt+' ya estaban'):'')+x+'</span>';
 }
-var _lastMsgN=-1, _lastMsgId='';
+var _lastMsgN=-1, _lastMsgId='', _lastSig='';
 function loadChats(){
  get('/wa-chats').then(function(r){
   if(!r.ok)return; CHATS=r.chats||[]; renderList(); updateTitle();
   if(SEL){ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0];
    if(c){ var ms=c.messages||[]; var n=ms.length; var lid=n?(ms[n-1].id||ms[n-1].ts||''):'';
-    // Solo re-dibujar la conversación si HAY un mensaje nuevo (así no borra lo que estás escribiendo).
-    if(n!==_lastMsgN || lid!==_lastMsgId){ _lastMsgN=n; _lastMsgId=lid; renderConv(c); } } }
+    // firma de estados de los mensajes salientes (enviado/entregado/leído) para refrescar los tildes
+    var sig=ms.filter(function(m){return m.dir=='out';}).map(function(m){return (m.status||'')[0]||'';}).join('');
+    var typing=(document.getElementById('txt')||{}).value;
+    // Re-dibujar si hay mensaje NUEVO, o si cambió un estado (tilde) y NO estás escribiendo (no borra el texto).
+    if(n!==_lastMsgN || lid!==_lastMsgId || (sig!==_lastSig && !typing)){
+     _lastMsgN=n; _lastMsgId=lid; _lastSig=sig; renderConv(c); } } }
  });
 }
 function updateTitle(){ var n=0; CHATS.forEach(function(c){ n+=(c.unread||0); }); document.title=(n>0?'('+n+') ':'')+'WhatsApp \\u2014 RealProfit'; }
