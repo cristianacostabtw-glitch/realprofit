@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-web-jid-nodup"})
+    return jsonify({"ok": True, "v": "2026-08-30-seg-combo-fallback"})
 
 
 @app.get("/pf-cfg")
@@ -7372,14 +7372,20 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         else:
             name = "seguimiento_despacho"
             params = [n, num, link]
-        tpl = {"name": name, "language": {"code": "es_AR"},
-               "components": [{"type": "body", "parameters": [{"type": "text", "text": str(x)} for x in params]}]}
+        def _snd(_name, _params):
+            _tpl = {"name": _name, "language": {"code": "es_AR"},
+                    "components": [{"type": "body", "parameters": [{"type": "text", "text": str(x)} for x in _params]}]}
+            _r = requests.post("%s/%s/messages" % (WA_GRAPH, c["phone_id"]),
+                               headers={"Authorization": "Bearer " + c["token"]},
+                               json={"messaging_product": "whatsapp", "to": wa, "type": "template", "template": _tpl},
+                               timeout=25)
+            return _r, (_r.json() if _r.content else {})
         try:
-            r = requests.post("%s/%s/messages" % (WA_GRAPH, c["phone_id"]),
-                              headers={"Authorization": "Bearer " + c["token"]},
-                              json={"messaging_product": "whatsapp", "to": wa, "type": "template", "template": tpl},
-                              timeout=25)
-            j = r.json()
+            r, j = _snd(name, params)
+            # Si el template combo no existe/está aprobado en esta cuenta (132001), caigo al base.
+            if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and name == "seguimiento_despacho_combo":
+                name = "seguimiento_despacho"; params = [n, num, link]
+                r, j = _snd(name, params)
         except Exception as e:
             fail += 1; errores.append({"num": num, "msg": str(e)[:80]}); continue
         if r.status_code >= 400:
