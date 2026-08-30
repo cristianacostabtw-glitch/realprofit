@@ -2442,7 +2442,10 @@ _SOLO_DASH = r"""
         var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; } }
     // TARJETA BREAK EVEN ROAS (relleno el valor grande; el subtítulo lo dejo como está)
     if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
-    window._rpDashOK=true;
+    // Reordeno ANTES de revelar (el reorden pasa mientras la grilla está oculta → no se ve el salto).
+    try{ reorderKPIs(); }catch(e){}
+    // Recién revelo cuando TODO está aplicado (Margen renombrado + las 4 en orden). Si falta, sigue oculta.
+    window._rpDashOK = _orderOk();
   }
   function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
   // ORDEN FIJO de las tarjetas de arriba: Gasto de ads (Inversión Ads) · Margen · ROAS · ROAS Break-even.
@@ -2451,11 +2454,22 @@ _SOLO_DASH = r"""
     var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'];
     var cards=[]; for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return; cards.push(c); }
     var parent=cards[0].parentElement; if(!parent) return;
-    for(var j=1;j<cards.length;j++){ if(cards[j].parentElement!==parent) return; }   // las 4 deben estar en la misma grilla
-    if(parent.firstElementChild!==cards[0]) parent.insertBefore(cards[0], parent.firstElementChild);
+    for(var j=1;j<cards.length;j++){ if(cards[j].parentElement!==parent) return; }   // las 4 en la misma grilla
+    // ANCLA = posición (en el DOM) de la PRIMERA de las 4 tarjetas → así NUNCA se mueven antes del encabezado de sección.
+    var kids=Array.prototype.slice.call(parent.children);
+    var anchorIdx=Math.min(kids.indexOf(cards[0]),kids.indexOf(cards[1]),kids.indexOf(cards[2]),kids.indexOf(cards[3]));
+    if(anchorIdx<0) return;
+    var anchorEl=parent.children[anchorIdx];
+    if(anchorEl!==cards[0]) parent.insertBefore(cards[0], anchorEl);
     for(var k=1;k<cards.length;k++){ if(cards[k-1].nextElementSibling!==cards[k]) parent.insertBefore(cards[k], cards[k-1].nextElementSibling); }
   }
-  function loop(){ try{ fix(); }catch(e){} try{ reorderKPIs(); }catch(e){} }
+  // ¿Están las 4 tarjetas presentes y consecutivas en el orden fijo? (gate para revelar sin que se vea el reorden)
+  function _orderOk(){ var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'], prev=null;
+    for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return false;
+      if(i>0 && prev.nextElementSibling!==c) return false;
+      prev=c; }
+    return true; }
+  function loop(){ try{ fix(); }catch(e){} }
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
@@ -4087,7 +4101,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-kpi-orden-fijo"})
+    return jsonify({"ok": True, "v": "2026-08-30-kpi-fijo-sin-salto"})
 
 
 @app.get("/pf-cfg")
