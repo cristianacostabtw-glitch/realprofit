@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-tildes-refresh"})
+    return jsonify({"ok": True, "v": "2026-08-30-wh-diag"})
 
 
 @app.get("/pf-cfg")
@@ -13260,6 +13260,18 @@ def wa_desconectar():
     return jsonify({"ok": True})
 
 
+_WA_WH_DIAG = {"posts": 0, "statuses": 0, "status_nomatch": 0, "last_status": "", "last_ts": ""}
+
+
+@app.get("/wa-wh-diag")
+def wa_wh_diag():
+    """Diagnóstico: cuántos POST/estados le llegaron al webhook desde el último redeploy.
+    Si mandaste seguimientos y statuses=0, Meta NO está entregando los estados (webhook no suscrito)."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, **_WA_WH_DIAG})
+
+
 @app.route("/wa-webhook", methods=["GET", "POST"])
 def wa_webhook():
     if request.method == "GET":
@@ -13273,6 +13285,10 @@ def wa_webhook():
         return Response("forbidden", status=403)
     raw = request.get_data()
     data = request.get_json(force=True, silent=True) or {}
+    try:
+        _WA_WH_DIAG["posts"] += 1; _WA_WH_DIAG["last_ts"] = _wa_now()
+    except Exception:
+        pass
     try:
         chats = _wa_chats_all(); changed = False; fwd = set(); bot_jobs = {}
         for entry in data.get("entry", []):
@@ -13316,12 +13332,23 @@ def wa_webhook():
                     conv["updated"] = _wa_now(); changed = True
                     if cf.get("bot"):                            # cuenta con auto-respondedor prendido
                         bot_jobs[(em, wid)] = cf
-                for s in (val.get("statuses") or []):
+                _sts = val.get("statuses") or []
+                if _sts:
+                    try:
+                        _WA_WH_DIAG["statuses"] += len(_sts)
+                        _WA_WH_DIAG["last_status"] = "%s:%s" % (_sts[-1].get("status"), (_sts[-1].get("id") or "")[-8:])
+                    except Exception:
+                        pass
+                for s in _sts:
                     sid = s.get("id"); st = s.get("status")
+                    _mm_hit = False
                     for conv in emap.values():
                         for mm in conv.get("messages", []):
                             if mm.get("id") == sid:
-                                mm["status"] = st; changed = True
+                                mm["status"] = st; changed = True; _mm_hit = True
+                    if not _mm_hit:
+                        try: _WA_WH_DIAG["status_nomatch"] += 1
+                        except Exception: pass
         if changed:
             _wa_save_chats(chats)
         for u in fwd:
