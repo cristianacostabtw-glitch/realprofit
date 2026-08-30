@@ -2445,7 +2445,17 @@ _SOLO_DASH = r"""
     window._rpDashOK=true;
   }
   function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
-  function loop(){ try{ fix(); }catch(e){} }
+  // ORDEN FIJO de las tarjetas de arriba: Gasto de ads (Inversión Ads) · Margen · ROAS · ROAS Break-even.
+  // Se reaplica en cada render (React vuelve al orden nativo; esto las reacomoda). Idempotente: si ya están, no toca.
+  function reorderKPIs(){
+    var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'];
+    var cards=[]; for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return; cards.push(c); }
+    var parent=cards[0].parentElement; if(!parent) return;
+    for(var j=1;j<cards.length;j++){ if(cards[j].parentElement!==parent) return; }   // las 4 deben estar en la misma grilla
+    if(parent.firstElementChild!==cards[0]) parent.insertBefore(cards[0], parent.firstElementChild);
+    for(var k=1;k<cards.length;k++){ if(cards[k-1].nextElementSibling!==cards[k]) parent.insertBefore(cards[k], cards[k-1].nextElementSibling); }
+  }
+  function loop(){ try{ fix(); }catch(e){} try{ reorderKPIs(); }catch(e){} }
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
@@ -4077,7 +4087,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-wh-diag"})
+    return jsonify({"ok": True, "v": "2026-08-30-kpi-orden-fijo"})
 
 
 @app.get("/pf-cfg")
@@ -13265,8 +13275,8 @@ _WA_WH_DIAG = {"posts": 0, "statuses": 0, "status_nomatch": 0, "last_status": ""
 
 @app.get("/wa-wh-diag")
 def wa_wh_diag():
-    """Diagnóstico: cuántos POST/estados le llegaron al webhook desde el último redeploy.
-    Si mandaste seguimientos y statuses=0, Meta NO está entregando los estados (webhook no suscrito)."""
+    """Diagnóstico TEMPORAL (solo contadores): cuántos POST/estados le llegaron al webhook.
+    posts=0 => Meta NO está llamando al webhook (no suscrito para esta cuenta)."""
     if not _user_actual():
         return jsonify({"ok": False}), 401
     return jsonify({"ok": True, **_WA_WH_DIAG})
