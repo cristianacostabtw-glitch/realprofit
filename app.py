@@ -4077,7 +4077,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-29-bot-nomix"})
+    return jsonify({"ok": True, "v": "2026-08-29-bot-dedup-nota"})
 
 
 @app.get("/pf-cfg")
@@ -11473,13 +11473,21 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
         import agente_ia
     except Exception:
         return
+    conv = (chats.get(email) or {}).get(wid)
     if not conf.get("bot"):
         return
     if not _bot_canal_ok(conf, canal):          # ¿este canal (web/api) tiene el bot prendido?
+        if conv is not None:
+            conv["bot_nota"] = ("⚠️ El bot está configurado para el canal '%s' y este mensaje entró por '%s'. "
+                                "Cambialo en Config bot → ¿En qué WhatsApp responde?") % (conf.get("bot_canal") or "api", canal)
+            _wa_save_chats(chats)
         return
     if not _bot_activo_ahora(conf):             # ¿estamos dentro del horario configurado?
+        if conv is not None:
+            conv["bot_nota"] = "⏰ Fuera del horario del bot (%s a %s hora Argentina). No responde ahora." % (
+                conf.get("bot_desde") or "20:00", conf.get("bot_hasta") or "09:00")
+            _wa_save_chats(chats)
         return
-    conv = (chats.get(email) or {}).get(wid)
     if not conv:
         return
     msgs = conv.get("messages", [])
@@ -13615,8 +13623,13 @@ def wa_web_hook():
     conv = chats.setdefault(email, {}).setdefault(tel, {"name": d.get("name") or tel, "messages": []})
     if d.get("name"):
         conv["name"] = d["name"]
+    import hashlib as _hl
+    # id ÚNICO por mensaje: si el puente manda un id real lo usamos; si no, tel+ts+hash del texto
+    # (así el dedup del bot NO bloquea todos los mensajes de un mismo número cuando no viene ts).
+    _mid = (d.get("id") or d.get("msgId") or d.get("wamid") or "").strip()
+    _inid = _mid or ("web:%s:%s:%s" % (tel, d.get("ts") or "", _hl.sha1(text.encode("utf-8")).hexdigest()[:8]))
     conv["messages"].append({"dir": "in", "text": text, "ts": _wa_now(), "type": "text",
-                             "id": "web:%s:%s" % (tel, d.get("ts") or ""), "canal": "web"})
+                             "id": _inid, "canal": "web"})
     conv["unread"] = conv.get("unread", 0) + 1
     conv["updated"] = _wa_now()
     _wa_save_chats(chats)
