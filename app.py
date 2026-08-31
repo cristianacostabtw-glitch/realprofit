@@ -2451,7 +2451,7 @@ _SOLO_DASH = r"""
   // ORDEN FIJO de las tarjetas de arriba: Gasto de ads (Inversión Ads) · Margen · ROAS · ROAS Break-even.
   // Se reaplica en cada render (React vuelve al orden nativo; esto las reacomoda). Idempotente: si ya están, no toca.
   function reorderKPIs(){
-    var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'];
+    var order=['Inversión Ads','ROAS','Margen','Break Even ROAS'];
     var cards=[]; for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return; cards.push(c); }
     var parent=cards[0].parentElement; if(!parent) return;
     for(var j=1;j<cards.length;j++){ if(cards[j].parentElement!==parent) return; }   // las 4 en la misma grilla
@@ -2464,7 +2464,7 @@ _SOLO_DASH = r"""
     for(var k=1;k<cards.length;k++){ if(cards[k-1].nextElementSibling!==cards[k]) parent.insertBefore(cards[k], cards[k-1].nextElementSibling); }
   }
   // ¿Están las 4 tarjetas presentes y consecutivas en el orden fijo? (gate para revelar sin que se vea el reorden)
-  function _orderOk(){ var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'], prev=null;
+  function _orderOk(){ var order=['Inversión Ads','ROAS','Margen','Break Even ROAS'], prev=null;
     for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return false;
       if(i>0 && prev.nextElementSibling!==c) return false;
       prev=c; }
@@ -4101,7 +4101,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-kpi-fijo-sin-salto"})
+    return jsonify({"ok": True, "v": "2026-08-30-kpi-roas-antes"})
 
 
 @app.get("/pf-cfg")
