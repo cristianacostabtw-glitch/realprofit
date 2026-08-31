@@ -2450,26 +2450,42 @@ _SOLO_DASH = r"""
   function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
   // ORDEN FIJO de las tarjetas de arriba: Gasto de ads (Inversión Ads) · Margen · ROAS · ROAS Break-even.
   // Se reaplica en cada render (React vuelve al orden nativo; esto las reacomoda). Idempotente: si ya están, no toca.
+  var _KPI_ORDER=['Inversión Ads','Margen','ROAS','Break Even ROAS'];
+  // Devuelve, para las 4 tarjetas, sus "ITEMS" (hijo directo de la grilla común que contiene cada tarjeta).
+  // Robusto: aunque cada tarjeta esté envuelta en un wrapper distinto, sube hasta el hijo directo de la grilla.
+  function _kpiItems(){
+    var cards=[]; for(var i=0;i<_KPI_ORDER.length;i++){ var c=cardByLabel(_KPI_ORDER[i]); if(!c) return null; cards.push(c); }
+    var grid=findGrid();
+    function allIn(g){ if(!g) return false; for(var q=0;q<cards.length;q++){ if(!g.contains(cards[q])) return false; } return true; }
+    if(!allIn(grid)){ grid=cards[0].parentElement; while(grid && !allIn(grid)) grid=grid.parentElement; }
+    if(!grid) return null;
+    var items=[]; for(var j=0;j<cards.length;j++){ var e=cards[j]; while(e && e.parentElement!==grid) e=e.parentElement; if(!e) return null; items.push(e); }
+    for(var a=0;a<items.length;a++){ for(var b=a+1;b<items.length;b++){ if(items[a]===items[b]) return null; } }  // 2 tarjetas en el mismo item → no toco
+    return {grid:grid, items:items};
+  }
   function reorderKPIs(){
-    var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'];
-    var cards=[]; for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return; cards.push(c); }
-    var parent=cards[0].parentElement; if(!parent) return;
-    for(var j=1;j<cards.length;j++){ if(cards[j].parentElement!==parent) return; }   // las 4 en la misma grilla
-    // ANCLA = posición (en el DOM) de la PRIMERA de las 4 tarjetas → así NUNCA se mueven antes del encabezado de sección.
-    var kids=Array.prototype.slice.call(parent.children);
-    var anchorIdx=Math.min(kids.indexOf(cards[0]),kids.indexOf(cards[1]),kids.indexOf(cards[2]),kids.indexOf(cards[3]));
-    if(anchorIdx<0) return;
-    var anchorEl=parent.children[anchorIdx];
-    if(anchorEl!==cards[0]) parent.insertBefore(cards[0], anchorEl);
-    for(var k=1;k<cards.length;k++){ if(cards[k-1].nextElementSibling!==cards[k]) parent.insertBefore(cards[k], cards[k-1].nextElementSibling); }
+    var r=_kpiItems(); if(!r) return; var grid=r.grid, items=r.items;
+    // ANCLA = posición (en el DOM) del PRIMER item de los 4 → así NUNCA se mueven antes del encabezado de sección.
+    var kids=Array.prototype.slice.call(grid.children), anchorIdx=1e9;
+    for(var t=0;t<items.length;t++){ var ix=kids.indexOf(items[t]); if(ix<0) return; if(ix<anchorIdx) anchorIdx=ix; }
+    var anchorEl=grid.children[anchorIdx];
+    if(anchorEl!==items[0]) grid.insertBefore(items[0], anchorEl);
+    for(var k=1;k<items.length;k++){ if(items[k-1].nextElementSibling!==items[k]) grid.insertBefore(items[k], items[k-1].nextElementSibling); }
   }
   // ¿Están las 4 tarjetas presentes y consecutivas en el orden fijo? (gate para revelar sin que se vea el reorden)
-  function _orderOk(){ var order=['Inversión Ads','Margen','ROAS','Break Even ROAS'], prev=null;
-    for(var i=0;i<order.length;i++){ var c=cardByLabel(order[i]); if(!c) return false;
-      if(i>0 && prev.nextElementSibling!==c) return false;
-      prev=c; }
-    return true; }
+  function _orderOk(){ var r=_kpiItems(); if(!r) return false; var it=r.items;
+    for(var k=1;k<it.length;k++){ if(it[k-1].nextElementSibling!==it[k]) return false; } return true; }
   function loop(){ try{ fix(); }catch(e){} }
+  // DIAGNÓSTICO TEMPORAL: manda al server SOLO las etiquetas (sin montos) para ver la estructura real de las tarjetas.
+  function _kpiDbg(){ try{
+    var grid=findGrid(), seq=[];
+    if(grid){ for(var i=0;i<grid.children.length;i++){ var l=_cardLabel(grid.children[i]); seq.push((l||'?').slice(0,22)); } }
+    var found={}; for(var j=0;j<_KPI_ORDER.length;j++){ found[_KPI_ORDER[j]]=!!cardByLabel(_KPI_ORDER[j]); }
+    var r=_kpiItems();
+    fetch('/rp-kpi-dbg',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({grid:!!grid,gridKids:grid?grid.children.length:0,seq:seq,found:found,itemsOk:!!r,orderOk:_orderOk()})}).catch(function(){});
+  }catch(e){} }
+  setTimeout(_kpiDbg,4500); setTimeout(_kpiDbg,9000);
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
@@ -4101,7 +4117,20 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-kpi-margen-antes"})
+    return jsonify({"ok": True, "v": "2026-08-30-kpi-robusto-diag"})
+
+
+_KPI_DBG = {}
+
+
+@app.route("/rp-kpi-dbg", methods=["GET", "POST"])
+def rp_kpi_dbg():
+    """Diagnóstico TEMPORAL de las tarjetas del dashboard (SOLO etiquetas, sin montos $)."""
+    global _KPI_DBG
+    if request.method == "POST":
+        _KPI_DBG = request.get_json(silent=True) or {}
+        return jsonify({"ok": True})
+    return jsonify({"ok": True, **_KPI_DBG})
 
 
 @app.get("/pf-cfg")
