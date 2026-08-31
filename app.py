@@ -4117,7 +4117,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-andreani-fix"})
+    return jsonify({"ok": True, "v": "2026-08-30-andreani-valor-solo"})
 
 
 _KPI_DBG = {}
@@ -6204,10 +6204,6 @@ def pf_despachos_excel():
                 of, _via = _resolver_suc_completo(suc_raw, r.get("suc_lat"), r.get("suc_lng"),
                                                   r.get("suc_pid"), r.get("cp"), sucs)
             of = _and_suc_exacto(of) if of else None    # SOLO vale si está en el desplegable de Andreani
-            # Andreani rechaza HOP truncado (nombre sin número final, ej "...RICARDO BALBÍN " o "...ORIENTAL DEL"):
-            # aunque matchee la lista vieja del template, el portal tiene el nombre COMPLETO → lo mando a revisar.
-            if of and "HOP" in of.upper() and not (of.rstrip()[-1:].isdigit()):
-                of = None
             if not of:
                 # No entra en el desplegable de Andreani. Si está en el Excel de Envialo, la despachás por
                 # Envialo → la excluyo del Excel (no freno). Si NO está en Envialo, sí aviso (revisar).
