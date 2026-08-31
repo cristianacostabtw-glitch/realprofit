@@ -4117,7 +4117,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-kpi-robusto-diag"})
+    return jsonify({"ok": True, "v": "2026-08-30-andreani-fix"})
 
 
 _KPI_DBG = {}
@@ -6189,7 +6189,7 @@ def pf_despachos_excel():
             continue
         nom, ape = _split_nombre(r["nombre"])
         nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
-        valor = int(round(r["total"]))
+        valor = max(int(round(r.get("total") or 0)), 30000)   # piso: Andreani rechaza valor declarado 0/muy bajo
         peso = PESO
         dni = str(r.get("dni") or "").strip() or "00000000"   # Andreani exige DNI
         tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
@@ -6204,6 +6204,10 @@ def pf_despachos_excel():
                 of, _via = _resolver_suc_completo(suc_raw, r.get("suc_lat"), r.get("suc_lng"),
                                                   r.get("suc_pid"), r.get("cp"), sucs)
             of = _and_suc_exacto(of) if of else None    # SOLO vale si está en el desplegable de Andreani
+            # Andreani rechaza HOP truncado (nombre sin número final, ej "...RICARDO BALBÍN " o "...ORIENTAL DEL"):
+            # aunque matchee la lista vieja del template, el portal tiene el nombre COMPLETO → lo mando a revisar.
+            if of and "HOP" in of.upper() and not (of.rstrip()[-1:].isdigit()):
+                of = None
             if not of:
                 # No entra en el desplegable de Andreani. Si está en el Excel de Envialo, la despachás por
                 # Envialo → la excluyo del Excel (no freno). Si NO está en Envialo, sí aviso (revisar).
@@ -13013,7 +13017,7 @@ def pf_diag_excel():
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
-        valor = int(round(r["total"])); dni = str(r.get("dni") or "").strip() or "00000000"
+        valor = max(int(round(r.get("total") or 0)), 30000); dni = str(r.get("dni") or "").strip() or "00000000"
         tel_cod, tel_num = _and_split_tel(r.get("tel")); email = r.get("email") or ""
         if r["tipo"] == "sucursal":
             suc_raw = r.get("suc_nombre") or ""
