@@ -4117,7 +4117,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-30-andreani-valor-solo"})
+    return jsonify({"ok": True, "v": "2026-08-31-bot-backlog"})
 
 
 _KPI_DBG = {}
@@ -13552,6 +13552,118 @@ def wa_bot_probar():
                                 "alias": c.get("bot_pago_alias", ""),
                                 "cuit": c.get("bot_pago_cuit", "")})
     return jsonify({"ok": True, "d": d})
+
+
+def _backlog_page_html(desde):
+    return ("""<!doctype html><meta charset=utf-8><title>Reproceso backlog bot</title>
+<body style="font-family:system-ui;background:#0b1220;color:#e5edf7;padding:24px;max-width:760px;margin:auto">
+<h2>&#129302; Responder backlog del bot</h2>
+<p>Corte: desde <b>__D__</b> de hoy hasta ahora (hora Argentina). Solo agarra chats cuyo <b>&uacute;ltimo mensaje es entrante y sigue sin contestar</b>. Cada chat se intenta una sola vez.</p>
+<button id=go style="background:#2563eb;color:#fff;border:0;padding:11px 20px;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer">&#9654;&#65039; Empezar</button>
+<div id=stat style="margin-top:16px;font-size:15px"></div>
+<pre id=log style="margin-top:12px;background:#111c2b;padding:12px;border-radius:8px;max-height:52vh;overflow:auto;font-size:12px;white-space:pre-wrap"></pre>
+<script>
+var T={p:0,r:0,e:0,f:0,n:0};
+var desde="__D__";
+function line(s){var l=document.getElementById('log');l.textContent+=s+"\\n";l.scrollTop=l.scrollHeight;}
+function stat(x){document.getElementById('stat').innerHTML="Procesados <b>"+T.p+"</b> &middot; &#9989; respondidos <b>"+T.r+"</b> &middot; derivados "+T.e+" &middot; sin respuesta "+T.n+" &middot; fall&oacute; env&iacute;o "+T.f+(x?(" &middot; "+x):"");}
+function batch(){
+  fetch('/wa-bot-backlog?run=1&n=5&desde='+encodeURIComponent(desde)).then(function(r){return r.json();}).then(function(j){
+    if(!j.ok){line("ERROR: "+(j.msg||'?'));document.getElementById('go').disabled=false;return;}
+    T.p+=j.procesados_ahora;T.r+=j.respondidos;T.e+=j.escalados;T.f+=j.fallo_envio;T.n+=j.sin_responder;
+    (j.detalle||[]).forEach(function(d){line((d.estado||'')+"  "+d.wid+(d.nota?("  \\u2014 "+d.nota):""));});
+    stat("quedan "+j.restantes);
+    if(j.procesados_ahora>0 && j.restantes>0){ setTimeout(batch,400); }
+    else { stat("LISTO \\u2713"); line("\\u2500\\u2500 FIN \\u2500\\u2500"); document.getElementById('go').disabled=false; }
+  }).catch(function(e){line("ERROR red: "+e);document.getElementById('go').disabled=false;});
+}
+document.getElementById('go').onclick=function(){this.disabled=true;T={p:0,r:0,e:0,f:0,n:0};document.getElementById('log').textContent='';stat('arrancando\\u2026');batch();};
+</script></body>""").replace("__D__", desde)
+
+
+@app.route("/wa-bot-backlog", methods=["GET", "POST"])
+def wa_bot_backlog():
+    """TEMP: reprocesa el backlog de chats sin contestar desde una hora de corte (default 19:00 hoy).
+    Destraba el anti-duplicado y corre el cerebro para que responda. Login-gated. Batches de a n."""
+    email = _user_actual()
+    desde = (request.values.get("desde") or "19:00").strip()
+    if not request.values.get("run"):
+        if not email:
+            return _backlog_page_html(desde).replace("Empezar", "Logueate en RealProfit primero")
+        return _backlog_page_html(desde)
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    conf = _wa_conf(email) or {}
+    if not conf.get("bot"):
+        return jsonify({"ok": False, "msg": "el bot está apagado para esta cuenta"})
+    try:
+        hh, mm = [int(x) for x in desde.split(":")[:2]]
+    except Exception:
+        hh, mm = 19, 0
+    hoy = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%Y-%m-%d")
+    cutoff = "%s %02d:%02d:00" % (hoy, hh, mm)
+    try:
+        n = max(1, min(int(request.values.get("n") or 5), 12))
+    except Exception:
+        n = 5
+    chats = _wa_chats_all()
+    convs = (chats.get(email) or {})
+
+    def _cands():
+        out = []
+        for wid, conv in convs.items():
+            msgs = conv.get("messages") or []
+            if not msgs:
+                continue
+            last = msgs[-1]
+            if last.get("dir") != "in":
+                continue
+            if (last.get("ts") or "") < cutoff:
+                continue
+            if conv.get("bot_backlog_seen") == (last.get("id") or ""):
+                continue
+            out.append((last.get("ts") or "", wid, last.get("id") or ""))
+        out.sort()
+        return out
+
+    cands = _cands()
+    total_pend = len(cands)
+    done = resp = esc = fail = noresp = 0
+    detalle = []
+    import time as _t
+    for ts, wid, mid in cands[:n]:
+        conv = convs.get(wid)
+        if not conv:
+            continue
+        conv["bot_backlog_seen"] = mid          # ya lo intenté (evita loop infinito)
+        conv.pop("bot_last_in", None)           # destraba el anti-duplicado del bot
+        antes = len(conv.get("messages") or [])
+        try:
+            _wa_bot_run(email, conf, wid, chats, canal="web")
+        except Exception as e:
+            fail += 1
+            detalle.append({"wid": wid, "estado": "error", "nota": str(e)[:80]})
+            continue
+        done += 1
+        m2 = (convs.get(wid) or {}).get("messages") or []
+        if len(m2) > antes and m2[-1].get("by") == "bot":
+            resp += 1
+            detalle.append({"wid": wid, "estado": "respondido"})
+        else:
+            nota = (convs.get(wid) or {}).get("bot_nota", "") or ""
+            if "deriv" in nota:
+                esc += 1
+            elif "envío" in nota or "envio" in nota:
+                fail += 1
+            else:
+                noresp += 1
+            detalle.append({"wid": wid, "estado": "sin respuesta", "nota": nota[:90]})
+        _t.sleep(0.15)
+    _wa_save_chats(chats)
+    restantes = max(0, total_pend - done)
+    return jsonify({"ok": True, "cutoff": cutoff, "procesados_ahora": done, "respondidos": resp,
+                    "escalados": esc, "fallo_envio": fail, "sin_responder": noresp,
+                    "restantes": restantes, "detalle": detalle})
 
 
 def _bot_extra_instr(c):
