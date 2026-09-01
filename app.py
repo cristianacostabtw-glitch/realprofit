@@ -4117,7 +4117,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-31-drive-timeout"})
+    return jsonify({"ok": True, "v": "2026-08-31-drive-test"})
 
 
 _KPI_DBG = {}
@@ -8941,6 +8941,38 @@ def _ads_drive_bajar(link, dest_dir, on_prog=None):
             raise RuntimeError("la descarga del Drive tardó demasiado (>8 min). "
                                "Reintentá, o probá con menos videos / archivos más chicos.")
     return [p for p in out if p]
+
+
+@app.get("/pf-ads-drive-test")
+def pf_ads_drive_test():
+    """TEMP/diagnóstico: baja la carpeta de Drive en el SERVER, cronometra y borra todo.
+    NO crea ninguna campaña. Sirve para medir cuánto tarda de verdad. Login-gated."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión — logueate en RealProfit"})
+    link = (request.args.get("link") or "").strip()
+    if not link:
+        return jsonify({"ok": False, "msg": "pasá ?link=<carpeta de Drive>"})
+    import tempfile as _tf, shutil as _sh, time as _t
+    tmp = _tf.mkdtemp(prefix="adstest_")
+    try:
+        t0 = _t.time()
+        vids = _ads_drive_files(link)
+        t_list = _t.time() - t0
+        marks = []
+        t1 = _t.time()
+        rutas = _ads_drive_bajar(link, tmp, on_prog=lambda k, tot: marks.append([k, round(_t.time() - t1, 1)]))
+        t_dl = _t.time() - t1
+        mb = round(sum(_os.path.getsize(r) for r in rutas) / 1048576, 1)
+        return jsonify({"ok": True, "archivos": len(rutas), "mb_total": mb,
+                        "listar_seg": round(t_list, 1), "bajar_seg": round(t_dl, 1),
+                        "mb_por_seg": (round(mb / t_dl, 1) if t_dl > 0 else None),
+                        "detalle": [{"name": _os.path.basename(r), "mb": round(_os.path.getsize(r) / 1048576, 1)} for r in rutas],
+                        "progreso_seg": marks})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": type(e).__name__ + ": " + str(e)[:200]})
+    finally:
+        _sh.rmtree(tmp, ignore_errors=True)
 
 
 def _ads_run(job, params):
