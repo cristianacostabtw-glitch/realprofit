@@ -4117,7 +4117,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-08-31-bot-backlog"})
+    return jsonify({"ok": True, "v": "2026-08-31-drive-timeout"})
 
 
 _KPI_DBG = {}
@@ -8862,35 +8862,53 @@ def _ads_drive_fid(link):
     return m.group(1) if m else (link or "").strip()
 
 
-def _ads_drive_listar(link):
-    """Lista los videos de la carpeta (sin bajarlos) para el botón 'Buscar videos'."""
-    from googleapiclient.discovery import build
-    svc = build("drive", "v3", credentials=_ads_google_creds())
+def _ads_drive_files(link):
+    """Lista los archivos (video/imagen) de la carpeta por REST directo CON TIMEOUT.
+    Reemplaza a googleapiclient (que NO tiene timeout y se colgaba para siempre si Google/Render
+    se trababa → el subidor quedaba en 'Bajando videos de Drive…' sin error ni progreso)."""
+    from google.auth.transport.requests import AuthorizedSession
+    sess = AuthorizedSession(_ads_google_creds())
     fid = _ads_drive_fid(link)
-    q = "'%s' in parents and trashed=false" % fid
-    files = svc.files().list(q=q, fields="files(id,name,mimeType,size)", supportsAllDrives=True,
-                             includeItemsFromAllDrives=True, pageSize=100).execute().get("files", [])
+    params = {"q": "'%s' in parents and trashed=false" % fid,
+              "fields": "files(id,name,mimeType,size),nextPageToken",
+              "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+              "orderBy": "name", "pageSize": "100"}
+    files = []
+    tok = None
+    for _ in range(12):
+        if tok:
+            params["pageToken"] = tok
+        r = sess.get("https://www.googleapis.com/drive/v3/files", params=params, timeout=(15, 45))
+        r.raise_for_status()
+        j = r.json()
+        files += j.get("files", [])
+        tok = j.get("nextPageToken")
+        if not tok:
+            break
     vids = [f for f in files if "video" in (f.get("mimeType") or "") or "image" in (f.get("mimeType") or "")
             or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"))]
     vids.sort(key=lambda f: f.get("name", ""))
+    return vids
+
+
+def _ads_drive_listar(link):
+    """Lista los videos de la carpeta (sin bajarlos) para el botón 'Buscar videos'."""
     return [{"name": f.get("name", ""),
-             "mb": round(int(f.get("size") or 0) / 1048576) if f.get("size") else 0} for f in vids]
+             "mb": round(int(f.get("size") or 0) / 1048576) if f.get("size") else 0}
+            for f in _ads_drive_files(link)]
 
 
 def _ads_drive_bajar(link, dest_dir, on_prog=None):
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaIoBaseDownload
-    svc = build("drive", "v3", credentials=_ads_google_creds())
-    fid = _ads_drive_fid(link)
-    q = "'%s' in parents and trashed=false" % fid
-    files = svc.files().list(q=q, fields="files(id,name,mimeType)", supportsAllDrives=True,
-                             includeItemsFromAllDrives=True, pageSize=100).execute().get("files", [])
-    vids = [f for f in files if "video" in (f.get("mimeType") or "") or "image" in (f.get("mimeType") or "")
-            or f.get("name", "").lower().endswith((".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"))]
-    vids.sort(key=lambda f: f.get("name", ""))
-    # Descarga EN PARALELO por HTTP directo (streaming) — rápido y CON TIMEOUT para que NUNCA se cuelgue.
+    """Baja los videos/imágenes de la carpeta EN PARALELO por HTTP directo con timeout por archivo
+    y TOPE TOTAL. Cualquier traba tira error claro (nunca spinner infinito)."""
     import concurrent.futures as _cf
+    import time as _t
     from google.auth.transport.requests import AuthorizedSession
+    vids = _ads_drive_files(link)          # ya viene con timeout; si Drive no responde, tira error acá
+    if not vids:
+        return []
+    if on_prog:
+        on_prog(0, len(vids))              # avisar YA cuántos son (mejor feedback que 'Bajando…' pelado)
     creds = _ads_google_creds()
     _dl = {"n": 0}
     _lk = threading.Lock()
@@ -8899,11 +8917,11 @@ def _ads_drive_bajar(link, dest_dir, on_prog=None):
         sess = AuthorizedSession(creds)     # sesión propia por thread
         p = _os.path.join(dest_dir, f["name"])
         url = "https://www.googleapis.com/drive/v3/files/%s?alt=media&supportsAllDrives=true" % f["id"]
-        # timeout=(conexión 15s, lectura 90s): si Google/Render se cuelga, TIRA ERROR en vez de quedar colgado
-        with sess.get(url, stream=True, timeout=(15, 90)) as r:
+        # timeout=(conexión 15s, lectura 60s SIN bytes): si Google/Render se cuelga, TIRA ERROR
+        with sess.get(url, stream=True, timeout=(15, 60)) as r:
             r.raise_for_status()
             with open(p, "wb") as fh:
-                for chunk in r.iter_content(chunk_size=1024 * 1024 * 8):
+                for chunk in r.iter_content(chunk_size=1024 * 1024 * 4):
                     if chunk:
                         fh.write(chunk)
         with _lk:
@@ -8913,10 +8931,15 @@ def _ads_drive_bajar(link, dest_dir, on_prog=None):
         return p
 
     out = [None] * len(vids)
-    with _cf.ThreadPoolExecutor(max_workers=min(8, max(1, len(vids)))) as _ex:
+    # 4 en paralelo (antes 8): menos contención de red/RAM en Render. Tope total 8 min → error claro.
+    with _cf.ThreadPoolExecutor(max_workers=min(4, max(1, len(vids)))) as _ex:
         futs = {_ex.submit(_bajar_uno, f): i for i, f in enumerate(vids)}
-        for fut in _cf.as_completed(futs):
-            out[futs[fut]] = fut.result()
+        try:
+            for fut in _cf.as_completed(futs, timeout=480):
+                out[futs[fut]] = fut.result()
+        except _cf.TimeoutError:
+            raise RuntimeError("la descarga del Drive tardó demasiado (>8 min). "
+                               "Reintentá, o probá con menos videos / archivos más chicos.")
     return [p for p in out if p]
 
 
