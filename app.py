@@ -2414,25 +2414,6 @@ _SOLO_DASH = r"""
   function _val(l){ var w=_na(l).split(' ')[0]; var v=_kpiVal(w); if(v) return v;   // 1) posicional (robusto)
     var c=cardByLabel(l); if(c){ var b=bigLeaf(c); if(b){ var x=n(b.textContent); if(x) return x; } } return 0; }  // 2) fallback viejo
   function _dashOk(){ return _get('Inversión Ads') && (_get('True ROAS')||_get('Margen')) && _get('Break Even ROAS'); }
-  // ANTI-TITILEO + ORDEN FIJO de la fila PUBLICIDAD (Gasto ads · Margen · ROAS · Break Even ROAS):
-  // React re-renderiza la fila a su estado NATIVO (Break Even 0.00x · "True ROAS" sin renombrar · ROAS
-  // antes que Margen) ENTRE vueltas del loop (500ms) → se ve parpadear/desordenar. Este observer re-aplica
-  // el estado corregido (cacheado en window._rpMGtext/_rpBEtext) en el MISMO frame en que React lo pisa,
-  // así queda FIJO desde el arranque. SOLO toca estas 4 tarjetas; nada más del dashboard.
-  var _rpObs=null, _rpQ=false;
-  function _rpReapply(){
-    var m=cardByLabel('Margen')||cardByLabel('True ROAS');           // 1) Margen: renombre + valor cacheado
-    if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-      if(window._rpMGtext){ var mv=valueSlot(m); if(mv&&mv.textContent!==window._rpMGtext) mv.textContent=window._rpMGtext; } }
-    if(window._rpBEtext){ var b=cardByLabel('Break Even ROAS'); if(b){ var bw=valueSlot(b);   // 2) Break Even: valor cacheado
-      if(bw&&bw.textContent!==window._rpBEtext) bw.textContent=window._rpBEtext; } }
-    try{ reorderKPIs(); }catch(e){}                                  // 3) orden fijo (idempotente: si ya está, no toca)
-  }
-  function _rpTick(){ if(_rpQ) return; _rpQ=true;
-    requestAnimationFrame(function(){ _rpQ=false; try{ _rpReapply(); }catch(e){} }); }
-  function _rpWatch(){ if(_rpObs) return;
-    _rpObs=new MutationObserver(_rpTick);
-    _rpObs.observe(document.body, {childList:true, subtree:true, characterData:true}); }
   function fix(){
     // GUARD barato: ¿estamos en el Dashboard? (busco la tarjeta Inversión Ads, FRESCO). Si no, rate-limit y salgo.
     var inv=cardByLabel('Inversión Ads');
@@ -2457,13 +2438,12 @@ _SOLO_DASH = r"""
     // TARJETA MARGEN (era "True ROAS" → la renombro a "Margen" y le pongo el %). Elimina "True ROAS" del sistema.
     if(mg!=null){ var m=cardByLabel('Margen')||cardByLabel('True ROAS');
       if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-        var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; window._rpMGtext=mv; if(v&&v.textContent!==mv) v.textContent=mv;
+        var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
         var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; } }
     // TARJETA BREAK EVEN ROAS (relleno el valor grande; el subtítulo lo dejo como está)
-    if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; window._rpBEtext=bt; if(w&&w.textContent!==bt) w.textContent=bt; }
+    if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
     // Reordeno ANTES de revelar (el reorden pasa mientras la grilla está oculta → no se ve el salto).
     try{ reorderKPIs(); }catch(e){}
-    _rpWatch();   // arranca el observer que mantiene FIJO orden+valores contra los re-render de React
     // Recién revelo cuando TODO está aplicado (Margen renombrado + las 4 en orden). Si falta, sigue oculta.
     window._rpDashOK = _orderOk();
   }
@@ -2485,31 +2465,16 @@ _SOLO_DASH = r"""
   }
   function reorderKPIs(){
     var r=_kpiItems(); if(!r) return; var grid=r.grid, items=r.items;
-    var kids=Array.prototype.slice.call(grid.children);
-    // SLOTS = los índices DOM que hoy ocupan las 4 tarjetas (contiguos). Los reusamos para el orden deseado.
-    var slots=[]; for(var t=0;t<items.length;t++){ var ix=kids.indexOf(items[t]); if(ix<0) return; slots.push(ix); }
-    slots.sort(function(a,b){ return a-b; });
-    // ¿La grilla ordena por CSS 'order' (flex/grid)? → usar CSS order: React NO lo revierte y NO hay salto visible.
-    var disp=''; try{ disp=getComputedStyle(grid).display; }catch(e){}
-    if(/(flex|grid)/.test(disp)){
-      for(var i=0;i<kids.length;i++){ var oi=String(i); if(kids[i].style.order!==oi) kids[i].style.order=oi; }  // base: order=índice (todo igual)
-      for(var k=0;k<items.length;k++){ var os=String(slots[k]); if(items[k].style.order!==os) items[k].style.order=os; }  // los 4, en orden deseado
-      return;
-    }
-    // Fallback (grilla no flex/grid): reorden por DOM (como antes).
-    var anchorEl=grid.children[slots[0]];
+    // ANCLA = posición (en el DOM) del PRIMER item de los 4 → así NUNCA se mueven antes del encabezado de sección.
+    var kids=Array.prototype.slice.call(grid.children), anchorIdx=1e9;
+    for(var t=0;t<items.length;t++){ var ix=kids.indexOf(items[t]); if(ix<0) return; if(ix<anchorIdx) anchorIdx=ix; }
+    var anchorEl=grid.children[anchorIdx];
     if(anchorEl!==items[0]) grid.insertBefore(items[0], anchorEl);
-    for(var k2=1;k2<items.length;k2++){ if(items[k2-1].nextElementSibling!==items[k2]) grid.insertBefore(items[k2], items[k2-1].nextElementSibling); }
+    for(var k=1;k<items.length;k++){ if(items[k-1].nextElementSibling!==items[k]) grid.insertBefore(items[k], items[k-1].nextElementSibling); }
   }
-  // ¿Están las 4 tarjetas en el orden fijo deseado? (gate para revelar sin que se vea el reorden).
-  // Reconoce los DOS modos: CSS order (style.order) y adyacencia DOM (fallback).
-  function _orderOk(){ var r=_kpiItems(); if(!r) return false; var grid=r.grid, it=r.items;
-    var kids=Array.prototype.slice.call(grid.children), slots=[];
-    for(var t=0;t<it.length;t++){ var ix=kids.indexOf(it[t]); if(ix<0) return false; slots.push(ix); }
-    slots.sort(function(a,b){ return a-b; });
-    var disp=''; try{ disp=getComputedStyle(grid).display; }catch(e){}
-    if(/(flex|grid)/.test(disp)){ for(var k=0;k<it.length;k++){ if(it[k].style.order!==String(slots[k])) return false; } return true; }
-    for(var k2=1;k2<it.length;k2++){ if(it[k2-1].nextElementSibling!==it[k2]) return false; } return true; }
+  // ¿Están las 4 tarjetas presentes y consecutivas en el orden fijo? (gate para revelar sin que se vea el reorden)
+  function _orderOk(){ var r=_kpiItems(); if(!r) return false; var it=r.items;
+    for(var k=1;k<it.length;k++){ if(it[k-1].nextElementSibling!==it[k]) return false; } return true; }
   function loop(){ try{ fix(); }catch(e){} }
   // DIAGNÓSTICO TEMPORAL: manda al server SOLO las etiquetas (sin montos) para ver la estructura real de las tarjetas.
   function _kpiDbg(){ try{
@@ -4152,7 +4117,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-kpi-fijo2"})
+    return jsonify({"ok": True, "v": "2026-09-02-revert-dash"})
 
 
 _KPI_DBG = {}
