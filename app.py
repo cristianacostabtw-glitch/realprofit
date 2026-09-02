@@ -1902,8 +1902,12 @@ _SOLO_DASH = r"""
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
     // Valores BUENOS para el overlay CSS (block2 los dibuja con ::after → React no los pisa → sin titileo).
     try{ if(!window._rpOvVals) window._rpOvVals={};
-         window._rpOvVals.rpgan = meli ? money(0) : money(_raw.ganancia||_raw.tot_ganancia||0);
-         window._rpOvVals.rpcpa = meli ? money(0) : money(_raw.cpa||0); }catch(e){}
+         var _ov = meli ? _ceroRaw() : _raw;
+         window._rpOvVals.rpgan   = money(_ov.ganancia||_ov.tot_ganancia||0);
+         window._rpOvVals.rpcpa   = money(_ov.cpa||0);
+         window._rpOvVals.rpinv   = money(_ov.publi_ars||0);
+         window._rpOvVals.rproas  = num(_ov.roas||0)+'x';
+         window._rpOvVals.rpbecpa = money(_ov.be_cpa||0); }catch(e){}
     try{ hookCur(); }catch(e){}
     // Revelar la grilla SOLO cuando metricas() YA remapeó las tarjetas a los valores reales (nunca el demo).
     if(_mok) window._rpValsOK=true;   // flag: los valores ya son los reales (lo usa estructura() para no revelar antes)
@@ -2445,7 +2449,7 @@ _SOLO_DASH = r"""
     // TARJETA MARGEN (era "True ROAS" → la renombro a "Margen" y le pongo el %). Elimina "True ROAS" del sistema.
     if(mg!=null){ var m=cardByLabel('Margen')||cardByLabel('True ROAS');
       if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-        var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
+        var mv=(Math.round(mg*10)/10)+'%'; if(!window._rpOvVals) window._rpOvVals={}; window._rpOvVals.rpmg=mv;   // valor bueno → overlay
         var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; } }
     // TARJETA BREAK EVEN ROAS: NO escribo el texto (React lo pisa con 0.00x → titileo). Guardo el valor bueno
     // y lo dibujo con overlay CSS (::after), que React no puede revertir. Ver _rpOverlay abajo.
@@ -2463,7 +2467,9 @@ _SOLO_DASH = r"""
   // puede re-renderizar el texto por debajo pero NO toca el ::after ni la variable → el valor queda FIJO.
   // La variable solo cambia cuando el self-heal calcula un valor nuevo (dato real) → no titila. Empezamos
   // por Break Even ROAS (el que flipeaba a 0.00x).
-  var _RP_OV=[{key:'rpbe', label:'Break Even ROAS'}, {key:'rpcpa', label:'CPA'}, {key:'rpgan', label:'Ganancia'}];
+  var _RP_OV=[{key:'rpbe', label:'Break Even ROAS'}, {key:'rpcpa', label:'CPA'}, {key:'rpgan', label:'Ganancia'},
+              {key:'rpmg', label:'Margen'}, {key:'rpinv', label:'Inversión Ads'}, {key:'rproas', label:'ROAS'},
+              {key:'rpbecpa', label:'Break Even CPA'}];
   function _rpOverlay(el, val, key){
     var st=document.getElementById('rp-ov-style');
     if(!st){ st=document.createElement('style'); st.id='rp-ov-style'; st._m={}; (document.head||document.documentElement).appendChild(st); }
@@ -2475,9 +2481,26 @@ _SOLO_DASH = r"""
     document.documentElement.style.setProperty('--'+key, JSON.stringify(val));
     if(el.getAttribute('data-'+key)!=='1') el.setAttribute('data-'+key, '1');
   }
+  // Busca la HOJA del monto de una tarjeta por su TÍTULO. Robusto: sirve para PUBLICIDAD (cardByLabel/valueSlot)
+  // Y para las de arriba (Ventas/Facturación/Ganancia), que tienen otra estructura.
+  function _rpFindVal(label){
+    try{ var c=cardByLabel(label); if(c){ var el=valueSlot(c); if(el) return el; } }catch(e){}
+    var up=label.toUpperCase();
+    var cards=document.querySelectorAll('[class*="rounded"]');
+    for(var i=0;i<cards.length;i++){ var card=cards[i];
+      if(card.querySelector && card.querySelector('[class*="rounded"]')) continue;   // solo la tarjeta-hoja
+      if(card.offsetParent===null) continue;
+      var t=(card.innerText||'').replace(/\s+/g,' ').trim().toUpperCase();
+      if(t.indexOf(up)!==0) continue;                                                // el título va al PRINCIPIO
+      var leaves=card.querySelectorAll('span,div,p'), best=null;
+      for(var j=0;j<leaves.length;j++){ var e=leaves[j]; if(e.children.length) continue; var v=(e.textContent||'').trim();
+        if(/^-?\$?\s?-?[\d.,]+\s?[%x]?$/.test(v) && v.length<=14){ if(!best||v.length>=best.textContent.trim().length) best=e; } }
+      if(best) return best; }
+    return null;
+  }
   function _rpOvApply(){ for(var i=0;i<_RP_OV.length;i++){ var o=_RP_OV[i];
     var v=window._rpOvVals&&window._rpOvVals[o.key]; if(!v) continue;
-    var c=cardByLabel(o.label); if(!c) continue; var el=valueSlot(c); if(!el) continue;
+    var el=_rpFindVal(o.label); if(!el) continue;
     try{ _rpOverlay(el, v, o.key); }catch(e){} } }
   var _rpOvObs=null, _rpOvQ=false;
   function _rpOvWatch(){ if(_rpOvObs) return;
@@ -4154,7 +4177,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-overlay3"})
+    return jsonify({"ok": True, "v": "2026-09-02-overlay-all"})
 
 
 _KPI_DBG = {}
