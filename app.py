@@ -2443,13 +2443,43 @@ _SOLO_DASH = r"""
       if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
         var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
         var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; } }
-    // TARJETA BREAK EVEN ROAS (relleno el valor grande; el subtítulo lo dejo como está)
-    if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
+    // TARJETA BREAK EVEN ROAS: NO escribo el texto (React lo pisa con 0.00x → titileo). Guardo el valor bueno
+    // y lo dibujo con overlay CSS (::after), que React no puede revertir. Ver _rpOverlay abajo.
+    if(br!=null && bcard){ var bt=(Math.round(br*100)/100).toFixed(2)+'x';
+      if(!window._rpOvVals) window._rpOvVals={}; window._rpOvVals.rpbe=bt; }
     // Reordeno ANTES de revelar (el reorden pasa mientras la grilla está oculta → no se ve el salto).
     try{ reorderKPIs(); }catch(e){}
+    try{ _rpOvApply(); }catch(e){}   // dibuja los valores-overlay (Break Even) con ::after
+    _rpOvWatch();                    // observer: re-marca el nodo si React lo re-renderiza (el valor sale de la var CSS)
     // Recién revelo cuando TODO está aplicado (Margen renombrado + las 4 en orden). Si falta, sigue oculta.
     window._rpDashOK = _orderOk();
   }
+  // OVERLAY CSS a prueba de React: en vez de ESCRIBIR el valor (React lo re-renderiza y pisa → titileo),
+  // escondo el texto nativo (color transparente) y dibujo el valor bueno con ::after (variable CSS). React
+  // puede re-renderizar el texto por debajo pero NO toca el ::after ni la variable → el valor queda FIJO.
+  // La variable solo cambia cuando el self-heal calcula un valor nuevo (dato real) → no titila. Empezamos
+  // por Break Even ROAS (el que flipeaba a 0.00x).
+  var _RP_OV=[{key:'rpbe', label:'Break Even ROAS'}];
+  function _rpOverlay(el, val, key){
+    var st=document.getElementById('rp-ov-style');
+    if(!st){ st=document.createElement('style'); st.id='rp-ov-style'; st._m={}; (document.head||document.documentElement).appendChild(st); }
+    if(!st._m[key]){ var cs=getComputedStyle(el); st._m[key]={c:cs.color, fs:cs.fontSize, fw:cs.fontWeight};
+      var css=''; for(var k in st._m){ var m=st._m[k];
+        css+='[data-'+k+']{color:transparent!important;position:relative}'
+           +'[data-'+k+']::after{content:var(--'+k+');position:absolute;left:0;top:0;color:'+m.c+';font-size:'+m.fs+';font-weight:'+m.fw+';line-height:inherit;white-space:nowrap}'; }
+      st.textContent=css; }
+    document.documentElement.style.setProperty('--'+key, JSON.stringify(val));
+    if(el.getAttribute('data-'+key)!=='1') el.setAttribute('data-'+key, '1');
+  }
+  function _rpOvApply(){ for(var i=0;i<_RP_OV.length;i++){ var o=_RP_OV[i];
+    var v=window._rpOvVals&&window._rpOvVals[o.key]; if(!v) continue;
+    var c=cardByLabel(o.label); if(!c) continue; var el=valueSlot(c); if(!el) continue;
+    try{ _rpOverlay(el, v, o.key); }catch(e){} } }
+  var _rpOvObs=null, _rpOvQ=false;
+  function _rpOvWatch(){ if(_rpOvObs) return;
+    _rpOvObs=new MutationObserver(function(){ if(_rpOvQ) return; _rpOvQ=true;
+      requestAnimationFrame(function(){ _rpOvQ=false; try{ _rpOvApply(); }catch(e){} }); });
+    _rpOvObs.observe(document.body,{childList:true,subtree:true,characterData:true}); }
   function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
   // ORDEN FIJO de las tarjetas de arriba: Gasto de ads (Inversión Ads) · Margen · ROAS · ROAS Break-even.
   // Se reaplica en cada render (React vuelve al orden nativo; esto las reacomoda). Idempotente: si ya están, no toca.
@@ -4120,7 +4150,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-gasto-por-tienda"})
+    return jsonify({"ok": True, "v": "2026-09-02-overlay-be"})
 
 
 _KPI_DBG = {}
