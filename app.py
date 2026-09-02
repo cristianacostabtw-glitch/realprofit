@@ -2485,18 +2485,20 @@ _SOLO_DASH = r"""
   // Y para las de arriba (Ventas/Facturación/Ganancia), que tienen otra estructura.
   function _rpFindVal(label){
     try{ var c=cardByLabel(label); if(c){ var el=valueSlot(c); if(el) return el; } }catch(e){}
+    // Fallback: la tarjeta MÁS CHICA cuyo texto EMPIEZA con el título (así agarra la de arriba —Ganancia—
+    // que tiene un ícono redondeado adentro; no la salteo, elijo la de innerText más corto = la tarjeta real).
     var up=label.toUpperCase();
-    var cards=document.querySelectorAll('[class*="rounded"]');
+    var cards=document.querySelectorAll('[class*="rounded"]'), cand=null, candLen=1e9;
     for(var i=0;i<cards.length;i++){ var card=cards[i];
-      if(card.querySelector && card.querySelector('[class*="rounded"]')) continue;   // solo la tarjeta-hoja
       if(card.offsetParent===null) continue;
-      var t=(card.innerText||'').replace(/\s+/g,' ').trim().toUpperCase();
-      if(t.indexOf(up)!==0) continue;                                                // el título va al PRINCIPIO
+      var t=(card.innerText||'').replace(/\s+/g,' ').trim();
+      if(t.length>=candLen) continue;
+      if(t.toUpperCase().indexOf(up)!==0) continue;                                  // el título va al PRINCIPIO
       var leaves=card.querySelectorAll('span,div,p'), best=null;
       for(var j=0;j<leaves.length;j++){ var e=leaves[j]; if(e.children.length) continue; var v=(e.textContent||'').trim();
         if(/^-?\$?\s?-?[\d.,]+\s?[%x]?$/.test(v) && v.length<=14){ if(!best||v.length>=best.textContent.trim().length) best=e; } }
-      if(best) return best; }
-    return null;
+      if(best){ cand=best; candLen=t.length; } }
+    return cand;
   }
   function _rpOvApply(){ for(var i=0;i<_RP_OV.length;i++){ var o=_RP_OV[i];
     var v=window._rpOvVals&&window._rpOvVals[o.key]; if(!v) continue;
@@ -4177,7 +4179,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-overlay-all"})
+    return jsonify({"ok": True, "v": "2026-09-02-overlay-gan"})
 
 
 _KPI_DBG = {}
