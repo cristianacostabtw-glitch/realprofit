@@ -4120,7 +4120,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-cp2-noxalab"})
+    return jsonify({"ok": True, "v": "2026-09-02-gasto-sumado"})
 
 
 _KPI_DBG = {}
@@ -8435,25 +8435,35 @@ def _meta_spend(email, desde, hasta):
             es_owner = True
     if not token or not cuenta:
         return 0.0
-    acc = str(cuenta).replace("act_", "")
-    try:
-        r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
-                         params={"access_token": token, "fields": "spend,account_currency",
-                                 "time_range": _json.dumps({"since": desde, "until": hasta}),
-                                 "level": "account"}, timeout=30)
-        data = r.json().get("data") or []
-        if data:
-            spend = float(data[0].get("spend") or 0)
-            moneda = (data[0].get("account_currency") or "").upper()
-            # Si la cuenta factura en USD y la tienda es en pesos, convierto con el dólar en vivo
-            # (mismo criterio que METAFY: USDC/ARS de criptoya). Para tu usuario (owner) o cualquier
-            # cuenta USD. Se puede fijar con la env DOLAR_ARS (número, 'blue' o 'cripto').
-            if moneda == "USD" or es_owner:
-                spend *= _dolar_ars_vivo()
-            return _meta_spend_estable(email, desde, hasta, spend)
-    except Exception:
-        pass
-    return _meta_spend_estable(email, desde, hasta, 0.0)
+    # Cuentas a SUMAR el gasto: la principal + las extra del env META_ACTS_EXTRA (separadas por coma).
+    # Para cuando hay 2+ cuentas publicitarias gastando para la MISMA tienda (mismo token/portafolio).
+    # Sin duplicar. Si META_ACTS_EXTRA está vacío → se comporta igual que antes (solo la principal).
+    cuentas = []
+    for c in ([str(cuenta)] + _os.getenv("META_ACTS_EXTRA", "").split(",")):
+        c = c.strip().replace("act_", "")
+        if c and c not in cuentas:
+            cuentas.append(c)
+    total = 0.0
+    hubo = False
+    for acc in cuentas:
+        try:
+            r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
+                             params={"access_token": token, "fields": "spend,account_currency",
+                                     "time_range": _json.dumps({"since": desde, "until": hasta}),
+                                     "level": "account"}, timeout=30)
+            data = r.json().get("data") or []
+            if data:
+                hubo = True
+                spend = float(data[0].get("spend") or 0)
+                moneda = (data[0].get("account_currency") or "").upper()
+                # Si la cuenta factura en USD y la tienda es en pesos, convierto con el dólar en vivo
+                # (mismo criterio que METAFY: USDC/ARS de criptoya). Se puede fijar con la env DOLAR_ARS.
+                if moneda == "USD" or es_owner:
+                    spend *= _dolar_ars_vivo()
+                total += spend
+        except Exception:
+            pass
+    return _meta_spend_estable(email, desde, hasta, total if hubo else 0.0)
 
 
 _META_SPEND_LAST = {}   # (email,desde,hasta) -> último gasto visto (el gasto solo se acumula)
