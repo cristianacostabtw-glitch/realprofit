@@ -4179,7 +4179,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-overlay-gan"})
+    return jsonify({"ok": True, "v": "2026-09-02-spend-disco"})
 
 
 _KPI_DBG = {}
@@ -8534,17 +8534,29 @@ def _meta_spend(email, desde, hasta):
     return _meta_spend_estable(email, desde, hasta, total if hubo else 0.0)
 
 
-_META_SPEND_LAST = {}   # (email,desde,hasta) -> último gasto visto (el gasto solo se acumula)
+_META_SPEND_FILE = DATA_DIR / "meta_spend_max.json"   # máximo por período, EN DISCO (compartido entre workers)
+_META_SPEND_LOCK = threading.Lock()
 
 
 def _meta_spend_estable(email, desde, hasta, spend) -> float:
-    """El gasto de ADS de un período SOLO crece (se acumula durante el día). Evita el
-    'parpadeo' de la ganancia cuando Meta devuelve 0 o un valor más bajo por un instante:
-    devolvemos el máximo visto para ese período. Así la ganancia no salta de + a −."""
-    key = (email, desde, hasta)
-    prev = _META_SPEND_LAST.get(key, 0.0)
-    val = spend if spend > prev else prev
-    _META_SPEND_LAST[key] = val
+    """El gasto de ADS de un período SOLO crece (máximo visto). Se guarda en DISCO (/var/data) y NO en
+    memoria: así TODOS los workers de gunicorn devuelven el MISMO valor. Antes cada worker tenía su propio
+    máximo en memoria → según qué worker atendía, el número bajaba/subía = TITILEO. También evita el
+    parpadeo cuando Meta devuelve 0 o un valor más bajo por un instante (eventual consistency)."""
+    key = "%s|%s|%s" % (email, desde, hasta)
+    with _META_SPEND_LOCK:
+        try:
+            d = _json.loads(_META_SPEND_FILE.read_text(encoding="utf-8")) if _META_SPEND_FILE.exists() else {}
+        except Exception:
+            d = {}
+        prev = float(d.get(key, 0.0) or 0.0)
+        val = spend if spend > prev else prev
+        if val != prev:
+            d[key] = val
+            try:
+                _META_SPEND_FILE.write_text(_json.dumps(d), encoding="utf-8")
+            except Exception:
+                pass
     return val
 
 
