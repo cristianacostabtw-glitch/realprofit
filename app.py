@@ -2441,34 +2441,14 @@ _SOLO_DASH = r"""
     // TARJETA MARGEN (era "True ROAS" → la renombro a "Margen" y le pongo el %). Elimina "True ROAS" del sistema.
     if(mg!=null){ var m=cardByLabel('Margen')||cardByLabel('True ROAS');
       if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-        var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; window._rpMGtext=mv; if(v&&v.textContent!==mv) v.textContent=mv;
+        var v=valueSlot(m); var mv=(Math.round(mg*10)/10)+'%'; if(v&&v.textContent!==mv) v.textContent=mv;
         var s=subLeaf(m); if(s&&s.textContent!=='Ganancia ÷ facturación') s.textContent='Ganancia ÷ facturación'; } }
     // TARJETA BREAK EVEN ROAS (relleno el valor grande; el subtítulo lo dejo como está)
-    if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; window._rpBEtext=bt; if(w&&w.textContent!==bt) w.textContent=bt; }
+    if(br!=null && bcard){ var w=valueSlot(bcard); var bt=(Math.round(br*100)/100).toFixed(2)+'x'; if(w&&w.textContent!==bt) w.textContent=bt; }
     // Reordeno ANTES de revelar (el reorden pasa mientras la grilla está oculta → no se ve el salto).
     try{ reorderKPIs(); }catch(e){}
-    _watchFast();   // arranca (1 sola vez) el observer que re-aplica Margen/Break Even en el MISMO frame que React
     // Recién revelo cuando TODO está aplicado (Margen renombrado + las 4 en orden). Si falta, sigue oculta.
     window._rpDashOK = _orderOk();
-  }
-  // ANTI-TITILEO: re-aplica SOLO los valores corregidos (Margen % + Break Even ROAS) en el MISMO frame en que
-  // React re-renderiza sus valores nativos (Break Even 0.00x, etc.). Barato (no recomputa, usa el cache) y SIN
-  // reorder → seguro. Scopeado a la grilla del dashboard: no corre en otras pantallas (no janquea Despachos).
-  function _applyValsFast(){
-    if(window._rpMGtext){ var m=cardByLabel('Margen')||cardByLabel('True ROAS');
-      if(m){ var l=labelLeaf(m); if(l&&l.textContent!=='Margen') l.textContent='Margen';
-        var mv=valueSlot(m); if(mv&&mv.textContent!==window._rpMGtext) mv.textContent=window._rpMGtext; } }
-    if(window._rpBEtext){ var b=cardByLabel('Break Even ROAS'); if(b){ var bw=valueSlot(b);
-      if(bw&&bw.textContent!==window._rpBEtext) bw.textContent=window._rpBEtext; } }
-  }
-  var _fastObs=null, _fastRoot=null, _fastQ=false;
-  function _watchFast(){
-    if(_fastObs && _fastRoot && !document.contains(_fastRoot)){ try{_fastObs.disconnect();}catch(e){} _fastObs=null; }  // grilla reemplazada → re-enganchar
-    if(_fastObs) return;
-    _fastRoot=findGrid(); if(!_fastRoot) return;
-    _fastObs=new MutationObserver(function(){ if(_fastQ) return; _fastQ=true;
-      requestAnimationFrame(function(){ _fastQ=false; try{ _applyValsFast(); }catch(e){} }); });
-    _fastObs.observe(_fastRoot,{childList:true,subtree:true,characterData:true});
   }
   function _gananciaFallback(){ return _kpiVal('ganancia'); }   // wrapper (la lógica real vive en _kpiVal)
   // ORDEN FIJO de las tarjetas de arriba: Gasto de ads (Inversión Ads) · Margen · ROAS · ROAS Break-even.
@@ -4140,7 +4120,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-antititileo1"})
+    return jsonify({"ok": True, "v": "2026-09-02-flashgate"})
 
 
 _KPI_DBG = {}
