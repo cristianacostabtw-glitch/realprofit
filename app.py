@@ -1900,6 +1900,10 @@ _SOLO_DASH = r"""
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
+    // Valores BUENOS para el overlay CSS (block2 los dibuja con ::after → React no los pisa → sin titileo).
+    try{ if(!window._rpOvVals) window._rpOvVals={};
+         window._rpOvVals.rpgan = meli ? money(0) : money(_raw.ganancia||_raw.tot_ganancia||0);
+         window._rpOvVals.rpcpa = meli ? money(0) : money(_raw.cpa||0); }catch(e){}
     try{ hookCur(); }catch(e){}
     // Revelar la grilla SOLO cuando metricas() YA remapeó las tarjetas a los valores reales (nunca el demo).
     if(_mok) window._rpValsOK=true;   // flag: los valores ya son los reales (lo usa estructura() para no revelar antes)
@@ -2459,7 +2463,7 @@ _SOLO_DASH = r"""
   // puede re-renderizar el texto por debajo pero NO toca el ::after ni la variable → el valor queda FIJO.
   // La variable solo cambia cuando el self-heal calcula un valor nuevo (dato real) → no titila. Empezamos
   // por Break Even ROAS (el que flipeaba a 0.00x).
-  var _RP_OV=[{key:'rpbe', label:'Break Even ROAS'}];
+  var _RP_OV=[{key:'rpbe', label:'Break Even ROAS'}, {key:'rpcpa', label:'CPA'}, {key:'rpgan', label:'Ganancia'}];
   function _rpOverlay(el, val, key){
     var st=document.getElementById('rp-ov-style');
     if(!st){ st=document.createElement('style'); st.id='rp-ov-style'; st._m={}; (document.head||document.documentElement).appendChild(st); }
@@ -4150,7 +4154,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-overlay-be"})
+    return jsonify({"ok": True, "v": "2026-09-02-overlay3"})
 
 
 _KPI_DBG = {}
