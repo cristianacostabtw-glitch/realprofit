@@ -4120,7 +4120,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-gasto-sumado"})
+    return jsonify({"ok": True, "v": "2026-09-02-gasto-por-tienda"})
 
 
 _KPI_DBG = {}
@@ -8435,14 +8435,23 @@ def _meta_spend(email, desde, hasta):
             es_owner = True
     if not token or not cuenta:
         return 0.0
-    # Cuentas a SUMAR el gasto: la principal + las extra del env META_ACTS_EXTRA (separadas por coma).
-    # Para cuando hay 2+ cuentas publicitarias gastando para la MISMA tienda (mismo token/portafolio).
-    # Sin duplicar. Si META_ACTS_EXTRA está vacío → se comporta igual que antes (solo la principal).
+    # Cuentas a SUMAR el gasto: la principal + las extra MAPEADAS a ESA principal (para NO mezclar tiendas).
+    # META_ACTS_EXTRA = "principal:extra1,extra2;principal2:extraA" → solo suma extras cuya cuenta principal
+    # coincide con la de esta tienda. Así la 2da cuenta de NoxaLab suma SOLO en NoxaLab, nunca en otra tienda.
     cuentas = []
-    for c in ([str(cuenta)] + _os.getenv("META_ACTS_EXTRA", "").split(",")):
-        c = c.strip().replace("act_", "")
-        if c and c not in cuentas:
-            cuentas.append(c)
+    primaria = str(cuenta).replace("act_", "").strip()
+    if primaria:
+        cuentas.append(primaria)
+    for grupo in (_os.getenv("META_ACTS_EXTRA", "") or "").split(";"):
+        if ":" not in grupo:
+            continue
+        pri, extras = grupo.split(":", 1)
+        if pri.strip().replace("act_", "") != primaria:
+            continue                                   # este grupo es de OTRA tienda → no sumar
+        for ex in extras.split(","):
+            ex = ex.strip().replace("act_", "")
+            if ex and ex not in cuentas:
+                cuentas.append(ex)
     total = 0.0
     hubo = False
     for acc in cuentas:
