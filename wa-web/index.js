@@ -142,9 +142,11 @@ async function startSession(acc) {
     printQRInTerminal: false,
     syncFullHistory: false,   // historial reciente (con full a veces se cuelga por volumen)
     markOnlineOnConnect: false,
+    keepAliveIntervalMs: 20000,   // ping cada 20s → detecta la caída rápido (default 30s)
     browser: ["RealProfit", "Chrome", "1.0"],
   });
   s.sock = sock;
+  s.lastRecv = Date.now();
 
   sock.ev.on("creds.update", saveCreds);
 
@@ -162,6 +164,7 @@ async function startSession(acc) {
       s.status = "connected";
       s.qr = null;
       s.starting = false;
+      s.lastRecv = Date.now();
       s.me = sock.user ? { id: sock.user.id, name: sock.user.name || sock.user.verifiedName || "" } : null;
     }
     if (connection === "close") {
@@ -262,6 +265,7 @@ async function startSession(acc) {
   });
 
   sock.ev.on("messages.upsert", ({ messages, type }) => {
+    s.lastRecv = Date.now();   // hay actividad → sesión viva (watchdog anti-cuelgue-silencioso)
     for (const m of messages) {
       const jid = m.key?.remoteJid;
       if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue; // solo 1:1
@@ -457,6 +461,18 @@ function bootSessions() {
   } catch {}
 }
 
+function wsDead(sock) {
+  try {
+    const w = sock && sock.ws;
+    if (!w) return true;
+    if (typeof w.isOpen === "boolean") return !w.isOpen;
+    const rs = w.socket && w.socket.readyState;
+    if (typeof rs === "number") return rs !== 1;            // 1 = OPEN
+    if (typeof w.readyState === "number") return w.readyState !== 1;
+    return false;   // no pude determinar → asumir vivo
+  } catch { return false; }
+}
+
 // WATCHDOG anti-cuelgue (sobre todo de madrugada): cada 90s revisa cada sesión y si NO está
 // "connected" la reconecta sola. Reintenta SIEMPRE (no una sola vez como el setTimeout del close),
 // así un blip de red no la deja colgada en "connecting" toda la noche.
@@ -466,6 +482,13 @@ setInterval(() => {
       if (!s) continue;
       if (s.status === "logged_out" || s.status === "qr") continue;   // necesitan QR/manual
       if (s.starting && s.startedAt && (Date.now() - s.startedAt > 120000)) s.starting = false; // destrabar starting colgado
+      // MUERTE SILENCIOSA: status dice "connected" pero el socket murió sin avisar "close" (se cortó a las 11am).
+      if (s.status === "connected" && !s.starting && wsDead(s.sock)) {
+        try { s.sock?.end?.(new Error("watchdog: socket muerto")); } catch {}
+        s.status = "connecting";
+        startSession(acc).catch(() => {});
+        continue;
+      }
       if (s.status !== "connected" && !s.starting) startSession(acc).catch(() => {});
     }
     // cuenta con creds en disco que quedó fuera de memoria → levantarla
