@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-fin-mono-envio"})
+    return jsonify({"ok": True, "v": "2026-09-03-fin-costo-unidades"})
 
 
 _KPI_DBG = {}
@@ -7845,6 +7845,7 @@ def _shopify_resumen(email, desde, hasta):
     mp_costo = 0.0
     mp_match = 0
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
+    envio_zona = 0.0   # suma de la tabla Andreani por zona (con descuento)
     unidades = ordenes = reemb_cant = envio_real = 0
     prodmap = {}
     ords_list = []
@@ -7862,6 +7863,7 @@ def _shopify_resumen(email, desde, hasta):
         fact += tot
         # Envío: costo REAL de Envialo si el pedido ya está ahí; si no, promedio domicilio/sucursal.
         _num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        envio_zona += _envio_costo(o)   # SIEMPRE la tabla Andreani por zona (con descuento)
         _real = emap.get(_num)
         if _real is not None:
             envio_monto += _real; envio_real += 1
@@ -7915,6 +7917,7 @@ def _shopify_resumen(email, desde, hasta):
     r["iibb_monto"] = round(iibb_monto, 2)
     r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2)
+    r["envio_zona_monto"] = round(envio_zona, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
     oper_monto = OPER_ORDEN * ordenes  # fulfillment ($700) + insumos ($200) por pedido
     r["oper_monto"] = round(oper_monto, 2)
@@ -9120,11 +9123,27 @@ def _fin_datos_dia(email, f) -> dict:
             "unidades": int(raw.get("unidades") or 0),
             "facturado": round(fact, 2),
             "ingreso_limpio": round(limpio, 2),
-            # Envío REAL (el de Envialo, pedido por pedido; promedio solo para los que aún no están).
-            # La planilla traía "=5200*pedidos", que es un estimado.
-            "envio": round(float(raw.get("envio_monto") or 0), 2),
-            "envio_real": int(raw.get("envio_real") or 0),
+            # ENVÍO: la tabla Andreani por ZONA con el descuento propio (provincia/CP + sucursal
+            # vs domicilio), la misma que usa RealProfit. La planilla traía "=5200*pedidos" (estimado).
+            "envio": round(float(raw.get("envio_zona_monto") or 0), 2),
+            # IIBB como lo calcula RealProfit (3,5% configurable), no el 2% que traía la planilla.
+            "iibb": round(float(raw.get("iibb_monto") or 0), 2),
             "ads_usd": _fin_ads_usd(email, d, d)}
+
+
+def _fin_formato_unidades(sess, sid, tab, gid) -> None:
+    """Le da a la columna Unidades (E) el MISMO formato/color que Ventas Totales (D),
+    encabezado incluido. Solo formato: no toca ningún valor."""
+    try:
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s:batchUpdate" % sid,
+                  json={"requests": [{"copyPaste": {
+                      "source": {"sheetId": gid, "startRowIndex": 4, "endRowIndex": 36,
+                                 "startColumnIndex": 3, "endColumnIndex": 4},
+                      "destination": {"sheetId": gid, "startRowIndex": 4, "endRowIndex": 36,
+                                      "startColumnIndex": 4, "endColumnIndex": 5},
+                      "pasteType": "PASTE_FORMAT"}}]}, timeout=(15, 60))
+    except Exception:
+        pass
 
 
 def _fin_sess():
@@ -9202,7 +9221,8 @@ def _fin_cargar_dia(email, f) -> dict:
         return {"ok": False, "msg": "error escribiendo: %s %s" % (r.status_code, r.text[:250])}
     # ENVÍO REAL + RÉGIMEN. Van en RAW (números), pisando las fórmulas estimadas.
     regimen = str(conf.get("regimen") or "monotributo").lower()
-    extra = [{"range": "%s!M%d" % (tab, fila), "values": [[dat["envio"]]]}]
+    extra = [{"range": "%s!M%d" % (tab, fila), "values": [[dat["envio"]]]},
+             {"range": "%s!Y%d" % (tab, fila), "values": [[dat["iibb"]]]}]
     if regimen.startswith("mono"):
         # MONOTRIBUTO: no hay IVA (ni crédito, ni débito, ni a pagar). Si estas columnas quedan
         # con las fórmulas de Responsable Inscripto, la Ganancia Neta (=J-F-M-S-X-Y-T) resta un
@@ -9211,12 +9231,14 @@ def _fin_cargar_dia(email, f) -> dict:
             extra.append({"range": "%s!%s%d" % (tab, col, fila), "values": [[0]]})
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "RAW", "data": extra}, timeout=(15, 90))
-    # ARREGLO del bug de la planilla: F usaba N49/N50/N51 (referencia que se desliza y cae en
-    # celdas vacías → costo mercadería $0). Lo fijo a $N$49, el precio del producto.
+    # COSTO MERCADERIA = UNIDADES × precio. Dos arreglos sobre la planilla original:
+    #  1) usaba N49/N50/N51 (referencia relativa que se desliza a celdas vacías → costo $0);
+    #  2) multiplicaba por D (PEDIDOS), pero si un pedido lleva 3 potes el costo son 3.
+    # Queda "=E{fila}*$N$49" → unidades vendidas × precio fijo.
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "USER_ENTERED",
                     "data": [{"range": "%s!F%d" % (tab, fila),
-                              "values": [["=D%d*$N$49" % fila]]}]}, timeout=(15, 60))
+                              "values": [["=E%d*$N$49" % fila]]}]}, timeout=(15, 60))
     dat.update({"ok": True, "pestana": tab, "fila": fila, "regimen": regimen})
     return dat
 
@@ -9293,6 +9315,17 @@ def fin_cargar():
         except Exception as e:
             errores.append({"fecha": f.strftime("%Y-%m-%d"), "msg": "%s: %s" % (type(e).__name__, e)})
         f += _dt.timedelta(days=1)
+    # una sola vez por pestaña tocada: Unidades queda con el mismo formato que Ventas
+    try:
+        sid = ((_fin_conf().get(email) or {}).get("sheet"))
+        if sid and hechos:
+            sess = _fin_sess()
+            gids = _fin_tabs(sess, sid)
+            for tab in {h.get("pestana") for h in hechos if h.get("pestana")}:
+                if tab in gids:
+                    _fin_formato_unidades(sess, sid, tab, gids[tab])
+    except Exception:
+        pass
     return jsonify({"ok": not errores, "cargados": len(hechos), "dias": hechos, "errores": errores})
 
 
