@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-pagados-v2"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-solo-mi-tienda"})
 
 
 _KPI_DBG = {}
@@ -5407,7 +5407,8 @@ def pf_envios_mapa():
     if not isinstance(pares, dict) or not pares:
         return jsonify({"ok": False, "msg": "mandá {'pares': {track: {'num':..,'nombre':..}}}"})
     todo = _env_load(ENVIOS_MAP)
-    m = todo.get(email) or {}
+    # reset=true REEMPLAZA el mapeo entero (para limpiar envíos que no son de esta tienda).
+    m = {} if d.get("reset") else (todo.get(email) or {})
     n = 0
     for trk, v in pares.items():
         t = "".join(ch for ch in str(trk) if ch.isdigit())
@@ -5537,6 +5538,8 @@ def pf_envios():
     hoy = _fin_hoy_ar()
     out = []
     for trk, v in est.items():
+        if trk not in mapa:      # estado de un envío que NO es de esta tienda → afuera
+            continue
         try:
             dias = (hoy - _dt.date.fromisoformat(v.get("desde") or hoy.isoformat())).days
         except Exception:
