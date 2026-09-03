@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seguimientos"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-mapa-lote"})
 
 
 _KPI_DBG = {}
@@ -5383,6 +5383,34 @@ def _env_guardar_mapa(email, pedidos):
             m[t] = {"num": n, "nombre": (p.get("nombre") or "").strip()[:60]}
     d[email] = m
     _env_save(ENVIOS_MAP, d)
+
+
+@app.post("/pf-envios-mapa")
+def pf_envios_mapa():
+    """Carga en lote el cruce pedido ↔ seguimiento (el que sale de los PDFs de etiquetas).
+    Sirve para sembrar el histórico de una, sin tener que re-subir PDF por PDF."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    d = request.get_json(silent=True) or {}
+    pares = d.get("pares") or {}
+    if not isinstance(pares, dict) or not pares:
+        return jsonify({"ok": False, "msg": "mandá {'pares': {track: {'num':..,'nombre':..}}}"})
+    todo = _env_load(ENVIOS_MAP)
+    m = todo.get(email) or {}
+    n = 0
+    for trk, v in pares.items():
+        t = "".join(ch for ch in str(trk) if ch.isdigit())
+        if not t:
+            continue
+        num = str((v or {}).get("num") or "").strip()
+        if not num:
+            continue
+        m[t] = {"num": num, "nombre": str((v or {}).get("nombre") or "").strip()[:60]}
+        n += 1
+    todo[email] = m
+    _env_save(ENVIOS_MAP, todo)
+    return jsonify({"ok": True, "cargados": n, "total": len(m)})
 
 
 @app.post("/pf-envios-subir")
