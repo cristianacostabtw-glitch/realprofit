@@ -150,6 +150,12 @@ async function startSession(acc) {
 
   sock.ev.on("creds.update", saveCreds);
 
+  // Señal de VIDA: cualquier evento entrante refresca lastRecv (para cazar la conexión "zombie").
+  const bump = () => { s.lastRecv = Date.now(); };
+  for (const ev of ["messages.update", "message-receipt.update", "presence.update", "chats.update", "chats.upsert", "contacts.update"]) {
+    try { sock.ev.on(ev, bump); } catch {}
+  }
+
   sock.ev.on("connection.update", async (u) => {
     const { connection, lastDisconnect, qr } = u;
     if (qr) {
@@ -483,12 +489,17 @@ setInterval(() => {
       if (s.status === "logged_out" || s.status === "qr") continue;   // necesitan QR/manual
       if (s.starting && s.startedAt && (Date.now() - s.startedAt > 120000)) s.starting = false; // destrabar starting colgado
       // MUERTE SILENCIOSA: status dice "connected" pero el socket murió sin avisar "close" (se cortó a las 11am).
-      if (s.status === "connected" && !s.starting && wsDead(s.sock)) {
-        try { s.sock?.end?.(new Error("watchdog: socket muerto")); } catch {}
+      // Reconectar si: (a) el WS está muerto, o (b) la sesión quedó MUDA >7min (conexión "zombie":
+      // socket "abierto" pero WhatsApp dejó de mandar todo). Cubre la muerte silenciosa de las 8-9am.
+      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 7 * 60 * 1000;
+      if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda)) {
+        try { s.sock?.end?.(new Error("watchdog: socket muerto/zombie")); } catch {}
         s.status = "connecting";
         startSession(acc).catch(() => {});
         continue;
       }
+      // Ping activo: mantiene la conexión caliente y fuerza round-trip con el server cada vuelta.
+      if (s.status === "connected" && !s.starting) { try { s.sock?.sendPresenceUpdate?.("available"); } catch {} }
       if (s.status !== "connected" && !s.starting) startSession(acc).catch(() => {});
     }
     // cuenta con creds en disco que quedó fuera de memoria → levantarla
@@ -498,7 +509,7 @@ setInterval(() => {
       }
     }
   } catch {}
-}, 90000);
+}, 60000);
 
 app.listen(PORT, () => {
   console.log(`wa-web escuchando en :${PORT}  (data: ${DATA_DIR})`);
