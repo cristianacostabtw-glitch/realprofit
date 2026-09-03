@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-tienda-auto"})
+    return jsonify({"ok": True, "v": "2026-09-03-despachos-ruta-dup"})
 
 
 _KPI_DBG = {}
@@ -10508,11 +10508,6 @@ def pf_guardar_comisiones():
 def pf_marketing():
     return jsonify({"ok": True, "mk": {}})
 
-
-
-@app.get("/pf-despachos")
-def pf_despachos():
-    return jsonify({"ok": True, "desp": []})
 
 
 @app.get("/pf-ventas-nuevas")
