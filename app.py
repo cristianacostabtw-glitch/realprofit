@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-web-chats-limpio2"})
+    return jsonify({"ok": True, "v": "2026-09-02-fin-sheet-peek"})
 
 
 _KPI_DBG = {}
@@ -8972,6 +8972,61 @@ def _ads_google_creds():
         return service_account.Credentials.from_service_account_info(_json.loads(raw), scopes=scopes)
     fp = _os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE") or str(RAIZ / "service-account.json")
     return service_account.Credentials.from_service_account_file(fp, scopes=scopes)
+
+
+def _fin_sheets_creds():
+    """Credenciales del MISMO service account pero con scope de ESCRITURA en Sheets
+    (el de Drive es readonly). Sirve para que el bot de finanzas complete la planilla."""
+    from google.oauth2 import service_account
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    raw = _os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if raw:
+        return service_account.Credentials.from_service_account_info(_json.loads(raw), scopes=scopes)
+    fp = _os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE") or str(RAIZ / "service-account.json")
+    return service_account.Credentials.from_service_account_file(fp, scopes=scopes)
+
+
+def _fin_sheet_id(link):
+    """Saca el ID de un link de Google Sheets (o devuelve lo pegado si ya es el ID)."""
+    m = _re_and.search(r"/spreadsheets/d/([A-Za-z0-9_-]+)", link or "")
+    return m.group(1) if m else (link or "").strip()
+
+
+@app.get("/fin-sheet-peek")
+def fin_sheet_peek():
+    """DIAGNOSTICO: lee la planilla de finanzas con el service account.
+    Confirma que el acceso funciona (compartida + API habilitada) y devuelve la
+    estructura real (pestañas + fórmulas vs valores) para mapear qué columnas se cargan."""
+    from urllib.parse import quote as _q
+    from google.auth.transport.requests import AuthorizedSession
+    if not _user_actual():
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    sid = _fin_sheet_id(request.args.get("id") or "")
+    rng = (request.args.get("rango") or "").strip()
+    if not sid:
+        return jsonify({"ok": False, "msg": "falta id"})
+    try:
+        sess = AuthorizedSession(_fin_sheets_creds())
+        base = "https://sheets.googleapis.com/v4/spreadsheets/" + sid
+        m = sess.get(base, params={"fields": "properties.title,sheets.properties"}, timeout=(15, 45))
+        if m.status_code != 200:
+            return jsonify({"ok": False, "paso": "meta", "code": m.status_code, "det": m.text[:700]})
+        mj = m.json()
+        out = {"ok": True, "titulo": (mj.get("properties") or {}).get("title"), "pestanas": []}
+        for s in (mj.get("sheets") or []):
+            p = s.get("properties") or {}
+            g = p.get("gridProperties") or {}
+            out["pestanas"].append({"gid": p.get("sheetId"), "nombre": p.get("title"),
+                                    "filas": g.get("rowCount"), "cols": g.get("columnCount")})
+        if rng:
+            for tipo in ("FORMULA", "FORMATTED_VALUE"):
+                r = sess.get(base + "/values/" + _q(rng, safe=""),
+                             params={"valueRenderOption": tipo}, timeout=(15, 45))
+                out[tipo.lower()] = (r.json().get("values") if r.status_code == 200
+                                     else "ERR %s %s" % (r.status_code, r.text[:300]))
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, e)})
 
 
 def _ads_drive_fid(link):
