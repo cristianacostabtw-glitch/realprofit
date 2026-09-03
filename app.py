@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-vivo"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-entrega-manda"})
 
 
 _KPI_DBG = {}
@@ -5557,9 +5557,13 @@ def pf_envios():
                 if not n:
                     continue
                 c = o.get("customer") or {}
-                peds[n] = {"nom": ((c.get("first_name") or "") + " " + (c.get("last_name") or "")).strip()
-                                  or (o.get("contact_email") or ""),
-                           "fecha": (o.get("created_at") or "")[:10]}
+                sa = o.get("shipping_address") or {}
+                _nom = (sa.get("name") or "").strip() or \
+                       ((c.get("first_name") or "") + " " + (c.get("last_name") or "")).strip() or \
+                       (o.get("contact_email") or "")
+                _ant = peds.get(n) or {}
+                peds[n] = {"nom": _nom or _ant.get("nom", ""),
+                           "fecha": (o.get("created_at") or "")[:10] or _ant.get("fecha", "")}
                 nuevos += 1
             if nuevos:
                 tped[email] = peds
@@ -5576,14 +5580,21 @@ def pf_envios():
     out = []
     for num, p in peds.items():
         tracks = por_num.get(num) or []
-        mejor = None
+        # Si el pedido tiene VARIAS etiquetas (reimpresiones), la entrega manda: si alguna dice
+        # Entregado, el pedido llegó. Sin esto, una etiqueta vieja que quedó "en camino" tapaba
+        # la nueva ya entregada (daba 305 "en camino" cuando eran 42).
+        mejor = entregado = None
         for t in tracks:
             v = est.get(t)
             if not v:
                 continue
             c = _env_clase(v.get("estado"))
+            if c == "ok" and entregado is None:
+                entregado = (t, c, v)
             if mejor is None or _ord.get(c, 9) < _ord.get(mejor[1], 9):
                 mejor = (t, c, v)
+        if entregado:
+            mejor = entregado
         if mejor:
             t, c, v = mejor
             base = v.get("desde") or hoy.isoformat()
