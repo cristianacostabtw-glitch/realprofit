@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-estados-fix"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-buscador"})
 
 
 _KPI_DBG = {}
@@ -5533,125 +5533,176 @@ _SEGUIMIENTOS_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-
  --suc:#a78bfa;--suc-bg:rgba(167,139,250,.13);--otro:#8b97a8;--otro-bg:rgba(139,151,168,.12)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
- font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}
-.wrap{max-width:1180px;margin:0 auto;padding:26px 20px 60px;display:flex;flex-direction:column;gap:20px}
-header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;
- border-bottom:1px solid var(--line2);padding-bottom:15px}
-h1{font-family:Archivo,sans-serif;font-size:27px;font-weight:700;margin:0;letter-spacing:-.02em}
-.sub{color:var(--ink2);font-size:13px;margin:4px 0 0}
+ font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 22px 70px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;
+ border-bottom:1px solid var(--line2);padding-bottom:17px}
+h1{font-family:Archivo,system-ui,sans-serif;font-size:29px;font-weight:700;margin:0;letter-spacing:-.025em}
+.sub{color:var(--ink2);font-size:13px;margin:5px 0 0}
 .acts{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
 .btn{background:var(--accent);border:0;color:#fff;border-radius:9px;padding:11px 17px;font-size:13.5px;
- font-weight:700;cursor:pointer;font-family:inherit}
-.btn.sec{background:#111c2b;border:1px solid var(--line2);color:#cbd5e1}
-.btn:disabled{opacity:.55;cursor:default}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:11px}
-.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;
- display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:border-color .15s}
-.tile:hover{border-color:var(--line2)}
+ font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn.sec{background:#111c2b;border:1px solid var(--line2);color:#cbd5e1;text-decoration:none;display:inline-block}
+/* buscador */
+.busca{display:flex;align-items:center;gap:11px;background:var(--panel);border:1px solid var(--line2);
+ border-radius:11px;padding:0 15px;height:50px}
+.busca:focus-within{border-color:var(--accent)}
+.busca svg{flex:none;opacity:.5}
+.busca input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font-size:15px;
+ font-family:inherit;height:100%}
+.busca input::placeholder{color:var(--ink3)}
+.busca .x{border:0;background:#1b2536;color:var(--ink2);border-radius:7px;padding:5px 10px;
+ font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+/* tarjetas de estado */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(184px,1fr));gap:12px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:15px 16px 15px 18px;
+ display:flex;flex-direction:column;gap:7px;cursor:pointer;position:relative;overflow:hidden;
+ transition:border-color .15s,transform .12s}
+.tile:hover{border-color:var(--line2);transform:translateY(-1px)}
 .tile.on{border-color:var(--accent)}
-.tile .lb{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
-.tile .n{font-family:Archivo,sans-serif;font-size:27px;font-weight:700;line-height:1}
-.tile.wait{border-color:var(--wait)}.tile.wait .n,.tile.wait .lb{color:var(--wait)}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
-.ph{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;
+.tile .bar{position:absolute;left:0;top:0;bottom:0;width:3px}
+.tile .lb{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.tile .n{font-family:Archivo,sans-serif;font-size:31px;font-weight:700;line-height:1;letter-spacing:-.025em}
+.tile .hint{font-size:12px;color:var(--ink2);line-height:1.35}
+/* tabla */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.ph{padding:13px 17px;border-bottom:1px solid var(--line);display:flex;gap:10px;
  align-items:center;justify-content:space-between;flex-wrap:wrap}
-.ph h2{font-family:Archivo,sans-serif;font-size:15px;margin:0;font-weight:600}
-.ph .note{color:var(--ink3);font-size:12px}
+.ph h2{font-family:Archivo,sans-serif;font-size:15.5px;margin:0;font-weight:600;letter-spacing:-.01em}
+.ph .note{color:var(--ink3);font-size:12.5px}
 .scroll{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:820px}
 th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);
- padding:9px 14px;border-bottom:1px solid var(--line);background:var(--panel2);white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--line)}
+ padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+td{padding:11px 16px;border-bottom:1px solid var(--line)}
+tbody tr:hover{background:rgba(255,255,255,.022)}
 tbody tr:last-child td{border-bottom:0}
-td.num{font-family:Archivo,sans-serif;font-weight:600}
-td.trk{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink2)}
+td.num{font-family:Archivo,sans-serif;font-weight:600;font-size:14.5px;border-left:3px solid transparent}
+tr.k-wait td.num{border-left-color:var(--wait)} tr.k-back td.num{border-left-color:var(--back)}
+tr.k-suc td.num{border-left-color:var(--suc)} tr.k-move td.num{border-left-color:var(--move)}
+tr.k-ok td.num{border-left-color:var(--ok)}
+td.trk{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink2)}
 td.dias{font-size:12.5px;color:var(--ink3);white-space:nowrap}
 td.dias b{color:var(--wait)}
-.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 11px;
  font-size:12px;font-weight:600;white-space:nowrap}
-.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill i{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 .c-ok{background:var(--ok-bg);color:var(--ok)}.c-move{background:var(--move-bg);color:var(--move)}
 .c-wait{background:var(--wait-bg);color:var(--wait)}.c-back{background:var(--back-bg);color:var(--back)}
 .c-suc{background:var(--suc-bg);color:var(--suc)}.c-otro{background:var(--otro-bg);color:var(--otro)}
-.vacio{padding:40px 20px;text-align:center;color:var(--ink2)}
-.vacio b{color:var(--ink);display:block;margin-bottom:6px;font-size:15px}
-.vacio ol{text-align:left;max-width:420px;margin:14px auto 0;color:var(--ink2);font-size:13px;line-height:1.8}
+.vacio{padding:44px 20px;text-align:center;color:var(--ink2)}
+.vacio b{color:var(--ink);display:block;margin-bottom:6px;font-size:15.5px;font-family:Archivo,sans-serif}
+.vacio ol{text-align:left;max-width:430px;margin:14px auto 0;color:var(--ink2);font-size:13px;line-height:1.85}
+.more{padding:14px;text-align:center;border-top:1px solid var(--line)}
+.more button{background:#111c2b;border:1px solid var(--line2);color:#cbd5e1;border-radius:9px;
+ padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
 #msg{font-size:13px;font-weight:600}
 input[type=file]{display:none}
+mark{background:rgba(232,177,62,.32);color:inherit;border-radius:3px;padding:0 2px}
 </style></head><body>
 <div class="wrap">
  <header>
   <div><h1 id="tit">Seguimientos</h1>
-   <p class="sub">Qué pasó con cada envío que despachaste. <span id="sub2"></span></p></div>
+   <p class="sub">En qué anda cada envío que despachaste. <span id="sub2"></span></p></div>
   <div class="acts">
    <span id="msg"></span>
    <label class="btn" for="fx">Subir estado de Andreani</label>
    <input id="fx" type="file" accept=".xlsx,.xls" onchange="subir(this)">
-   <a class="btn sec" href="/" style="text-decoration:none;display:inline-block">&#8592; RealProfit</a>
+   <a class="btn sec" href="/">&#8592; RealProfit</a>
   </div>
  </header>
+
+ <div class="busca">
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#93a3ba" stroke-width="2.2"
+   stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+  <input id="q" type="search" placeholder="Buscar por pedido, cliente, seguimiento o localidad…"
+   oninput="buscar()" autocomplete="off">
+  <button class="x" id="bx" onclick="limpiar()" style="display:none">Limpiar</button>
+ </div>
+
  <div class="tiles" id="tiles"></div>
+
  <div class="panel">
-  <div class="ph"><h2>Envíos</h2><span class="note" id="nota"></span></div>
+  <div class="ph"><h2>Envíos</h2><span class="note" id="nota">cargando…</span></div>
   <div class="scroll"><table>
    <thead><tr><th>Pedido</th><th>Cliente</th><th>Seguimiento</th><th>Destino</th><th>Estado</th><th>Hace</th></tr></thead>
    <tbody id="tb"></tbody></table></div>
+  <div class="more" id="more" style="display:none"><button onclick="masFilas()">Ver más envíos</button></div>
   <div id="vacio" class="vacio" style="display:none">
    <b>Todavía no cargaste ningún estado</b>
    Bajá el listado de Andreani y subilo acá.
    <ol><li>Entrá a <b>pymes.andreani.com</b></li>
+    <li>Poné el filtro de fecha en <b>Últimos 30 días</b> (viene en 7)</li>
     <li><b>Ver mis envíos</b> &rarr; <b>Descargar envíos</b></li>
     <li>Subí ese archivo con el botón de arriba</li></ol>
   </div>
  </div>
 </div>
 <script>
-var NOM={ok:"Entregado",move:"En camino",wait:"Pendiente de ingreso",back:"En devolución",suc:"En sucursal",otro:"Otros"};
-var ORD=["wait","back","suc","move","ok","otro"], DATA=[], FILTRO=null;
+var NOM={wait:"Pendiente de ingreso",back:"Con problema",suc:"En sucursal",move:"En camino",ok:"Entregado",otro:"Otros"};
+var PIE={wait:"Andreani todavía no los recibió",back:"No entregado o volviendo",suc:"Esperando que los retiren",move:"Viajando a destino",ok:"Cerrado",otro:"Sin clasificar"};
+var ORD=["wait","back","suc","move","ok","otro"];
+var DATA=[], VIS=[], FILTRO=null, PASO=250, tope=PASO;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
-function pintar(){
- var tb=document.getElementById("tb"), v=document.getElementById("vacio");
- var f=FILTRO?DATA.filter(function(e){return e.clase===FILTRO;}):DATA;
- if(!DATA.length){ tb.innerHTML=""; v.style.display="block"; return; }
+function res(s,q){ if(!q)return esc(s); var t=String(s==null?"":s), i=t.toLowerCase().indexOf(q);
+ return i<0?esc(t):esc(t.slice(0,i))+"<mark>"+esc(t.slice(i,i+q.length))+"</mark>"+esc(t.slice(i+q.length)); }
+function aplicar(){
+ var q=(document.getElementById("q").value||"").trim().toLowerCase();
+ document.getElementById("bx").style.display=q?"block":"none";
+ VIS=DATA.filter(function(e){
+  if(FILTRO&&e.clase!==FILTRO)return false;
+  if(!q)return true;
+  return (e.num&&e.num.indexOf(q)>=0)||(e.track&&e.track.indexOf(q)>=0)||
+         (e.cliente&&e.cliente.toLowerCase().indexOf(q)>=0)||(e.loc&&e.loc.toLowerCase().indexOf(q)>=0)||
+         (e.estado&&e.estado.toLowerCase().indexOf(q)>=0);
+ });
+ tope=PASO; pintar(q);
+}
+function pintar(q){
+ var tb=document.getElementById("tb"), v=document.getElementById("vacio"), mo=document.getElementById("more");
+ if(!DATA.length){ tb.innerHTML=""; v.style.display="block"; mo.style.display="none";
+  document.getElementById("nota").textContent=""; return; }
  v.style.display="none";
+ var f=VIS.slice(0,tope);
  tb.innerHTML=f.map(function(e){
-  var d=e.dias>=3&&(e.clase==="wait"||e.clase==="back")?("<b>"+e.dias+" días</b>"):(e.dias+(e.dias===1?" día":" días"));
-  return "<tr><td class='num'>"+(e.num?("#"+esc(e.num)):"<span style='color:var(--ink3)'>—</span>")+"</td>"+
-   "<td>"+esc(e.cliente||"—")+"</td><td class='trk'>"+esc(e.track)+"</td><td style='color:var(--ink2)'>"+esc(e.loc||"—")+"</td>"+
+  var d=(e.dias>=3&&(e.clase==="wait"||e.clase==="back"))?("<b>"+e.dias+" días</b>"):(e.dias+(e.dias===1?" día":" días"));
+  return "<tr class='k-"+e.clase+"'><td class='num'>"+(e.num?("#"+res(e.num,q)):"<span style='color:var(--ink3)'>—</span>")+"</td>"+
+   "<td>"+res(e.cliente||"—",q)+"</td><td class='trk'>"+res(e.track,q)+"</td>"+
+   "<td style='color:var(--ink2)'>"+res(e.loc||"—",q)+"</td>"+
    "<td><span class='pill c-"+e.clase+"'><i></i>"+esc(e.estado)+"</span></td><td class='dias'>"+d+"</td></tr>";
  }).join("");
- document.getElementById("nota").textContent=f.length+" de "+DATA.length+" envíos"+(FILTRO?" · filtrado":"");
+ mo.style.display=(VIS.length>tope)?"block":"none";
+ var n=document.getElementById("nota");
+ n.textContent = (q||FILTRO) ? (VIS.length+" de "+DATA.length+" envíos") : (DATA.length+" envíos");
+ if(VIS.length>tope) n.textContent+=" · mostrando "+tope;
+ if(!VIS.length) n.textContent="Ningún envío coincide";
 }
+function masFilas(){ tope+=PASO; pintar((document.getElementById("q").value||"").trim().toLowerCase()); }
+function buscar(){ aplicar(); }
+function limpiar(){ document.getElementById("q").value=""; aplicar(); document.getElementById("q").focus(); }
 function tiles(c){
- var t=document.getElementById("tiles");
- t.innerHTML=ORD.filter(function(k){return c[k];}).map(function(k){
-  return "<div class='tile "+(k==="wait"?"wait ":"")+(FILTRO===k?"on":"")+"' onclick=\\"filtrar('"+k+"')\\">"+
-   "<span class='lb'>"+NOM[k]+"</span><span class='n' style='color:var(--"+k+")'>"+c[k]+"</span></div>";
+ document.getElementById("tiles").innerHTML=ORD.filter(function(k){return c[k];}).map(function(k){
+  return "<div class='tile "+(FILTRO===k?"on":"")+"' onclick=\\"filtrar('"+k+"')\\">"+
+   "<span class='bar' style='background:var(--"+k+")'></span>"+
+   "<span class='lb'>"+NOM[k]+"</span>"+
+   "<span class='n' style='color:var(--"+k+")'>"+c[k]+"</span>"+
+   "<span class='hint'>"+PIE[k]+"</span></div>";
  }).join("");
 }
-function filtrar(k){ FILTRO=(FILTRO===k?null:k); tiles(window._C||{}); pintar(); }
+function filtrar(k){ FILTRO=(FILTRO===k?null:k); tiles(window._C||{}); aplicar(); }
 function cargar(){
  fetch("/pf-envios").then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok)return;
   DATA=j.envios||[]; window._C=j.conteo||{};
   if(j.tienda) document.getElementById("tit").textContent="Seguimientos · "+j.tienda;
   var sp=j.sin_pedido||0;
-  document.getElementById("sub2").innerHTML = sp?("<span style='color:var(--wait)'>"+sp+" sin número de pedido — subí el PDF de etiquetas en Despachos para cruzarlos.</span>"):"";
-  tiles(window._C); pintar();
- });
-}
-function subir(inp){
- var f=inp.files&&inp.files[0]; if(!f)return;
- var m=document.getElementById("msg"); m.style.color="var(--ink2)"; m.textContent="Leyendo…";
- var fd=new FormData(); fd.append("excel",f);
- fetch("/pf-envios-subir",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(j){
-  if(j&&j.ok){ m.style.color="var(--ok)"; m.textContent="✓ "+j.leidos+" envíos"+(j.cambios?(" · "+j.cambios+" cambiaron de estado"):""); cargar(); }
-  else { m.style.color="var(--back)"; m.textContent=(j&&j.msg)||"No se pudo leer"; }
- }).catch(function(){ m.style.color="var(--back)"; m.textContent="Error de conexión"; });
- inp.value="";
+  document.getElementById("sub2").innerHTML = sp?("<span style='color:var(--wait)'>"+sp+" sin número de pedido.</span>"):"";
+  tiles(window._C); aplicar();
+ }).catch(function(){ document.getElementById("nota").textContent="No se pudieron traer los envíos."; });
 }
 cargar();
-</script></body></html>"""
+</script></body></html>
+"""
 
 
 # ============================ FACTURACIÓN ============================
