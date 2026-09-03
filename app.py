@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-pedidos-viejos"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-tienda-auto"})
 
 
 _KPI_DBG = {}
@@ -7288,6 +7288,22 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
+def _seg_tienda_auto(email, pedida="") -> str:
+    """Qué tienda usar para el seguimiento: LA QUE ESTÉ INTEGRADA (Shopify o Tiendanube).
+    Antes caía por defecto en "tn", así que en una cuenta con Shopify buscaba los pedidos en
+    Tiendanube y no matcheaba NINGUNO. Si viene pedida y está conectada, se respeta; si no,
+    se elige sola la que haya."""
+    t = (pedida or "").strip().lower()
+    hay_shop = bool((_shop_tokens().get(email) or {}).get("access_token"))
+    _tn = _tn_tokens().get(email) or {}
+    hay_tn = bool(_tn.get("access_token") and _tn.get("store_id"))
+    if t == "shopify" and hay_shop:
+        return "shopify"
+    if t == "tn" and hay_tn:
+        return "tn"
+    return "shopify" if hay_shop else ("tn" if hay_tn else (t or "tn"))
+
+
 @app.post("/pf-despachos-seg-leer")
 def pf_despachos_seg_leer():
     """Lee el PDF de Andreani → pedido + seguimiento, matchea con TiendaNube (cliente, unidades,
@@ -7297,7 +7313,7 @@ def pf_despachos_seg_leer():
     f = request.files.get("pdf") or (next(iter(request.files.values())) if request.files else None)
     if not f:
         return jsonify({"ok": False, "msg": "subí el PDF de Andreani"})
-    tienda = (request.form.get("tienda") or "tn").strip()
+    tienda = _seg_tienda_auto(email, request.form.get("tienda"))
     # Auto-detecta la tienda: si pide una que NO está conectada pero la otra SÍ, usa esa.
     # (así una cuenta Shopify no pide "conectá TiendaNube" solo porque el modal arranca en TN)
     sh_ok = bool(_seg_shop_conn(email)[0])
