@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-fin-sheet-peek"})
+    return jsonify({"ok": True, "v": "2026-09-03-bot-finanzas"})
 
 
 _KPI_DBG = {}
@@ -9029,6 +9029,256 @@ def fin_sheet_peek():
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, e)})
 
 
+# ============ BOT FINANZAS: completa la planilla "RENTABILIDAD DIARIA" ============
+# Escribe SOLO las columnas de carga (B Fecha, C Día, D Ventas, E Unidades, H Facturado,
+# J Ingreso Limpio, R ADS USD). Todo lo demás de la planilla son fórmulas → NO se tocan.
+_FIN_MES = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO",
+            "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+_FIN_DIA = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+_FIN_FILE = DATA_DIR / "fin_sheet.json"     # {email: {"sheet": id, "desde": "2026-08-05", "auto": true}}
+_FIN_EPOCH = _dt.date(1899, 12, 30)         # día 0 de los seriales de Google Sheets
+_FIN_FILA0 = 5                              # fila 6 = día 1  →  fila = día + 5
+
+
+def _fin_conf() -> dict:
+    try:
+        return _json.loads(_FIN_FILE.read_text("utf-8"))
+    except Exception:
+        return {}
+
+
+def _fin_conf_save(d) -> None:
+    try:
+        _FIN_FILE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
+    except Exception:
+        pass
+
+
+def _fin_hoy_ar():
+    """Fecha de HOY en hora Argentina (el server corre en UTC)."""
+    return (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date()
+
+
+def _fin_ads_usd(email, desde, hasta) -> float:
+    """Gasto REAL de Meta en USD del período, SUMANDO todas las cuentas de la tienda (CP1 + CP2).
+    Ojo: _meta_spend devuelve ARS (convierte con el dólar vivo). Acá va el USD crudo porque la
+    planilla lo pasa a pesos sola (columna ADS ARS = ADS USD × T.C de D3)."""
+    tk = _meta_tokens().get(email)
+    token = tk.get("access_token") if tk else None
+    cuenta = tk.get("cuenta") if tk else None
+    if not token:
+        owner = _os.getenv("META_OWNER_EMAIL", "").strip().lower()
+        if owner and email and email.strip().lower() == owner and _os.getenv("META_OWNER_TOKEN"):
+            token = _os.getenv("META_OWNER_TOKEN")
+            cuenta = _os.getenv("META_OWNER_ACT") or cuenta
+    if not token or not cuenta:
+        return 0.0
+    primaria = str(cuenta).replace("act_", "").strip()
+    cuentas = [primaria] if primaria else []
+    for grupo in (_os.getenv("META_ACTS_EXTRA", "") or "").split(";"):
+        if ":" not in grupo:
+            continue
+        pri, extras = grupo.split(":", 1)
+        if pri.strip().replace("act_", "") != primaria:
+            continue                     # grupo de OTRA tienda → no sumar
+        for ex in extras.split(","):
+            ex = ex.strip().replace("act_", "")
+            if ex and ex not in cuentas:
+                cuentas.append(ex)
+    total = 0.0
+    for acc in cuentas:
+        try:
+            r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
+                             params={"access_token": token, "fields": "spend,account_currency",
+                                     "time_range": _json.dumps({"since": desde, "until": hasta}),
+                                     "level": "account"}, timeout=30)
+            data = r.json().get("data") or []
+            if not data:
+                continue
+            spend = float(data[0].get("spend") or 0)
+            moneda = (data[0].get("account_currency") or "").upper()
+            if moneda and moneda != "USD":       # cuenta en pesos → lo paso a USD con el dólar vivo
+                tc = _dolar_ars_vivo() or 0
+                spend = (spend / tc) if tc else 0.0
+            total += spend
+        except Exception:
+            pass
+    return round(total, 2)
+
+
+def _fin_datos_dia(email, f) -> dict:
+    """Los números reales del día ya cerrado, para la fila de ese día."""
+    d = f.strftime("%Y-%m-%d")
+    res = _shopify_resumen(email, d, d) or {}
+    raw = res.get("raw") or {}
+    fact = float(raw.get("facturado") or 0)
+    # INGRESO LIMPIO = lo que entra REAL a MercadoPago = facturado − comisión REAL de MP
+    # (mp_costo_real viene matcheado pedido por pedido contra el pago, no estimado).
+    limpio = fact - float(raw.get("mp_costo_real") or 0)
+    return {"fecha": d,
+            "ventas": int(raw.get("ordenes") or 0),
+            "unidades": int(raw.get("unidades") or 0),
+            "facturado": round(fact, 2),
+            "ingreso_limpio": round(limpio, 2),
+            "ads_usd": _fin_ads_usd(email, d, d)}
+
+
+def _fin_sess():
+    from google.auth.transport.requests import AuthorizedSession
+    return AuthorizedSession(_fin_sheets_creds())
+
+
+def _fin_tabs(sess, sid) -> dict:
+    """{nombre de pestaña: gid}"""
+    r = sess.get("https://sheets.googleapis.com/v4/spreadsheets/" + sid,
+                 params={"fields": "sheets.properties"}, timeout=(15, 45))
+    if r.status_code != 200:
+        raise RuntimeError("no pude leer la planilla (%s): %s" % (r.status_code, r.text[:200]))
+    out = {}
+    for s in (r.json().get("sheets") or []):
+        p = s.get("properties") or {}
+        out[p.get("title")] = p.get("sheetId")
+    return out
+
+
+def _fin_tab_mes(sess, sid, f) -> str:
+    """Nombre de la pestaña del mes de `f`. Si no existe la CREA duplicando la última que haya
+    (se copia con todas las fórmulas y el formato) y la deja lista: fechas y días del mes
+    escritos, y las columnas de carga en blanco."""
+    nombre = "MES " + _FIN_MES[f.month - 1]
+    tabs = _fin_tabs(sess, sid)
+    if nombre in tabs:
+        return nombre
+    if not tabs:
+        raise RuntimeError("la planilla no tiene ninguna pestaña para copiar")
+    base_gid = list(tabs.values())[-1]        # duplico la última (trae fórmulas y formato)
+    r = sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s:batchUpdate" % sid,
+                  json={"requests": [{"duplicateSheet": {
+                      "sourceSheetId": base_gid, "newSheetName": nombre,
+                      "insertSheetIndex": len(tabs)}}]}, timeout=(15, 60))
+    if r.status_code != 200:
+        raise RuntimeError("no pude crear la pestaña %s: %s" % (nombre, r.text[:200]))
+    import calendar as _cal
+    ndias = _cal.monthrange(f.year, f.month)[1]
+    data = []
+    for d in range(1, ndias + 1):
+        fecha = _dt.date(f.year, f.month, d)
+        fila = d + _FIN_FILA0
+        data.append({"range": "%s!B%d:E%d" % (nombre, fila, fila),
+                     "values": [[(fecha - _FIN_EPOCH).days, _FIN_DIA[fecha.weekday()], "", ""]]})
+        data.append({"range": "%s!H%d" % (nombre, fila), "values": [[""]]})
+        data.append({"range": "%s!J%d" % (nombre, fila), "values": [[""]]})
+        data.append({"range": "%s!R%d" % (nombre, fila), "values": [[""]]})
+    sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+              json={"valueInputOption": "RAW", "data": data}, timeout=(15, 90))
+    return nombre
+
+
+def _fin_cargar_dia(email, f) -> dict:
+    """Calcula el día y lo escribe en la fila que le toca. Idempotente (se puede repetir)."""
+    conf = (_fin_conf().get(email) or {})
+    sid = conf.get("sheet")
+    if not sid:
+        return {"ok": False, "msg": "esta cuenta no tiene planilla configurada"}
+    dat = _fin_datos_dia(email, f)
+    sess = _fin_sess()
+    tab = _fin_tab_mes(sess, sid, f)
+    fila = f.day + _FIN_FILA0
+    # RAW: números y textos tal cual (no pisa el formato de fecha de la celda)
+    r = sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                  json={"valueInputOption": "RAW", "data": [
+                      {"range": "%s!B%d:E%d" % (tab, fila, fila),
+                       "values": [[(f - _FIN_EPOCH).days, _FIN_DIA[f.weekday()],
+                                   dat["ventas"], dat["unidades"]]]},
+                      {"range": "%s!H%d" % (tab, fila), "values": [[dat["facturado"]]]},
+                      {"range": "%s!J%d" % (tab, fila), "values": [[dat["ingreso_limpio"]]]},
+                      {"range": "%s!R%d" % (tab, fila), "values": [[dat["ads_usd"]]]},
+                  ]}, timeout=(15, 90))
+    if r.status_code != 200:
+        return {"ok": False, "msg": "error escribiendo: %s %s" % (r.status_code, r.text[:250])}
+    # ARREGLO del bug de la planilla: F usaba N49/N50/N51 (referencia que se desliza y cae en
+    # celdas vacías → costo mercadería $0). Lo fijo a $N$49, el precio del producto.
+    sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+              json={"valueInputOption": "USER_ENTERED",
+                    "data": [{"range": "%s!F%d" % (tab, fila),
+                              "values": [["=D%d*$N$49" % fila]]}]}, timeout=(15, 60))
+    dat.update({"ok": True, "pestana": tab, "fila": fila})
+    return dat
+
+
+def _fin_bot_loop():
+    """Todos los días ~1:15am (hora AR) carga el día que cerró, por cada cuenta configurada."""
+    import time as _t
+    while True:
+        try:
+            ahora = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
+            prox = ahora.replace(hour=1, minute=15, second=0, microsecond=0)
+            if prox <= ahora:
+                prox += _dt.timedelta(days=1)
+            _t.sleep(max(60.0, (prox - ahora).total_seconds()))
+            ayer = _fin_hoy_ar() - _dt.timedelta(days=1)
+            for email, c in (_fin_conf() or {}).items():
+                if not c.get("sheet") or c.get("auto") is False:
+                    continue
+                try:
+                    _fin_cargar_dia(email, ayer)
+                except Exception:
+                    pass
+        except Exception:
+            _t.sleep(300)
+
+
+@app.post("/fin-config")
+def fin_config():
+    """Guarda (o apaga) la planilla de finanzas de la cuenta logueada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    d = request.get_json(silent=True) or {}
+    conf = _fin_conf()
+    c = conf.get(email) or {}
+    if d.get("sheet") is not None:
+        c["sheet"] = _fin_sheet_id(d.get("sheet") or "")
+    if d.get("desde"):
+        c["desde"] = str(d["desde"])[:10]
+    if d.get("auto") is not None:
+        c["auto"] = bool(d["auto"])
+    conf[email] = c
+    _fin_conf_save(conf)
+    return jsonify({"ok": True, "conf": c})
+
+
+@app.post("/fin-cargar")
+def fin_cargar():
+    """Carga a mano uno o varios días: {"desde":"2026-08-05","hasta":"2026-09-02"}
+    (sin fechas = el día que cerró ayer)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    d = request.get_json(silent=True) or {}
+    try:
+        if d.get("desde"):
+            f1 = _dt.datetime.strptime(str(d["desde"])[:10], "%Y-%m-%d").date()
+            f2 = _dt.datetime.strptime(str(d.get("hasta") or d["desde"])[:10], "%Y-%m-%d").date()
+        else:
+            f1 = f2 = _fin_hoy_ar() - _dt.timedelta(days=1)
+    except Exception:
+        return jsonify({"ok": False, "msg": "fecha invalida (usar YYYY-MM-DD)"})
+    if (f2 - f1).days > 92:
+        return jsonify({"ok": False, "msg": "rango muy largo (max 92 dias)"})
+    hechos, errores = [], []
+    f = f1
+    while f <= f2:
+        try:
+            r = _fin_cargar_dia(email, f)
+            (hechos if r.get("ok") else errores).append(r if r.get("ok") else
+                                                        {"fecha": f.strftime("%Y-%m-%d"), "msg": r.get("msg")})
+        except Exception as e:
+            errores.append({"fecha": f.strftime("%Y-%m-%d"), "msg": "%s: %s" % (type(e).__name__, e)})
+        f += _dt.timedelta(days=1)
+    return jsonify({"ok": not errores, "cargados": len(hechos), "dias": hechos, "errores": errores})
+
+
 def _ads_drive_fid(link):
     m = _re_and.search(r"/folders/([A-Za-z0-9_-]+)", link or "")
     if m:
@@ -11606,6 +11856,11 @@ if WA_WEB_URL:
         threading.Thread(target=_wa_web_keepalive, daemon=True).start()
     except Exception:
         pass
+
+try:    # bot de finanzas: completa la planilla del día vencido ~1:15am (hora AR)
+    threading.Thread(target=_fin_bot_loop, daemon=True, name="fin-bot").start()
+except Exception:
+    pass
 
 
 def _wa_web_send(email, wid, text):
