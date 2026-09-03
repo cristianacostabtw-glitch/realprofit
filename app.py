@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-fin-unidades-visible"})
+    return jsonify({"ok": True, "v": "2026-09-03-fin-totales-ok"})
 
 
 _KPI_DBG = {}
@@ -9131,6 +9131,35 @@ def _fin_datos_dia(email, f) -> dict:
             "ads_usd": _fin_ads_usd(email, d, d)}
 
 
+# Fórmulas de las filas de cierre que venían MAL en la planilla y el bot repara.
+# Solo lo roto: rangos cortados (6:33 / 6:35 en vez de 6:36 → se perdían los últimos
+# días del mes) y la fila TOTAL USD que dividía por $C$1 (vacía → #DIV/0!) en vez del T.C de $D$3.
+# NO se tocan W40/X40 (tienen ajustes propios) ni M41 (=M40/D40).
+_FIN_TOTALES = {
+    40: {"D": "=SUM(D6:D36)", "E": "=SUM(E6:E36)", "F": "=SUM(F6:F36)", "G": "=SUM(G6:G36)",
+         "H": "=SUM(H6:H36)", "J": "=SUM(J6:J36)", "K": "=AVERAGE(K6:K36)", "M": "=SUM(M6:M36)",
+         "P": "=SUM(P6:P36)", "S": "=SUM(S6:S36)", "T": "=SUM(T6:T36)", "Z": "=AVERAGE(Z6:Z36)"},
+    41: {"D": "=AVERAGE(D6:D36)", "E": "=AVERAGE(E6:E36)", "F": "=AVERAGE(F6:F36)",
+         "G": "=AVERAGE(G6:G36)", "H": "=AVERAGE(H6:H36)", "J": "=AVERAGE(J6:J36)",
+         "R": "=AVERAGE(R6:R36)", "S": "=AVERAGE(S6:S36)", "T": "=AVERAGE(T6:T36)",
+         "W": "=AVERAGE(W6:W36)", "Y": "=AVERAGE(Y6:Y36)"},
+    42: {"F": "=F40/$D$3", "G": "=G40/$D$3", "H": "=H40/$D$3", "J": "=J40/$D$3",
+         "M": "=M40/$D$3", "S": "=S40/$D$3", "T": "=T40/$D$3", "W": "=W40/$D$3",
+         "Y": "=Y40/$D$3"},
+}
+
+
+def _fin_reparar_totales(sess, sid, tab) -> None:
+    """Corrige las filas TOTAL ARS / PROMEDIO / TOTAL USD de la pestaña."""
+    data = [{"range": "%s!%s%d" % (tab, col, fila), "values": [[fx]]}
+            for fila, cols in _FIN_TOTALES.items() for col, fx in cols.items()]
+    try:
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                  json={"valueInputOption": "USER_ENTERED", "data": data}, timeout=(15, 90))
+    except Exception:
+        pass
+
+
 def _fin_formato_unidades(sess, sid, tab, gid) -> None:
     """Le da a la columna Unidades (E) el MISMO formato/color que Ventas Totales (D),
     encabezado incluido, y la DESOCULTA (venía escondida en la planilla, por eso no se veía).
@@ -9330,6 +9359,7 @@ def fin_cargar():
             for tab in {h.get("pestana") for h in hechos if h.get("pestana")}:
                 if tab in gids:
                     _fin_formato_unidades(sess, sid, tab, gids[tab])
+                    _fin_reparar_totales(sess, sid, tab)
     except Exception:
         pass
     return jsonify({"ok": not errores, "cargados": len(hechos), "dias": hechos, "errores": errores})
