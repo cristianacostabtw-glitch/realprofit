@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-web-chats-limpio"})
+    return jsonify({"ok": True, "v": "2026-09-02-web-chats-limpio2"})
 
 
 _KPI_DBG = {}
@@ -14056,14 +14056,21 @@ def wa_web_chats():
     _r, j = _wa_web_call("GET", "/chats", email, extra={"limit": limit}, timeout=12)
     if not isinstance(j, dict):
         return jsonify({"ok": False, "chats": []})
-    # SOLO conversaciones REALES: escondo los chats "fantasma" que WhatsApp sincroniza del
-    # historial/agenda (sin ningún mensaje) — salían como número LID crudo, sin nombre, con
-    # preview vacío y falso "cliente espera", ensuciando la lista. Un chat con mensaje real
-    # SIEMPRE trae `last` (texto o "📷 Foto"/"🎤 Audio"/etc). Sin `last` = fantasma → fuera.
+    # SOLO conversaciones REALES: escondo los chats "fantasma" que WhatsApp sincroniza de la
+    # agenda/historial (sin ninguna interacción) — salían como número LID crudo, sin nombre,
+    # preview vacío y falso "cliente espera", ensuciando la lista.
+    # SEGURO: dejo el chat si tiene CUALQUIER señal de persona real que escribió/atendida →
+    #   `last` (preview), `ts` (llegó un mensaje real) o `unread` (badge sin leer).
+    # Así NUNCA escondo a alguien esperando, ni aunque su mensaje no sea texto (ubicación,
+    # contacto, encuesta → `last` vacío pero `ts`>0). Fantasma puro (nada de eso) → fuera.
+    def _real(c):
+        if not isinstance(c, dict):
+            return False
+        return bool(str(c.get("last") or "").strip()) or (c.get("ts") or 0) > 0 or (c.get("unread") or 0) > 0
     try:
         cs = j.get("chats")
         if isinstance(cs, list):
-            j["chats"] = [c for c in cs if isinstance(c, dict) and str(c.get("last") or "").strip()]
+            j["chats"] = [c for c in cs if _real(c)]
     except Exception:
         pass
     return jsonify(j)
