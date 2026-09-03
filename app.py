@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-buscador"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-pagados-v2"})
 
 
 _KPI_DBG = {}
@@ -5352,8 +5352,9 @@ _ENV_CLASES = [
     ("tránsito",     "move", "En tránsito"),
     ("ingresado",    "move", "Ingresado"),      # ya lo tiene el correo
     ("pendiente",    "wait", "Pendiente de ingreso"),
-    ("ingreso",      "wait", "Pendiente de ingreso"),
+    ("ingreso",       "wait", "Pendiente de ingreso"),
 ]
+ENV_NUEVO = "Pagado, sin despachar"     # todavía no tiene etiqueta: no existe para el correo
 
 
 def _env_load(p):
@@ -5422,6 +5423,51 @@ def pf_envios_mapa():
     return jsonify({"ok": True, "cargados": n, "total": len(m)})
 
 
+@app.post("/pf-envios-estados")
+def pf_envios_estados():
+    """Actualiza estados en lote: {"estados": {nro_seguimiento: "Estado"}}.
+    Lo usa el refrescador automático, así no hay que subir el Excel a mano."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    d = request.get_json(silent=True) or {}
+    est = d.get("estados") or {}
+    if not isinstance(est, dict) or not est:
+        return jsonify({"ok": False, "msg": "mandá {'estados': {track: 'Estado'}}"})
+    hoy = _fin_hoy_ar().isoformat()
+    todo = _env_load(ENVIOS_EST)
+    prev = todo.get(email) or {}
+    n = cambios = 0
+    for trk, e in est.items():
+        t = "".join(ch for ch in str(trk) if ch.isdigit())
+        e = str(e or "").strip()
+        if not t or not e:
+            continue
+        ant = prev.get(t) or {}
+        if ant.get("estado") and ant["estado"] != e:
+            cambios += 1
+        ant.update({"estado": e, "visto": hoy,
+                    "desde": ant.get("desde") if ant.get("estado") == e else hoy})
+        prev[t] = ant
+        n += 1
+    todo[email] = prev
+    _env_save(ENVIOS_EST, todo)
+    return jsonify({"ok": True, "actualizados": n, "cambios": cambios, "total": len(prev)})
+
+
+@app.get("/pf-envios-activos")
+def pf_envios_activos():
+    """Los seguimientos que TODAVÍA pueden cambiar (no entregados). El refrescador consulta
+    solo estos: un entregado ya no cambia nunca, no tiene sentido volver a preguntarle."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "activos": []}), 401
+    est = (_env_load(ENVIOS_EST).get(email) or {})
+    mapa = (_env_load(ENVIOS_MAP).get(email) or {})
+    act = [t for t in mapa if _env_clase((est.get(t) or {}).get("estado")) != "ok"]
+    return jsonify({"ok": True, "activos": act, "total_mapa": len(mapa), "con_estado": len(est)})
+
+
 @app.post("/pf-envios-subir")
 def pf_envios_subir():
     """Recibe el Excel 'EnviosPagados' bajado de pymes.andreani.com (Ver mis envíos → Descargar
@@ -5469,7 +5515,7 @@ def pf_envios_subir():
         desde = ant.get("desde") if ant.get("estado") == est else hoy
         if ant.get("estado") and ant.get("estado") != est:
             cambios += 1
-        nuevo[trk] = {"estado": est, "desde": desde or hoy,
+        nuevo[trk] = {"estado": est, "desde": desde or hoy, "visto": hoy,
                       "fecha": str(r[i_fec])[:10] if i_fec is not None and r[i_fec] else ant.get("fecha", ""),
                       "dest": str(r[i_dst] or "").strip()[:60] if i_dst is not None else ant.get("dest", ""),
                       "loc": str(r[i_loc] or "").strip()[:40] if i_loc is not None else ant.get("loc", "")}
@@ -5498,9 +5544,36 @@ def pf_envios():
         info = mapa.get(trk) or {}
         out.append({"track": trk, "estado": v.get("estado") or "—", "clase": _env_clase(v.get("estado")),
                     "num": info.get("num") or "", "cliente": info.get("nombre") or v.get("dest") or "",
-                    "loc": v.get("loc") or "", "fecha": v.get("fecha") or "", "dias": dias})
+                    "loc": v.get("loc") or "", "fecha": v.get("fecha") or "", "dias": dias,
+                    "visto": v.get("visto") or ""})
+    # PAGADOS SIN DESPACHAR: pedidos cobrados que todavía NO tienen etiqueta, así que para el
+    # correo no existen. Sin esto quedan invisibles (nos pasó: 14 de agosto pagados y nunca enviados).
+    try:
+        _desp_cache_load()
+        _c = _DESP_CACHE.get(email) or {}
+        _con_trk = {(i or {}).get("num") for i in mapa.values()}
+        _PAG = ("paid", "partially_paid")
+        for o in (_c.get("orders") or []):
+            if o.get("cancelled_at") or (o.get("financial_status") or "").lower() not in _PAG:
+                continue
+            _n = str(o.get("order_number") or "").strip()
+            if not _n or _n in _con_trk:
+                continue
+            _cu = o.get("customer") or {}
+            _nom = ((_cu.get("first_name") or "") + " " + (_cu.get("last_name") or "")).strip()
+            _f = (o.get("created_at") or "")[:10]
+            try:
+                _d = (hoy - _dt.date.fromisoformat(_f)).days
+            except Exception:
+                _d = 0
+            out.append({"track": "", "estado": ENV_NUEVO, "clase": "nuevo", "num": _n,
+                        "cliente": _nom or (o.get("contact_email") or ""),
+                        "loc": ((o.get("shipping_address") or {}) or {}).get("city") or "",
+                        "fecha": _f, "dias": _d, "visto": hoy.isoformat()})
+    except Exception:
+        pass
     # primero lo que necesita acción: más días parado arriba, y los pendientes antes que los cerrados
-    _ord = {"wait": 0, "back": 1, "suc": 2, "move": 3, "otro": 4, "ok": 5}
+    _ord = {"nuevo": 0, "back": 1, "wait": 2, "suc": 3, "move": 4, "otro": 5, "ok": 6}
     out.sort(key=lambda x: (_ord.get(x["clase"], 9), -x["dias"]))
     cnt = {}
     for e in out:
@@ -5530,7 +5603,8 @@ _SEGUIMIENTOS_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-
  --ink:#f1f5f9;--ink2:#93a3ba;--ink3:#5b6b82;--accent:#137fec;
  --ok:#34d399;--ok-bg:rgba(52,211,153,.13);--move:#54a8f0;--move-bg:rgba(84,168,240,.13);
  --wait:#e8b13e;--wait-bg:rgba(232,177,62,.14);--back:#f0637f;--back-bg:rgba(240,99,127,.13);
- --suc:#a78bfa;--suc-bg:rgba(167,139,250,.13);--otro:#8b97a8;--otro-bg:rgba(139,151,168,.12)}
+ --suc:#a78bfa;--suc-bg:rgba(167,139,250,.13);--otro:#8b97a8;--otro-bg:rgba(139,151,168,.12);
+ --nuevo:#fb923c;--nuevo-bg:rgba(251,146,60,.14)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
  font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
@@ -5580,7 +5654,7 @@ tbody tr:last-child td{border-bottom:0}
 td.num{font-family:Archivo,sans-serif;font-weight:600;font-size:14.5px;border-left:3px solid transparent}
 tr.k-wait td.num{border-left-color:var(--wait)} tr.k-back td.num{border-left-color:var(--back)}
 tr.k-suc td.num{border-left-color:var(--suc)} tr.k-move td.num{border-left-color:var(--move)}
-tr.k-ok td.num{border-left-color:var(--ok)}
+tr.k-ok td.num{border-left-color:var(--ok)} tr.k-nuevo td.num{border-left-color:var(--nuevo)}
 td.trk{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--ink2)}
 td.dias{font-size:12.5px;color:var(--ink3);white-space:nowrap}
 td.dias b{color:var(--wait)}
@@ -5590,6 +5664,7 @@ td.dias b{color:var(--wait)}
 .c-ok{background:var(--ok-bg);color:var(--ok)}.c-move{background:var(--move-bg);color:var(--move)}
 .c-wait{background:var(--wait-bg);color:var(--wait)}.c-back{background:var(--back-bg);color:var(--back)}
 .c-suc{background:var(--suc-bg);color:var(--suc)}.c-otro{background:var(--otro-bg);color:var(--otro)}
+.c-nuevo{background:var(--nuevo-bg);color:var(--nuevo)}
 .vacio{padding:44px 20px;text-align:center;color:var(--ink2)}
 .vacio b{color:var(--ink);display:block;margin-bottom:6px;font-size:15.5px;font-family:Archivo,sans-serif}
 .vacio ol{text-align:left;max-width:430px;margin:14px auto 0;color:var(--ink2);font-size:13px;line-height:1.85}
@@ -5639,9 +5714,9 @@ mark{background:rgba(232,177,62,.32);color:inherit;border-radius:3px;padding:0 2
  </div>
 </div>
 <script>
-var NOM={wait:"Pendiente de ingreso",back:"Con problema",suc:"En sucursal",move:"En camino",ok:"Entregado",otro:"Otros"};
-var PIE={wait:"Andreani todavía no los recibió",back:"No entregado o volviendo",suc:"Esperando que los retiren",move:"Viajando a destino",ok:"Cerrado",otro:"Sin clasificar"};
-var ORD=["wait","back","suc","move","ok","otro"];
+var NOM={nuevo:"Pagado, sin despachar",wait:"Pendiente de ingreso",back:"Con problema",suc:"En sucursal",move:"En camino",ok:"Entregado",otro:"Otros"};
+var PIE={nuevo:"Cobrado y sin etiqueta todavía",wait:"Andreani todavía no los recibió",back:"No entregado o volviendo",suc:"Esperando que los retiren",move:"Viajando a destino",ok:"Cerrado",otro:"Sin clasificar"};
+var ORD=["nuevo","back","wait","suc","move","ok","otro"];
 var DATA=[], VIS=[], FILTRO=null, PASO=250, tope=PASO;
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function res(s,q){ if(!q)return esc(s); var t=String(s==null?"":s), i=t.toLowerCase().indexOf(q);
@@ -5695,8 +5770,13 @@ function cargar(){
   if(!j||!j.ok)return;
   DATA=j.envios||[]; window._C=j.conteo||{};
   if(j.tienda) document.getElementById("tit").textContent="Seguimientos · "+j.tienda;
-  var sp=j.sin_pedido||0;
-  document.getElementById("sub2").innerHTML = sp?("<span style='color:var(--wait)'>"+sp+" sin número de pedido.</span>"):"";
+  var vs=DATA.map(function(e){return e.visto||"";}).filter(Boolean).sort();
+  var ult=vs.length?vs[vs.length-1]:"";
+  var hoyISO=new Date(Date.now()-3*3600000).toISOString().slice(0,10);
+  var fresco = ult===hoyISO;
+  document.getElementById("sub2").innerHTML = ult
+    ? ("Estados al <b style='color:"+(fresco?"var(--ok)":"var(--wait)")+"'>"+(fresco?"día de hoy":ult)+"</b>.")
+    : "";
   tiles(window._C); aplicar();
  }).catch(function(){ document.getElementById("nota").textContent="No se pudieron traer los envíos."; });
 }
