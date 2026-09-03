@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-fin-costo-unidades"})
+    return jsonify({"ok": True, "v": "2026-09-03-fin-unidades-visible"})
 
 
 _KPI_DBG = {}
@@ -9133,15 +9133,21 @@ def _fin_datos_dia(email, f) -> dict:
 
 def _fin_formato_unidades(sess, sid, tab, gid) -> None:
     """Le da a la columna Unidades (E) el MISMO formato/color que Ventas Totales (D),
-    encabezado incluido. Solo formato: no toca ningún valor."""
+    encabezado incluido, y la DESOCULTA (venía escondida en la planilla, por eso no se veía).
+    Solo formato/visibilidad: no toca ningún valor."""
     try:
         sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s:batchUpdate" % sid,
-                  json={"requests": [{"copyPaste": {
+                  json={"requests": [
+                      {"updateDimensionProperties": {          # mostrar la columna E (Unidades)
+                          "range": {"sheetId": gid, "dimension": "COLUMNS",
+                                    "startIndex": 4, "endIndex": 5},
+                          "properties": {"hiddenByUser": False}, "fields": "hiddenByUser"}},
+                      {"copyPaste": {
                       "source": {"sheetId": gid, "startRowIndex": 4, "endRowIndex": 36,
                                  "startColumnIndex": 3, "endColumnIndex": 4},
                       "destination": {"sheetId": gid, "startRowIndex": 4, "endRowIndex": 36,
                                       "startColumnIndex": 4, "endColumnIndex": 5},
-                      "pasteType": "PASTE_FORMAT"}}]}, timeout=(15, 60))
+                       "pasteType": "PASTE_FORMAT"}}]}, timeout=(15, 60))
     except Exception:
         pass
 
