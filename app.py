@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-fin-totales-ok"})
+    return jsonify({"ok": True, "v": "2026-09-03-fin-mp-real"})
 
 
 _KPI_DBG = {}
@@ -9109,20 +9109,73 @@ def _fin_ads_usd(email, desde, hasta) -> float:
     return round(total, 2)
 
 
+def _fin_mp_entrada(email, f) -> dict:
+    """Lo que REALMENTE entró a MercadoPago ese día: suma del NETO ACREDITADO de los pagos
+    aprobados ese día. Es un reporte de caja (plata que entró), NO un cálculo sobre los pedidos
+    — los pagos caen desfasados (cuotas, transferencias que se acreditan después), así que
+    "facturado − comisión" del día no es lo que entró ese día."""
+    d = f.strftime("%Y-%m-%d") if hasattr(f, "strftime") else str(f)[:10]
+    pagos = []
+    fr = _mp_freeze_all().get(email)
+    fe = _mp_freeze_end(email) or FREEZE_END
+    if fr and d <= fe:                     # histórico congelado
+        pagos = _mp_freeze_slice(fr, d, d)
+    else:                                  # en vivo contra la API de MP, ese día exacto
+        tk = _mp_tokens().get(email)
+        token = tk.get("access_token") if tk else None
+        if not token:
+            return {"ok": False, "bruto": 0.0, "neto": 0.0, "pagos": 0}
+        offset = 0
+        try:
+            while True:
+                r = requests.get("https://api.mercadopago.com/v1/payments/search",
+                                 headers={"Authorization": "Bearer " + token},
+                                 params={"sort": "date_approved", "criteria": "desc",
+                                         "range": "date_approved",
+                                         "begin_date": d + "T00:00:00.000-03:00",
+                                         "end_date": d + "T23:59:59.999-03:00",
+                                         "status": "approved", "offset": offset, "limit": 100},
+                                 timeout=30)
+                if r.status_code >= 400:
+                    if offset == 0:
+                        return {"ok": False, "bruto": 0.0, "neto": 0.0, "pagos": 0}
+                    break
+                j = r.json()
+                res = j.get("results") or []
+                pagos.extend(res)
+                offset += 100
+                if offset >= (j.get("paging") or {}).get("total", 0) or not res:
+                    break
+        except Exception:
+            return {"ok": False, "bruto": 0.0, "neto": 0.0, "pagos": 0}
+    bruto = neto = 0.0
+    for p in pagos:
+        ta = float(p.get("transaction_amount") or 0)
+        nt = float((p.get("transaction_details") or {}).get("net_received_amount") or 0)
+        if not nt:                          # sin neto informado → bruto menos las comisiones
+            nt = ta - sum(float(x.get("amount") or 0) for x in (p.get("fee_details") or []))
+        bruto += ta
+        neto += nt
+    return {"ok": True, "bruto": round(bruto, 2), "neto": round(neto, 2), "pagos": len(pagos)}
+
+
 def _fin_datos_dia(email, f) -> dict:
     """Los números reales del día ya cerrado, para la fila de ese día."""
     d = f.strftime("%Y-%m-%d")
     res = _shopify_resumen(email, d, d) or {}
     raw = res.get("raw") or {}
     fact = float(raw.get("facturado") or 0)
-    # INGRESO LIMPIO = lo que entra REAL a MercadoPago = facturado − comisión REAL de MP
-    # (mp_costo_real viene matcheado pedido por pedido contra el pago, no estimado).
-    limpio = fact - float(raw.get("mp_costo_real") or 0)
+    # INGRESO LIMPIO = lo que ENTRÓ de verdad a MercadoPago ese día (reporte de caja).
+    # Si MP no contesta, cae al cálculo por pedidos (facturado − comisión real) para no dejar $0.
+    mp = _fin_mp_entrada(email, f)
+    limpio = mp["neto"] if (mp.get("ok") and mp.get("pagos")) else (fact - float(raw.get("mp_costo_real") or 0))
     return {"fecha": d,
             "ventas": int(raw.get("ordenes") or 0),
             "unidades": int(raw.get("unidades") or 0),
             "facturado": round(fact, 2),
             "ingreso_limpio": round(limpio, 2),
+            "mp_bruto": mp.get("bruto", 0.0), "mp_pagos": mp.get("pagos", 0),
+            "mp_fuente": "MP real" if (mp.get("ok") and mp.get("pagos")) else "calculado",
             # ENVÍO: la tabla Andreani por ZONA con el descuento propio (provincia/CP + sucursal
             # vs domicilio), la misma que usa RealProfit. La planilla traía "=5200*pedidos" (estimado).
             "envio": round(float(raw.get("envio_zona_monto") or 0), 2),
