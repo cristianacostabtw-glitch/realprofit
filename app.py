@@ -1901,12 +1901,21 @@ _SOLO_DASH = r"""
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
     // Valores BUENOS para el overlay CSS (block2 los dibuja con ::after → React no los pisa → sin titileo).
+    // El gasto de ads (publi_ars) MICRO-OSCILA en el backend (±0.2%) y arrastra a CPA/ROAS/Ganancia. Acá lo
+    // ESTABILIZO en el cliente: el gasto SOLO CRECE por período (max visto) y derivo CPA/ROAS/Ganancia de ese
+    // valor estable (escalando el crudo por la razón pub/rawpub). Así ninguno flipea ida-y-vuelta.
     try{ if(!window._rpOvVals) window._rpOvVals={};
          var _ov = meli ? _ceroRaw() : _raw;
-         window._rpOvVals.rpgan   = money(_ov.ganancia||_ov.tot_ganancia||0);
-         window._rpOvVals.rpcpa   = money(_ov.cpa||0);
-         window._rpOvVals.rpinv   = money(_ov.publi_ars||0);
-         window._rpOvVals.rproas  = num(_ov.roas||0)+'x';
+         var _pk=(_ov.desde||'')+'|'+(_ov.hasta||'');
+         var _rawpub=+(_ov.publi_ars||0);
+         if(window._rpPubKey!==_pk){ window._rpPubKey=_pk; window._rpPubMax=_rawpub; }   // nuevo período → reset
+         if(_rawpub>(window._rpPubMax||0)) window._rpPubMax=_rawpub;                       // solo crece
+         var pub=window._rpPubMax||0;
+         var ratio = _rawpub>0 ? (pub/_rawpub) : 1;
+         window._rpOvVals.rpinv   = money(pub);
+         window._rpOvVals.rpcpa   = money(Math.round((+(_ov.cpa||0))*ratio));             // CPA ∝ gasto
+         window._rpOvVals.rproas  = num(ratio>0 ? (+(_ov.roas||0))/ratio : 0)+'x';        // ROAS ∝ 1/gasto
+         window._rpOvVals.rpgan   = money(Math.round((+(_ov.ganancia||_ov.tot_ganancia||0)) + _rawpub - pub)); // ganancia baja lo que subió el gasto
          window._rpOvVals.rpbecpa = money(_ov.be_cpa||0); }catch(e){}
     try{ hookCur(); }catch(e){}
     // Revelar la grilla SOLO cuando metricas() YA remapeó las tarjetas a los valores reales (nunca el demo).
@@ -2502,7 +2511,9 @@ _SOLO_DASH = r"""
   }
   function _rpOvApply(){ for(var i=0;i<_RP_OV.length;i++){ var o=_RP_OV[i];
     var v=window._rpOvVals&&window._rpOvVals[o.key]; if(!v) continue;
-    var el=_rpFindVal(o.label); if(!el) continue;
+    var el=document.querySelector('[data-'+o.key+']');            // ya marcado → rápido
+    if(!el || el.offsetParent===null){ el=_rpFindVal(o.label); }  // React lo reemplazó → re-buscar
+    if(!el) continue;
     try{ _rpOverlay(el, v, o.key); }catch(e){} } }
   var _rpOvObs=null, _rpOvQ=false;
   function _rpOvWatch(){ if(_rpOvObs) return;
@@ -4179,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-02-spend-disco"})
+    return jsonify({"ok": True, "v": "2026-09-02-web-chats-limpio"})
 
 
 _KPI_DBG = {}
@@ -14043,7 +14054,19 @@ def wa_web_chats():
         return jsonify({"ok": False, "chats": []})
     limit = request.args.get("limit", "60")
     _r, j = _wa_web_call("GET", "/chats", email, extra={"limit": limit}, timeout=12)
-    return jsonify(j if isinstance(j, dict) else {"ok": False, "chats": []})
+    if not isinstance(j, dict):
+        return jsonify({"ok": False, "chats": []})
+    # SOLO conversaciones REALES: escondo los chats "fantasma" que WhatsApp sincroniza del
+    # historial/agenda (sin ningún mensaje) — salían como número LID crudo, sin nombre, con
+    # preview vacío y falso "cliente espera", ensuciando la lista. Un chat con mensaje real
+    # SIEMPRE trae `last` (texto o "📷 Foto"/"🎤 Audio"/etc). Sin `last` = fantasma → fuera.
+    try:
+        cs = j.get("chats")
+        if isinstance(cs, list):
+            j["chats"] = [c for c in cs if isinstance(c, dict) and str(c.get("last") or "").strip()]
+    except Exception:
+        pass
+    return jsonify(j)
 
 
 @app.get("/wa-web-mensajes")
