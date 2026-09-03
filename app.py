@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-solo-mi-tienda"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-vivo"})
 
 
 _KPI_DBG = {}
@@ -5330,6 +5330,7 @@ def pf_despachos_list():
 # Cruzando las dos sale: pedido · cliente · estado · hace cuántos días está así.
 ENVIOS_EST = DATA_DIR / "envios_estado.json"     # {email: {track: {estado, desde, fecha, dest, loc}}}
 ENVIOS_MAP = DATA_DIR / "envios_mapa.json"       # {email: {track: {"num":..., "nombre":...}}}
+ENVIOS_PED = DATA_DIR / "envios_pedidos.json"    # {email: {nº pedido: {"nom":..., "fecha":...}}}       # {email: {track: {"num":..., "nombre":...}}}
 
 # Estados de Andreani → color/orden. El que importa es "pendiente de ingreso":
 # significa que el envío está pago pero el correo todavía NO lo recibió.
@@ -5529,54 +5530,75 @@ def pf_envios_subir():
 
 @app.get("/pf-envios")
 def pf_envios():
-    """Los envíos con su estado, cruzados con el pedido."""
+    """Una fila POR PEDIDO de Shopify, con el estado de su envío.
+    La BASE son las órdenes (Shopify); el estado se le pega encima cruzando
+    etiqueta (pedido↔seguimiento) + Andreani. Un pedido sin etiqueta = "Pagado, sin despachar"."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "envios": []}), 401
-    est = (_env_load(ENVIOS_EST).get(email) or {})
-    mapa = (_env_load(ENVIOS_MAP).get(email) or {})
+    est = (_env_load(ENVIOS_EST).get(email) or {})     # seguimiento → estado
+    mapa = (_env_load(ENVIOS_MAP).get(email) or {})    # seguimiento → {num, nombre}
+    tped = _env_load(ENVIOS_PED)
+    peds = tped.get(email) or {}                       # nº pedido → {nom, fecha}
     hoy = _fin_hoy_ar()
-    out = []
-    for trk, v in est.items():
-        if trk not in mapa:      # estado de un envío que NO es de esta tienda → afuera
-            continue
-        try:
-            dias = (hoy - _dt.date.fromisoformat(v.get("desde") or hoy.isoformat())).days
-        except Exception:
-            dias = 0
-        info = mapa.get(trk) or {}
-        out.append({"track": trk, "estado": v.get("estado") or "—", "clase": _env_clase(v.get("estado")),
-                    "num": info.get("num") or "", "cliente": info.get("nombre") or v.get("dest") or "",
-                    "loc": v.get("loc") or "", "fecha": v.get("fecha") or "", "dias": dias,
-                    "visto": v.get("visto") or ""})
-    # PAGADOS SIN DESPACHAR: pedidos cobrados que todavía NO tienen etiqueta, así que para el
-    # correo no existen. Sin esto quedan invisibles (nos pasó: 14 de agosto pagados y nunca enviados).
+    # Traigo EN VIVO los últimos días de Shopify y los acumulo. El caché de Despachos solo se
+    # refresca cuando alguien abre esa sección, así que por sí solo deja pedidos afuera.
     try:
-        _desp_cache_load()
-        _c = _DESP_CACHE.get(email) or {}
-        _con_trk = {(i or {}).get("num") for i in mapa.values()}
-        _PAG = ("paid", "partially_paid")
-        for o in (_c.get("orders") or []):
-            if o.get("cancelled_at") or (o.get("financial_status") or "").lower() not in _PAG:
-                continue
-            _n = str(o.get("order_number") or "").strip()
-            if not _n or _n in _con_trk:
-                continue
-            _cu = o.get("customer") or {}
-            _nom = ((_cu.get("first_name") or "") + " " + (_cu.get("last_name") or "")).strip()
-            _f = (o.get("created_at") or "")[:10]
-            try:
-                _d = (hoy - _dt.date.fromisoformat(_f)).days
-            except Exception:
-                _d = 0
-            out.append({"track": "", "estado": ENV_NUEVO, "clase": "nuevo", "num": _n,
-                        "cliente": _nom or (o.get("contact_email") or ""),
-                        "loc": ((o.get("shipping_address") or {}) or {}).get("city") or "",
-                        "fecha": _f, "dias": _d, "visto": hoy.isoformat()})
+        tk = _shop_tokens().get(email) or {}
+        if tk.get("access_token") and tk.get("shop"):
+            _PAG = ("paid", "partially_paid", "refunded", "partially_refunded")
+            nuevos = 0
+            for o in (_shopify_orders(tk["shop"], tk["access_token"],
+                                      (hoy - _dt.timedelta(days=5)).isoformat(),
+                                      hoy.isoformat(), max_pages=5, timeout=20) or []):
+                if o.get("cancelled_at") or (o.get("financial_status") or "").lower() not in _PAG:
+                    continue
+                n = str(o.get("order_number") or "").strip()
+                if not n:
+                    continue
+                c = o.get("customer") or {}
+                peds[n] = {"nom": ((c.get("first_name") or "") + " " + (c.get("last_name") or "")).strip()
+                                  or (o.get("contact_email") or ""),
+                           "fecha": (o.get("created_at") or "")[:10]}
+                nuevos += 1
+            if nuevos:
+                tped[email] = peds
+                _env_save(ENVIOS_PED, tped)
     except Exception:
         pass
-    # primero lo que necesita acción: más días parado arriba, y los pendientes antes que los cerrados
+    # seguimientos de cada pedido
+    por_num = {}
+    for t, i in mapa.items():
+        n = (i or {}).get("num")
+        if n:
+            por_num.setdefault(n, []).append(t)
     _ord = {"nuevo": 0, "back": 1, "wait": 2, "suc": 3, "move": 4, "otro": 5, "ok": 6}
+    out = []
+    for num, p in peds.items():
+        tracks = por_num.get(num) or []
+        mejor = None
+        for t in tracks:
+            v = est.get(t)
+            if not v:
+                continue
+            c = _env_clase(v.get("estado"))
+            if mejor is None or _ord.get(c, 9) < _ord.get(mejor[1], 9):
+                mejor = (t, c, v)
+        if mejor:
+            t, c, v = mejor
+            base = v.get("desde") or hoy.isoformat()
+            estado, track, visto, loc = v.get("estado") or "—", t, v.get("visto") or "", v.get("loc") or ""
+        elif tracks:
+            c, base, estado, track, visto, loc = "otro", p.get("fecha") or hoy.isoformat(), "Etiqueta hecha", tracks[0], "", ""
+        else:
+            c, base, estado, track, visto, loc = "nuevo", p.get("fecha") or hoy.isoformat(), ENV_NUEVO, "", hoy.isoformat(), ""
+        try:
+            dias = (hoy - _dt.date.fromisoformat(base[:10])).days
+        except Exception:
+            dias = 0
+        out.append({"num": num, "cliente": p.get("nom") or "", "track": track, "estado": estado,
+                    "clase": c, "loc": loc, "fecha": p.get("fecha") or "", "dias": max(dias, 0),
+                    "visto": visto, "bultos": len(tracks)})
     out.sort(key=lambda x: (_ord.get(x["clase"], 9), -x["dias"]))
     cnt = {}
     for e in out:
@@ -5586,7 +5608,28 @@ def pf_envios():
     except Exception:
         tienda = ""
     return jsonify({"ok": True, "envios": out, "conteo": cnt, "total": len(out),
-                    "tienda": tienda, "sin_pedido": sum(1 for e in out if not e["num"])})
+                    "tienda": tienda, "sin_pedido": 0})
+
+
+@app.post("/pf-envios-pedidos")
+def pf_envios_pedidos():
+    """Carga en lote los pedidos históricos: {"pedidos": {num: {"nom":..,"fecha":..}}}."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    d = request.get_json(silent=True) or {}
+    ps = d.get("pedidos") or {}
+    if not isinstance(ps, dict) or not ps:
+        return jsonify({"ok": False, "msg": "mandá {'pedidos': {num: {...}}}"})
+    todo = _env_load(ENVIOS_PED)
+    m = {} if d.get("reset") else (todo.get(email) or {})
+    for n, v in ps.items():
+        n = str(n).strip().lstrip("#")
+        if n:
+            m[n] = {"nom": str((v or {}).get("nom") or "")[:60], "fecha": str((v or {}).get("fecha") or "")[:10]}
+    todo[email] = m
+    _env_save(ENVIOS_PED, todo)
+    return jsonify({"ok": True, "total": len(m)})
 
 
 @app.get("/seguimientos")
@@ -5683,6 +5726,7 @@ mark{background:rgba(232,177,62,.32);color:inherit;border-radius:3px;padding:0 2
   <div><h1 id="tit">Seguimientos</h1>
    <p class="sub">En qué anda cada envío que despachaste. <span id="sub2"></span></p></div>
   <div class="acts">
+   <span id="vivo" style="font-size:11.5px;color:var(--ink3)"></span>
    <span id="msg"></span>
    <label class="btn" for="fx">Subir estado de Andreani</label>
    <input id="fx" type="file" accept=".xlsx,.xls" onchange="subir(this)">
@@ -5769,6 +5813,7 @@ function tiles(c){
 }
 function filtrar(k){ FILTRO=(FILTRO===k?null:k); tiles(window._C||{}); aplicar(); }
 function cargar(){
+ var _t=tope, _sc=window.scrollY;
  fetch("/pf-envios").then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok)return;
   DATA=j.envios||[]; window._C=j.conteo||{};
@@ -5781,8 +5826,15 @@ function cargar(){
     ? ("Estados al <b style='color:"+(fresco?"var(--ok)":"var(--wait)")+"'>"+(fresco?"día de hoy":ult)+"</b>.")
     : "";
   tiles(window._C); aplicar();
+  if(_t>PASO){ tope=_t; pintar((document.getElementById("q").value||"").trim().toLowerCase()); }
+  if(_sc) window.scrollTo(0,_sc);
+  var la=document.getElementById("vivo"); if(la) la.textContent="actualizado "+new Date().toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"});
  }).catch(function(){ document.getElementById("nota").textContent="No se pudieron traer los envíos."; });
 }
+// se mantiene en movimiento solo: cada 60s vuelve a pedir los datos, sin perder
+// la búsqueda, el filtro ni la posición de scroll.
+setInterval(function(){ if(!document.hidden) cargar(); }, 60000);
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) cargar(); });
 cargar();
 </script></body></html>
 """
