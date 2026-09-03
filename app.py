@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-mapa-lote"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-estados-fix"})
 
 
 _KPI_DBG = {}
@@ -5333,17 +5333,26 @@ ENVIOS_MAP = DATA_DIR / "envios_mapa.json"       # {email: {track: {"num":..., "
 
 # Estados de Andreani → color/orden. El que importa es "pendiente de ingreso":
 # significa que el envío está pago pero el correo todavía NO lo recibió.
+# OJO con el ORDEN: se evalúa de arriba hacia abajo y gana el primero que matchea.
+# "No entregado" TIENE que ir antes que "entregado", si no un envío FALLIDO se cuenta
+# como entregado (pasó: 137 entregados cuando eran 136 + 1 no entregado).
 _ENV_CLASES = [
-    ("entregado",   "ok",   "Entregado"),
-    ("devolu",      "back", "En devolución"),
-    ("rezago",      "back", "En rezago"),
-    ("sucursal",    "suc",  "En sucursal"),
-    ("retiro",      "suc",  "Para retirar"),
-    ("camino",      "move", "En camino"),
-    ("distribu",    "move", "En distribución"),
-    ("transito",    "move", "En tránsito"),
-    ("pendiente",   "wait", "Pendiente de ingreso"),
-    ("ingreso",     "wait", "Pendiente de ingreso"),
+    ("no entregado", "back", "No entregado"),
+    ("no  entregado","back", "No entregado"),
+    ("entregado",    "ok",   "Entregado"),
+    ("devolu",       "back", "En devolución"),
+    ("rezago",       "back", "En rezago"),
+    ("siniestr",     "back", "Con problema"),
+    ("sucursal",     "suc",  "En sucursal"),
+    ("retiro",       "suc",  "Para retirar"),
+    ("disponible",   "suc",  "Para retirar"),
+    ("camino",       "move", "En camino"),
+    ("distribu",     "move", "En distribución"),
+    ("transito",     "move", "En tránsito"),
+    ("tránsito",     "move", "En tránsito"),
+    ("ingresado",    "move", "Ingresado"),      # ya lo tiene el correo
+    ("pendiente",    "wait", "Pendiente de ingreso"),
+    ("ingreso",      "wait", "Pendiente de ingreso"),
 ]
 
 
