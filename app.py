@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-bot-finanzas"})
+    return jsonify({"ok": True, "v": "2026-09-03-fin-mono-envio"})
 
 
 _KPI_DBG = {}
@@ -9120,6 +9120,10 @@ def _fin_datos_dia(email, f) -> dict:
             "unidades": int(raw.get("unidades") or 0),
             "facturado": round(fact, 2),
             "ingreso_limpio": round(limpio, 2),
+            # Envío REAL (el de Envialo, pedido por pedido; promedio solo para los que aún no están).
+            # La planilla traía "=5200*pedidos", que es un estimado.
+            "envio": round(float(raw.get("envio_monto") or 0), 2),
+            "envio_real": int(raw.get("envio_real") or 0),
             "ads_usd": _fin_ads_usd(email, d, d)}
 
 
@@ -9196,13 +9200,24 @@ def _fin_cargar_dia(email, f) -> dict:
                   ]}, timeout=(15, 90))
     if r.status_code != 200:
         return {"ok": False, "msg": "error escribiendo: %s %s" % (r.status_code, r.text[:250])}
+    # ENVÍO REAL + RÉGIMEN. Van en RAW (números), pisando las fórmulas estimadas.
+    regimen = str(conf.get("regimen") or "monotributo").lower()
+    extra = [{"range": "%s!M%d" % (tab, fila), "values": [[dat["envio"]]]}]
+    if regimen.startswith("mono"):
+        # MONOTRIBUTO: no hay IVA (ni crédito, ni débito, ni a pagar). Si estas columnas quedan
+        # con las fórmulas de Responsable Inscripto, la Ganancia Neta (=J-F-M-S-X-Y-T) resta un
+        # "IVA a pagar" que NO se paga y la ganancia queda subestimada. Por eso van en 0.
+        for col in ("G", "I", "L", "N", "Q", "U", "V", "X"):
+            extra.append({"range": "%s!%s%d" % (tab, col, fila), "values": [[0]]})
+    sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+              json={"valueInputOption": "RAW", "data": extra}, timeout=(15, 90))
     # ARREGLO del bug de la planilla: F usaba N49/N50/N51 (referencia que se desliza y cae en
     # celdas vacías → costo mercadería $0). Lo fijo a $N$49, el precio del producto.
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "USER_ENTERED",
                     "data": [{"range": "%s!F%d" % (tab, fila),
                               "values": [["=D%d*$N$49" % fila]]}]}, timeout=(15, 60))
-    dat.update({"ok": True, "pestana": tab, "fila": fila})
+    dat.update({"ok": True, "pestana": tab, "fila": fila, "regimen": regimen})
     return dat
 
 
@@ -9243,6 +9258,8 @@ def fin_config():
         c["desde"] = str(d["desde"])[:10]
     if d.get("auto") is not None:
         c["auto"] = bool(d["auto"])
+    if d.get("regimen"):                 # "monotributo" (sin IVA) o "ri" (Responsable Inscripto)
+        c["regimen"] = str(d["regimen"]).lower()
     conf[email] = c
     _fin_conf_save(conf)
     return jsonify({"ok": True, "conf": c})
