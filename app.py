@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-fin-mp-liq-ventas"})
+    return jsonify({"ok": True, "v": "2026-09-03-seg-pedidos-viejos"})
 
 
 _KPI_DBG = {}
@@ -7140,6 +7140,27 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             if not pi.get("hasNextPage"):
                 break
             cursor = pi.get("endCursor")
+        # PASO 1-bis: los que el scan NO alcanzó (pedidos más viejos que los ~720 recientes) se
+        # buscan UNO POR UNO por nombre exacto. Sin esto, un pedido viejo se reportaba como
+        # "no está en Shopify" aunque existiera — al ritmo actual (~100 pedidos/día) el scan
+        # solo cubría ~7 días hacia atrás.
+        _resto = [n for n in faltan if n not in gids]
+        if _resto:
+            QN = ("query($q:String!){orders(first:2,query:$q){edges{node{legacyResourceId name}}}}")
+            for _n in _resto[:120]:                       # tope de seguridad
+                try:
+                    r = requests.post(gql, headers=HG, timeout=15, data=_json.dumps(
+                        {"query": QN, "variables": {"q": "name:#%s" % _n}}))
+                    if r.status_code == 429 or r.status_code >= 500:
+                        _tsleep.sleep(0.8)
+                        continue
+                    for e in (((r.json().get("data") or {}).get("orders") or {}).get("edges") or []):
+                        nd = e.get("node") or {}
+                        k = str(nd.get("name") or "").lstrip("#").strip()
+                        if k == _n:
+                            gids[k] = "gid://shopify/Order/%s" % nd.get("legacyResourceId")
+                except Exception:
+                    pass
         # PASO 2: datos completos SOLO de los matcheados (nodes por id, en lotes de 40).
         QF = ("query($ids:[ID!]!){nodes(ids:$ids){... on Order{"
               "legacyResourceId name email phone customer{firstName lastName phone} "
