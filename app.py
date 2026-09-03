@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-despachos-ruta-dup"})
+    return jsonify({"ok": True, "v": "2026-09-03-seguimientos"})
 
 
 _KPI_DBG = {}
@@ -5321,6 +5321,300 @@ def pf_despachos_list():
                         "exportada": {"n": len(grp["exportada"]), "monto": _suma(grp["exportada"])},
                         "enviada": {"n": len(grp["enviada"]), "monto": _suma(grp["enviada"])},
                         "todas": {"n": len(rows), "monto": _suma(rows)}}})
+
+
+# ============================ SEGUIMIENTOS (página /seguimientos) ============================
+# Qué pasó con cada envío ya despachado. Dos fuentes que el dueño YA maneja:
+#   1) el PDF de etiquetas de Andreani  → pedido ↔ nº de seguimiento (lo guarda _seg_leer_run)
+#   2) el Excel "EnviosPagados" del portal → nº de seguimiento ↔ ESTADO real
+# Cruzando las dos sale: pedido · cliente · estado · hace cuántos días está así.
+ENVIOS_EST = DATA_DIR / "envios_estado.json"     # {email: {track: {estado, desde, fecha, dest, loc}}}
+ENVIOS_MAP = DATA_DIR / "envios_mapa.json"       # {email: {track: {"num":..., "nombre":...}}}
+
+# Estados de Andreani → color/orden. El que importa es "pendiente de ingreso":
+# significa que el envío está pago pero el correo todavía NO lo recibió.
+_ENV_CLASES = [
+    ("entregado",   "ok",   "Entregado"),
+    ("devolu",      "back", "En devolución"),
+    ("rezago",      "back", "En rezago"),
+    ("sucursal",    "suc",  "En sucursal"),
+    ("retiro",      "suc",  "Para retirar"),
+    ("camino",      "move", "En camino"),
+    ("distribu",    "move", "En distribución"),
+    ("transito",    "move", "En tránsito"),
+    ("pendiente",   "wait", "Pendiente de ingreso"),
+    ("ingreso",     "wait", "Pendiente de ingreso"),
+]
+
+
+def _env_load(p):
+    try:
+        return _json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _env_save(p, d):
+    try:
+        p.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _env_clase(estado):
+    e = (estado or "").lower()
+    for k, c, _n in _ENV_CLASES:
+        if k in e:
+            return c
+    return "otro"
+
+
+def _env_guardar_mapa(email, pedidos):
+    """Guarda pedido ↔ seguimiento cuando se lee el PDF de Andreani. Sin esto, el Excel de
+    estados no se puede cruzar con los pedidos (el Excel NO trae el nº de pedido)."""
+    if not email or not pedidos:
+        return
+    d = _env_load(ENVIOS_MAP)
+    m = d.get(email) or {}
+    for p in pedidos:
+        t = str(p.get("track") or "").strip()
+        n = str(p.get("num") or "").strip()
+        if t and n:
+            m[t] = {"num": n, "nombre": (p.get("nombre") or "").strip()[:60]}
+    d[email] = m
+    _env_save(ENVIOS_MAP, d)
+
+
+@app.post("/pf-envios-subir")
+def pf_envios_subir():
+    """Recibe el Excel 'EnviosPagados' bajado de pymes.andreani.com (Ver mis envíos → Descargar
+    envíos) y actualiza el estado de cada seguimiento."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    f = request.files.get("excel") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "Subí el Excel de Andreani."})
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
+        ws = wb.worksheets[0]
+        filas = list(ws.iter_rows(values_only=True))
+        wb.close()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude leer el archivo (%s). ¿Es el Excel de Andreani?" % type(e).__name__})
+    if not filas:
+        return jsonify({"ok": False, "msg": "El archivo está vacío."})
+    # ubico las columnas por NOMBRE (no por posición: si Andreani las reordena, sigue andando)
+    hdr = [str(h or "").strip().lower() for h in filas[0]]
+
+    def col(*claves):
+        for i, h in enumerate(hdr):
+            if any(k in h for k in claves):
+                return i
+        return None
+    i_trk = col("n° de envío", "nro de envio", "envío", "envio")
+    i_est = col("estado")
+    if i_trk is None or i_est is None:
+        return jsonify({"ok": False, "msg": "No encontré las columnas 'N° de envío' y 'Estado'. Columnas: " + ", ".join(hdr[:8])})
+    i_dst, i_fec, i_loc = col("destinatario"), col("fecha"), col("localidad")
+    hoy = _fin_hoy_ar().isoformat()
+    d = _env_load(ENVIOS_EST)
+    prev = d.get(email) or {}
+    nuevo, cambios, n = {}, 0, 0
+    for r in filas[1:]:
+        trk = "".join(ch for ch in str(r[i_trk] or "") if ch.isdigit())
+        if not trk:
+            continue
+        est = str(r[i_est] or "").strip()
+        ant = prev.get(trk) or {}
+        # "desde" = cuándo lo vimos por primera vez EN ESE estado → de ahí salen los días parado
+        desde = ant.get("desde") if ant.get("estado") == est else hoy
+        if ant.get("estado") and ant.get("estado") != est:
+            cambios += 1
+        nuevo[trk] = {"estado": est, "desde": desde or hoy,
+                      "fecha": str(r[i_fec])[:10] if i_fec is not None and r[i_fec] else ant.get("fecha", ""),
+                      "dest": str(r[i_dst] or "").strip()[:60] if i_dst is not None else ant.get("dest", ""),
+                      "loc": str(r[i_loc] or "").strip()[:40] if i_loc is not None else ant.get("loc", "")}
+        n += 1
+    prev.update(nuevo)          # no piso los viejos: el Excel puede venir filtrado por fecha
+    d[email] = prev
+    _env_save(ENVIOS_EST, d)
+    return jsonify({"ok": True, "leidos": n, "cambios": cambios, "total": len(prev)})
+
+
+@app.get("/pf-envios")
+def pf_envios():
+    """Los envíos con su estado, cruzados con el pedido."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "envios": []}), 401
+    est = (_env_load(ENVIOS_EST).get(email) or {})
+    mapa = (_env_load(ENVIOS_MAP).get(email) or {})
+    hoy = _fin_hoy_ar()
+    out = []
+    for trk, v in est.items():
+        try:
+            dias = (hoy - _dt.date.fromisoformat(v.get("desde") or hoy.isoformat())).days
+        except Exception:
+            dias = 0
+        info = mapa.get(trk) or {}
+        out.append({"track": trk, "estado": v.get("estado") or "—", "clase": _env_clase(v.get("estado")),
+                    "num": info.get("num") or "", "cliente": info.get("nombre") or v.get("dest") or "",
+                    "loc": v.get("loc") or "", "fecha": v.get("fecha") or "", "dias": dias})
+    # primero lo que necesita acción: más días parado arriba, y los pendientes antes que los cerrados
+    _ord = {"wait": 0, "back": 1, "suc": 2, "move": 3, "otro": 4, "ok": 5}
+    out.sort(key=lambda x: (_ord.get(x["clase"], 9), -x["dias"]))
+    cnt = {}
+    for e in out:
+        cnt[e["clase"]] = cnt.get(e["clase"], 0) + 1
+    try:
+        tienda = _botify_marca(email) or ""
+    except Exception:
+        tienda = ""
+    return jsonify({"ok": True, "envios": out, "conteo": cnt, "total": len(out),
+                    "tienda": tienda, "sin_pedido": sum(1 for e in out if not e["num"])})
+
+
+@app.get("/seguimientos")
+def pagina_seguimientos():
+    """Página propia: estado de cada envío despachado."""
+    if not _user_actual():
+        return redirect("/")
+    return Response(_SEGUIMIENTOS_HTML, mimetype="text/html")
+
+
+_SEGUIMIENTOS_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seguimientos</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#080c15;--panel:#101a2c;--panel2:#0b1220;--line:#1b2536;--line2:#25344a;
+ --ink:#f1f5f9;--ink2:#93a3ba;--ink3:#5b6b82;--accent:#137fec;
+ --ok:#34d399;--ok-bg:rgba(52,211,153,.13);--move:#54a8f0;--move-bg:rgba(84,168,240,.13);
+ --wait:#e8b13e;--wait-bg:rgba(232,177,62,.14);--back:#f0637f;--back-bg:rgba(240,99,127,.13);
+ --suc:#a78bfa;--suc-bg:rgba(167,139,250,.13);--otro:#8b97a8;--otro-bg:rgba(139,151,168,.12)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+ font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding:26px 20px 60px;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;
+ border-bottom:1px solid var(--line2);padding-bottom:15px}
+h1{font-family:Archivo,sans-serif;font-size:27px;font-weight:700;margin:0;letter-spacing:-.02em}
+.sub{color:var(--ink2);font-size:13px;margin:4px 0 0}
+.acts{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--accent);border:0;color:#fff;border-radius:9px;padding:11px 17px;font-size:13.5px;
+ font-weight:700;cursor:pointer;font-family:inherit}
+.btn.sec{background:#111c2b;border:1px solid var(--line2);color:#cbd5e1}
+.btn:disabled{opacity:.55;cursor:default}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:11px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;
+ display:flex;flex-direction:column;gap:6px;cursor:pointer;transition:border-color .15s}
+.tile:hover{border-color:var(--line2)}
+.tile.on{border-color:var(--accent)}
+.tile .lb{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3)}
+.tile .n{font-family:Archivo,sans-serif;font-size:27px;font-weight:700;line-height:1}
+.tile.wait{border-color:var(--wait)}.tile.wait .n,.tile.wait .lb{color:var(--wait)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.ph{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;
+ align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ph h2{font-family:Archivo,sans-serif;font-size:15px;margin:0;font-weight:600}
+.ph .note{color:var(--ink3);font-size:12px}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:760px}
+th{text-align:left;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);
+ padding:9px 14px;border-bottom:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-family:Archivo,sans-serif;font-weight:600}
+td.trk{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink2)}
+td.dias{font-size:12.5px;color:var(--ink3);white-space:nowrap}
+td.dias b{color:var(--wait)}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;
+ font-size:12px;font-weight:600;white-space:nowrap}
+.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.c-ok{background:var(--ok-bg);color:var(--ok)}.c-move{background:var(--move-bg);color:var(--move)}
+.c-wait{background:var(--wait-bg);color:var(--wait)}.c-back{background:var(--back-bg);color:var(--back)}
+.c-suc{background:var(--suc-bg);color:var(--suc)}.c-otro{background:var(--otro-bg);color:var(--otro)}
+.vacio{padding:40px 20px;text-align:center;color:var(--ink2)}
+.vacio b{color:var(--ink);display:block;margin-bottom:6px;font-size:15px}
+.vacio ol{text-align:left;max-width:420px;margin:14px auto 0;color:var(--ink2);font-size:13px;line-height:1.8}
+#msg{font-size:13px;font-weight:600}
+input[type=file]{display:none}
+</style></head><body>
+<div class="wrap">
+ <header>
+  <div><h1 id="tit">Seguimientos</h1>
+   <p class="sub">Qué pasó con cada envío que despachaste. <span id="sub2"></span></p></div>
+  <div class="acts">
+   <span id="msg"></span>
+   <label class="btn" for="fx">Subir estado de Andreani</label>
+   <input id="fx" type="file" accept=".xlsx,.xls" onchange="subir(this)">
+   <a class="btn sec" href="/" style="text-decoration:none;display:inline-block">&#8592; RealProfit</a>
+  </div>
+ </header>
+ <div class="tiles" id="tiles"></div>
+ <div class="panel">
+  <div class="ph"><h2>Envíos</h2><span class="note" id="nota"></span></div>
+  <div class="scroll"><table>
+   <thead><tr><th>Pedido</th><th>Cliente</th><th>Seguimiento</th><th>Destino</th><th>Estado</th><th>Hace</th></tr></thead>
+   <tbody id="tb"></tbody></table></div>
+  <div id="vacio" class="vacio" style="display:none">
+   <b>Todavía no cargaste ningún estado</b>
+   Bajá el listado de Andreani y subilo acá.
+   <ol><li>Entrá a <b>pymes.andreani.com</b></li>
+    <li><b>Ver mis envíos</b> &rarr; <b>Descargar envíos</b></li>
+    <li>Subí ese archivo con el botón de arriba</li></ol>
+  </div>
+ </div>
+</div>
+<script>
+var NOM={ok:"Entregado",move:"En camino",wait:"Pendiente de ingreso",back:"En devolución",suc:"En sucursal",otro:"Otros"};
+var ORD=["wait","back","suc","move","ok","otro"], DATA=[], FILTRO=null;
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function pintar(){
+ var tb=document.getElementById("tb"), v=document.getElementById("vacio");
+ var f=FILTRO?DATA.filter(function(e){return e.clase===FILTRO;}):DATA;
+ if(!DATA.length){ tb.innerHTML=""; v.style.display="block"; return; }
+ v.style.display="none";
+ tb.innerHTML=f.map(function(e){
+  var d=e.dias>=3&&(e.clase==="wait"||e.clase==="back")?("<b>"+e.dias+" días</b>"):(e.dias+(e.dias===1?" día":" días"));
+  return "<tr><td class='num'>"+(e.num?("#"+esc(e.num)):"<span style='color:var(--ink3)'>—</span>")+"</td>"+
+   "<td>"+esc(e.cliente||"—")+"</td><td class='trk'>"+esc(e.track)+"</td><td style='color:var(--ink2)'>"+esc(e.loc||"—")+"</td>"+
+   "<td><span class='pill c-"+e.clase+"'><i></i>"+esc(e.estado)+"</span></td><td class='dias'>"+d+"</td></tr>";
+ }).join("");
+ document.getElementById("nota").textContent=f.length+" de "+DATA.length+" envíos"+(FILTRO?" · filtrado":"");
+}
+function tiles(c){
+ var t=document.getElementById("tiles");
+ t.innerHTML=ORD.filter(function(k){return c[k];}).map(function(k){
+  return "<div class='tile "+(k==="wait"?"wait ":"")+(FILTRO===k?"on":"")+"' onclick=\\"filtrar('"+k+"')\\">"+
+   "<span class='lb'>"+NOM[k]+"</span><span class='n' style='color:var(--"+k+")'>"+c[k]+"</span></div>";
+ }).join("");
+}
+function filtrar(k){ FILTRO=(FILTRO===k?null:k); tiles(window._C||{}); pintar(); }
+function cargar(){
+ fetch("/pf-envios").then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok)return;
+  DATA=j.envios||[]; window._C=j.conteo||{};
+  if(j.tienda) document.getElementById("tit").textContent="Seguimientos · "+j.tienda;
+  var sp=j.sin_pedido||0;
+  document.getElementById("sub2").innerHTML = sp?("<span style='color:var(--wait)'>"+sp+" sin número de pedido — subí el PDF de etiquetas en Despachos para cruzarlos.</span>"):"";
+  tiles(window._C); pintar();
+ });
+}
+function subir(inp){
+ var f=inp.files&&inp.files[0]; if(!f)return;
+ var m=document.getElementById("msg"); m.style.color="var(--ink2)"; m.textContent="Leyendo…";
+ var fd=new FormData(); fd.append("excel",f);
+ fetch("/pf-envios-subir",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(j){
+  if(j&&j.ok){ m.style.color="var(--ok)"; m.textContent="✓ "+j.leidos+" envíos"+(j.cambios?(" · "+j.cambios+" cambiaron de estado"):""); cargar(); }
+  else { m.style.color="var(--back)"; m.textContent=(j&&j.msg)||"No se pudo leer"; }
+ }).catch(function(){ m.style.color="var(--back)"; m.textContent="Error de conexión"; });
+ inp.value="";
+}
+cargar();
+</script></body></html>"""
 
 
 # ============================ FACTURACIÓN ============================
@@ -7442,6 +7736,10 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 n_falta += 1
         _wc = _wa_conf(email) or {}
         wpp_on = bool(_wc.get("token") and _wc.get("phone_id"))
+        try:                       # guardo pedido ↔ seguimiento para la página /seguimientos
+            _env_guardar_mapa(email, pedidos)
+        except Exception:
+            pass
         _SEG_JOBS[job].update({"listo": True, "pedidos": pedidos, "wpp_on": wpp_on,
                                "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
                                            "solo_wpp": n_wpp, "ninguno": n_falta}})
