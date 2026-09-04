@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-gastos-silencio"})
+    return jsonify({"ok": True, "v": "2026-09-04-seg-lotes"})
 
 
 _KPI_DBG = {}
@@ -7998,21 +7998,28 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
         # solo cubría ~7 días hacia atrás.
         _resto = [n for n in faltan if n not in gids]
         if _resto:
-            QN = ("query($q:String!){orders(first:2,query:$q){edges{node{legacyResourceId name}}}}")
-            for _n in _resto[:120]:                       # tope de seguridad
-                try:
-                    r = requests.post(gql, headers=HG, timeout=15, data=_json.dumps(
-                        {"query": QN, "variables": {"q": "name:#%s" % _n}}))
-                    if r.status_code == 429 or r.status_code >= 500:
-                        _tsleep.sleep(0.8)
-                        continue
-                    for e in (((r.json().get("data") or {}).get("orders") or {}).get("edges") or []):
-                        nd = e.get("node") or {}
-                        k = str(nd.get("name") or "").lstrip("#").strip()
-                        if k == _n:
-                            gids[k] = "gid://shopify/Order/%s" % nd.get("legacyResourceId")
-                except Exception:
-                    pass
+            # EN LOTES: Shopify acepta "name:#1 OR name:#2 OR ..." → 25 pedidos por consulta
+            # en vez de una consulta por pedido. Con 272 pedidos, uno por uno tardaba 10+ minutos.
+            QN = ("query($q:String!){orders(first:50,query:$q){edges{node{legacyResourceId name}}}}")
+            _LOTE = 25
+            for _i in range(0, min(len(_resto), 600), _LOTE):
+                _chunk = _resto[_i:_i + _LOTE]
+                _q = " OR ".join("name:#%s" % x for x in _chunk)
+                for _try in range(2):
+                    try:
+                        r = requests.post(gql, headers=HG, timeout=25, data=_json.dumps(
+                            {"query": QN, "variables": {"q": _q}}))
+                        if r.status_code == 429 or r.status_code >= 500:
+                            _tsleep.sleep(1.0)
+                            continue
+                        for e in (((r.json().get("data") or {}).get("orders") or {}).get("edges") or []):
+                            nd = e.get("node") or {}
+                            k = str(nd.get("name") or "").lstrip("#").strip()
+                            if k in faltan:
+                                gids[k] = "gid://shopify/Order/%s" % nd.get("legacyResourceId")
+                        break
+                    except Exception:
+                        break
         # PASO 2: datos completos SOLO de los matcheados (nodes por id, en lotes de 40).
         QF = ("query($ids:[ID!]!){nodes(ids:$ids){... on Order{"
               "legacyResourceId name email phone customer{firstName lastName phone} "
