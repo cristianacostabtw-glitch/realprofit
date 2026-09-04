@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-limpio-x-orden"})
+    return jsonify({"ok": True, "v": "2026-09-04-fulfill-excel-800"})
 
 
 _KPI_DBG = {}
@@ -9789,8 +9789,10 @@ def _fin_reparar_totales(sess, sid, tab) -> None:
     """Corrige las filas TOTAL ARS / PROMEDIO / TOTAL USD, y deja el Fulfill del mes al día."""
     data = [{"range": "%s!%s%d" % (tab, col, fila), "values": [[fx]]}
             for fila, cols in _FIN_TOTALES.items() for col, fx in cols.items()]
-    # Fulfill = $1.000 por pedido (antes $900). Se reescribe en las 31 filas del mes.
-    data += [{"range": "%s!T%d" % (tab, f), "values": [["=%d*D%d" % (OPER_ORDEN, f)]]}
+    # Fulfill = SOLO el armado ($800/pedido). Los INSUMOS no van acá: el dueño los carga una vez
+    # al mes en la sección Gastos de la planilla, así no se cuentan dos veces.
+    # (En RealProfit sí van juntos —$1.000— porque ahí no hay una carga mensual de gastos.)
+    data += [{"range": "%s!T%d" % (tab, f), "values": [["=%d*D%d" % (FULFILLMENT_ORDEN, f)]]}
              for f in range(6, 37)]
     try:
         sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
