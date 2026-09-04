@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-bot-gastos"})
+    return jsonify({"ok": True, "v": "2026-09-04-gastos-fotos"})
 
 
 _KPI_DBG = {}
@@ -5859,6 +5859,44 @@ GASTOS_PEND = DATA_DIR / "gastos_pend.json"     # {email: {"pend": [...], "hist"
 GASTOS_FILA0 = 49                                # primera fila debajo del rótulo GASTOS (U48)
 
 
+def _gastos_media(email, jid, msg_id):
+    """Baja el archivo (foto/PDF) que mandaron al grupo. El puente lo guarda en BACKGROUND,
+    así que reintenta unos segundos hasta que aparezca. Devuelve (bytes, mime, kind) o (None,'','')."""
+    import time as _t
+    for intento in range(6):
+        try:
+            _r, j = _wa_web_call("GET", "/messages", email, extra={"chat": jid}, timeout=20)
+            msgs = (j or {}).get("messages") or []
+            m = None
+            for x in reversed(msgs):
+                if msg_id and x.get("id") == msg_id:
+                    m = x; break
+            if m is None and msgs:
+                m = msgs[-1]
+            mid = (m or {}).get("media")
+            if mid:
+                rr = requests.get(WA_WEB_URL + "/media", headers={"x-wa-secret": WA_WEB_SECRET},
+                                  params={"acc": email, "id": mid}, timeout=40)
+                if rr.status_code == 200 and rr.content:
+                    return rr.content, (rr.headers.get("Content-Type") or "").split(";")[0], (m or {}).get("kind", "")
+        except Exception:
+            pass
+        _t.sleep(2)
+    return None, "", ""
+
+
+def _gastos_pdf_texto(data):
+    """Texto de un PDF (extracto bancario, factura). Vacío si no se puede leer."""
+    try:
+        import pymupdf
+        doc = pymupdf.open(stream=data, filetype="pdf")
+        t = "\n".join((p.get_text() or "") for p in doc)
+        doc.close()
+        return t[:12000]
+    except Exception:
+        return ""
+
+
 def _gastos_load() -> dict:
     try:
         return _json.loads(GASTOS_PEND.read_text(encoding="utf-8"))
@@ -5900,16 +5938,27 @@ REGLAS
 """
 
 
-def _gastos_interpretar(texto, hoy_iso, pendientes):
-    """Le pide al cerebro que interprete el mensaje. Devuelve dict; nunca lanza."""
+def _gastos_interpretar(texto, hoy_iso, pendientes, imagenes=None):
+    """Le pide al cerebro que interprete el mensaje (texto y/o imágenes). Nunca lanza."""
     import agente_ia
     sis = _GASTOS_SISTEMA + "\nHOY es %s.\n" % hoy_iso
+    if imagenes:
+        sis += ("Te adjunto la FOTO de un comprobante. Sacá el MONTO de ahí. "
+                "Si el mensaje no dice de qué es el gasto, devolvé tipo \"falta_concepto\" "
+                "con el monto que leíste en \"gastos\" y el concepto vacío.\n")
     if pendientes:
         sis += ("Hay %d gasto(s) esperando confirmación: %s\n"
                 % (len(pendientes), "; ".join("%s %s" % (p["concepto"], _gastos_plata(p["monto"]))
                                               for p in pendientes[:12])))
     try:
-        raw = (agente_ia.chat([{"role": "user", "content": texto}], sis, max_tokens=900) or "").strip()
+        if imagenes:
+            cont = agente_ia._bloques_imagen(imagenes) + [{"type": "text", "text": texto or "(sin texto)"}]
+            r = agente_ia._cliente().messages.create(
+                model=agente_ia.MODELO, max_tokens=900, system=sis,
+                messages=[{"role": "user", "content": cont}])
+            raw = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip()
+        else:
+            raw = (agente_ia.chat([{"role": "user", "content": texto}], sis, max_tokens=900) or "").strip()
     except Exception as e:
         return {"tipo": "error", "nota": "%s: %s" % (type(e).__name__, str(e)[:90])}
     if raw.startswith("```"):
@@ -5946,7 +5995,7 @@ def _gastos_escribir(email, sid, items):
         data = []
         for f, it in lista:
             data.append({"range": "%s!U%d:V%d" % (tab, fila, fila),
-                         "values": [["%02d/%02d · %s" % (f.day, f.month, it.get("concepto") or "Gasto"),
+                         "values": [["%02d/%02d · %s" % (f.day, f.month, (it.get("concepto") or "").strip() or "Gasto"),
                                      float(it.get("monto") or 0)]]})
             puestos.append({"fila": fila, "tab": tab, **it})
             fila += 1
@@ -5978,14 +6027,30 @@ def _gastos_hook(email, d) -> bool:
         except Exception:
             pass
 
-    if not texto:
-        if medio:
-            responder("📎 Me llegó un %s. Todavía no sé leerlos — por ahora escribime el gasto "
-                      "(ej: *nafta reparto 45 mil*) y lo cargo." % medio)
+    # FOTO o PDF: bajo el archivo y lo leo. La foto va como imagen al cerebro (saca el monto
+    # del comprobante); el PDF lo paso a texto y lo sumo al mensaje.
+    imagenes = None
+    if medio in ("image", "document", "sticker"):
+        data, mime, kind = _gastos_media(email, jid, (d.get("msg_id") or "").strip())
+        if not data:
+            responder("Me llegó un archivo pero no lo pude abrir. Reenvialo o escribime el gasto 🙏")
             return True
+        if medio == "document" or "pdf" in (mime or ""):
+            txt = _gastos_pdf_texto(data)
+            if not txt:
+                responder("No pude leer ese PDF. Si es un comprobante, mandámelo como foto 🙏")
+                return True
+            texto = (texto + "\n\n[PDF adjunto]\n" + txt).strip()
+        else:
+            imagenes = [(data, mime or "image/jpeg")]
+    elif medio == "audio":
+        responder("🎤 Todavía no puedo escuchar audios — falta cargar la clave de transcripción. "
+                  "Por ahora escribime el gasto y lo cargo.")
+        return True
+    elif not texto:
         return True
 
-    r = _gastos_interpretar(texto, hoy.isoformat(), st.get("pend") or [])
+    r = _gastos_interpretar(texto, hoy.isoformat(), st.get("pend") or [], imagenes=imagenes)
     tipo = (r.get("tipo") or "otro").lower()
 
     if tipo == "error":
@@ -6024,7 +6089,30 @@ def _gastos_hook(email, d) -> bool:
         responder("Listo, descarté %d 👍" % n if n else "No había nada pendiente 👍")
         return True
 
+    if tipo == "falta_concepto":
+        gs = [g for g in (r.get("gastos") or []) if float(g.get("monto") or 0) > 0]
+        if not gs:
+            responder("Vi el comprobante pero no pude leer el monto. ¿Me lo escribís? 🙏")
+            return True
+        for g in gs:
+            g["autor"] = autor
+            g.setdefault("fecha", hoy.isoformat())
+            g["concepto"] = ""
+        st["pend"] = (st.get("pend") or []) + gs
+        _gastos_save(todo)
+        responder("Leí *%s* en el comprobante. ¿De qué es? (escribime el concepto)"
+                  % _gastos_plata(gs[0].get("monto")))
+        return True
+
     if tipo == "gastos":
+        # si había un pendiente sin concepto, este mensaje probablemente sea ESE concepto
+        _sin = [p for p in (st.get("pend") or []) if not (p.get("concepto") or "").strip()]
+        if _sin and len(r.get("gastos") or []) == 1 and not float((r.get("gastos") or [{}])[0].get("monto") or 0):
+            _sin[0]["concepto"] = (r["gastos"][0].get("concepto") or texto)[:60]
+            _gastos_save(todo)
+            responder("📝 *%s* · %s · %s\n¿Lo cargo? (sí / no)"
+                      % (_sin[0]["concepto"], _gastos_plata(_sin[0].get("monto")), _sin[0].get("fecha")))
+            return True
         gs = [g for g in (r.get("gastos") or []) if float(g.get("monto") or 0) > 0]
         if not gs:
             responder("Me falta el monto para cargarlo. %s" % (r.get("nota") or ""))
