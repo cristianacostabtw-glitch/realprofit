@@ -108,9 +108,23 @@ async function saveMedia(sock, m, acc) {
 // (ej "visionpure.contacto@gmail.com"). Sin la env, ninguna sesión lee grupos.
 const _GRUPOS_ACCS = String(process.env.WA_GRUPOS_ACCS || "")
   .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
-function permiteGrupos(acc) {
+// De todos los grupos, solo pasa UNO: el de gastos. Se elige por nombre (WA_GRUPO_NOMBRE,
+// por defecto "NOXALAB") o por jid exacto (WA_GRUPO_JID). El resto de los grupos se ignora,
+// así la pantalla queda con los chats de personas + ese único grupo.
+const _GRUPO_JID = String(process.env.WA_GRUPO_JID || "").trim();
+const _GRUPO_NOM = String(process.env.WA_GRUPO_NOMBRE || "NOXALAB").trim().toLowerCase();
+
+function cuentaLeeGrupos(acc) {
   const a = String(acc || "").toLowerCase();
   return _GRUPOS_ACCS.includes(a) || a.includes("gastos");
+}
+// s.gruposNom = jid → nombre del grupo (se llena al conectar y con groups.upsert/update)
+function grupoOK(s, acc, jid) {
+  if (!String(jid || "").endsWith("@g.us")) return true;      // no es grupo → pasa
+  if (!cuentaLeeGrupos(acc)) return false;                     // esta cuenta no lee grupos
+  if (_GRUPO_JID) return jid === _GRUPO_JID;
+  const nom = String((s && s.gruposNom && s.gruposNom.get(jid)) || "").toLowerCase();
+  return !!nom && nom.includes(_GRUPO_NOM);
 }
 
 function msgText(m) {
@@ -183,6 +197,11 @@ async function startSession(acc) {
       s.starting = false;
       s.lastRecv = Date.now();
       s.me = sock.user ? { id: sock.user.id, name: sock.user.name || sock.user.verifiedName || "" } : null;
+      // nombres de los grupos: hacen falta para saber CUÁL es el de gastos (los jid son números)
+      s.gruposNom = s.gruposNom || new Map();
+      sock.groupFetchAllParticipating()
+        .then((gs) => { for (const g of Object.values(gs || {})) if (g?.id) s.gruposNom.set(g.id, g.subject || ""); })
+        .catch(() => {});
     }
     if (connection === "close") {
       s.starting = false;
@@ -200,7 +219,7 @@ async function startSession(acc) {
 
   // acumular chats (nombre + último mensaje). Las fotos se piden on-demand en /chats.
   const touch = (jid, name, text, ts, unread, fromMe) => {
-    if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) return;
+    if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) return;
     const c = s.chats.get(jid) || { id: jid };
     if (name) c.name = name;
     if (text != null) c.last = text;
@@ -213,7 +232,7 @@ async function startSession(acc) {
 
   // guardar un mensaje en la conversación del chat (para la vista de chat completa)
   const pushMsg = (jid, id, fromMe, text, ts, kind, media) => {
-    if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) return;
+    if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) return;
     if (!text && !media) return;
     let arr = s.msgs.get(jid);
     if (!arr) { arr = []; s.msgs.set(jid, arr); }
@@ -231,7 +250,7 @@ async function startSession(acc) {
   // guarda un mensaje: si es medio, pushea placeholder y baja el archivo en background
   const pushAny = (m) => {
     const jid = m.key?.remoteJid;
-    if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) return;
+    if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) return;
     const t = msgText(m);
     const id = m.key?.id, fromMe = m.key?.fromMe, ts = Number(m.messageTimestamp) || 0;
     touch(jid, fromMe ? undefined : m.pushName, t, ts, undefined, fromMe);
@@ -261,6 +280,14 @@ async function startSession(acc) {
     } catch (e) {}
   });
 
+  sock.ev.on("groups.upsert", (gs) => {
+    s.gruposNom = s.gruposNom || new Map();
+    for (const g of (gs || [])) if (g?.id) s.gruposNom.set(g.id, g.subject || "");
+  });
+  sock.ev.on("groups.update", (gs) => {
+    s.gruposNom = s.gruposNom || new Map();
+    for (const g of (gs || [])) if (g?.id && g.subject != null) s.gruposNom.set(g.id, g.subject || "");
+  });
   sock.ev.on("chats.upsert", (chats) => {
     for (const c of chats) touch(c.id, c.name, undefined, Number(c.conversationTimestamp) || 0, c.unreadCount);
   });
@@ -276,7 +303,7 @@ async function startSession(acc) {
     if (!messages) return;
     for (const m of messages) {
       const jid = m.key?.remoteJid;
-      if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) continue;
+      if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) continue;
       pushAny(m);   // texto o medio (baja fotos/audios/videos)
     }
   });
@@ -285,7 +312,7 @@ async function startSession(acc) {
     s.lastRecv = Date.now();   // hay actividad → sesión viva (watchdog anti-cuelgue-silencioso)
     for (const m of messages) {
       const jid = m.key?.remoteJid;
-      if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) continue;
+      if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) continue;
       pushAny(m);   // texto o medio (baja fotos/audios/videos en background)
       // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
       const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
@@ -390,7 +417,7 @@ app.get("/chats", (req, res) => {
     return {
       id: c.id,
       tel: (c.id || "").split("@")[0],
-      name: c.name || (c.id || "").split("@")[0],
+      name: c.name || (s.gruposNom && s.gruposNom.get(c.id)) || (c.id || "").split("@")[0],
       photo: photo === undefined ? null : photo,
       last: c.last || "",
       ts: c.ts || 0,
@@ -441,6 +468,12 @@ app.post("/send", async (req, res) => {
   const s = sessions.get(acc);
   if (!s || s.status !== "connected") return res.status(409).json({ ok: false, msg: "sesion no conectada" });
   if (!to.includes("@")) to = to.replace(/\D/g, "") + "@s.whatsapp.net"; // acepta solo el número
+  // CANDADO: en la cuenta de gastos el bot SOLO puede escribir en el grupo permitido.
+  // Ese número tiene otros chats (proveedores, personas) y no debe contestarles NUNCA.
+  // Tiene que ser el grupo permitido Y ser grupo: a una persona no le escribe nunca.
+  if (cuentaLeeGrupos(acc) && (!to.endsWith("@g.us") || !grupoOK(s, acc, to))) {
+    return res.status(403).json({ ok: false, msg: "esta cuenta solo puede escribir en el grupo de gastos" });
+  }
   try {
     const sent = await s.sock.sendMessage(to, { text });
     touch_send(s, to, text);
