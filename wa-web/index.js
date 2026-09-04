@@ -397,8 +397,24 @@ app.get("/chats", (req, res) => {
   if (!s || s.status !== "connected") return res.json({ ok: false, status: s?.status || "disconnected", chats: [] });
   // DEDUP por número: WhatsApp puede tener el mismo contacto con jid "@lid" Y "@s.whatsapp.net".
   // Nos quedamos con UNA sola fila por número (la más reciente) para no mostrar chats duplicados.
+  // Los grupos que NO son el permitido se ESCONDEN acá también: el filtro de arriba solo evita
+  // que entren nuevos, pero los que ya estaban guardados en disco seguían apareciendo.
+  // Además pido en background el nombre de los grupos que no conozco (los jid son números).
+  s.gruposNom = s.gruposNom || new Map();
+  s._gnPend = s._gnPend || new Set();
+  for (const c of s.chats.values()) {
+    const id = c && c.id;
+    if (id && String(id).endsWith("@g.us") && !s.gruposNom.has(id) && !s._gnPend.has(id)) {
+      s._gnPend.add(id);
+      s.sock.groupMetadata(id)
+        .then((md) => s.gruposNom.set(id, (md && md.subject) || ""))
+        .catch(() => s.gruposNom.set(id, ""))
+        .finally(() => s._gnPend.delete(id));
+    }
+  }
   const _seenTel = new Set();
   const arr = [...s.chats.values()]
+    .filter((c) => grupoOK(s, acc, c.id))
     .sort((a, b) => (b.ts || 0) - (a.ts || 0))
     .filter((c) => { const t = (c.id || "").split("@")[0]; if (!t || _seenTel.has(t)) return false; _seenTel.add(t); return true; })
     .slice(0, limit);
