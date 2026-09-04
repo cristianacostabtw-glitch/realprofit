@@ -119,9 +119,13 @@ function cuentaLeeGrupos(acc) {
   return _GRUPOS_ACCS.includes(a) || a.includes("gastos");
 }
 // s.gruposNom = jid → nombre del grupo (se llena al conectar y con groups.upsert/update)
+// CUENTA DE GASTOS: pasa SOLO el grupo permitido. Ni otros grupos ni chats de personas —
+// ese número tiene contactos propios (proveedores, etc.) y no tienen que llegar al bot.
+// CUENTA NORMAL (atención al cliente): solo 1:1, sin grupos, como siempre.
 function grupoOK(s, acc, jid) {
-  if (!String(jid || "").endsWith("@g.us")) return true;      // no es grupo → pasa
-  if (!cuentaLeeGrupos(acc)) return false;                     // esta cuenta no lee grupos
+  const esGrupo = String(jid || "").endsWith("@g.us");
+  if (!cuentaLeeGrupos(acc)) return !esGrupo;
+  if (!esGrupo) return false;
   if (_GRUPO_JID) return jid === _GRUPO_JID;
   const nom = String((s && s.gruposNom && s.gruposNom.get(jid)) || "").toLowerCase();
   return !!nom && nom.includes(_GRUPO_NOM);
