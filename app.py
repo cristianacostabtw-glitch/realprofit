@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-seg-lotes"})
+    return jsonify({"ok": True, "v": "2026-09-04-seg-tope"})
 
 
 _KPI_DBG = {}
@@ -7971,11 +7971,16 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     QL = ("query($cursor:String){orders(first:60,sortKey:CREATED_AT,reverse:true,after:$cursor){"
           "pageInfo{hasNextPage endCursor} edges{node{legacyResourceId name}}}}")
     import time as _tsleep
+    # TOPE DURO: pase lo que pase, esto no puede tardar más de 90s. Antes no tenía límite total
+    # y con Shopify frenando las consultas se iba a 15-20 minutos (el usuario lo vio en 1000s).
+    _TOPE = _tsleep.time() + 90
     gids = {}   # num → gid
     cursor = None
     _got_sem = _SHOP_SEM.acquire(timeout=8)
     try:
         for _pag in range(12):                               # scan liviano: hasta 12 págs (720 recientes)
+            if _tsleep.time() > _TOPE:
+                break
             r = requests.post(gql, headers=HG, data=_json.dumps({"query": QL, "variables": {"cursor": cursor}}), timeout=20)
             if r.status_code == 429 or r.status_code >= 500:
                 _tsleep.sleep(1.0); continue
@@ -8003,11 +8008,13 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
             QN = ("query($q:String!){orders(first:50,query:$q){edges{node{legacyResourceId name}}}}")
             _LOTE = 25
             for _i in range(0, min(len(_resto), 600), _LOTE):
+                if _tsleep.time() > _TOPE:
+                    break
                 _chunk = _resto[_i:_i + _LOTE]
                 _q = " OR ".join("name:#%s" % x for x in _chunk)
                 for _try in range(2):
                     try:
-                        r = requests.post(gql, headers=HG, timeout=25, data=_json.dumps(
+                        r = requests.post(gql, headers=HG, timeout=12, data=_json.dumps(
                             {"query": QN, "variables": {"q": _q}}))
                         if r.status_code == 429 or r.status_code >= 500:
                             _tsleep.sleep(1.0)
@@ -8028,6 +8035,8 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
               "}}}")
         idlist = list(gids.values())
         for _i in range(0, len(idlist), 40):
+            if _tsleep.time() > _TOPE + 40:      # margen extra: sin esto no hay datos de nadie
+                break
             chunk = idlist[_i:_i + 40]
             for _try in range(3):
                 r = requests.post(gql, headers=HG, data=_json.dumps({"query": QF, "variables": {"ids": chunk}}), timeout=25)
