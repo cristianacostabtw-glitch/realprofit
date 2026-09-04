@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-gastos-fotos"})
+    return jsonify({"ok": True, "v": "2026-09-04-gastos-audio"})
 
 
 _KPI_DBG = {}
@@ -5885,6 +5885,26 @@ def _gastos_media(email, jid, msg_id):
     return None, "", ""
 
 
+def _gastos_transcribir(data, mime):
+    """Pasa un audio de WhatsApp a texto con Whisper. Vacío si no hay clave o falla.
+    Claude no procesa audio, por eso hace falta transcribir primero."""
+    key = _os.getenv("OPENAI_API_KEY", "").strip()
+    if not key or not data:
+        return ""
+    m = (mime or "").lower()
+    ext = "ogg" if "ogg" in m or "opus" in m else ("m4a" if ("m4a" in m or "mp4" in m) else "mp3")
+    try:
+        r = requests.post("https://api.openai.com/v1/audio/transcriptions",
+                          headers={"Authorization": "Bearer " + key},
+                          files={"file": ("audio.%s" % ext, data, mime or "audio/ogg")},
+                          data={"model": "whisper-1", "language": "es"}, timeout=180)
+        if r.status_code == 200:
+            return ((r.json() or {}).get("text") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _gastos_pdf_texto(data):
     """Texto de un PDF (extracto bancario, factura). Vacío si no se puede leer."""
     try:
@@ -6043,10 +6063,20 @@ def _gastos_hook(email, d) -> bool:
             texto = (texto + "\n\n[PDF adjunto]\n" + txt).strip()
         else:
             imagenes = [(data, mime or "image/jpeg")]
-    elif medio == "audio":
-        responder("🎤 Todavía no puedo escuchar audios — falta cargar la clave de transcripción. "
-                  "Por ahora escribime el gasto y lo cargo.")
-        return True
+    elif medio in ("audio", "ptt", "voice"):
+        data, mime, kind = _gastos_media(email, jid, (d.get("msg_id") or "").strip())
+        if not data:
+            responder("Me llegó un audio pero no lo pude bajar. Reenvialo o escribime el gasto 🙏")
+            return True
+        dicho = _gastos_transcribir(data, mime)
+        if not dicho:
+            if not _os.getenv("OPENAI_API_KEY", "").strip():
+                responder("🎤 Falta cargar la clave de transcripción en el servidor. "
+                          "Por ahora escribime el gasto y lo cargo.")
+            else:
+                responder("🎤 No le entendí al audio. ¿Me lo escribís? 🙏")
+            return True
+        texto = (texto + " " + dicho).strip()
     elif not texto:
         return True
 
