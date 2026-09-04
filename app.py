@@ -565,7 +565,7 @@ _SOLO_DASH = r"""
    <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#10233a;border:1px solid #1c3f63;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:22px">local_shipping</span></div>
    <div style="flex:1;min-width:0">
     <div style="font-weight:700;color:#f1f5f9;font-size:15px">Env&iacute;o</div>
-    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma <b style="color:#cbd5e1">$900/pedido</b> de fulfillment (armado $700 + insumos $200).</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma <b style="color:#cbd5e1">$1.000/pedido</b> de fulfillment (armado $800 + insumos $200).</div>
     <div style="margin-top:12px;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden;font-size:12px">
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;background:#0e1a2b;color:#7db3f5;font-weight:700;padding:8px 12px"><span>Zona</span><span style="text-align:right">Sucursal</span><span style="text-align:right">Domicilio</span></div>
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>AMBA (CABA+GBA+La Plata)</span><span style="text-align:right">$4.530</span><span style="text-align:right">$7.115</span></div>
@@ -2088,10 +2088,10 @@ _SOLO_DASH = r"""
     // SOLO la sección COSTOS: busco cada tarjeta por su etiqueta propia (nunca toca Finanzas).
     var viejo=document.getElementById('rp-costos4'); if(viejo) viejo.remove();
     var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);
-    var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment $900/pedido
+    var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment $1000/pedido
     var slots=[
       [['Costo producto','Productos'],'Productos',_raw.costo_prod,'Costo de los productos vendidos'],
-      [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($900/pedido)'],
+      [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($1.000/pedido)'],
       [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)'],
       [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
     ];
@@ -3250,9 +3250,9 @@ def _mp_freeze_end(email):
 
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
 IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
-FULFILLMENT_ORDEN = 700  # costo de fulfillment por pedido (fijo)
+FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
 INSUMOS_ORDEN = 200      # costo de insumos/packaging por pedido (fijo)
-OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 900/pedido: fulfillment + insumos (aparte del envío)
+OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 1000/pedido: fulfillment + insumos (aparte del envío)
 
 # === Costo de envío REAL por zona (Andreani, cuenta VisionPure, origen Suc. Merlo, CON descuento) ===
 # Cotizado 2026-08-15 en pymes.andreani.com. 4 zonas de tarifa. sucursal / domicilio en $.
@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-03-seg-entrega-manda"})
+    return jsonify({"ok": True, "v": "2026-09-04-limpio-x-orden"})
 
 
 _KPI_DBG = {}
@@ -8488,7 +8488,7 @@ def _shopify_resumen(email, desde, hasta):
     r["envio_monto"] = round(envio_monto, 2)
     r["envio_zona_monto"] = round(envio_zona, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
-    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($700) + insumos ($200) por pedido
+    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($800) + insumos ($200) por pedido
     r["oper_monto"] = round(oper_monto, 2)
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     # Break-even: contribución ANTES de ads (lo que queda para pagar publicidad).
@@ -8612,7 +8612,7 @@ def _tn_resumen(email, desde, hasta):
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
     comision_monto = mp_costo + iibb_monto + tienda_monto
-    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($700) + insumos ($200) por pedido
+    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($800) + insumos ($200) por pedido
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
@@ -9744,10 +9744,13 @@ def _fin_datos_dia(email, f) -> dict:
     res = _shopify_resumen(email, d, d) or {}
     raw = res.get("raw") or {}
     fact = float(raw.get("facturado") or 0)
-    # INGRESO LIMPIO = lo que ENTRÓ de verdad a MercadoPago ese día (reporte de caja).
-    # Si MP no contesta, cae al cálculo por pedidos (facturado − comisión real) para no dejar $0.
-    mp = _fin_mp_entrada(email, f)
-    limpio = mp["neto"] if (mp.get("ok") and mp.get("pagos")) else (fact - float(raw.get("mp_costo_real") or 0))
+    # INGRESO LIMPIO = suma del NETO de los pagos DE LAS ÓRDENES DE ESE DÍA.
+    # RealProfit matchea cada pedido con su pago de MP (por referencia; si no, por monto exacto) y
+    # usa el neto real de ESE pago. Los que no matchean entran al 100% (transferencia directa).
+    # NO se usa la liquidación diaria de MP: esa mezcla pagos de otros días y da comisiones
+    # negativas (pasó: -36%, -56%), porque el ingreso y el facturado quedan en marcos distintos.
+    mp = {"ok": False, "bruto": 0.0, "pagos": int(raw.get("mp_match") or 0)}
+    limpio = fact - float(raw.get("mp_costo_real") or 0)
     return {"fecha": d,
             "ventas": int(raw.get("ordenes") or 0),
             "unidades": int(raw.get("unidades") or 0),
@@ -9755,7 +9758,7 @@ def _fin_datos_dia(email, f) -> dict:
             "ingreso_limpio": round(limpio, 2),
             "mp_bruto": mp.get("bruto", 0.0), "mp_pagos": mp.get("pagos", 0),
             "mp_otros_neto": mp.get("otros_neto", 0.0), "mp_otros_pagos": mp.get("otros_pagos", 0),
-            "mp_fuente": "MP real" if (mp.get("ok") and mp.get("pagos")) else "calculado",
+            "mp_fuente": "MP x orden",
             # ENVÍO: la tabla Andreani por ZONA con el descuento propio (provincia/CP + sucursal
             # vs domicilio), la misma que usa RealProfit. La planilla traía "=5200*pedidos" (estimado).
             "envio": round(float(raw.get("envio_zona_monto") or 0), 2),
@@ -9783,9 +9786,12 @@ _FIN_TOTALES = {
 
 
 def _fin_reparar_totales(sess, sid, tab) -> None:
-    """Corrige las filas TOTAL ARS / PROMEDIO / TOTAL USD de la pestaña."""
+    """Corrige las filas TOTAL ARS / PROMEDIO / TOTAL USD, y deja el Fulfill del mes al día."""
     data = [{"range": "%s!%s%d" % (tab, col, fila), "values": [[fx]]}
             for fila, cols in _FIN_TOTALES.items() for col, fx in cols.items()]
+    # Fulfill = $1.000 por pedido (antes $900). Se reescribe en las 31 filas del mes.
+    data += [{"range": "%s!T%d" % (tab, f), "values": [["=%d*D%d" % (OPER_ORDEN, f)]]}
+             for f in range(6, 37)]
     try:
         sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
                   json={"valueInputOption": "USER_ENTERED", "data": data}, timeout=(15, 90))
