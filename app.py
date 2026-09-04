@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-grupo-nombre"})
+    return jsonify({"ok": True, "v": "2026-09-04-bot-gastos"})
 
 
 _KPI_DBG = {}
@@ -5849,6 +5849,206 @@ document.addEventListener("visibilitychange", function(){ if(!document.hidden) c
 cargar();
 </script></body></html>
 """
+
+
+# ==================== BOT DE GASTOS (grupo de WhatsApp → planilla) ====================
+# El equipo tira los gastos en el grupo (texto, audio, foto o PDF). El bot los interpreta,
+# PROPONE qué va a cargar y espera un "sí". Recién ahí escribe en la planilla.
+# Nada se escribe sin confirmación. Si nadie confirma, queda pendiente para siempre.
+GASTOS_PEND = DATA_DIR / "gastos_pend.json"     # {email: {"pend": [...], "hist": [...]}}
+GASTOS_FILA0 = 49                                # primera fila debajo del rótulo GASTOS (U48)
+
+
+def _gastos_load() -> dict:
+    try:
+        return _json.loads(GASTOS_PEND.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _gastos_save(d) -> None:
+    try:
+        GASTOS_PEND.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _gastos_plata(n) -> str:
+    try:
+        return "$" + format(int(round(float(n))), ",d").replace(",", ".")
+    except Exception:
+        return str(n)
+
+
+_GASTOS_SISTEMA = """Sos el asistente que registra los GASTOS de la marca NoxaLab en una planilla.
+Te llega un mensaje de un grupo de WhatsApp del equipo.
+
+Respondé SOLO un JSON válido, sin texto alrededor y sin ```:
+{"tipo":"gastos|confirmar|rechazar|otro","gastos":[{"concepto":"...","monto":0,"fecha":"YYYY-MM-DD"}],"nota":""}
+
+REGLAS
+- "confirmar": el mensaje acepta lo propuesto (si, sí, dale, ok, cargalo, correcto, va, todos, sí a todo).
+- "rechazar": lo rechaza (no, nel, cancelá, borralo, está mal).
+- "gastos": describe uno o más gastos reales. Puede haber varios en un mismo mensaje.
+- "otro": charla, preguntas o cualquier cosa que no sea un gasto ni una confirmación.
+- MONTOS en número puro, sin puntos ni símbolos. "45 lucas"/"45 mil"/"45k"/"45.000" = 45000.
+- Si el mensaje NO dice un monto claro, NO inventes: dejá "gastos" vacío y explicá en "nota" qué falta.
+- Si no dice fecha, usá la fecha de HOY que te paso abajo.
+- El concepto va corto y claro, con mayúscula inicial: "Nafta reparto", "Cajas", "Pago Andreani".
+- NO son gastos para cargar (devolvé tipo "otro" y avisá en "nota"): publicidad de Meta/Facebook/ads,
+  y pagos de sueldos. Esos se registran por otro lado.
+"""
+
+
+def _gastos_interpretar(texto, hoy_iso, pendientes):
+    """Le pide al cerebro que interprete el mensaje. Devuelve dict; nunca lanza."""
+    import agente_ia
+    sis = _GASTOS_SISTEMA + "\nHOY es %s.\n" % hoy_iso
+    if pendientes:
+        sis += ("Hay %d gasto(s) esperando confirmación: %s\n"
+                % (len(pendientes), "; ".join("%s %s" % (p["concepto"], _gastos_plata(p["monto"]))
+                                              for p in pendientes[:12])))
+    try:
+        raw = (agente_ia.chat([{"role": "user", "content": texto}], sis, max_tokens=900) or "").strip()
+    except Exception as e:
+        return {"tipo": "error", "nota": "%s: %s" % (type(e).__name__, str(e)[:90])}
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        raw = raw[raw.find("{"):] if "{" in raw else raw
+    i, f = raw.find("{"), raw.rfind("}")
+    if i < 0 or f <= i:
+        return {"tipo": "otro", "nota": raw[:160]}
+    try:
+        return _json.loads(raw[i:f + 1])
+    except Exception:
+        return {"tipo": "otro", "nota": raw[:160]}
+
+
+def _gastos_escribir(email, sid, items):
+    """Escribe los gastos en columna U (concepto) y V (monto), debajo del rótulo GASTOS."""
+    sess = _fin_sess()
+    puestos = []
+    por_mes = {}
+    for it in items:
+        try:
+            f = _dt.date.fromisoformat(str(it.get("fecha"))[:10])
+        except Exception:
+            f = _fin_hoy_ar()
+        por_mes.setdefault(f.month, []).append((f, it))
+    for mes, lista in por_mes.items():
+        f0 = lista[0][0]
+        tab = _fin_tab_mes(sess, sid, f0)
+        # primera fila libre en la columna U (concepto)
+        r = sess.get("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s!U%d:U200"
+                     % (sid, _uq_gastos(tab), GASTOS_FILA0), timeout=(15, 45))
+        usadas = (r.json().get("values") or []) if r.status_code == 200 else []
+        fila = GASTOS_FILA0 + len(usadas)
+        data = []
+        for f, it in lista:
+            data.append({"range": "%s!U%d:V%d" % (tab, fila, fila),
+                         "values": [["%02d/%02d · %s" % (f.day, f.month, it.get("concepto") or "Gasto"),
+                                     float(it.get("monto") or 0)]]})
+            puestos.append({"fila": fila, "tab": tab, **it})
+            fila += 1
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                  json={"valueInputOption": "RAW", "data": data}, timeout=(15, 90))
+    return puestos
+
+
+def _uq_gastos(s):
+    from urllib.parse import quote
+    return quote(s, safe="")
+
+
+def _gastos_hook(email, d) -> bool:
+    """Procesa un mensaje del grupo de gastos. True si lo manejó (para no pasarlo al bot de ventas)."""
+    texto = (d.get("text") or "").strip()
+    jid = (d.get("from") or "").strip()
+    autor = (d.get("autor") or "").strip()
+    medio = (d.get("medio") or "").strip()
+    if not jid:
+        return False
+    todo = _gastos_load()
+    st = todo.setdefault(email, {"pend": [], "hist": []})
+    hoy = _fin_hoy_ar()
+
+    def responder(msg):
+        try:
+            _wa_web_send(email, jid, msg)
+        except Exception:
+            pass
+
+    if not texto:
+        if medio:
+            responder("📎 Me llegó un %s. Todavía no sé leerlos — por ahora escribime el gasto "
+                      "(ej: *nafta reparto 45 mil*) y lo cargo." % medio)
+            return True
+        return True
+
+    r = _gastos_interpretar(texto, hoy.isoformat(), st.get("pend") or [])
+    tipo = (r.get("tipo") or "otro").lower()
+
+    if tipo == "error":
+        responder("No pude pensar ahora mismo (%s). Probá de nuevo en un minuto." % r.get("nota", ""))
+        return True
+
+    if tipo == "confirmar":
+        pend = st.get("pend") or []
+        if not pend:
+            responder("No tengo nada esperando confirmación 👍")
+            return True
+        sid = ((_fin_conf().get(email) or {}).get("sheet")
+               or (_fin_conf().get("cristianacostabtw@gmail.com") or {}).get("sheet"))
+        if not sid:
+            responder("No tengo configurada la planilla, avisale a Cristian.")
+            return True
+        try:
+            puestos = _gastos_escribir(email, sid, pend)
+        except Exception as e:
+            responder("No pude escribir en la planilla (%s: %s)." % (type(e).__name__, str(e)[:70]))
+            return True
+        tot = sum(float(p.get("monto") or 0) for p in puestos)
+        st["hist"] = (st.get("hist") or []) + puestos
+        st["pend"] = []
+        _gastos_save(todo)
+        if len(puestos) == 1:
+            responder("✅ Cargado: *%s* %s" % (puestos[0].get("concepto"), _gastos_plata(puestos[0].get("monto"))))
+        else:
+            responder("✅ Cargados %d gastos · total %s" % (len(puestos), _gastos_plata(tot)))
+        return True
+
+    if tipo == "rechazar":
+        n = len(st.get("pend") or [])
+        st["pend"] = []
+        _gastos_save(todo)
+        responder("Listo, descarté %d 👍" % n if n else "No había nada pendiente 👍")
+        return True
+
+    if tipo == "gastos":
+        gs = [g for g in (r.get("gastos") or []) if float(g.get("monto") or 0) > 0]
+        if not gs:
+            responder("Me falta el monto para cargarlo. %s" % (r.get("nota") or ""))
+            return True
+        for g in gs:
+            g["autor"] = autor
+            g.setdefault("fecha", hoy.isoformat())
+        st["pend"] = (st.get("pend") or []) + gs
+        _gastos_save(todo)
+        p = st["pend"]
+        if len(p) == 1:
+            responder("📝 *%s* · %s · %s\n¿Lo cargo? (sí / no)"
+                      % (p[0].get("concepto"), _gastos_plata(p[0].get("monto")), p[0].get("fecha")))
+        else:
+            lst = "\n".join("%d. %s · %s" % (i + 1, x.get("concepto"), _gastos_plata(x.get("monto")))
+                            for i, x in enumerate(p[:15]))
+            responder("📝 Tengo %d para cargar:\n%s\n\n*Total %s* — ¿los cargo? (sí / no)"
+                      % (len(p), lst, _gastos_plata(sum(float(x.get("monto") or 0) for x in p))))
+        return True
+
+    nota = (r.get("nota") or "").strip()
+    if nota:
+        responder(nota[:400])
+    return True
 
 
 # ============================ FACTURACIÓN ============================
@@ -14994,6 +15194,15 @@ def wa_web_hook():
         return jsonify({"ok": False}), 403
     d = request.get_json(silent=True) or {}
     email = (d.get("acc") or "").strip()
+    # GRUPO DE GASTOS: tiene su propio cerebro y NO pasa por el bot de ventas.
+    # Va antes de validar el texto porque en el grupo puede venir solo un audio/foto/PDF.
+    if d.get("grupo") and email:
+        try:
+            if _gastos_hook(email, d):
+                return jsonify({"ok": True, "gastos": True})
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "gastos %s: %s" % (type(e).__name__, str(e)[:120])})
+        return jsonify({"ok": True})
     tel = re.sub(r"\D", "", d.get("tel") or d.get("from") or "")
     text = (d.get("text") or "").strip()
     if not email or not tel or not text:
