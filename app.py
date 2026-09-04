@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-seg-tope"})
+    return jsonify({"ok": True, "v": "2026-09-04-seg-cache"})
 
 
 _KPI_DBG = {}
@@ -7955,6 +7955,15 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     #    redeploy la memoria arranca vacía, pero el disco tiene los pedidos → el seguimiento NO se recontra-cuelga.
     _desp_cache_load()
     _c = _DESP_CACHE.get(email)
+    # Si el caché está vacío, lo LLENO igual que lo hace la pantalla de Despachos (que ya trae
+    # todos los pedidos rápido). Sin esto, el seguimiento se iba a buscar de a uno a Shopify
+    # y tardaba 15-20 minutos aunque el dato ya estuviera disponible.
+    if not (_c and _c.get("orders")):
+        try:
+            _despachos_orders_shopify(email)
+            _c = _DESP_CACHE.get(email)
+        except Exception:
+            _c = None
     if _c and _c.get("orders"):
         for o in _c["orders"]:
             k = str(o.get("order_number") or "").strip()
