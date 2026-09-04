@@ -327,7 +327,12 @@ async function startSession(acc) {
       // En el grupo de gastos también procesamos los mensajes PROPIOS: el dueño carga gastos
       // desde el mismo teléfono vinculado. Se excluyen solo los que mandó el bot.
       const mio = m.key?.fromMe && !(s.mios && s.mios.has(m.key?.id));
-      const paso = esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe;
+      // CANDADO ANTI-LOOP: al reconectar, WhatsApp reenvía historial. Si reprocesáramos esos
+      // mensajes, el bot se contestaría a sí mismo una y otra vez. Solo procesamos lo que llegó
+      // DESPUÉS de que arrancó esta sesión (con 60s de margen).
+      const _ts = Number(m.messageTimestamp) || 0;
+      const _fresco = _ts * 1000 > ((s.startedAt || 0) - 60000);
+      const paso = _fresco && (esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe);
       if (HOOK && type === "notify" && paso && (texto || (esGrupo && mk2))) {
         notifyHook({
           acc,
