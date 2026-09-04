@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-gastos-audio"})
+    return jsonify({"ok": True, "v": "2026-09-04-gastos-silencio"})
 
 
 _KPI_DBG = {}
@@ -6163,9 +6163,15 @@ def _gastos_hook(email, d) -> bool:
                       % (len(p), lst, _gastos_plata(sum(float(x.get("monto") or 0) for x in p))))
         return True
 
+    # tipo "otro" = charla del grupo, no un gasto. SE CALLA.
+    # Antes tiraba su razonamiento interno al grupo ("El mensaje es ambiguo...") y era ruido.
+    # Solo habla si el mensaje parece un gasto al que le falta el monto.
     nota = (r.get("nota") or "").strip()
-    if nota:
-        responder(nota[:400])
+    t = texto.lower()
+    parece_gasto = any(k in t for k in ("gast", "pagu", "pago", "compr", "plata", "$",
+                                        "mil", "luca", "transferenc", "factura"))
+    if parece_gasto and nota:
+        responder(nota[:300])
     return True
 
 
