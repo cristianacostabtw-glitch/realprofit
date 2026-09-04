@@ -102,6 +102,17 @@ async function saveMedia(sock, m, acc) {
 }
 
 // Texto legible de un mensaje de Baileys (lo que se muestra en el chat)
+// Los GRUPOS solo se procesan en las sesiones habilitadas. Las demás (atención al cliente)
+// siguen siendo 1:1 como siempre, para no meterles ruido de grupos.
+// Se configura con la env WA_GRUPOS_ACCS = lista de cuentas separadas por coma
+// (ej "visionpure.contacto@gmail.com"). Sin la env, ninguna sesión lee grupos.
+const _GRUPOS_ACCS = String(process.env.WA_GRUPOS_ACCS || "")
+  .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+function permiteGrupos(acc) {
+  const a = String(acc || "").toLowerCase();
+  return _GRUPOS_ACCS.includes(a) || a.includes("gastos");
+}
+
 function msgText(m) {
   const mm = m.message || {};
   return mm.conversation
@@ -189,7 +200,7 @@ async function startSession(acc) {
 
   // acumular chats (nombre + último mensaje). Las fotos se piden on-demand en /chats.
   const touch = (jid, name, text, ts, unread, fromMe) => {
-    if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return; // solo 1:1 por ahora
+    if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) return;
     const c = s.chats.get(jid) || { id: jid };
     if (name) c.name = name;
     if (text != null) c.last = text;
@@ -202,7 +213,7 @@ async function startSession(acc) {
 
   // guardar un mensaje en la conversación del chat (para la vista de chat completa)
   const pushMsg = (jid, id, fromMe, text, ts, kind, media) => {
-    if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
+    if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) return;
     if (!text && !media) return;
     let arr = s.msgs.get(jid);
     if (!arr) { arr = []; s.msgs.set(jid, arr); }
@@ -220,7 +231,7 @@ async function startSession(acc) {
   // guarda un mensaje: si es medio, pushea placeholder y baja el archivo en background
   const pushAny = (m) => {
     const jid = m.key?.remoteJid;
-    if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) return;
+    if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) return;
     const t = msgText(m);
     const id = m.key?.id, fromMe = m.key?.fromMe, ts = Number(m.messageTimestamp) || 0;
     touch(jid, fromMe ? undefined : m.pushName, t, ts, undefined, fromMe);
@@ -265,7 +276,7 @@ async function startSession(acc) {
     if (!messages) return;
     for (const m of messages) {
       const jid = m.key?.remoteJid;
-      if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue;
+      if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) continue;
       pushAny(m);   // texto o medio (baja fotos/audios/videos)
     }
   });
@@ -274,11 +285,15 @@ async function startSession(acc) {
     s.lastRecv = Date.now();   // hay actividad → sesión viva (watchdog anti-cuelgue-silencioso)
     for (const m of messages) {
       const jid = m.key?.remoteJid;
-      if (!jid || jid === "status@broadcast" || jid.endsWith("@g.us")) continue; // solo 1:1
+      if (!jid || jid === "status@broadcast" || (jid.endsWith("@g.us") && !permiteGrupos(acc))) continue;
       pushAny(m);   // texto o medio (baja fotos/audios/videos en background)
       // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
       const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
-      if (HOOK && type === "notify" && !m.key?.fromMe && texto) {
+      const esGrupo = jid.endsWith("@g.us");
+      const mk2 = mediaKind(m);
+      // En 1:1 avisamos solo si hay TEXTO (como siempre). En el grupo de gastos también avisamos
+      // cuando viene solo un audio, una foto o un PDF: ahí el contenido ES el archivo.
+      if (HOOK && type === "notify" && !m.key?.fromMe && (texto || (esGrupo && mk2))) {
         notifyHook({
           acc,
           from: jid,
@@ -286,6 +301,10 @@ async function startSession(acc) {
           name: m.pushName || "",
           text: texto,
           ts: Number(m.messageTimestamp) || 0,
+          grupo: esGrupo,
+          autor: (m.key?.participant || "").split("@")[0],   // quién escribió dentro del grupo
+          medio: mk2 ? mk2.kind : "",
+          msg_id: m.key?.id || "",
         }).catch(() => {});
       }
     }
