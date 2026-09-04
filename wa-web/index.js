@@ -324,7 +324,11 @@ async function startSession(acc) {
       const mk2 = mediaKind(m);
       // En 1:1 avisamos solo si hay TEXTO (como siempre). En el grupo de gastos también avisamos
       // cuando viene solo un audio, una foto o un PDF: ahí el contenido ES el archivo.
-      if (HOOK && type === "notify" && !m.key?.fromMe && (texto || (esGrupo && mk2))) {
+      // En el grupo de gastos también procesamos los mensajes PROPIOS: el dueño carga gastos
+      // desde el mismo teléfono vinculado. Se excluyen solo los que mandó el bot.
+      const mio = m.key?.fromMe && !(s.mios && s.mios.has(m.key?.id));
+      const paso = esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe;
+      if (HOOK && type === "notify" && paso && (texto || (esGrupo && mk2))) {
         notifyHook({
           acc,
           from: jid,
@@ -496,6 +500,14 @@ app.post("/send", async (req, res) => {
   }
   try {
     const sent = await s.sock.sendMessage(to, { text });
+    // Guardo el id de lo que YO mando: en el grupo procesamos también los mensajes propios
+    // (el dueño escribe desde el mismo teléfono), así que hay que poder distinguirlos
+    // de los del bot. Sin esto el bot se contestaría a sí mismo en loop.
+    s.mios = s.mios || new Set();
+    if (sent && sent.key && sent.key.id) {
+      s.mios.add(sent.key.id);
+      if (s.mios.size > 300) s.mios = new Set([...s.mios].slice(-150));
+    }
     touch_send(s, to, text);
     // guardar el mensaje enviado en la conversación
     if (!s.msgs) s.msgs = new Map();
