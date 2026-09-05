@@ -413,6 +413,26 @@ app.use((req, res, next) => {
 
 app.get("/health", (_req, res) => res.json({ ok: true, sessions: sessions.size }));
 
+// Diagnostico: cuantas veces reconecto cada sesion (gen), hace cuanto que no entra nada y si el
+// WS esta vivo. Sin esto habia que mirar los logs de Render para saber si seguia el bucle.
+app.get("/diag", (_req, res) => {
+  const now = Date.now();
+  const out = [];
+  for (const [acc, s] of sessions) {
+    out.push({
+      acc,
+      status: s.status,
+      gen: s.gen || 0,                             // = cantidad de sockets abiertos desde el boot
+      seg_sin_recibir: Math.round((now - (s.lastRecv || 0)) / 1000),
+      seg_desde_arranque_sesion: Math.round((now - (s.startedAt || 0)) / 1000),
+      ws_muerto: wsDead(s.sock),
+      reconexion_pendiente: !!s._rt,
+      me: s.me || null,
+    });
+  }
+  res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), sesiones: out });
+});
+
 app.post("/connect", async (req, res) => {
   const acc = (req.body?.acc || "").trim();
   if (!acc) return res.status(400).json({ ok: false, msg: "falta acc" });
@@ -616,7 +636,13 @@ setInterval(() => {
       // MUERTE SILENCIOSA: status dice "connected" pero el socket murió sin avisar "close" (se cortó a las 11am).
       // Reconectar si: (a) el WS está muerto, o (b) la sesión quedó MUDA >7min (conexión "zombie":
       // socket "abierto" pero WhatsApp dejó de mandar todo). Cubre la muerte silenciosa de las 8-9am.
-      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 7 * 60 * 1000;
+      // OJO: silencio NO es muerte. Este numero solo recibe mensajes del grupo de gastos: puede
+      // pasar horas sin un evento. Con el umbral en 7 minutos el watchdog reconectaba una sesion
+      // PERFECTAMENTE SANA cada 7 minutos (y antes cada reconexion dejaba vivo el socket viejo,
+      // que reconectaba a su vez cada 2,5s -> el celular sincronizando sin parar).
+      // Una caida real la detecta Baileys con su keepAlive de 20s -> wsDead(). "muda" queda solo
+      // como red de seguridad remota.
+      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 3 * 60 * 60 * 1000;
       if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda)) {
         s.status = "connecting";
         reconectar(acc, s, 100);
