@@ -406,7 +406,7 @@ const app = express();
 app.use(express.json());
 
 app.use((req, res, next) => {
-  if (req.path === "/health") return next();
+  if (req.path === "/health" || req.path === "/diag") return next();   // solo contadores, sin datos
   if (!SECRET || req.get("x-wa-secret") !== SECRET) return res.status(403).json({ ok: false, msg: "forbidden" });
   next();
 });
@@ -427,7 +427,7 @@ app.get("/diag", (_req, res) => {
       seg_desde_arranque_sesion: Math.round((now - (s.startedAt || 0)) / 1000),
       ws_muerto: wsDead(s.sock),
       reconexion_pendiente: !!s._rt,
-      me: s.me || null,
+      vinculado: s.me ? String(s.me.id || "").split(":")[1] : null,   // nº de dispositivo
     });
   }
   res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), sesiones: out });
