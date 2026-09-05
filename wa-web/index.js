@@ -28,6 +28,7 @@ import {
 } from "@whiskeysockets/baileys";
 
 const PORT = process.env.PORT || 8090;
+const PROC_START = Date.now();   // ancla FIJA (no se pisa al reconectar)
 const SECRET = process.env.WA_WEB_SECRET || "";
 const DATA_DIR = process.env.WA_DATA_DIR || "/var/data/wa-web";
 const HOOK = process.env.WA_WEB_HOOK || "";   // URL de RealProfit que decide si responde el bot
@@ -146,9 +147,30 @@ function placeholderTxt(k) {
   return k === "audio" ? "🎤 Audio" : k === "video" ? "🎥 Video" : k === "gif" ? "🎞️ GIF" : k === "document" ? "📄 Documento" : "📷 Foto";
 }
 
+// Programa UNA sola reconexion por sesion. Sin esto, el handler de cada socket viejo MAS el
+// watchdog encolaban varias a la vez: se abrian N sockets sobre las mismas credenciales y el
+// telefono mostraba "finalizo la sincronizacion" cada 2 segundos mientras la sesion quedaba muda.
+function reconectar(acc, s, ms) {
+  if (!s || s._rt || s.starting) return;
+  s._rt = setTimeout(() => { s._rt = null; startSession(acc).catch(() => {}); }, ms);
+}
+
 async function startSession(acc) {
   let s = sessions.get(acc);
   if (s && (s.status === "connected" || s.starting)) return s;
+  // Marcar "arrancando" ANTES del primer await: si no, dos llamadas casi simultaneas
+  // (el close de un socket + el watchdog) pasan las dos el chequeo de arriba y abren DOS sockets.
+  if (s) {
+    s.starting = true;
+    s.startedAt = Date.now();
+    if (s._rt) { try { clearTimeout(s._rt); } catch {} s._rt = null; }
+    if (s.sock) {
+      // matar el anterior: sus listeners seguian vivos y reconectaban por su cuenta
+      try { s.sock.ev.removeAllListeners(); } catch {}
+      try { s.sock.end(undefined); } catch {}
+      s.sock = null;
+    }
+  }
 
   const dir = accDir(acc);
   fs.mkdirSync(dir, { recursive: true });
@@ -163,6 +185,7 @@ async function startSession(acc) {
   s.starting = true;
   s.startedAt = Date.now();
   sessions.set(acc, s);
+  const gen = (s.gen = (s.gen || 0) + 1);   // solo el socket de ESTA generacion toca el estado
 
   const sock = makeWASocket({
     version,
@@ -186,6 +209,7 @@ async function startSession(acc) {
   }
 
   sock.ev.on("connection.update", async (u) => {
+    if (s.gen !== gen) return;              // socket viejo: no toca estado ni reconecta
     const { connection, lastDisconnect, qr } = u;
     if (qr) {
       s.status = "qr";
@@ -216,7 +240,7 @@ async function startSession(acc) {
         sessions.delete(acc);
       } else {
         s.status = "connecting";
-        setTimeout(() => startSession(acc).catch(() => {}), 2500); // reconecta solo
+        reconectar(acc, s, 2500);   // UNA sola reconexion pendiente por sesion
       }
     }
   });
@@ -304,6 +328,7 @@ async function startSession(acc) {
 
   // HISTORIAL RECIENTE que WhatsApp sincroniza al vincular → lo guardamos para ver la conversación
   sock.ev.on("messaging-history.set", ({ messages }) => {
+    if (s.gen !== gen) return;
     if (!messages) return;
     for (const m of messages) {
       const jid = m.key?.remoteJid;
@@ -313,6 +338,7 @@ async function startSession(acc) {
   });
 
   sock.ev.on("messages.upsert", ({ messages, type }) => {
+    if (s.gen !== gen) return;
     s.lastRecv = Date.now();   // hay actividad → sesión viva (watchdog anti-cuelgue-silencioso)
     for (const m of messages) {
       const jid = m.key?.remoteJid;
@@ -330,9 +356,19 @@ async function startSession(acc) {
       // CANDADO ANTI-LOOP: al reconectar, WhatsApp reenvía historial. Si reprocesáramos esos
       // mensajes, el bot se contestaría a sí mismo una y otra vez. Solo procesamos lo que llegó
       // DESPUÉS de que arrancó esta sesión (con 60s de margen).
+      // Antes el ancla era s.startedAt, que se pisa en CADA reconexion: con un bucle de
+      // reconexiones los mensajes REALES quedaban "viejos" y el bot no contestaba nunca.
+      // Ahora el ancla es el arranque del PROCESO (fijo) + candado por id (no procesar 2 veces).
       const _ts = Number(m.messageTimestamp) || 0;
-      const _fresco = _ts * 1000 > ((s.startedAt || 0) - 60000);
-      const paso = _fresco && (esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe);
+      const _fresco = _ts * 1000 > (PROC_START - 60000);
+      const _id = m.key?.id || "";
+      s.vistos = s.vistos || new Set();
+      const _repetido = _id ? s.vistos.has(_id) : false;
+      if (_id) {
+        s.vistos.add(_id);
+        if (s.vistos.size > 4000) s.vistos = new Set(Array.from(s.vistos).slice(-2000));
+      }
+      const paso = _fresco && !_repetido && (esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe);
       if (HOOK && type === "notify" && paso && (texto || (esGrupo && mk2))) {
         notifyHook({
           acc,
@@ -582,14 +618,13 @@ setInterval(() => {
       // socket "abierto" pero WhatsApp dejó de mandar todo). Cubre la muerte silenciosa de las 8-9am.
       const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 7 * 60 * 1000;
       if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda)) {
-        try { s.sock?.end?.(new Error("watchdog: socket muerto/zombie")); } catch {}
         s.status = "connecting";
-        startSession(acc).catch(() => {});
+        reconectar(acc, s, 100);
         continue;
       }
       // Ping activo: mantiene la conexión caliente y fuerza round-trip con el server cada vuelta.
       if (s.status === "connected" && !s.starting) { try { s.sock?.sendPresenceUpdate?.("available"); } catch {} }
-      if (s.status !== "connected" && !s.starting) startSession(acc).catch(() => {});
+      if (s.status !== "connected" && !s.starting) reconectar(acc, s, 100);
     }
     // cuenta con creds en disco que quedó fuera de memoria → levantarla
     for (const d of fs.readdirSync(DATA_DIR, { withFileTypes: true })) {
