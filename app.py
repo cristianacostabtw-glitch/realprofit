@@ -6992,6 +6992,15 @@ def _and_toks(s):
     return [w for w in _and_norm(s).split() if w]
 
 
+def _and_nro(s):
+    """ALTURA de la calle = el ÚLTIMO número del nombre. En '25 DE MAYO 383' la altura es 383;
+    el 25 es parte del NOMBRE de la calle. Comparar TODOS los dígitos como conjunto hacía que
+    'AV 25 DE MAYO 383' matcheara con 'AVENIDA 25 DE MAYO 2036' por el 25 en común → el paquete
+    se iba a otra cuadra y otra localidad (pasó: pedido #3086, Rojas)."""
+    ns = [w for w in _and_toks(s) if w.isdigit()]
+    return ns[-1] if ns else ""
+
+
 def _and_cp4(x):
     m = _re_and.search(r"(\d{4})", str(x or ""))
     return m.group(1) if m else ""
@@ -7081,7 +7090,7 @@ def _and_suc_excel(zeny, sucs):
     es_hop = "HOP" in str(zeny).upper()
     ccity, cdet = _and_partes(zeny)
     q = ccity | cdet
-    qn = {w for w in q if w.isdigit()}
+    qnro = _and_nro(zeny)
     qw = {w for w in q if not w.isdigit() and len(w) >= 4}
     ccity_w = {w for w in ccity if not w.isdigit()}
     best, bs, bnum, bword = None, -1, False, False
@@ -7090,9 +7099,8 @@ def _and_suc_excel(zeny, sucs):
             continue
         ocity, odet = _and_partes_of(o)
         ts = ocity | odet
-        nums = {w for w in ts if w.isdigit()}
         sc = sum(len(w) for w in (q & ts))
-        numok = bool(qn and nums and qn & nums)
+        numok = bool(qnro and _and_nro(o) == qnro)     # MISMA altura, no "algún número en común"
         if numok:
             sc += 25
         if ccity_w and ccity_w <= ocity:      # la ciudad del cliente coincide con la ciudad oficial
@@ -7108,9 +7116,9 @@ def _and_suc_live(zeny, cp):
     hd = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.andreani.com/buscar-sucursal"}
     es_hop = "HOP" in str(zeny).upper()
     addr = _and_mid(zeny)
-    qn = {w for w in _and_toks(addr) if w.isdigit()}
+    nro = _and_nro(addr)                       # altura exacta que pidió el cliente
     qw = {w for w in _and_toks(addr) if not w.isdigit() and len(w) >= 4}
-    if not qn:
+    if not nro:
         return None
     for q in [f"{addr}, {cp}", addr]:
         try:
@@ -7132,8 +7140,10 @@ def _and_suc_live(zeny, cp):
                 if es_hop and "hop" not in nom.lower():
                     continue
                 nt = set(_and_toks(nom))
-                if (qn & {w for w in nt if w.isdigit()}) and (qw & {w for w in nt if len(w) >= 4}):
-                    return nom
+                # La ALTURA tiene que ser LA MISMA, no "algún número en común", y el nombre
+                # resultante tiene que estar en el desplegable de Andreani. Si no, None → REVISAR.
+                if _and_nro(nom) == nro and (qw & {w for w in nt if len(w) >= 4}):
+                    return _and_suc_exacto(nom)
     return None
 
 
