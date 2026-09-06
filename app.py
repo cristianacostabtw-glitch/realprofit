@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-05-gastos-total"})
+    return jsonify({"ok": True, "v": "2026-09-05-gastos-neto"})
 
 
 _KPI_DBG = {}
@@ -6043,13 +6043,20 @@ def _gastos_formato(sess, sid, tab):
                   json={"requests": [
                       {"repeatCell": {"range": col(21), "cell": fmt,                     # V = monto
                                       "fields": "userEnteredFormat.numberFormat"}},
-                      {"repeatCell": {"range": col(23), "cell": fmt,                     # X = total
+                      {"repeatCell": {"range": col(23), "cell": fmt,                     # X = total y resultado
                                       "fields": "userEnteredFormat.numberFormat"}},
                   ]}, timeout=(15, 60))
-        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s!X%d"
-                  % (sid, _uq_gastos(tab), GASTOS_FILA0),
-                  params={"valueInputOption": "USER_ENTERED"},
-                  json={"values": [["=SUM(V%d:V200)" % GASTOS_FILA0]]}, timeout=(15, 60))
+        # X49 = total de gastos · W51/X51 = lo que queda despues de restarlos.
+        # OJO con las columnas: H = Total Facturado (bruto, antes de comisiones) y
+        # J = Ingreso Limpio (el neto neto que ACREDITA MercadoPago, ya con cuotas y comisiones
+        # descontadas). El "queda" se calcula sobre J, no sobre H.
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                  json={"valueInputOption": "USER_ENTERED", "data": [
+                      {"range": "%s!X%d" % (tab, GASTOS_FILA0),
+                       "values": [["=SUM(V%d:V200)" % GASTOS_FILA0]]},
+                      {"range": "%s!W%d:X%d" % (tab, GASTOS_FILA0 + 2, GASTOS_FILA0 + 2),
+                       "values": [["Neto MP - Gastos", "=J40-X%d" % GASTOS_FILA0]]},
+                  ]}, timeout=(15, 60))
     except Exception:
         pass
 
