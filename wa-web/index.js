@@ -217,8 +217,11 @@ async function startSession(acc) {
 
   // Señal de VIDA: cualquier evento entrante refresca lastRecv (para cazar la conexión "zombie").
   const bump = () => { s.lastRecv = Date.now(); };
-  for (const ev of ["messages.update", "message-receipt.update", "presence.update", "chats.update", "chats.upsert", "contacts.update"]) {
-    try { sock.ev.on(ev, bump); } catch {}
+  s.ev = s.ev || {};
+  for (const ev of ["messages.update", "message-receipt.update", "presence.update", "chats.update",
+                    "chats.upsert", "chats.delete", "contacts.update", "contacts.upsert",
+                    "groups.update", "blocklist.set", "call"]) {
+    try { sock.ev.on(ev, () => { bump(); s.ev[ev] = (s.ev[ev] || 0) + 1; }); } catch {}
   }
 
   sock.ev.on("connection.update", async (u) => {
@@ -444,6 +447,7 @@ app.get("/diag", (_req, res) => {
       creds_guardados: s.credsN || 0,
       creds_error: s.credsErr || null,
       historial_recibido: s.histN || 0,
+      eventos: s.ev || {},
       auth: (() => {
         try {
           const dir = accDir(acc);
