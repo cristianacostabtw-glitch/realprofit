@@ -4193,7 +4193,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-sucursales"})
+    return jsonify({"ok": True, "v": "2026-09-06-wpp-batch"})
 
 
 _KPI_DBG = {}
@@ -8006,7 +8006,20 @@ def _wa_seg_all() -> dict:
 
 
 def _wa_seg_marcar(email, pedido) -> None:
-    d = _wa_seg_all(); d.setdefault(email, {})[str(pedido)] = _wa_now()
+    _wa_seg_marcar_varios(email, [pedido])
+
+
+def _wa_seg_marcar_varios(email, pedidos) -> None:
+    """Marca VARIOS pedidos como ya avisados por WhatsApp con UNA sola escritura.
+    Antes se llamaba una vez por mensaje y cada llamada leía y reescribía el archivo entero:
+    mandar 183 seguimientos hacía 183 lecturas + 183 escrituras."""
+    if not pedidos:
+        return
+    d = _wa_seg_all()
+    m = d.setdefault(email, {})
+    ahora = _wa_now()
+    for x in pedidos:
+        m[str(x)] = ahora
     _WA_SEG_ENV.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
 
 
@@ -8615,6 +8628,7 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
     chats = _wa_chats_all()
     env = salt = fail = 0
     errores = []
+    marcar = []
     for p in pedidos:
         num = str(p.get("num"))
         if (not force) and wpp_env.get(num):
@@ -8661,8 +8675,9 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         conv["messages"].append({"dir": "out", "text": disp, "ts": _wa_now(),
                                  "type": "template", "id": mid, "status": "sent"})
         conv["updated"] = _wa_now()
-        _wa_seg_marcar(email, num)
+        marcar.append(num)
         env += 1
+    _wa_seg_marcar_varios(email, marcar)
     _wa_save_chats(chats)
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
