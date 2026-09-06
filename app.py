@@ -3251,8 +3251,11 @@ def _mp_freeze_end(email):
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
 IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
 FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
-INSUMOS_ORDEN = 200      # costo de insumos/packaging por pedido (fijo)
-OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 1000/pedido: fulfillment + insumos (aparte del envío)
+# INSUMOS en 0 a proposito: el dueno carga los insumos/packaging UNA VEZ AL MES como gasto real
+# (bloque GASTOS de la planilla, por el bot de WhatsApp). Si ademas se cobraran $200 por pedido
+# aca, se contarian dos veces. Queda $800/pedido = solo el armado, igual que en la planilla.
+INSUMOS_ORDEN = 0
+OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 800/pedido (aparte del envío)
 
 # === Costo de envío REAL por zona (Andreani, cuenta VisionPure, origen Suc. Merlo, CON descuento) ===
 # Cotizado 2026-08-15 en pymes.andreani.com. 4 zonas de tarifa. sucursal / domicilio en $.
@@ -4190,7 +4193,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-05-costo-oxido"})
+    return jsonify({"ok": True, "v": "2026-09-05-fulfill-800"})
 
 
 _KPI_DBG = {}
@@ -8874,7 +8877,7 @@ def _shopify_resumen(email, desde, hasta):
     r["envio_monto"] = round(envio_monto, 2)
     r["envio_zona_monto"] = round(envio_zona, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
-    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($800) + insumos ($200) por pedido
+    oper_monto = OPER_ORDEN * ordenes  # fulfillment $800/pedido (insumos van aparte, como gasto mensual)
     r["oper_monto"] = round(oper_monto, 2)
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     # Break-even: contribución ANTES de ads (lo que queda para pagar publicidad).
@@ -8998,7 +9001,7 @@ def _tn_resumen(email, desde, hasta):
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
     comision_monto = mp_costo + iibb_monto + tienda_monto
-    oper_monto = OPER_ORDEN * ordenes  # fulfillment ($800) + insumos ($200) por pedido
+    oper_monto = OPER_ORDEN * ordenes  # fulfillment $800/pedido (insumos van aparte, como gasto mensual)
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
