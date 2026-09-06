@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-05-gastos-neto"})
+    return jsonify({"ok": True, "v": "2026-09-05-gastos-solo-total"})
 
 
 _KPI_DBG = {}
@@ -6046,16 +6046,16 @@ def _gastos_formato(sess, sid, tab):
                       {"repeatCell": {"range": col(23), "cell": fmt,                     # X = total y resultado
                                       "fields": "userEnteredFormat.numberFormat"}},
                   ]}, timeout=(15, 60))
-        # X49 = total de gastos · W51/X51 = lo que queda despues de restarlos.
-        # OJO con las columnas: H = Total Facturado (bruto, antes de comisiones) y
-        # J = Ingreso Limpio (el neto neto que ACREDITA MercadoPago, ya con cuotas y comisiones
-        # descontadas). El "queda" se calcula sobre J, no sobre H.
+        # X49 = TOTAL de gastos, como formula: asi suma tambien lo que se carga a mano.
+        # NADA MAS que eso. El dueno resta los gastos el mismo dentro del total de la columna
+        # (J40 = SUMA(J6:J36)-X49), asi que cualquier otra celda que vuelva a restarlos aca
+        # abajo los descuenta DOS veces (paso: daba $23.630.434 en vez de $25.273.772).
         sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
                   json={"valueInputOption": "USER_ENTERED", "data": [
                       {"range": "%s!X%d" % (tab, GASTOS_FILA0),
                        "values": [["=SUM(V%d:V200)" % GASTOS_FILA0]]},
-                      {"range": "%s!W%d:X%d" % (tab, GASTOS_FILA0 + 2, GASTOS_FILA0 + 2),
-                       "values": [["Neto MP - Gastos", "=J40-X%d" % GASTOS_FILA0]]},
+                      {"range": "%s!W%d:X%d" % (tab, GASTOS_FILA0 + 2, GASTOS_FILA0 + 4),
+                       "values": [["", ""], ["", ""], ["", ""]]},   # limpio la resta duplicada
                   ]}, timeout=(15, 60))
     except Exception:
         pass
