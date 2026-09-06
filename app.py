@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-05-gastos-formato"})
+    return jsonify({"ok": True, "v": "2026-09-05-gastos-total"})
 
 
 _KPI_DBG = {}
@@ -6026,20 +6026,30 @@ def _gastos_escribir(email, sid, items):
 
 
 def _gastos_formato(sess, sid, tab):
-    """Deja la columna del monto (V) como plata: $ 1.234.567. El monto se sigue GUARDANDO como
-    numero (para poder sumarlo); esto es solo el formato de la celda. Se aplica a TODO el bloque
-    de GASTOS, asi los que ya estaban cargados en crudo tambien quedan bien."""
+    """Deja el bloque de GASTOS presentable: la columna del monto (V) con formato de plata
+    ($ 1.234.567) y el TOTAL en X49. El monto se sigue GUARDANDO como numero (para poder
+    sumarlo); el formato es solo de la celda, y se aplica a TODO el bloque asi los que ya
+    estaban cargados en crudo tambien quedan bien.
+    El total va como FORMULA (=SUMA de la columna V), no como numero calculado por el bot: asi
+    tambien suma los gastos que el dueno carga a mano, sin esperar a que corra nada."""
     try:
         gid = _fin_tabs(sess, sid).get(tab)
         if gid is None:
             return
+        fmt = {"userEnteredFormat": {"numberFormat": {"type": "CURRENCY", "pattern": "\"$\" #,##0"}}}
+        col = lambda i: {"sheetId": gid, "startRowIndex": GASTOS_FILA0 - 1, "endRowIndex": 200,
+                         "startColumnIndex": i, "endColumnIndex": i + 1}
         sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s:batchUpdate" % sid,
-                  json={"requests": [{"repeatCell": {
-                      "range": {"sheetId": gid, "startRowIndex": GASTOS_FILA0 - 1, "endRowIndex": 200,
-                                "startColumnIndex": 21, "endColumnIndex": 22},          # columna V
-                      "cell": {"userEnteredFormat": {"numberFormat": {
-                          "type": "CURRENCY", "pattern": "\"$\" #,##0"}}},
-                      "fields": "userEnteredFormat.numberFormat"}}]}, timeout=(15, 60))
+                  json={"requests": [
+                      {"repeatCell": {"range": col(21), "cell": fmt,                     # V = monto
+                                      "fields": "userEnteredFormat.numberFormat"}},
+                      {"repeatCell": {"range": col(23), "cell": fmt,                     # X = total
+                                      "fields": "userEnteredFormat.numberFormat"}},
+                  ]}, timeout=(15, 60))
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s!X%d"
+                  % (sid, _uq_gastos(tab), GASTOS_FILA0),
+                  params={"valueInputOption": "USER_ENTERED"},
+                  json={"values": [["=SUM(V%d:V200)" % GASTOS_FILA0]]}, timeout=(15, 60))
     except Exception:
         pass
 
