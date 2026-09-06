@@ -200,7 +200,13 @@ async function startSession(acc) {
   s.sock = sock;
   s.lastRecv = Date.now();
 
-  sock.ev.on("creds.update", saveCreds);
+  sock.ev.on("creds.update", async () => {
+    s.credsN = (s.credsN || 0) + 1;
+    try { await saveCreds(); } catch (e) { s.credsErr = String(e && e.message || e).slice(0, 160); }
+  });
+  // Baileys pide re-sincronizar el app-state cuando no encuentra/no puede guardar sus claves.
+  // Contamos los history.set para ver si el telefono esta re-enviando el historial en bucle.
+  try { sock.ev.on("messaging-history.set", () => { s.histN = (s.histN || 0) + 1; }); } catch {}
 
   // Señal de VIDA: cualquier evento entrante refresca lastRecv (para cazar la conexión "zombie").
   const bump = () => { s.lastRecv = Date.now(); };
@@ -428,9 +434,23 @@ app.get("/diag", (_req, res) => {
       ws_muerto: wsDead(s.sock),
       reconexion_pendiente: !!s._rt,
       vinculado: s.me ? String(s.me.id || "").split(":")[1] : null,   // nº de dispositivo
+      creds_guardados: s.credsN || 0,
+      creds_error: s.credsErr || null,
+      historial_recibido: s.histN || 0,
+      auth: (() => {
+        try {
+          const dir = accDir(acc);
+          const fs2 = fs.readdirSync(dir);
+          const keys = fs2.filter((f) => f.startsWith("app-state-sync-key")).length;
+          const st = fs.statSync(path.join(dir, "creds.json"));
+          return { archivos: fs2.length, app_state_keys: keys, creds_seg: Math.round((now - st.mtimeMs) / 1000) };
+        } catch (e) { return { error: String(e && e.message || e).slice(0, 120) }; }
+      })(),
     });
   }
-  res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), sesiones: out });
+  let disco = "ok";
+  try { fs.writeFileSync(path.join(DATA_DIR, ".probe"), String(now)); } catch (e) { disco = String(e && e.message || e).slice(0, 140); }
+  res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), disco, sesiones: out });
 });
 
 app.post("/connect", async (req, res) => {
