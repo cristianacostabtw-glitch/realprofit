@@ -175,7 +175,14 @@ async function startSession(acc) {
   const dir = accDir(acc);
   fs.mkdirSync(dir, { recursive: true });
   const { state, saveCreds } = await useMultiFileAuthState(dir);
-  const { version } = await fetchLatestBaileysVersion();
+  // NO usamos fetchLatestBaileysVersion(): trae la ultima version de WhatsApp Web, que puede ser
+  // mas nueva que la que soporta el Baileys instalado. Con esa combinacion el telefono muestra el
+  // dispositivo vinculado pero la sincronizacion no cierra nunca (reintenta cada ~1s). Dejando que
+  // Baileys use SU version, el pairing cierra bien.
+  let version = null;
+  if (String(process.env.WA_VERSION_LATEST || "") === "1") {
+    try { ({ version } = await fetchLatestBaileysVersion()); } catch {}
+  }
 
   s = s || { chats: new Map(), msgs: new Map() };
   if (!s.msgs) s.msgs = new Map();
@@ -188,7 +195,7 @@ async function startSession(acc) {
   const gen = (s.gen = (s.gen || 0) + 1);   // solo el socket de ESTA generacion toca el estado
 
   const sock = makeWASocket({
-    version,
+    ...(version ? { version } : {}),
     auth: state,
     logger: log,
     printQRInTerminal: false,
