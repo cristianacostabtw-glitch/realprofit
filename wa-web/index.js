@@ -361,7 +361,14 @@ async function startSession(acc) {
       if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) continue;
       pushAny(m);   // texto o medio (baja fotos/audios/videos en background)
       // aviso a RealProfit: mensaje ENTRANTE nuevo (no míos), para que el bot decida si responde
-      const texto = m.message?.conversation || m.message?.extendedTextMessage?.text || "";
+      // La LEYENDA de una foto/video/PDF ES texto del mensaje: si no se manda, el bot pregunta
+      // "de que es?" cuando el que mando el comprobante ya lo habia escrito ahi mismo.
+      const texto = m.message?.conversation
+        || m.message?.extendedTextMessage?.text
+        || m.message?.imageMessage?.caption
+        || m.message?.videoMessage?.caption
+        || m.message?.documentMessage?.caption
+        || "";
       const esGrupo = jid.endsWith("@g.us");
       const mk2 = mediaKind(m);
       // En 1:1 avisamos solo si hay TEXTO (como siempre). En el grupo de gastos también avisamos
