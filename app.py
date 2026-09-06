@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-05-gastos-solo-total"})
+    return jsonify({"ok": True, "v": "2026-09-05-costo-oxido"})
 
 
 _KPI_DBG = {}
@@ -10137,9 +10137,18 @@ def _fin_datos_dia(email, f) -> dict:
     # negativas (pasó: -36%, -56%), porque el ingreso y el facturado quedan en marcos distintos.
     mp = {"ok": False, "bruto": 0.0, "pagos": int(raw.get("mp_match") or 0)}
     limpio = fact - float(raw.get("mp_costo_real") or 0)
+    # OXIDO NITRICO: va de REGALO con el pack de 6 potes, pero igual figura como un renglon mas
+    # en la orden de Shopify. Se cuenta en UNIDADES (ya venia contado) y en COSTO, pero a SU
+    # precio (M49), no al del NAD (N49) — si no, cada regalo se costea de mas.
+    ox = 0
+    for _p in (res.get("prod") or []):
+        _n = str(_p.get("nombre") or "").lower()
+        if "xido" in _n and "trico" in _n:
+            ox += int(_p.get("unidades") or 0)
     return {"fecha": d,
             "ventas": int(raw.get("ordenes") or 0),
             "unidades": int(raw.get("unidades") or 0),
+            "unidades_ox": ox,
             "facturado": round(fact, 2),
             "ingreso_limpio": round(limpio, 2),
             "mp_bruto": mp.get("bruto", 0.0), "mp_pagos": mp.get("pagos", 0),
@@ -10295,14 +10304,20 @@ def _fin_cargar_dia(email, f) -> dict:
             extra.append({"range": "%s!%s%d" % (tab, col, fila), "values": [[0]]})
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "RAW", "data": extra}, timeout=(15, 90))
-    # COSTO MERCADERIA = UNIDADES × precio. Dos arreglos sobre la planilla original:
+    # COSTO MERCADERIA = UNIDADES × precio, PARTIDO POR PRODUCTO. Arreglos sobre la planilla:
     #  1) usaba N49/N50/N51 (referencia relativa que se desliza a celdas vacías → costo $0);
-    #  2) multiplicaba por D (PEDIDOS), pero si un pedido lleva 3 potes el costo son 3.
-    # Queda "=E{fila}*$N$49" → unidades vendidas × precio fijo.
+    #  2) multiplicaba por D (PEDIDOS), pero si un pedido lleva 3 potes el costo son 3;
+    #  3) costeaba TODO a $N$49 (precio del NAD), incluido el Óxido Nítrico que va de regalo
+    #     con el pack de 6 → cada regalo se cargaba $6.300 en vez de $5.500.
+    # Queda "=<potes NAD>*$N$49 + <oxido>*$M$49": las cantidades salen de Shopify y los precios
+    # siguen en la planilla, así se pueden cambiar sin tocar código.
+    _ox = int(dat.get("unidades_ox") or 0)
+    _nad = max(int(dat.get("unidades") or 0) - _ox, 0)
+    _fx = ("=%d*$N$49+%d*$M$49" % (_nad, _ox)) if _ox else ("=%d*$N$49" % _nad)
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "USER_ENTERED",
                     "data": [{"range": "%s!F%d" % (tab, fila),
-                              "values": [["=E%d*$N$49" % fila]]}]}, timeout=(15, 60))
+                              "values": [[_fx]]}]}, timeout=(15, 60))
     dat.update({"ok": True, "pestana": tab, "fila": fila, "regimen": regimen})
     return dat
 
