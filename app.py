@@ -4193,7 +4193,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-concepto"})
+    return jsonify({"ok": True, "v": "2026-09-06-sucursales"})
 
 
 _KPI_DBG = {}
@@ -6976,8 +6976,11 @@ _AND_CFG = {"cpidx": None, "sucs": None}
 
 
 def _and_norm(s):
+    """Normaliza para COMPARAR (no para escribir). Colapsa espacios y recorta las puntas: en la
+    lista oficial de Andreani hay 52 sucursales guardadas CON UN ESPACIO AL FINAL, y sin esto
+    'RIO GRANDE ' y 'RIO GRANDE' quedaban como dos claves distintas y no matcheaban."""
     s = _ud_and.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
-    return _re_and.sub(r"[^A-Z0-9 ]", " ", s.upper())
+    return _re_and.sub(r"\s+", " ", _re_and.sub(r"[^A-Z0-9 ]", " ", s.upper())).strip()
 
 
 def _and_normP(s):
@@ -7009,7 +7012,11 @@ def _and_cfg(wb):
         try:
             for row in wb["Configuracion"].iter_rows(min_row=2, values_only=True):
                 if row and row[0]:
-                    sucs.append(str(row[0]).strip())
+                    # TAL CUAL, sin .strip(): Andreani compara EXACTO contra su desplegable, y 52
+                    # de sus sucursales tienen un espacio al final ('RIO GRANDE ', 'PUNTO ANDREANI
+                    # HOP AVENIDA DOCTOR RICARDO BALBIN '). Sacárselo hacía que rebotara la carga
+                    # masiva con "El campo ingresado debe ser de la lista desplegable".
+                    sucs.append(str(row[0]))
                 if row and len(row) > 4 and row[4]:
                     v = str(row[4]).strip()
                     cpidx.setdefault(_re_and.sub(r"\D", "", v.split("/")[-1]), []).append(v)
