@@ -4190,7 +4190,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-04-seg-cache"})
+    return jsonify({"ok": True, "v": "2026-09-05-gastos-formato"})
 
 
 _KPI_DBG = {}
@@ -6021,7 +6021,27 @@ def _gastos_escribir(email, sid, items):
             fila += 1
         sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
                   json={"valueInputOption": "RAW", "data": data}, timeout=(15, 90))
+        _gastos_formato(sess, sid, tab)
     return puestos
+
+
+def _gastos_formato(sess, sid, tab):
+    """Deja la columna del monto (V) como plata: $ 1.234.567. El monto se sigue GUARDANDO como
+    numero (para poder sumarlo); esto es solo el formato de la celda. Se aplica a TODO el bloque
+    de GASTOS, asi los que ya estaban cargados en crudo tambien quedan bien."""
+    try:
+        gid = _fin_tabs(sess, sid).get(tab)
+        if gid is None:
+            return
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s:batchUpdate" % sid,
+                  json={"requests": [{"repeatCell": {
+                      "range": {"sheetId": gid, "startRowIndex": GASTOS_FILA0 - 1, "endRowIndex": 200,
+                                "startColumnIndex": 21, "endColumnIndex": 22},          # columna V
+                      "cell": {"userEnteredFormat": {"numberFormat": {
+                          "type": "CURRENCY", "pattern": "\"$\" #,##0"}}},
+                      "fields": "userEnteredFormat.numberFormat"}}]}, timeout=(15, 60))
+    except Exception:
+        pass
 
 
 def _uq_gastos(s):
@@ -10223,7 +10243,8 @@ def _fin_tab_mes(sess, sid, f) -> str:
 
 
 def _fin_cargar_dia(email, f) -> dict:
-    """Calcula el día y lo escribe en la fila que le toca. Idempotente (se puede repetir)."""
+    """Calcula el día y lo escribe en la fila que le toca. Idempotente (se puede repetir).
+    De paso deja el formato de plata en la columna de GASTOS (se auto-repara cada noche)."""
     conf = (_fin_conf().get(email) or {})
     sid = conf.get("sheet")
     if not sid:
@@ -10231,6 +10252,7 @@ def _fin_cargar_dia(email, f) -> dict:
     dat = _fin_datos_dia(email, f)
     sess = _fin_sess()
     tab = _fin_tab_mes(sess, sid, f)
+    _gastos_formato(sess, sid, tab)      # deja la columna de GASTOS como plata ($ 1.234.567)
     fila = f.day + _FIN_FILA0
     # RAW: números y textos tal cual (no pisa el formato de fecha de la celda)
     r = sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
