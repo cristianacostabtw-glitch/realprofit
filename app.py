@@ -4193,7 +4193,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-sueldos"})
+    return jsonify({"ok": True, "v": "2026-09-06-concepto"})
 
 
 _KPI_DBG = {}
@@ -5954,6 +5954,9 @@ REGLAS
 - "otro": charla, preguntas o cualquier cosa que no sea un gasto ni una confirmación.
 - MONTOS en número puro, sin puntos ni símbolos. "45 lucas"/"45 mil"/"45k"/"45.000" = 45000.
 - Si el mensaje NO dice un monto claro, NO inventes: dejá "gastos" vacío y explicá en "nota" qué falta.
+- EXCEPCIÓN: si abajo te digo que hay un comprobante esperando concepto, un mensaje que solo
+  nombra el gasto ("subscripciones", "nafta", "pago puntos ia") ES ese concepto → devolvé
+  tipo "gastos" con {"concepto":"...","monto":0}.
 - Si no dice fecha, usá la fecha de HOY que te paso abajo.
 - El concepto va corto y claro, con mayúscula inicial: "Nafta reparto", "Cajas", "Pago Andreani".
 - NO son gastos para cargar (devolvé tipo "otro" y avisá en "nota"): publicidad de Meta/Facebook/ads.
@@ -6329,8 +6332,14 @@ def _gastos_hook(email, d) -> bool:
     if tipo == "gastos":
         # si había un pendiente sin concepto, este mensaje probablemente sea ESE concepto
         _sin = [p for p in (st.get("pend") or []) if not (p.get("concepto") or "").strip()]
-        if _sin and len(r.get("gastos") or []) == 1 and not float((r.get("gastos") or [{}])[0].get("monto") or 0):
-            _sin[0]["concepto"] = (r["gastos"][0].get("concepto") or texto)[:60]
+        # OJO: el cerebro devuelve la lista VACIA cuando el mensaje no dice monto (se lo pide el
+        # prompt). Si ademas hay un comprobante esperando concepto, ESTE mensaje es el concepto.
+        # Antes se exigia que la lista trajera 1 item -> con lista vacia no matcheaba y el bot
+        # volvia a pedir el monto que ya tenia (paso con "subscripciones amigo").
+        if _sin and not any(float(g.get("monto") or 0) > 0 for g in (r.get("gastos") or [])):
+            _c = next((str(g.get("concepto") or "").strip() for g in (r.get("gastos") or [])
+                       if str(g.get("concepto") or "").strip()), "")
+            _sin[0]["concepto"] = (_c or texto or "Gasto")[:60]
             _gastos_save(todo)
             responder("📝 *%s* · %s · %s\n¿Lo cargo? (sí / no)"
                       % (_sin[0]["concepto"], _gastos_plata(_sin[0].get("monto")), _sin[0].get("fecha")))
