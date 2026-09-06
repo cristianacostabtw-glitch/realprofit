@@ -4193,7 +4193,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-05-fulfill-800"})
+    return jsonify({"ok": True, "v": "2026-09-06-sueldos"})
 
 
 _KPI_DBG = {}
@@ -5945,7 +5945,7 @@ _GASTOS_SISTEMA = """Sos el asistente que registra los GASTOS de la marca NoxaLa
 Te llega un mensaje de un grupo de WhatsApp del equipo.
 
 Respondé SOLO un JSON válido, sin texto alrededor y sin ```:
-{"tipo":"gastos|confirmar|rechazar|otro","gastos":[{"concepto":"...","monto":0,"fecha":"YYYY-MM-DD"}],"nota":""}
+{"tipo":"gastos|sueldo|confirmar|rechazar|otro","gastos":[{"concepto":"...","monto":0,"fecha":"YYYY-MM-DD"}],"sueldo":{"persona":"...","monto":0,"fecha":"YYYY-MM-DD"},"nota":""}
 
 REGLAS
 - "confirmar": el mensaje acepta lo propuesto (si, sí, dale, ok, cargalo, correcto, va, todos, sí a todo).
@@ -5956,8 +5956,11 @@ REGLAS
 - Si el mensaje NO dice un monto claro, NO inventes: dejá "gastos" vacío y explicá en "nota" qué falta.
 - Si no dice fecha, usá la fecha de HOY que te paso abajo.
 - El concepto va corto y claro, con mayúscula inicial: "Nafta reparto", "Cajas", "Pago Andreani".
-- NO son gastos para cargar (devolvé tipo "otro" y avisá en "nota"): publicidad de Meta/Facebook/ads,
-  y pagos de sueldos. Esos se registran por otro lado.
+- NO son gastos para cargar (devolvé tipo "otro" y avisá en "nota"): publicidad de Meta/Facebook/ads.
+- "sueldo": el mensaje es un PAGO DE SUELDO a una persona del equipo ("sueldo otty", "pago agus",
+  "le pagué a agus att", "transferencia sueldo oty"). NO va en gastos: va en su propio bloque.
+  Devolvé "sueldo" con la persona TAL CUAL la nombran (no la corrijas) y el monto.
+  Si hay una foto de transferencia, el monto sale de ahí.
 """
 
 
@@ -6064,6 +6067,95 @@ def _gastos_formato(sess, sid, tab):
         pass
 
 
+SUELDOS_FILA0 = 48        # fila del rótulo "PAGOS SUELDOS" (debajo van las personas)
+
+
+def _sueldo_domingo(f):
+    """Pagan los DOMINGOS. Devuelve (domingo, nº de domingo del mes 1..5).
+    Si el pago cae otro día, se toma el domingo MÁS CERCANO (jue/vie/sáb → el que viene)."""
+    off = (f.weekday() + 1) % 7            # días desde el domingo (lunes=1 ... sábado=6)
+    dom = f - _dt.timedelta(days=off) if off < 4 else f + _dt.timedelta(days=7 - off)
+    n, d = 0, _dt.date(dom.year, dom.month, 1)
+    while d <= dom:
+        if d.weekday() == 6:
+            n += 1
+        d += _dt.timedelta(days=1)
+    return dom, n
+
+
+def _sueldo_destino(sess, sid, tab, persona, f):
+    """Ubica la celda del bloque PAGOS SUELDOS: fila = la persona, columna = la SEMANA del domingo.
+    Lee los rótulos de la planilla (no los hardcodea), así aguanta que se agregue o renombre gente.
+    Devuelve dict con celda/persona/semana/domingo/actual, o {"error": "..."} explicando qué pasó."""
+    import difflib, unicodedata
+    def norm(x):
+        x = unicodedata.normalize("NFD", str(x or "")).encode("ascii", "ignore").decode().lower()
+        return "".join(c for c in x if c.isalnum())
+    r = sess.get("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s!B%d:H%d"
+                 % (sid, _uq_gastos(tab), SUELDOS_FILA0, SUELDOS_FILA0 + 8), timeout=(15, 45))
+    filas = (r.json().get("values") or []) if r.status_code == 200 else []
+    if not filas:
+        return {"error": "no pude leer el bloque PAGOS SUELDOS de la planilla"}
+    # columnas: en la fila del rótulo busco "SEMANA 1..5"  (B=índice 0 → columna real = B + i)
+    cols = {}
+    for i, v in enumerate(filas[0]):
+        t = norm(v)
+        if t.startswith("semana") and t[6:].isdigit():
+            cols[int(t[6:])] = chr(ord("B") + i)
+    # filas: las personas van debajo del rótulo
+    gente = {}
+    for j, fila in enumerate(filas[1:], start=1):
+        nom = (fila[0] if fila else "") or ""
+        if nom.strip():
+            gente[norm(nom)] = (SUELDOS_FILA0 + j, nom.strip())
+    if not gente:
+        return {"error": "no encontré ninguna persona en el bloque PAGOS SUELDOS"}
+    q = norm(persona)
+    hit = q if q in gente else None
+    if not hit:
+        cand = difflib.get_close_matches(q, list(gente), n=1, cutoff=0.6)
+        hit = cand[0] if cand else None
+    if not hit:
+        return {"error": "no sé quién es \"%s\". En la planilla están: %s"
+                         % (persona, ", ".join(v[1] for v in gente.values()))}
+    dom, sem = _sueldo_domingo(f)
+    if sem not in cols:
+        return {"error": "el pago cae en el domingo %s (semana %d) y en la planilla solo hay %s"
+                         % (dom.strftime("%d/%m"), sem, ", ".join("SEMANA %d" % k for k in sorted(cols)))}
+    fila, nombre = gente[hit]
+    celda = "%s%d" % (cols[sem], fila)
+    ra = sess.get("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s!%s"
+                  % (sid, _uq_gastos(tab), celda), timeout=(15, 45))
+    act = ""
+    try:
+        act = ((ra.json().get("values") or [[""]])[0] or [""])[0]
+    except Exception:
+        act = ""
+    return {"celda": celda, "persona": nombre, "semana": sem, "domingo": dom, "tab": tab,
+            "actual": str(act or "").strip()}
+
+
+def _sueldo_escribir(email, sid, it):
+    """Escribe UN pago de sueldo en su celda. Devuelve el destino resuelto."""
+    sess = _fin_sess()
+    try:
+        f = _dt.date.fromisoformat(str(it.get("fecha"))[:10])
+    except Exception:
+        f = _fin_hoy_ar()
+    # OJO: la pestaña es la del DOMINGO al que corresponde el pago, no la del día que se pagó.
+    # Un pago el martes 01/09 pertenece al domingo 30/08 → va en la pestaña de AGOSTO.
+    dom, _ = _sueldo_domingo(f)
+    tab = _fin_tab_mes(sess, sid, dom)
+    d = _sueldo_destino(sess, sid, tab, it.get("persona") or "", f)
+    if d.get("error"):
+        raise RuntimeError(d["error"])
+    sess.put("https://sheets.googleapis.com/v4/spreadsheets/%s/values/%s!%s"
+             % (sid, _uq_gastos(tab), d["celda"]),
+             params={"valueInputOption": "RAW"},
+             json={"values": [[float(it.get("monto") or 0)]]}, timeout=(15, 45))
+    return d
+
+
 def _uq_gastos(s):
     from urllib.parse import quote
     return quote(s, safe="")
@@ -6137,6 +6229,25 @@ def _gastos_hook(email, d) -> bool:
         if not sid:
             responder("No tengo configurada la planilla, avisale a Cristian.")
             return True
+        sue = [x for x in pend if x.get("kind") == "sueldo"]
+        gas = [x for x in pend if x.get("kind") != "sueldo"]
+        if sue:
+            # SUELDOS: van al bloque PAGOS SUELDOS, nunca a GASTOS (regla del dueño).
+            ok = []
+            for x in sue:
+                try:
+                    d = _sueldo_escribir(email, sid, x)
+                    ok.append("*%s* %s · %s (domingo %s)"
+                              % (d["persona"], _gastos_plata(x.get("monto")),
+                                 "SEMANA %d" % d["semana"], d["domingo"].strftime("%d/%m")))
+                except Exception as e:
+                    responder("No pude cargar el sueldo: %s" % str(e)[:150])
+            st["pend"] = []
+            _gastos_save(todo)
+            if ok:
+                responder("✅ Cargado: " + " · ".join(ok))
+            return True
+        pend = gas
         try:
             puestos = _gastos_escribir(email, sid, pend)
         except Exception as e:
@@ -6150,6 +6261,47 @@ def _gastos_hook(email, d) -> bool:
             responder("✅ Cargado: *%s* %s" % (puestos[0].get("concepto"), _gastos_plata(puestos[0].get("monto"))))
         else:
             responder("✅ Cargados %d gastos · total %s" % (len(puestos), _gastos_plata(tot)))
+        return True
+
+    if tipo == "sueldo":
+        sd = r.get("sueldo") or {}
+        monto = float(sd.get("monto") or 0)
+        persona = (sd.get("persona") or "").strip()
+        if not persona:
+            responder("¿A quién le pagaste? 🙏")
+            return True
+        if monto <= 0:
+            responder("Me falta el monto del sueldo de *%s*. ¿Cuánto fue?" % persona)
+            return True
+        try:
+            fpago = _dt.date.fromisoformat(str(sd.get("fecha"))[:10])
+        except Exception:
+            fpago = hoy
+        sid = ((_fin_conf().get(email) or {}).get("sheet")
+               or (_fin_conf().get("cristianacostabtw@gmail.com") or {}).get("sheet"))
+        if not sid:
+            responder("No tengo configurada la planilla, avisale a Cristian.")
+            return True
+        # resuelvo la celda ANTES de proponer, así el mensaje dice exactamente dónde va
+        try:
+            sess = _fin_sess()
+            _dom, _ = _sueldo_domingo(fpago)      # la pestaña la manda el domingo, no el día de pago
+            tab = _fin_tab_mes(sess, sid, _dom)
+            d = _sueldo_destino(sess, sid, tab, persona, fpago)
+        except Exception as e:
+            responder("No pude ubicar la celda del sueldo (%s)." % str(e)[:90])
+            return True
+        if d.get("error"):
+            responder("⚠️ %s" % d["error"])
+            return True
+        st["pend"] = [{"kind": "sueldo", "persona": persona, "monto": monto,
+                       "fecha": fpago.isoformat(), "concepto": "Sueldo %s" % d["persona"]}]
+        _gastos_save(todo)
+        aviso = ("\n⚠️ Esa celda ya tiene %s, la reemplazo." % d["actual"]) if d["actual"] else ""
+        _mes = (" · %s" % d["tab"]) if d["domingo"].month != fpago.month else ""
+        responder("💸 Sueldo *%s* · %s\n%s · domingo %s%s%s\n¿Lo cargo? (sí / no)"
+                  % (d["persona"], _gastos_plata(monto), "SEMANA %d" % d["semana"],
+                     d["domingo"].strftime("%d/%m"), _mes, aviso))
         return True
 
     if tipo == "rechazar":
