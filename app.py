@@ -4197,7 +4197,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-subidor"})
+    return jsonify({"ok": True, "v": "2026-09-06-subidor2"})
 
 
 _KPI_DBG = {}
@@ -10754,8 +10754,13 @@ def _ads_run(job, params):
                 raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
         else:
             st["msg"] = "Bajando videos de Drive…"; _job_put(job, st)
-            rutas = _ads_drive_bajar(params.get("drive", ""), tmp,
-                                     on_prog=lambda k, t: st.update({"msg": "Bajando videos… %d/%d" % (k, t)}))
+            def _prog_drive(k, t):
+                # OJO: además de la memoria hay que persistir. Sin esto la pantalla se quedaba en
+                # "Bajando videos de Drive…" todo el rato (leía el disco, que no se actualizaba) y
+                # parecía colgado aunque estuviera bajando bien.
+                st["msg"] = "Bajando videos… %d/%d" % (k, t)
+                _job_put(job, st)
+            rutas = _ads_drive_bajar(params.get("drive", ""), tmp, on_prog=_prog_drive)
             if not rutas:
                 raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
         n = len(rutas)
