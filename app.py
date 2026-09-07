@@ -4197,7 +4197,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-subidor2"})
+    return jsonify({"ok": True, "v": "2026-09-07-sku"})
 
 
 _KPI_DBG = {}
@@ -7428,31 +7428,44 @@ def _sku_de_items(items, skus):
     items: [(sku_key, cantidad, nombre_producto)]."""
     # Los UNITARIOS con la misma base se SUMAN (2 renglones de 'x1 Pote' → 'x2 Pote', no 'x1 + x1').
     # Los variable/fijo se dejan tal cual (el 'spray' usa su propio ' + ', ej '3 60ML + 1 30ML').
-    uni = {}          # base_norm -> [base_display, total_qty]  (mantiene orden con uni_ord)
-    uni_ord = []
+    uni = {}          # base_norm -> [base_display, total_qty]
     otras = []
+    sin_sku = 0       # productos SIN SKU cargado (ej la Guía Digital): no se empaquetan
     for key, qty, pname in items:
         if not qty or qty <= 0:
             continue
         cfg = skus.get(str(key))
-        if cfg is None:
-            cfg = {"tipo": "xn", "base": (pname or "").strip()}   # sin configurar → 'xN nombre'
-        c = _sku_cfg(cfg)
+        c = _sku_cfg(cfg) if cfg is not None else {"tipo": "unitario", "base": "", "map": {}}
         if c["tipo"] == "unitario":
             base = (c["base"] or "").strip()
+            if not base:
+                # SIN SKU cargado → NO va en la etiqueta. Antes salía un "x1" suelto (o el nombre
+                # entero del producto) y el que arma la caja no sabía qué poner. Un producto digital
+                # como la guía no se empaqueta.
+                sin_sku += int(qty)
+                continue
             k = base.lower()
             if k not in uni:
-                uni[k] = [base, 0]; uni_ord.append(k)
-            uni[k][1] += int(qty)
+                uni[k] = [base, 0]
+            uni[k][1] += int(qty)      # MISMA base = se SUMAN (2 productos "POTE" → 'x3 POTE')
         else:
-            s = _sku_calc(cfg, qty)
-            if s:
-                otras.append(s)
-    partes = []
-    for k in uni_ord:
-        base, tot = uni[k]
-        partes.append((("x%d %s" % (tot, base)).strip()) if base else ("x%d" % tot))
-    partes += otras
+            _s = _sku_calc(cfg, qty)
+            if _s:
+                otras.append(_s)
+    # Orden FIJO = el MISMO que tienen los productos en la pantalla de Costos (config del usuario).
+    # Así el producto principal (POTE) va siempre primero y el complemento (CAPS) después, incluso
+    # cuando llevan la misma cantidad. Sin un orden fijo, la MISMA combinación se imprimía de dos
+    # formas ('x6 POTE + x1 CAPS' y 'x1 CAPS + x6 POTE') y partía la hoja de empaquetar en dos.
+    _rank = {}
+    for _i, _k in enumerate(skus or {}):
+        _b = (_sku_cfg((skus or {}).get(_k)).get("base") or "").strip().lower()
+        if _b and _b not in _rank:
+            _rank[_b] = _i
+    partes = ["x%d %s" % (tot, base) for base, tot in
+              sorted(uni.values(), key=lambda v: (_rank.get(v[0].lower(), 9999), v[0].lower()))]
+    partes += sorted(otras)
+    if not partes and sin_sku:
+        partes = ["x%d" % sin_sku]     # red de seguridad: nunca devolver una etiqueta vacía
     return " + ".join(partes)
 
 
@@ -7678,6 +7691,14 @@ def _sku_run(job, data, email):
         skus = _skus_map(email)                 # config de SKU por producto (lo que cargó el usuario)
         mapa = _sku_pedidos_map(email)          # {nº → nombre + productos} de Shopify + Tiendanube
         doc = fitz.open(stream=data, filetype="pdf")
+        # Si el PDF que suben YA trae una hoja "PARA EMPAQUETAR" (porque ya pasó por acá antes),
+        # se saca: si no, queda la vieja + la nueva y el PDF termina con dos hojas iguales.
+        try:
+            _viejas = [i for i in range(len(doc)) if "PARA EMPAQUETAR" in doc[i].get_text()]
+            for i in reversed(_viejas):
+                doc.delete_page(i)
+        except Exception:
+            pass
         total = len(doc)
         st["total"] = total
         estampadas = conflicto = sin_pedido = 0
