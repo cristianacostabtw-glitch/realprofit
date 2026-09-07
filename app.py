@@ -2992,6 +2992,7 @@ _SOLO_DASH = r"""
  var _inited=false;
  function rpaInit(){ var d=new Date();d.setDate(d.getDate()+1);$('rpa-fecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
   $('rpa-fecha').addEventListener('change',rpaCalc);$('rpa-hora').addEventListener('change',rpaCalc);
+  window.MONEDA='';
   fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){
    var cs=(j&&j.cuentas)||[]; window._ADSCTAS=cs;
    $('rpa-cuenta').innerHTML=opt(cs.map(function(c){return {v:c.key,t:c.nombre};}));
@@ -3004,6 +3005,7 @@ _SOLO_DASH = r"""
   $('rpa-copy').value=c.copy||''; if(c.titulo)$('rpa-titulo').value=c.titulo; if(c.subtitulo)$('rpa-sub').value=c.subtitulo;
   if(c.presupuesto)$('rpa-presup').value=c.presupuesto; if(c.landing)$('rpa-url').value=c.landing;
   fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
+   MONEDA=j.moneda||''; rpaPresupLb();
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
    $('rpa-pixel').innerHTML=opt(j.pixels.map(function(p){return {v:p.id,t:p.name};}));
@@ -3012,7 +3014,9 @@ _SOLO_DASH = r"""
   fetch('/pf-ads-campanas?cuenta='+k).then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
    $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
   rpaCalc();};
- window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');$('rpa-presuplb').textContent=(t=='abo'?'Presupuesto diario por conjunto':'Presupuesto diario');rpaCalc();};
+ window.rpaPresupLb=function(){var e=$('rpa-presuplb');if(!e)return;
+   e.textContent=(TIPO=='abo'?'Presupuesto diario por conjunto':'Presupuesto diario')+(MONEDA?(' ('+MONEDA+')'):'');};
+ window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');rpaPresupLb();rpaCalc();};
  window.rpaShare=function(){SHARE=!SHARE;$('rpa-sharetk').classList.toggle('on',SHARE);};
  window.rpaCmp=function(m){CMP=m;$('rpa-cn').classList.toggle('on',m=='nueva');$('rpa-ce').classList.toggle('on',m=='exist');
   $('rpa-boxn').style.display=m=='nueva'?'block':'none';$('rpa-boxe').style.display=m=='exist'?'block':'none';
@@ -4193,7 +4197,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-cp3-ig"})
+    return jsonify({"ok": True, "v": "2026-09-06-moneda"})
 
 
 _KPI_DBG = {}
@@ -11089,7 +11093,14 @@ def pf_ads_identidad():
         except Exception:
             pass
         igs.insert(0, {"id": cfg["ig"], "name": ("@" + nmig) if nmig else "Instagram conectado"})
-    return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages,
+    # MONEDA de la cuenta: el presupuesto se manda en centavos de ESTA moneda, así que poner "35"
+    # en una cuenta en pesos son $35 ARS (Meta lo rechaza), no US$35. Se muestra al lado del campo.
+    moneda = ""
+    try:
+        moneda = (_ads_call("GET", "act_%s" % acct, params={"fields": "currency"}) or {}).get("currency", "") or ""
+    except Exception:
+        pass
+    return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages, "moneda": moneda,
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
                     "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
 
