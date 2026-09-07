@@ -1,4 +1,3 @@
-// reinicio forzado 2026-09-07 19:48
 // RealProfit — Servicio WhatsApp Web (Baileys)
 // Una sesión por CUENTA (email). Aislado: cada cuenta guarda su auth en su carpeta y solo ve SUS chats.
 // Endpoints (todos requieren header  x-wa-secret: <WA_WEB_SECRET>):
@@ -35,6 +34,18 @@ const DATA_DIR = process.env.WA_DATA_DIR || "/var/data/wa-web";
 const HOOK = process.env.WA_WEB_HOOK || "";   // URL de RealProfit que decide si responde el bot
 const MAX_MSGS = 300;                          // máx mensajes guardados por chat (memoria acotada)
 const log = pino({ level: process.env.LOG_LEVEL || "warn" });
+// Logger APARTE para Baileys, en silencio. Cuando una sesion de signal se corrompe, Baileys tira
+// "Session error: Bad MAC" con stack completo por CADA intento de descifrado: son cientos por
+// segundo y eso solo (CPU + I/O de log) tumba la instancia. El error no se pierde: lo contamos.
+const logWA = pino({ level: "silent" });
+let excepciones = 0, ultimaExcepcion = null;
+// Una excepcion suelta de una promesa de Baileys mataba el proceso entero. Que no muera: se anota.
+process.on("uncaughtException", (e) => {
+  excepciones++; ultimaExcepcion = String((e && e.message) || e).slice(0, 200);
+});
+process.on("unhandledRejection", (e) => {
+  excepciones++; ultimaExcepcion = String((e && e.message) || e).slice(0, 200);
+});
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -175,6 +186,22 @@ async function startSession(acc) {
 
   const dir = accDir(acc);
   fs.mkdirSync(dir, { recursive: true });
+  // Sesiones de signal corrompidas ("Bad MAC"): se borran UNA sola vez (marca en disco). Se van
+  // solo los session-* y sender-key-*, que WhatsApp renegocia solo. creds.json y las app-state-sync
+  // quedan intactas, asi que el telefono sigue vinculado y NO hay que escanear el QR de nuevo.
+  try {
+    const marca = path.join(dir, ".limpio-badmac-1");
+    if (!fs.existsSync(marca)) {
+      let n = 0;
+      for (const f of fs.readdirSync(dir)) {
+        if (f.startsWith("session-") || f.startsWith("sender-key-")) {
+          try { fs.unlinkSync(path.join(dir, f)); n++; } catch {}
+        }
+      }
+      fs.writeFileSync(marca, new Date().toISOString());
+      log.warn({ acc, borrados: n }, "limpieza de sesiones signal corrompidas");
+    }
+  } catch (e) { log.warn({ e: String(e && e.message || e) }, "no se pudo limpiar sesiones"); }
   const { state, saveCreds } = await useMultiFileAuthState(dir);
   // NO usamos fetchLatestBaileysVersion(): trae la ultima version de WhatsApp Web, que puede ser
   // mas nueva que la que soporta el Baileys instalado. Con esa combinacion el telefono muestra el
@@ -198,7 +225,7 @@ async function startSession(acc) {
   const sock = makeWASocket({
     ...(version ? { version } : {}),
     auth: state,
-    logger: log,
+    logger: logWA,
     printQRInTerminal: false,
     syncFullHistory: false,   // historial reciente (con full a veces se cuelga por volumen)
     markOnlineOnConnect: false,
@@ -468,8 +495,9 @@ app.get("/diag", (_req, res) => {
     });
   }
   let disco = "ok";
+  const _exc = { excepciones, ultima: ultimaExcepcion };
   try { fs.writeFileSync(path.join(DATA_DIR, ".probe"), String(now)); } catch (e) { disco = String(e && e.message || e).slice(0, 140); }
-  res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), disco, sesiones: out });
+  res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), disco, excepciones: _exc, sesiones: out });
 });
 
 app.post("/connect", async (req, res) => {
