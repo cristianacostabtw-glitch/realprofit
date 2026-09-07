@@ -1,3 +1,4 @@
+// reinicio forzado 2026-09-07 19:48
 // RealProfit — Servicio WhatsApp Web (Baileys)
 // Una sesión por CUENTA (email). Aislado: cada cuenta guarda su auth en su carpeta y solo ve SUS chats.
 // Endpoints (todos requieren header  x-wa-secret: <WA_WEB_SECRET>):
