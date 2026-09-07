@@ -4193,7 +4193,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-cp3"})
+    return jsonify({"ok": True, "v": "2026-09-06-cp3-ig"})
 
 
 _KPI_DBG = {}
@@ -11079,6 +11079,16 @@ def pf_ads_identidad():
         except Exception:
             pass
         pages.insert(0, {"id": cfg["page"], "name": nm or "Página conectada"})
+    # MISMO respaldo para el IG que para la página: una cuenta publicitaria NUEVA todavía no tiene
+    # el Instagram asociado, así que act_<cuenta>/instagram_accounts vuelve vacío y el desplegable
+    # caía en "Sin IG (page-backed)" aunque el IG esté configurado. Lo agrego con su nombre real.
+    if cfg.get("ig") and not any(str(i.get("id")) == str(cfg["ig"]) for i in igs):
+        nmig = ""
+        try:
+            nmig = (_ads_call("GET", str(cfg["ig"]), params={"fields": "username"}) or {}).get("username", "")
+        except Exception:
+            pass
+        igs.insert(0, {"id": cfg["ig"], "name": ("@" + nmig) if nmig else "Instagram conectado"})
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages,
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
                     "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
