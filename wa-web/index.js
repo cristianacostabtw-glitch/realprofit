@@ -680,33 +680,14 @@ setInterval(() => {
       // que reconectaba a su vez cada 2,5s -> el celular sincronizando sin parar).
       // Una caida real la detecta Baileys con su keepAlive de 20s -> wsDead(). "muda" queda solo
       // como red de seguridad remota.
-      // Antes esto era un umbral de TIEMPO ("muda >N minutos = zombie"), y no sirve: no distingue
-      // "no pasó nada" de "estoy muerto". Con 7 min reconectaba cuentas sanas; con 3 h un zombie
-      // real tardaba 3 horas en detectarse y se perdían todos los mensajes de ese rato.
-      // Ahora se decide con una PRUEBA ACTIVA (abajo): dos fallos seguidos = socket muerto.
-      const muda = (s.pingFail || 0) >= 2;
+      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 3 * 60 * 60 * 1000;
       if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda)) {
-        s.pingFail = 0;
         s.status = "connecting";
         reconectar(acc, s, 100);
         continue;
       }
       // Ping activo: mantiene la conexión caliente y fuerza round-trip con el server cada vuelta.
-      // PRUEBA ACTIVA de vida: una consulta que OBLIGA al servidor de WhatsApp a responder.
-      // sendPresenceUpdate no sirve como prueba porque no espera respuesta: un socket zombie la
-      // "acepta" igual. onWhatsApp() es un round-trip real; si no vuelve en 20s, algo está mal.
-      if (s.status === "connected" && !s.starting) {
-        try { s.sock?.sendPresenceUpdate?.("available"); } catch {}
-        const _sk = s.sock;
-        Promise.race([
-          _sk.onWhatsApp("5491100000000"),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 20000)),
-        ]).then(() => { s.pingFail = 0; })
-          .catch(() => {
-            s.pingFail = (s.pingFail || 0) + 1;
-            log.warn({ acc, fallos: s.pingFail }, "ping a WhatsApp sin respuesta");
-          });
-      }
+      if (s.status === "connected" && !s.starting) { try { s.sock?.sendPresenceUpdate?.("available"); } catch {} }
       if (s.status !== "connected" && !s.starting) reconectar(acc, s, 100);
     }
     // cuenta con creds en disco que quedó fuera de memoria → levantarla
