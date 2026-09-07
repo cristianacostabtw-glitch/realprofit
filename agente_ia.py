@@ -136,7 +136,10 @@ def chat(mensajes, sistema, max_tokens=1800) -> str:
         return next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip() \
             or "No se me ocurrió nada útil para eso, reformulame la pregunta."
     except Exception as e:
-        return "Uf, no pude responder ahora (%s). Probá de nuevo en un toque." % type(e).__name__
+        # El MENSAJE real, no solo el tipo: un BadRequestError casi siempre es "credit balance is
+        # too low" (saldo de Anthropic en 0) y con solo el tipo eso quedaba invisible.
+        _m = str(e).replace("\n", " ")[:220]
+        return "Uf, no pude responder ahora (%s: %s). Probá de nuevo en un toque." % (type(e).__name__, _m)
 
 
 def _bloques_imagen(imagenes):
