@@ -4197,7 +4197,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-06-moneda"})
+    return jsonify({"ok": True, "v": "2026-09-06-subidor"})
 
 
 _KPI_DBG = {}
@@ -10747,13 +10747,13 @@ def _ads_run(job, params):
 
         up_id = (params.get("upload_id") or "").strip()
         if up_id:
-            st["msg"] = "Tomando tus videos…"
+            st["msg"] = "Tomando tus videos…"; _job_put(job, st)
             updir = _ADS_UPLOADS.get(up_id)
             rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)) if (updir and _os.path.isdir(updir)) else []
             if not rutas:
                 raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
         else:
-            st["msg"] = "Bajando videos de Drive…"
+            st["msg"] = "Bajando videos de Drive…"; _job_put(job, st)
             rutas = _ads_drive_bajar(params.get("drive", ""), tmp,
                                      on_prog=lambda k, t: st.update({"msg": "Bajando videos… %d/%d" % (k, t)}))
             if not rutas:
@@ -10781,7 +10781,7 @@ def _ads_run(job, params):
             with _pl:
                 _pn["n"] += 1
                 st["done"] = _pn["n"]
-                st["msg"] = "Subiendo videos %d/%d…" % (_pn["n"], n)
+                st["msg"] = "Subiendo videos %d/%d…" % (_pn["n"], n); _job_put(job, st)
             return idx, medio
 
         # OJO memoria: cada upload a Meta buffea el video entero en RAM. Con el plan de 512MB,
@@ -10793,7 +10793,7 @@ def _ads_run(job, params):
                 medios[_idx] = _m
 
         # campaña
-        st["msg"] = "Creando campaña…"
+        st["msg"] = "Creando campaña…"; _job_put(job, st)
         now = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
         # La fecha del NOMBRE = el día REAL en que arranca (sale de `start`, que ya se corrigió a
         # futuro en _ads_sched). Así el nombre nunca dice un día vencido.
@@ -10816,7 +10816,7 @@ def _ads_run(job, params):
             n_conj = 1
         else:
             for c in range(n_conj):
-                st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj)
+                st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj); _job_put(job, st)
                 nombre_conj = base if n_conj == 1 else ("%s %d" % (base, c + 1))
                 if modo_conj == "dup" and src:              # copia la config de un conjunto existente
                     adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start,
@@ -10875,7 +10875,7 @@ def _ads_run(job, params):
                     with _pl:
                         _pn["n"] += 1
                         st["done"] = _pn["n"]
-                        st["msg"] = "Creando anuncios… %d/%d" % (_pn["n"] - n, total_ads)
+                        st["msg"] = "Creando anuncios… %d/%d" % (_pn["n"] - n, total_ads); _job_put(job, st)
                     return
                 except Exception as _ex:
                     _ultimo = _ex
@@ -10899,7 +10899,7 @@ def _ads_run(job, params):
         # salen ENCENDIDOS (programados) y no apagados. (El worker de gunicorn ya no tiene timeout.)
         needs_appr = False
         if estado == "ACTIVE":
-            st["msg"] = "Encendiendo anuncios…"
+            st["msg"] = "Encendiendo anuncios…"; _job_put(job, st)
 
             def _es_aprob(a):
                 for it in (a.get("issues_info") or []):
@@ -10940,10 +10940,14 @@ def _ads_run(job, params):
                     if needs_appr else ("Programada 5 AM" if estado == "ACTIVE" else "Pausada"))
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
                        "tipo": "CBO" if cbo else "ABO", "estado": _est_txt, "needs_approval": needs_appr}
-        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s" % (creados, n_conj, _est_txt)
+        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s" % (creados, n_conj, _est_txt); _job_put(job, st)
         st["listo"] = True
+        _job_put(job, st)
     except Exception as e:
-        st["error"] = str(e); st["listo"] = True
+        # el ERROR REAL va al disco tambien: si no, un worker reciclado dejaba la pantalla
+        # "Lanzando..." para siempre sin decir nunca que habia fallado ni por que
+        st["error"] = "%s: %s" % (type(e).__name__, str(e)[:300]); st["listo"] = True
+        _job_put(job, st)
     finally:
         try:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -11239,6 +11243,7 @@ def pf_ads_lanzar():
     data["_token"] = _ads_token_para_cuenta(data.get("cuenta"))   # token que REALMENTE puede usar la cuenta elegida (no cruza cuentas)
     _ads_lastcfg_set(_user_actual(), data.get("cuenta"), data)   # recordar la config para la próxima subida
     _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+    _job_put(job, _ADS_JOBS[job])      # a DISCO: si el worker se recicla, el progreso no se pierde
     threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
     return jsonify({"ok": True, "job": job})
 
@@ -11247,7 +11252,11 @@ def pf_ads_lanzar():
 def pf_ads_progreso():
     if not _user_actual():
         return jsonify({"ok": False}), 401
-    st = _ADS_JOBS.get((request.args.get("job") or "").strip())
+    _jid = (request.args.get("job") or "").strip()
+    # memoria primero, disco después: sin el respaldo en disco, un reciclado del worker de gunicorn
+    # devolvía 404 y la pantalla se quedaba clavada en el último mensaje ("Creando conjunto 1 de 1…")
+    # aunque el servidor hubiera seguido y creado todo bien en Meta.
+    st = _ADS_JOBS.get(_jid) or _job_get(_jid)
     if not st:
         return jsonify({"ok": False}), 404
     return jsonify({"ok": True, **{k: st[k] for k in ("done", "total", "msg", "listo", "error", "stats")}})
