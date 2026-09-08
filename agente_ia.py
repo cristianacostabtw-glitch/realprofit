@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import base64
 import json
+import random as _random
 import os
 
 MODELO = "claude-opus-5"
@@ -189,6 +190,16 @@ def decidir(mensajes, imagenes=None, canal="whatsapp", nombre="", extra_instr=""
         f"Conversación (más viejo arriba):\n{historial}\n\n"
         "Analizá el ÚLTIMO mensaje del CLIENTE en el contexto de todo el chat "
         "y decidí qué hacer según tus reglas. Si hay imagen adjunta, miralas."
+    )
+    # ANTI-SPAM: sin esto el prompt es identico en cada llamada y el modelo devuelve casi la misma
+    # frase a todo el mundo. WhatsApp lee "mismo mensaje a muchos numeros" como spam y da de baja la
+    # cuenta (nos paso con el Business de NoxaLab). Este pedido de variacion, con un numero al azar,
+    # rompe esa repeticion: el sentido es el mismo, la redaccion cambia siempre.
+    prompt += (
+        "\n\nIMPORTANTE — VARIACION #%d: redactá tu respuesta con palabras DISTINTAS a como la "
+        "escribirías por defecto. Cambiá el saludo, el orden de las ideas y el cierre. La info tiene "
+        "que ser la misma; la forma, no. Nunca uses una plantilla fija: dos clientes distintos no "
+        "pueden recibir el mismo texto." % _random.randint(1000, 9999)
     )
     contenido = _bloques_imagen(imagenes) + [{"type": "text", "text": prompt}]
 
