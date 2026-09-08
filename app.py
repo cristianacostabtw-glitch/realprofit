@@ -311,8 +311,87 @@ def _users_save(d: dict) -> None:
 
 
 def _user_actual():
-    """Email del usuario logueado (o None)."""
+    """Email de la CUENTA sobre la que se trabaja (la del dueno). Un empleado entra con su propio
+    mail pero opera sobre la cuenta de su dueno: por eso esto NO devuelve quien esta logueado sino
+    de quien son los datos. Asi los 161 lugares que leen datos siguen andando sin cambios."""
     return session.get("email")
+
+
+def _quien_soy():
+    """Mail de la PERSONA logueada (puede ser un empleado)."""
+    return session.get("quien") or session.get("email")
+
+
+def _mi_rol():
+    return session.get("rol") or "admin"
+
+
+# Que endpoints toca cada seccion. El guardia corta por prefijo: si el empleado no tiene la
+# seccion, no entra ni escribiendo la URL a mano.
+SECCIONES = {
+    "despachos":   ("Despachos",
+                    ["/pf-despachos", "/pf-desp-marcar-lote", "/pf-suc-preview",
+                     "/seguimientos", "/pf-envios"]),
+    "facturacion": ("Facturacion", ["/pf-facturacion"]),
+    "ads":         ("Subir ADS", ["/pf-ads-"]),
+    "whatsapp":    ("WhatsApp", ["/wa"]),
+    "meli":        ("MercadoLibre", ["/meli"]),
+    "stock":       ("Stock", ["/pf-stock"]),
+}
+
+# NUNCA se comparten: son la plata y la configuracion de la cuenta. Un empleado no entra aca ni
+# aunque escriba la URL. Va aparte de SECCIONES a proposito: si estuviera solo "fuera de la lista"
+# el guardia las dejaria pasar (las rutas sin seccion se permiten, porque son el armazon de la app).
+SOLO_ADMIN = [
+    "/pf-periodo", "/pf-ventas", "/pf-ordenes", "/pf-orden", "/pf-recompras", "/pf-marketing",
+    "/pf-mp-", "/pf-opciones", "/pf-cfg", "/pf-diag", "/pf-debug-ordenes", "/pf-botify",
+    "/pf-productos", "/pf-guardar-costo", "/pf-sku-set",
+    "/pf-comisiones", "/pf-cambiar-mp", "/pf-congelar-mp", "/pf-congelado-estado",
+    "/pf-cambio-mp-estado",
+    "/pf-movimientos",
+    "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-",
+    "/envialo",
+    "/fin-", "/equipo",
+]
+
+# Rutas que puede tocar cualquiera que este logueado (la app no arranca sin esto).
+_LIBRES = ("/login", "/logout", "/registro", "/pf-version", "/static", "/favicon", "/rp",
+           "/wa-webhook", "/wa-web-hook", "/c/")
+
+
+def _seccion_de(path):
+    for clave, (_lbl, prefijos) in SECCIONES.items():
+        for p in prefijos:
+            if path.startswith(p):
+                return clave
+    return None
+
+
+@app.before_request
+def _guardia_roles():
+    """Un empleado solo entra a las secciones que le dio el admin. Se chequea en el SERVIDOR:
+    esconder el menu no alcanza, cualquiera escribe la URL."""
+    if _mi_rol() == "admin":
+        return None
+    path = request.path or "/"
+    if path == "/" or path.startswith(_LIBRES):
+        return None
+    for p in SOLO_ADMIN:
+        if path.startswith(p):
+            if request.method == "GET" and "text/html" in (request.headers.get("Accept") or ""):
+                return Response("<h3 style='font-family:system-ui;padding:40px'>Esta sección es "
+                                "solo del administrador.</h3>", status=403)
+            return jsonify({"ok": False, "msg": "sección solo del administrador"}), 403
+    sec = _seccion_de(path)
+    if sec is None:
+        return None                      # ruta sin seccion (armazon de la app)
+    if sec in (session.get("secciones") or []):
+        return None
+    if request.method == "GET" and "text/html" in (request.headers.get("Accept") or ""):
+        return Response("<h3 style='font-family:system-ui;padding:40px'>No tenés acceso a esta "
+                        "sección.</h3><p style='font-family:system-ui;padding:0 40px'>Pedísela a "
+                        "Cristian.</p>", status=403)
+    return jsonify({"ok": False, "msg": "sin permiso para %s" % SECCIONES[sec][0]}), 403
 
 
 # Deja SOLO "Dashboard" e "Integraciones" en el menú, y saca el logo. Como pf.html es React
@@ -9412,8 +9491,192 @@ def login():
     if not u or not check_password_hash(u.get("pass", ""), pw):
         return jsonify({"ok": False, "msg": "Email o contraseña incorrectos."})
     session.clear()
-    session["email"] = email
+    rol = (u.get("rol") or "admin").lower()
+    # El empleado trabaja SOBRE la cuenta de su dueno (ahi estan los pedidos, el WhatsApp, todo).
+    session["email"] = (u.get("dueno") or email) if rol == "empleado" else email
+    session["quien"] = email
+    session["rol"] = rol
+    session["secciones"] = list(u.get("secciones") or []) if rol == "empleado" else []
+    session["nombre"] = u.get("nombre") or email.split("@")[0]
+    return jsonify({"ok": True, "rol": rol, "nombre": session["nombre"],
+                    "secciones": session["secciones"]})
+
+
+_EQUIPO_PAGE = """<!doctype html><html lang=es><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>Equipo — RealProfit</title>
+<style>
+*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
+body{margin:0;background:#0b1220;color:#e2e8f0;padding:28px}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:24px;margin:0 0 6px}
+.sub{color:#8493a8;font-size:13.5px;margin-bottom:22px;line-height:1.5}
+.card{background:#0e1521;border:1px solid #1e2b3d;border-radius:16px;padding:20px;margin-bottom:16px}
+label{display:block;font-size:12px;color:#8493a8;margin:0 0 6px;font-weight:600}
+input[type=text],input[type=email],input[type=password]{width:100%;background:#111c2b;border:1px solid #1e2b3d;color:#e7eef8;border-radius:10px;padding:11px 12px;font-size:14px}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px}
+.secs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:6px 0 16px}
+.sec{display:flex;align-items:center;gap:9px;background:#111c2b;border:1px solid #1e2b3d;border-radius:10px;padding:10px 12px;cursor:pointer;font-size:13.5px}
+.sec input{accent-color:#2563eb;width:16px;height:16px}
+button{background:#2563eb;color:#fff;border:0;border-radius:10px;padding:12px 22px;font-weight:700;font-size:14px;cursor:pointer}
+button.gris{background:#1b2536;color:#cbd5e1}
+button.rojo{background:#7f1d1d;color:#fecaca;padding:7px 12px;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;color:#8493a8;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:8px}
+td{padding:10px 8px;border-top:1px solid #1a2536;vertical-align:top}
+.chip{display:inline-block;background:#16233a;color:#9fc3f5;border-radius:6px;padding:2px 8px;font-size:11.5px;margin:2px 3px 2px 0}
+.msg{margin-left:12px;font-weight:700;font-size:13px}
+a.volver{color:#8493a8;text-decoration:none;font-size:13px}
+</style></head><body><div class=wrap>
+<a class=volver href="/">&#8592; Volver a RealProfit</a>
+<h1 style="margin-top:14px">&#128101; Equipo</h1>
+<div class=sub>Dale acceso a alguien con su propio mail y contrase&ntilde;a. Entra a <b>tu</b> cuenta,
+pero <b>solo ve las secciones que le tildes</b>. El control es del lado del servidor: aunque escriba
+la direcci&oacute;n a mano, no entra.</div>
+
+<div class=card>
+ <div class=row>
+  <div><label>Mail</label><input id=em type=email placeholder="empleado@gmail.com"></div>
+  <div><label>Nombre (opcional)</label><input id=nom type=text placeholder="Leo"></div>
+  <div><label>Contrase&ntilde;a</label><input id=pw type=password placeholder="m&iacute;nimo 6"></div>
+ </div>
+ <label>&iquest;A qu&eacute; entra?</label>
+ <div class=secs id=secs></div>
+ <button onclick="guardar()">Guardar</button>
+ <button class=gris onclick="limpiar()">Limpiar</button>
+ <span class=msg id=msg></span>
+</div>
+
+<div class=card>
+ <table><thead><tr><th>Mail</th><th>Nombre</th><th>Accesos</th><th></th></tr></thead>
+ <tbody id=tb><tr><td colspan=4 style="color:#8493a8">Cargando&hellip;</td></tr></tbody></table>
+</div>
+</div>
+<script>
+var SECS=[];
+function get(u){return fetch(u).then(function(r){return r.json();});}
+function post(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json();});}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pintarSecs(marcadas){
+ var h='';SECS.forEach(function(s){
+  var on=(marcadas||[]).indexOf(s.clave)>-1?' checked':'';
+  h+='<label class=sec><input type=checkbox value="'+s.clave+'"'+on+'>'+esc(s.label)+'</label>';});
+ document.getElementById('secs').innerHTML=h;
+}
+function marcadas(){return [].slice.call(document.querySelectorAll('#secs input:checked')).map(function(i){return i.value;});}
+function limpiar(){document.getElementById('em').value='';document.getElementById('nom').value='';document.getElementById('pw').value='';pintarSecs([]);document.getElementById('msg').textContent='';}
+function cargar(){
+ get('/equipo-listar').then(function(j){
+  if(!j.ok){document.getElementById('tb').innerHTML='<tr><td colspan=4 style="color:#f87171">Sin permiso</td></tr>';return;}
+  SECS=j.secciones;if(!document.querySelector('#secs input'))pintarSecs([]);
+  var h='';(j.gente||[]).forEach(function(p){
+   var chips=(p.secciones||[]).map(function(c){var s=SECS.filter(function(x){return x.clave===c;})[0];return '<span class=chip>'+esc(s?s.label:c)+'</span>';}).join('');
+   h+='<tr><td>'+esc(p.email)+'</td><td>'+esc(p.nombre||'&mdash;')+'</td><td>'+(chips||'<span style="color:#8493a8">sin accesos</span>')+'</td>'
+     +'<td style="text-align:right;white-space:nowrap">'
+     +'<button class=gris style="padding:7px 12px;font-size:12px" onclick=\'editar("'+esc(p.email)+'","'+esc(p.nombre||'')+'",'+JSON.stringify(p.secciones||[])+')\'>Editar</button> '
+     +'<button class=rojo onclick=\'borrar("'+esc(p.email)+'")\'>Borrar</button></td></tr>';});
+  document.getElementById('tb').innerHTML=h||'<tr><td colspan=4 style="color:#8493a8">Todav&iacute;a no diste acceso a nadie.</td></tr>';
+ });
+}
+function editar(mail,nom,secs){document.getElementById('em').value=mail;document.getElementById('nom').value=nom;document.getElementById('pw').value='';pintarSecs(secs);window.scrollTo(0,0);
+ document.getElementById('msg').style.color='#8493a8';document.getElementById('msg').textContent='Edit&aacute;ndolo. La contrase&ntilde;a solo cambia si escrib&iacute;s una nueva.';}
+function guardar(){
+ var m=document.getElementById('msg');m.style.color='#8493a8';m.textContent='Guardando…';
+ post('/equipo-guardar',{email:document.getElementById('em').value,nombre:document.getElementById('nom').value,
+  password:document.getElementById('pw').value,secciones:marcadas()}).then(function(j){
+  if(!j.ok){m.style.color='#f87171';m.textContent=j.msg||'error';return;}
+  m.style.color='#34d399';m.textContent='\u2713 Guardado';limpiar();cargar();});
+}
+function borrar(mail){ if(!confirm('¿Sacarle el acceso a '+mail+'?'))return;
+ post('/equipo-borrar',{email:mail}).then(function(j){ if(!j.ok){alert(j.msg||'error');return;} cargar(); }); }
+cargar();
+</script></body></html>"""
+
+
+@app.get("/equipo")
+def equipo_page():
+    """Pantalla del ADMIN: da de alta gente y le tilda a que secciones entra."""
+    if not _user_actual():
+        return redirect("/")
+    if _mi_rol() != "admin":
+        return Response("<h3 style='font-family:system-ui;padding:40px'>Solo el admin puede "
+                        "administrar el equipo.</h3>", status=403)
+    return Response(_EQUIPO_PAGE, mimetype="text/html")
+
+
+@app.get("/equipo-listar")
+def equipo_listar():
+    if _mi_rol() != "admin" or not _user_actual():
+        return jsonify({"ok": False}), 403
+    yo = _user_actual()
+    gente = []
+    for mail, u in (_users() or {}).items():
+        if (u.get("rol") or "admin") == "admin":
+            continue
+        if (u.get("dueno") or "") != yo:
+            continue
+        gente.append({"email": mail, "nombre": u.get("nombre") or "",
+                      "secciones": u.get("secciones") or []})
+    gente.sort(key=lambda x: x["email"])
+    return jsonify({"ok": True, "gente": gente, "yo": yo,
+                    "secciones": [{"clave": k, "label": v[0]} for k, v in SECCIONES.items()]})
+
+
+@app.post("/equipo-guardar")
+def equipo_guardar():
+    """Alta o edicion de un empleado. La contrasena solo se manda cuando se quiere cambiar."""
+    if _mi_rol() != "admin" or not _user_actual():
+        return jsonify({"ok": False, "msg": "solo el admin"}), 403
+    d = request.get_json(silent=True) or {}
+    mail = (d.get("email") or "").strip().lower()
+    if "@" not in mail or len(mail) < 6:
+        return jsonify({"ok": False, "msg": "mail invalido"})
+    secs = [s for s in (d.get("secciones") or []) if s in SECCIONES]
+    if not secs:
+        return jsonify({"ok": False, "msg": "tildá al menos una sección"})
+    users = _users()
+    u = users.get(mail) or {}
+    if u and (u.get("rol") or "admin") == "admin":
+        return jsonify({"ok": False, "msg": "ese mail ya es de un admin, no lo puedo tocar"})
+    if u and (u.get("dueno") or "") not in ("", _user_actual()):
+        return jsonify({"ok": False, "msg": "ese mail pertenece a otra cuenta"})
+    pw = (d.get("password") or "").strip()
+    if not u.get("pass") and len(pw) < 6:
+        return jsonify({"ok": False, "msg": "poné una contraseña de 6 caracteres o más"})
+    if pw:
+        if len(pw) < 6:
+            return jsonify({"ok": False, "msg": "la contraseña tiene que tener 6 o más"})
+        u["pass"] = generate_password_hash(pw)
+    u["rol"] = "empleado"
+    u["dueno"] = _user_actual()
+    u["secciones"] = secs
+    u["nombre"] = (d.get("nombre") or "").strip()[:40]
+    users[mail] = u
+    _users_save(users)
     return jsonify({"ok": True})
+
+
+@app.post("/equipo-borrar")
+def equipo_borrar():
+    if _mi_rol() != "admin" or not _user_actual():
+        return jsonify({"ok": False, "msg": "solo el admin"}), 403
+    mail = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    users = _users()
+    u = users.get(mail)
+    if not u or (u.get("rol") or "admin") == "admin" or (u.get("dueno") or "") != _user_actual():
+        return jsonify({"ok": False, "msg": "no puedo borrar ese usuario"})
+    users.pop(mail, None)
+    _users_save(users)
+    return jsonify({"ok": True})
+
+
+@app.get("/quien-soy")
+def quien_soy():
+    """Lo usa la pantalla para mostrar 'Admin' o 'Empleado' y esconder lo que no corresponde."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "cuenta": _user_actual(), "quien": _quien_soy(),
+                    "rol": _mi_rol(), "nombre": session.get("nombre") or "",
+                    "secciones": session.get("secciones") or list(SECCIONES.keys())})
 
 
 @app.get("/logout")
@@ -13387,6 +13650,24 @@ def _wa_now():
 # El cerebro vive en agente_ia.py. Se activa SOLO por cuenta (conf["bot"]=True) — así queda
 # gateado a VisionPure y apagado para el resto. Arranca DESACTIVADO por defecto.
 
+def _wa_web_media_bytes(email, media_id, intentos=3):
+    """Baja del puente el archivo de un medio del canal WEB -> (bytes, mime) o (None, "").
+    Reintenta: el puente avisa del mensaje y guarda el archivo en paralelo, asi que el primer
+    intento puede llegar antes de que termine de escribirlo."""
+    if not (media_id and WA_WEB_URL and WA_WEB_SECRET):
+        return None, ""
+    for i in range(intentos):
+        try:
+            r = requests.get(WA_WEB_URL + "/media", headers={"x-wa-secret": WA_WEB_SECRET},
+                             params={"acc": email, "id": media_id}, timeout=30)
+            if r.status_code == 200 and r.content:
+                return r.content, (r.headers.get("Content-Type") or "application/octet-stream")
+        except Exception:
+            pass
+        _t.sleep(1.5)
+    return None, ""
+
+
 def _wa_bot_media(conf, media_id):
     """Descarga un media de WhatsApp (imagen/comprobante) → (bytes, mime) o (None, '')."""
     try:
@@ -13483,26 +13764,44 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     conv["bot_last_in"] = lin_id  # marco YA y guardo, para que un reintento de Meta lo vea y no duplique
     _wa_save_chats(chats)
 
-    # Audio/voz: el cerebro no puede escucharlo → lo derivo a un humano (no respondo mal).
+    # Audio/voz: Claude no escucha, así que lo TRANSCRIBIMOS con Whisper (la misma función que
+    # usa el bot de gastos) y seguimos como si fuera texto. Antes se cortaba acá: el cliente
+    # mandaba un audio y el bot no contestaba NADA.
     if last_in.get("type") in ("audio", "voice"):
-        conv["bot_nota"] = "🎤 Llegó un audio — te lo dejo para que lo escuches vos"
-        _wa_save_chats(chats)
-        return
+        _dat, _mim = (None, "")
+        if last_in.get("canal") == "web" and last_in.get("media_id"):
+            _dat, _mim = _wa_web_media_bytes(email, last_in["media_id"])
+        elif last_in.get("media_id"):
+            _dat, _mim = _wa_bot_media(conf, last_in["media_id"])
+        _txt = _gastos_transcribir(_dat, _mim or last_in.get("mime") or "audio/ogg") if _dat else ""
+        if _txt:
+            last_in["text"] = _txt
+            last_in["transcripto"] = True
+            conv["bot_nota"] = "🎤 Audio transcripto: " + _txt[:120]
+            _wa_save_chats(chats)
+        else:
+            conv["bot_nota"] = "🎤 Llegó un audio y no lo pude transcribir — escuchalo vos"
+            _wa_save_chats(chats)
+            return
 
     # Historial legible (últimos 40) para el cerebro.
     hist = []
     for m in msgs[-40:]:
         t = (m.get("text") or "").strip()
-        if not t and m.get("type") in ("image", "video", "document", "sticker"):
+        if not t and m.get("type") in ("image", "video", "document", "sticker", "audio", "voice"):
             t = "[%s]" % m.get("type")
         hist.append({"dir": m.get("dir"), "texto": t})
 
     # Imagen del último entrante (comprobante/foto) → visión.
+    # Por el canal WEB el archivo lo tiene el puente (Baileys), no la Graph API de Meta.
     imagenes = []
     if last_in.get("type") == "image" and last_in.get("media_id"):
-        data, mime = _wa_bot_media(conf, last_in["media_id"])
+        if last_in.get("canal") == "web":
+            data, mime = _wa_web_media_bytes(email, last_in["media_id"])
+        else:
+            data, mime = _wa_bot_media(conf, last_in["media_id"])
         if data:
-            imagenes.append((data, mime))
+            imagenes.append((data, mime or last_in.get("mime") or "image/jpeg"))
 
     d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
                           extra_instr=_bot_extra_instr(conf),
@@ -15747,7 +16046,12 @@ def wa_web_hook():
         return jsonify({"ok": True})
     tel = re.sub(r"\D", "", d.get("tel") or d.get("from") or "")
     text = (d.get("text") or "").strip()
-    if not email or not tel or not text:
+    # Una FOTO o un AUDIO sin leyenda no traen texto. Antes se descartaban aca y el bot ni se
+    # enteraba (los comprobantes sin leyenda eran invisibles). Ahora entran con su tipo y su
+    # archivo, y el cerebro los mira (imagen) o los escucha (audio, via Whisper).
+    medio = (d.get("medio") or "").strip().lower()
+    media_id = (d.get("media_id") or "").strip()
+    if not email or not tel or not (text or medio):
         return jsonify({"ok": False, "msg": "faltan datos"})
     cf = _wa_conf(email)
     if not cf:
@@ -15766,8 +16070,12 @@ def wa_web_hook():
     # (así el dedup del bot NO bloquea todos los mensajes de un mismo número cuando no viene ts).
     _mid = (d.get("id") or d.get("msgId") or d.get("wamid") or "").strip()
     _inid = _mid or ("web:%s:%s:%s" % (tel, d.get("ts") or "", _hl.sha1(text.encode("utf-8")).hexdigest()[:8]))
-    conv["messages"].append({"dir": "in", "text": text, "ts": _wa_now(), "type": "text",
-                             "id": _inid, "canal": "web"})
+    _tipo = medio if medio in ("image", "audio", "video", "document", "sticker", "gif") else "text"
+    _msg = {"dir": "in", "text": text, "ts": _wa_now(), "type": _tipo, "id": _inid, "canal": "web"}
+    if media_id:
+        _msg["media_id"] = media_id
+        _msg["mime"] = (d.get("mime") or "")
+    conv["messages"].append(_msg)
     conv["unread"] = conv.get("unread", 0) + 1
     conv["updated"] = _wa_now()
     _wa_save_chats(chats)
