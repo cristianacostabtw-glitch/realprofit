@@ -1974,6 +1974,23 @@ _SOLO_DASH = r"""
       }
     }catch(e){}
   })();
+  // 1b) REFRESCO PROPIO cada 60s: el tablero se actualiza solo aunque el React no vuelva a pedir nada.
+  //     Nunca deja datos viejos en pantalla mas de un minuto.
+  setInterval(function(){
+    try{
+      if(document.hidden) return;                 // pestaña en segundo plano: no gasto llamadas
+      var q = (_raw && _raw.desde) ? ('?desde='+encodeURIComponent(_raw.desde)+'&hasta='+encodeURIComponent(_raw.hasta||_raw.desde)) : '';
+      _of('/pf-periodo'+q, {credentials:'same-origin'}).then(function(res){ return res.json(); })
+       .then(function(j){
+         var r=(j&&j.raw)||j;
+         if(r && (r.be_cpa!=null || r.be_roas!=null)){
+           _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar;
+           try{ paint(); }catch(e){} setTimeout(paint,200);
+           try{ pedirRecompras(r.desde, r.hasta); }catch(e){}
+         }
+       }).catch(function(){});
+    }catch(e){}
+  }, 60000);
   // 2) Respaldo: si el server NO pudo mandarlos (falla o cuenta sin datos), los pedimos nosotros.
   //    No esperamos al React: eso era lo que tardaba ~28 segundos.
   (function _rpPedirYa(){
