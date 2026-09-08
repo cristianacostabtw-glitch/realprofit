@@ -2090,7 +2090,7 @@ _SOLO_DASH = r"""
          window._rpOvVals.rpbecpa = money(_ov.be_cpa||0); }catch(e){}
     try{ hookCur(); }catch(e){}
     // Revelar la grilla SOLO cuando metricas() YA remapeó las tarjetas a los valores reales (nunca el demo).
-    if(_mok) window._rpValsOK=true;   // flag: los valores ya son los reales (lo usa estructura() para no revelar antes)
+    if(_mok){ window._rpValsOK=true; try{ _rpSacarCortina(); }catch(e){} }   // valores reales pintados -> fuera la cortina
     if(!_painted && _mok){ var _g=findGrid(); if(_g){ _painted=true; _g.style.opacity='1'; } } }
   // El KPI 'Facturación' en prod lee un campo que a veces llega en 0 (aunque tot_facturado esté bien).
   // Lo forzamos SIEMPRE al valor real del resumen. Se re-aplica tras cada poll (paint 80/450ms) → aguanta a React.
@@ -2108,6 +2108,16 @@ _SOLO_DASH = r"""
         if(/^-?\$\s?-?[\d.,]+$/.test(vt)) return dvs[q]; } } }
     return null; }
   // Encuentra el monto ($...) de una tarjeta KPI por el final de su etiqueta (ej 'ganancia','ticket prom') y lo setea.
+  // Saca la cortina del <head>. Se llama cuando los numeros reales ya estan en pantalla; ademas hay
+  // un tope de 6,5s por si algo se traba (y el autodestruct de 8s del propio <head> como ultima red).
+  function _rpSacarCortina(){
+    try{
+      var d=document.getElementById('rp-cortina'); if(!d) return;
+      d.style.opacity='0';
+      setTimeout(function(){ var x=document.getElementById('rp-cortina'); if(x) x.remove(); }, 260);
+    }catch(e){}
+  }
+  setTimeout(function(){ try{ _rpSacarCortina(); }catch(e){} }, 6500);
   function _fixLeaf(suf, val){ suf=suf.toLowerCase(); var all=document.querySelectorAll('span,p,div');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>44 || tx.toLowerCase().slice(-suf.length)!==suf) continue;
@@ -11909,9 +11919,28 @@ def home():
     except Exception:
         blob = _json.dumps(_blob_vacio(), ensure_ascii=False); _frescos = False
     # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
+    # CORTINA: un div propio, a pantalla completa, inyectado en el <head> -> existe antes de que el
+    # React de ProfitFlow pinte su primer pixel. Asi NUNCA se ven sus numeros demo (81 ventas,
+    # $3.200.000) ni ceros. Se saca cuando los valores reales ya estan pintados. Trae su propio
+    # autodestruct a los 8s: si el JS grande fallara, la pagina NO queda tapada.
+    _CORTINA = (
+        "<style>#rp-cortina{position:fixed;inset:0;z-index:2147483000;background:#0b1120;display:flex;"
+        "align-items:center;justify-content:center;transition:opacity .22s ease}"
+        "@keyframes rpsp{to{transform:rotate(360deg)}}</style>"
+        "<script>(function(){try{"
+        "var d=document.createElement('div');d.id='rp-cortina';"
+        "d.innerHTML='<div style=\"display:flex;align-items:center;gap:10px;color:#93a3ba;"
+        "font:600 13px/1 system-ui,-apple-system,sans-serif\">"
+        "<span style=\"width:14px;height:14px;border:2px solid #93a3ba;border-top-color:transparent;"
+        "border-radius:50%;display:inline-block;animation:rpsp .7s linear infinite\"></span>"
+        "Cargando tus datos</div>';"
+        "(document.body||document.documentElement).appendChild(d);"
+        "setTimeout(function(){var x=document.getElementById('rp-cortina');if(x)x.remove();},8000);"
+        "}catch(e){}})();</script>"
+    )
     if "</head>" in html:
         html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";window.__RPSRV__="
-                            + (blob if _frescos else "null") + ";</script></head>", 1)
+                            + (blob if _frescos else "null") + ";</script>" + _CORTINA + "</head>", 1)
     # Caja de usuario abajo a la izquierda (email + cerrar sesión).
     inicial = (email[0] if email else "?").upper()
     userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
