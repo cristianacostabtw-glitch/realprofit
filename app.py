@@ -2729,6 +2729,7 @@ _SOLO_DASH = r"""
         try{ var e = _rpFindVal(_RP_TOP[i]); if(e) els.push(e); }catch(x){}
       }
       try{ var f = _findFactEl(); if(f) els.push(f); }catch(x){}     // Facturacion tiene su propio buscador
+      window._rpTapaDbg = {encontradas: els.length, ok: !!ok, t: Date.now()};   // diagnostico
       for (var k = 0; k < els.length; k++) {
         var el = els[k];
         if (ok) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
