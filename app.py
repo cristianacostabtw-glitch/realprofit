@@ -2110,14 +2110,24 @@ _SOLO_DASH = r"""
   // Encuentra el monto ($...) de una tarjeta KPI por el final de su etiqueta (ej 'ganancia','ticket prom') y lo setea.
   // Saca la cortina del <head>. Se llama cuando los numeros reales ya estan en pantalla; ademas hay
   // un tope de 6,5s por si algo se traba (y el autodestruct de 8s del propio <head> como ultima red).
-  function _rpSacarCortina(){
+  function _rpSacarCortina(forzar){
     try{
       var d=document.getElementById('rp-cortina'); if(!d) return;
-      d.style.opacity='0';
-      setTimeout(function(){ var x=document.getElementById('rp-cortina'); if(x) x.remove(); }, 260);
+      // NO alcanza con que los valores esten calculados: hay que esperar a que las tarjetas esten
+      // DESTAPADAS, si no se ve el dashboard vacio (medido: la cortina se iba a los 2,1s y quedaban
+      // las tarjetas en blanco). _rpValsOK = valores reales pintados; _rpDashOK = grilla lista.
+      if (forzar !== true && !(window._rpValsOK && window._rpDashOK)) return;
+      if (d.getAttribute('data-yendo') === '1') return;
+      d.setAttribute('data-yendo', '1');
+      setTimeout(function(){                       // 180ms: que las cortinas por tarjeta se levanten antes
+        var y=document.getElementById('rp-cortina'); if(!y) return;
+        y.style.opacity='0';
+        setTimeout(function(){ var x=document.getElementById('rp-cortina'); if(x) x.remove(); }, 260);
+      }, 180);
     }catch(e){}
   }
-  setTimeout(function(){ try{ _rpSacarCortina(); }catch(e){} }, 6500);
+  setInterval(function(){ try{ _rpSacarCortina(); }catch(e){} }, 80);
+  setTimeout(function(){ try{ _rpSacarCortina(true); }catch(e){} }, 6500);   // tope: nunca tapado de mas
   function _fixLeaf(suf, val){ suf=suf.toLowerCase(); var all=document.querySelectorAll('span,p,div');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>44 || tx.toLowerCase().slice(-suf.length)!==suf) continue;
