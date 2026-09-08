@@ -1960,6 +1960,28 @@ _SOLO_DASH = r"""
   // ese rato mostraba SUS numeros, calculados con porcentajes fijos (break even 2.70x, CPA $49.450,
   // comisiones/envios en $0). Ahora los pedimos nosotros al instante: el endpoint contesta en ~0,4s
   // y el loop de pintado (cada 500ms) los aplica en cuanto el DOM existe.
+  // INDICADOR "Actualizando datos" (copiado de Escalafy): mientras se piden numeros se ve un cartelito,
+  // asi nunca hay que adivinar si lo que estas mirando es viejo. Se apaga cuando llegan.
+  var _rpEnVuelo = 0;
+  function _rpCargando(on){
+    try{
+      _rpEnVuelo = Math.max(0, _rpEnVuelo + (on ? 1 : -1));
+      var el = document.getElementById('rp-actualizando');
+      if(!el){
+        el = document.createElement('div'); el.id = 'rp-actualizando';
+        el.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;'
+          + 'display:none;align-items:center;gap:8px;background:rgba(19,127,236,.13);border:1px solid rgba(19,127,236,.35);'
+          + 'color:#9ec5f5;font:600 12.5px/1 system-ui,-apple-system,sans-serif;padding:8px 13px;border-radius:999px;'
+          + 'pointer-events:none;backdrop-filter:blur(6px)';
+        el.innerHTML = '<span style="width:11px;height:11px;border:2px solid #9ec5f5;border-top-color:transparent;'
+          + 'border-radius:50%;display:inline-block;animation:rpspin .7s linear infinite"></span>Actualizando datos';
+        var st = document.createElement('style'); st.textContent = '@keyframes rpspin{to{transform:rotate(360deg)}}';
+        (document.head||document.documentElement).appendChild(st);
+        (document.body||document.documentElement).appendChild(el);
+      }
+      el.style.display = _rpEnVuelo > 0 ? 'flex' : 'none';
+    }catch(e){}
+  }
   // 1) LOS DATOS YA VIENEN EN EL HTML (window.__RPSRV__, calculados por el server en esta misma
   //    request). Se toman en el acto: el primer pintado ya sale con los numeros REALES.
   (function _rpDelServer(){
@@ -1980,15 +2002,17 @@ _SOLO_DASH = r"""
     try{
       if(document.hidden) return;                 // pestaña en segundo plano: no gasto llamadas
       var q = (_raw && _raw.desde) ? ('?desde='+encodeURIComponent(_raw.desde)+'&hasta='+encodeURIComponent(_raw.hasta||_raw.desde)) : '';
+      _rpCargando(true);
       _of('/pf-periodo'+q, {credentials:'same-origin'}).then(function(res){ return res.json(); })
        .then(function(j){
+         _rpCargando(false);
          var r=(j&&j.raw)||j;
          if(r && (r.be_cpa!=null || r.be_roas!=null)){
            _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar;
            try{ paint(); }catch(e){} setTimeout(paint,200);
            try{ pedirRecompras(r.desde, r.hasta); }catch(e){}
          }
-       }).catch(function(){});
+       }).catch(function(){ _rpCargando(false); });
     }catch(e){}
   }, 60000);
   // 2) Respaldo: si el server NO pudo mandarlos (falla o cuenta sin datos), los pedimos nosotros.
