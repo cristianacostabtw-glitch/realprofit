@@ -1715,14 +1715,22 @@ _SOLO_DASH = r"""
    function paso(){
      if(i>=lote.length){ fin(); return; }
      var chunk=lote.slice(i,i+CH); var hasta=Math.min(i+chunk.length,lote.length);
-     res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando '+hasta+'/'+lote.length+' por '+lbl+'… (no cierres esto)</div>';
-     fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pedidos:chunk,force:!!force})}).then(function(r){return r.json();}).then(function(j){
+     var _t1=Date.now();
+     var _pin=setInterval(function(){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando '+hasta+'/'+lote.length+' por '+lbl+'… ('+Math.round((Date.now()-_t1)/1000)+'s, no cierres esto)</div>'; },1000);
+     // LIMITE DE TIEMPO: si el navegador queda con la conexion muerta (worker reciclado del lado del
+     // server), el fetch se quedaba colgado para siempre y la pantalla decia "Enviando" sin avanzar.
+     // Ahora a los 150s se corta solo y cae en el catch, que dice desde donde retomar.
+     var _ac=(window.AbortController?new AbortController():null);
+     var _to=setTimeout(function(){ try{ _ac&&_ac.abort(); }catch(e){} }, 150000);
+     function _fincorte(){ clearInterval(_pin); clearTimeout(_to); }
+     fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},signal:(_ac?_ac.signal:undefined),body:JSON.stringify({pedidos:chunk,force:!!force})}).then(function(r){return r.json();}).then(function(j){
+       _fincorte();
        if(j&&j.busy){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Servidor ocupado, reintentando '+hasta+'/'+lote.length+'…</div>'; setTimeout(paso,3000); return; }   // ocupado → reintenta la MISMA tanda
        if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
        if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
        else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
        i=hasta; paso();
-     }).catch(function(){ _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó en '+hasta+'/'+lote.length+'. Volvé a tocar Enviar: sigue desde donde quedó (los ya cargados se saltan).</div>'; });
+     }).catch(function(){ _fincorte(); _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó en '+hasta+'/'+lote.length+' (a los '+Math.round((Date.now()-_t1)/1000)+'s). Volvé a tocar Enviar: sigue desde donde quedó, los ya cargados se saltan.</div>'; });
    }
    paso(); };
  // ===================== FACTURACIÓN =====================
@@ -1947,6 +1955,31 @@ _SOLO_DASH = r"""
           if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS'; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
       } }catch(e){}
     return p; };
+  // NO ESPERAR AL REACT. Antes solo interceptabamos el fetch ajeno: los numeros reales aparecian
+  // cuando el dashboard de ProfitFlow decidia pedir /pf-periodo, y eso tardaba ~28 segundos. Durante
+  // ese rato mostraba SUS numeros, calculados con porcentajes fijos (break even 2.70x, CPA $49.450,
+  // comisiones/envios en $0). Ahora los pedimos nosotros al instante: el endpoint contesta en ~0,4s
+  // y el loop de pintado (cada 500ms) los aplica en cuanto el DOM existe.
+  (function _rpPedirYa(){
+    var intentos = 0;
+    function pedir(){
+      intentos++;
+      try{
+        _of('/pf-periodo', {credentials:'same-origin'}).then(function(res){ return res.json(); })
+         .then(function(j){
+           var r = (j && j.raw) || j;
+           if(r && (r.be_cpa!=null || r.be_roas!=null)){
+             _raw = r; window.__RP = r;
+             if(r.dolar) window.__RATE = r.dolar;
+             if(!window.__CUR) window.__CUR = 'ARS';
+             [0,120,400,900,1800,3000].forEach(function(ms){ setTimeout(function(){ try{ paint(); }catch(e){} }, ms); });
+             try{ pedirRecompras(r.desde, r.hasta); }catch(e){}
+           } else if(intentos < 3){ setTimeout(pedir, 1200); }
+         }).catch(function(){ if(intentos < 3) setTimeout(pedir, 1200); });
+      }catch(e){}
+    }
+    pedir();
+  })();
   // Recompras: se piden APARTE (el histórico es pesado y frenaba el dashboard). Se rellenan al llegar.
   var _recKey='', _recCache={};   // 'desde|hasta' -> {r:cant, f:fact}. Persiste aunque /pf-periodo reemplace _raw (evita el parpadeo 1↔0).
   function pedirRecompras(d,h){ if(!d||!h) return; var k=d+'|'+h;
