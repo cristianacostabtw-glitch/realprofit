@@ -2211,8 +2211,10 @@ _SOLO_DASH = r"""
     // (ej Break Even CPA $50.786 antes de corregirse a $35.631). Tope duro 2,6s = red de seguridad (nunca queda oculto).
     // El tope era 2600ms y los valores reales entran ~2700ms: se destapaba JUSTO antes y se veia
     // el flash de los numeros del ProfitFlow. 4000ms deja pasar el pintado real.
-    var _ok = _okRevelar();
-    try{ _tapaArriba(_ok); }catch(e){}   // misma cortina para la fila de arriba (Ventas/Facturacion/Ticket/Ganancia)
+    // OJO: aca NO se puede llamar a _okRevelar()/_tapaArriba() — viven en OTRO bloque <script> y desde
+    // aca son undefined: la excepcion mataba estructura() y volvia a aparecer la seccion FINANZAS.
+    // El tope pasa de 2600ms a 4000ms porque los valores reales entran ~2,7s (antes se destapaba justo antes).
+    var _ok = (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
     if(_ok){ if(grid.style.opacity!=='1'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='1'; } _painted=true; }
     else if(grid.style.opacity!=='0'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
