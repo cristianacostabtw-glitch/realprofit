@@ -8728,6 +8728,15 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             else:
                 fail += 1
                 if err: errores.append(err)
+    if env:
+        # Estos pedidos ACABAN de quedar despachados en Shopify. La lista de Despachos se arma
+        # desde un cache: si no lo tiro, siguen apareciendo en "por empaquetar" hasta que el
+        # usuario toque Sincronizar a mano (paso el 8-sep-2026 con 6 pedidos).
+        try:
+            _DESP_CACHE.pop(email, None)
+            _desp_cache_save()
+        except Exception:
+            pass
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
