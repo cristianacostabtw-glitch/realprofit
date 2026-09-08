@@ -12018,8 +12018,14 @@ def _pf_periodo_blob(email, desde, hasta):
     if c:
         if not lk.acquire(False):
             return c[1]              # otro ya lo esta calculando y tengo valor previo -> lo sirvo YA
-    elif not lk.acquire(True, 30):
-        return _blob_vacio()         # primera vez y el que calcula tarda demasiado
+    elif not lk.acquire(True, 45):
+        # El que calcula tarda demasiado y no tengo nada en memoria. Devolver _blob_vacio() serviria
+        # CEROS, que es un dato falso en pantalla. Prefiero el ultimo snapshot guardado en disco: es
+        # de hace un rato pero es real, y el proximo poll (a los 2s) ya trae el valor fresco.
+        try:
+            return _load_last_blob(email) or _blob_vacio()
+        except Exception:
+            return _blob_vacio()
     try:
         c2 = _PF_CACHE.get(key)      # pudo terminar el otro mientras yo esperaba el candado
         if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < 60:
