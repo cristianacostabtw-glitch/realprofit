@@ -10648,6 +10648,45 @@ def fin_cargar():
     return jsonify({"ok": not errores, "cargados": len(hechos), "dias": hechos, "errores": errores})
 
 
+@app.post("/fin-gasto-manual")
+def fin_gasto_manual():
+    """Carga gastos a mano en el bloque GASTOS de la planilla, sin pasar por el bot de WhatsApp.
+    Body: {"items":[{"concepto":"Klaviyo","monto":31900,"fecha":"2026-09-07"}, ...]}
+    La fecha es opcional (por defecto hoy en Argentina). Escribe en U (concepto) y V (monto),
+    exactamente igual que el bot, y deja el formato de plata + el total de X49 al dia.
+    Existe porque cuando el bot de gastos esta caido no habia NINGUNA forma de cargar un gasto."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    sid = ((_fin_conf().get(email) or {}).get("sheet") or "").strip()
+    if not sid:
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene planilla configurada"})
+    d = request.get_json(silent=True) or {}
+    crudos = d.get("items") or []
+    if not isinstance(crudos, list) or not crudos:
+        return jsonify({"ok": False, "msg": "mandá items: [{concepto, monto, fecha?}]"})
+    items = []
+    for it in crudos[:50]:
+        try:
+            monto = float(str(it.get("monto")).replace("$", "").replace(".", "").replace(",", ".").strip())
+        except Exception:
+            return jsonify({"ok": False, "msg": "monto invalido en %s" % (it.get("concepto") or "?")})
+        if monto <= 0:
+            return jsonify({"ok": False, "msg": "monto en cero o negativo en %s" % (it.get("concepto") or "?")})
+        concepto = (it.get("concepto") or "").strip()
+        if not concepto:
+            return jsonify({"ok": False, "msg": "falta el concepto"})
+        fecha = str(it.get("fecha") or "")[:10] or _fin_hoy_ar().strftime("%Y-%m-%d")
+        items.append({"concepto": concepto, "monto": monto, "fecha": fecha})
+    try:
+        puestos = _gastos_escribir(email, sid, items)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:200])})
+    return jsonify({"ok": True, "cargados": len(puestos),
+                    "detalle": [{"fila": p.get("fila"), "pestana": p.get("tab"),
+                                 "concepto": p.get("concepto"), "monto": p.get("monto")} for p in puestos]})
+
+
 def _ads_drive_fid(link):
     m = _re_and.search(r"/folders/([A-Za-z0-9_-]+)", link or "")
     if m:
