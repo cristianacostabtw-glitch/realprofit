@@ -1716,7 +1716,12 @@ _SOLO_DASH = r"""
      if(i>=lote.length){ fin(); return; }
      var chunk=lote.slice(i,i+CH); var hasta=Math.min(i+chunk.length,lote.length);
      var _t1=Date.now();
-     var _pin=setInterval(function(){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Enviando '+hasta+'/'+lote.length+' por '+lbl+'… ('+Math.round((Date.now()-_t1)/1000)+'s, no cierres esto)</div>'; },1000);
+     // Decia "89/89" cuando en realidad era "mandando la tanda que TERMINA en 89": parecia terminado
+     // y el reloj seguia corriendo. Ahora muestra lo que YA esta listo.
+     function _cartel(){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+i+' de '+lote.length
+       +' listos · enviando '+chunk.length+' más por '+lbl+'… ('+Math.round((Date.now()-_t1)/1000)+'s, no cierres esto)</div>'; }
+     _cartel();
+     var _pin=setInterval(_cartel,1000);
      // LIMITE DE TIEMPO: si el navegador queda con la conexion muerta (worker reciclado del lado del
      // server), el fetch se quedaba colgado para siempre y la pantalla decia "Enviando" sin avanzar.
      // Ahora a los 150s se corta solo y cae en el catch, que dice desde donde retomar.
@@ -1730,7 +1735,7 @@ _SOLO_DASH = r"""
        if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
        else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
        i=hasta; paso();
-     }).catch(function(){ _fincorte(); _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó en '+hasta+'/'+lote.length+' (a los '+Math.round((Date.now()-_t1)/1000)+'s). Volvé a tocar Enviar: sigue desde donde quedó, los ya cargados se saltan.</div>'; });
+     }).catch(function(){ _fincorte(); _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó con '+i+' de '+lote.length+' listos (a los '+Math.round((Date.now()-_t1)/1000)+'s). Volvé a tocar Enviar: sigue desde donde quedó, los ya cargados se saltan.</div>'; });
    }
    paso(); };
  // ===================== FACTURACIÓN =====================
