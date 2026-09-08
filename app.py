@@ -15553,6 +15553,60 @@ def wa_wh_diag():
     return jsonify({"ok": True, **_WA_WH_DIAG})
 
 
+@app.get("/wa-diag-meta")
+def wa_diag_meta():
+    """Le pregunta A META como esta configurado el numero: si la app esta suscripta al WABA (sin eso
+    Meta NO manda los mensajes entrantes), en que estado esta el numero y que webhook tiene puesto.
+    Sirve para dejar de adivinar en el panel."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    if not (c.get("token") and c.get("phone_id")):
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene la API conectada"})
+    out = {"ok": True, "phone_id": c.get("phone_id"), "waba_id": c.get("waba_id", "")}
+    tok = c["token"]
+
+    def _get(url, params=None):
+        try:
+            r = requests.get(url, params=dict(params or {}, access_token=tok), timeout=25)
+            return r.status_code, (r.json() if r.content else {})
+        except Exception as e:
+            return 0, {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+
+    # 1) el numero: nombre, estado y calidad
+    cod, j = _get("%s/%s" % (WA_GRAPH, c["phone_id"]),
+                  {"fields": "display_phone_number,verified_name,quality_rating,status,"
+                             "code_verification_status,platform_type"})
+    out["numero"] = {"http": cod, **(j if isinstance(j, dict) else {})}
+
+    # 2) apps suscriptas al WABA: SIN esto no llegan los mensajes entrantes
+    if c.get("waba_id"):
+        cod, j = _get("%s/%s/subscribed_apps" % (WA_GRAPH, c["waba_id"]))
+        out["apps_suscriptas"] = {"http": cod, **(j if isinstance(j, dict) else {})}
+
+    return jsonify(out)
+
+
+@app.post("/wa-suscribir")
+def wa_suscribir():
+    """Suscribe la app al WABA (equivale al boton 'Subscribe' de WhatsApp Manager). Sin esto Meta
+    recibe los mensajes pero NO nos los reenvia al webhook."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    if not (c.get("token") and c.get("waba_id")):
+        return jsonify({"ok": False, "msg": "faltan token o WABA ID"})
+    try:
+        r = requests.post("%s/%s/subscribed_apps" % (WA_GRAPH, c["waba_id"]),
+                          params={"access_token": c["token"]}, timeout=25)
+        return jsonify({"ok": r.status_code < 400, "http": r.status_code,
+                        "det": (r.json() if r.content else {})})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:150])})
+
+
 @app.route("/wa-webhook", methods=["GET", "POST"])
 def wa_webhook():
     if request.method == "GET":
