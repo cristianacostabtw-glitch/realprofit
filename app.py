@@ -1989,7 +1989,6 @@ _SOLO_DASH = r"""
       var j = window.__RPSRV__; var r = j && (j.raw || j);
       if(r && (r.be_cpa!=null || r.be_roas!=null)){
         _raw = r; window.__RP = r;
-        if(r.recompras!=null) window._rpRecOK = true;   // vinieron en el HTML: las tarjetas salen llenas
         if(r.dolar) window.__RATE = r.dolar;
         if(!window.__CUR) window.__CUR = 'ARS';
         [0,60,150,300,600,1200,2500].forEach(function(ms){ setTimeout(function(){ try{ paint(); }catch(e){} }, ms); });
@@ -2045,7 +2044,7 @@ _SOLO_DASH = r"""
     if(_recCache[k]){ try{paint();}catch(e){} return; }   // ya lo tengo cacheado → paint lo reaplica solo
     if(k===_recKey) return; _recKey=k;
     fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
-      if(j&&j.ok){ _recCache[k]={r:(j.recompras||0), f:(j.fact_recompra||0)}; window._rpRecOK=true; try{paint();}catch(e){} setTimeout(paint,200); }
+      if(j&&j.ok){ _recCache[k]={r:(j.recompras||0), f:(j.fact_recompra||0)}; try{paint();}catch(e){} setTimeout(paint,200); }
     }).catch(function(){ _recKey=''; }); }
   function money(n){ try{ var neg=n<0, a=Math.abs(n), s; if(window.__CUR==='USD'&&window.__RATE){ s=(a/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } else { s=Math.round(a).toLocaleString('es-AR'); } return (neg?'-$':'$')+s; }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
@@ -2239,11 +2238,7 @@ _SOLO_DASH = r"""
     // OJO: aca NO se puede llamar a _okRevelar()/_tapaArriba() — viven en OTRO bloque <script> y desde
     // aca son undefined: la excepcion mataba estructura() y volvia a aparecer la seccion FINANZAS.
     // El tope pasa de 2600ms a 4000ms porque los valores reales entran ~2,7s (antes se destapaba justo antes).
-    // Tope DINAMICO: si el server nos mando los numeros reales en el HTML, esperamos a que esten
-    // PINTADOS (tope 10s como ultimo recurso). Con un tope fijo de 4s, en una carga lenta se destapaba
-    // la grilla con los numeros demo del ProfitFlow. Sin datos del server el tope sigue en 4s.
-    var _tope = (window.__RPSRV__ && (window.__RPSRV__.raw || window.__RPSRV__.be_cpa!=null)) ? 10000 : 4000;
-    var _ok = (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > _tope);
+    var _ok = (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
     if(_ok){ if(grid.style.opacity!=='1'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='1'; } _painted=true; }
     else if(grid.style.opacity!=='0'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
@@ -2747,8 +2742,7 @@ _SOLO_DASH = r"""
   // a los 4,5s se revelan si o si, pase lo que pase, para que nunca queden en blanco.
   function _okRevelar(){
     if(!window._rpT0) window._rpT0=Date.now();
-    var _tope = (window.__RPSRV__ && (window.__RPSRV__.raw || window.__RPSRV__.be_cpa!=null)) ? 10000 : 4000;
-    return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > _tope);
+    return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
   }
   // La cortina busca las tarjetas de arriba IGUAL que _fixLeaf (el unico buscador que si las agarra):
   // hoja con el titulo -> tarjeta 'rounded' -> hoja con el numero. Tapo con visibility, no mueve nada.
@@ -2785,23 +2779,6 @@ _SOLO_DASH = r"""
       window._rpTapaDbg = {encontradas: n, ok: !!ok, t: Date.now()};
     }catch(e){}
   }
-  // Las 2 tarjetas de RECOMPRAS llegan mas tarde que el resto: salen de una consulta aparte de 180 dias
-  // de historia. Hasta que el numero es real van tapadas (antes mostraban 0, que es un dato falso).
-  // Tope de seguridad 9s: nunca quedan tapadas para siempre.
-  var _RP_REC = ['recompras', 'facturaci\u00f3n recompra'];
-  function _tapaRec(){
-    try{
-      var listo = (!!window._rpRecOK && !!window._rpValsOK)
-                  || (Date.now() - (window._rpT0 || Date.now()) > 11000);
-      for (var i = 0; i < _RP_REC.length; i++) {
-        var el = null; try{ el = _leafDe(_RP_REC[i]); }catch(x){}
-        if (!el) continue;
-        if (listo) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
-        else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
-      }
-    }catch(e){}
-  }
-  setInterval(_tapaRec, 250);
   // Corre cada 40ms desde el arranque: si esperara al loop de 500ms se cuela un frame con los numeros demo.
   (function(){ var _t = setInterval(function(){
       try{ _tapaArriba(_okRevelar()); }catch(e){}
@@ -11863,33 +11840,6 @@ def home():
         _real = _pf_periodo_blob(email, _hoy(), _hoy())
     except Exception:
         _real = None
-    # RECOMPRAS: son la consulta pesada (180 dias de historia) y por eso van aparte. Si la historia
-    # YA esta en cache (10 min) el calculo es instantaneo -> lo metemos en el HTML con el resto y las
-    # dos tarjetas salen llenas de una. Si esta fria NO frenamos la pagina: se calienta en un hilo
-    # aparte y el navegador las pide igual (arranca a los ~0,3s).
-    try:
-        _hy = _hoy()
-        _tibio = (((email, _hy) in _SHOP_HIST_CACHE) or ((email, _hy) in _TN_HIST_CACHE))
-        if _real and _tibio:
-            _rc = _rf = 0
-            for _fn in (_tn_hist_orders, _shop_hist_orders):
-                try:
-                    _c, _f = _recompras_periodo(_fn(email, _hy), _hy, _hy)
-                    _rc += _c; _rf += _f
-                except Exception:
-                    pass
-            _real["raw"]["recompras"] = _rc
-            _real["raw"]["fact_recompra"] = round(_rf, 2)
-        elif _real:
-            import threading as _th
-            def _calentar():
-                try: _tn_hist_orders(email, _hy)
-                except Exception: pass
-                try: _shop_hist_orders(email, _hy)
-                except Exception: pass
-            _th.Thread(target=_calentar, daemon=True).start()
-    except Exception:
-        pass
     _frescos = bool(_real and (_real.get("raw") or {}).get("be_cpa") is not None)
     try:
         blob = _json.dumps(_real or _load_last_blob(email) or _blob_vacio(), ensure_ascii=False)
