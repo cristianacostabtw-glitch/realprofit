@@ -12000,11 +12000,42 @@ def _pf_periodo_blob(email, desde, hasta):
     """Los KPI reales del período (lo que devuelve /pf-periodo). Se saco de la ruta para poder
     llamarlo TAMBIEN desde home(): asi la pagina sale con los numeros de verdad ya adentro del
     HTML, en vez de mostrar el snapshot viejo mientras espera un fetch."""
+    # ESTAMPIDA (medido en los logs de Render, 8-sep-2026): el dashboard pide /pf-periodo CADA 2
+    # SEGUNDOS. Con cache de 60s, al vencer la cache TODAS las que estaban en vuelo fallan juntas y
+    # cada una se manda a recalcular contra Shopify + Meta + MercadoPago al mismo tiempo. Seis
+    # calculos pesados arrancando en el mismo segundo tapaban los hilos del server 20-30 segundos
+    # (por eso /diag, que no hace nada, timeouteaba). Ahora calcula UNO SOLO: el resto recibe el
+    # valor anterior al toque, y si no hay ninguno espera al que esta calculando.
     key = (email, desde, hasta)
     now = _dt.datetime.utcnow()
     c = _PF_CACHE.get(key)
     if c and (now - c[0]).total_seconds() < 60:
         return c[1]
+    with _PF_LOCKS_G:
+        lk = _PF_LOCKS.get(key)
+        if lk is None:
+            lk = _PF_LOCKS[key] = threading.Lock()
+    if c:
+        if not lk.acquire(False):
+            return c[1]              # otro ya lo esta calculando y tengo valor previo -> lo sirvo YA
+    elif not lk.acquire(True, 30):
+        return _blob_vacio()         # primera vez y el que calcula tarda demasiado
+    try:
+        c2 = _PF_CACHE.get(key)      # pudo terminar el otro mientras yo esperaba el candado
+        if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < 60:
+            return c2[1]
+        return _pf_periodo_calcular(email, desde, hasta, key, now)
+    finally:
+        lk.release()
+
+
+_PF_LOCKS = {}                     # (email,desde,hasta) -> Lock: UNO SOLO calcula por periodo
+_PF_LOCKS_G = threading.Lock()     # candado del diccionario de candados
+
+
+def _pf_periodo_calcular(email, desde, hasta, key, now):
+    """El calculo pesado en si (Shopify + Tiendanube + Meta + MP + IVA). Lo llama SOLO
+    _pf_periodo_blob, y solo un hilo a la vez por periodo."""
     blob = None
     sh_blob = None
     if email in _shop_tokens():
