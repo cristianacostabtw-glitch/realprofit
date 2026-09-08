@@ -1989,6 +1989,7 @@ _SOLO_DASH = r"""
       var j = window.__RPSRV__; var r = j && (j.raw || j);
       if(r && (r.be_cpa!=null || r.be_roas!=null)){
         _raw = r; window.__RP = r;
+        if(r.recompras!=null) window._rpRecOK = true;   // vinieron en el HTML
         if(r.dolar) window.__RATE = r.dolar;
         if(!window.__CUR) window.__CUR = 'ARS';
         [0,60,150,300,600,1200,2500].forEach(function(ms){ setTimeout(function(){ try{ paint(); }catch(e){} }, ms); });
@@ -2044,7 +2045,7 @@ _SOLO_DASH = r"""
     if(_recCache[k]){ try{paint();}catch(e){} return; }   // ya lo tengo cacheado → paint lo reaplica solo
     if(k===_recKey) return; _recKey=k;
     fetch('/pf-recompras?desde='+encodeURIComponent(d)+'&hasta='+encodeURIComponent(h)).then(function(r){return r.json();}).then(function(j){
-      if(j&&j.ok){ _recCache[k]={r:(j.recompras||0), f:(j.fact_recompra||0)}; try{paint();}catch(e){} setTimeout(paint,200); }
+      if(j&&j.ok){ _recCache[k]={r:(j.recompras||0), f:(j.fact_recompra||0)}; window._rpRecOK=true; try{paint();}catch(e){} setTimeout(paint,200); }
     }).catch(function(){ _recKey=''; }); }
   function money(n){ try{ var neg=n<0, a=Math.abs(n), s; if(window.__CUR==='USD'&&window.__RATE){ s=(a/window.__RATE).toLocaleString('es-AR',{maximumFractionDigits:2}); } else { s=Math.round(a).toLocaleString('es-AR'); } return (neg?'-$':'$')+s; }catch(e){ return '$'+Math.round(n); } }
   function set(label,text){ var all=document.querySelectorAll('span');
@@ -2794,6 +2795,22 @@ _SOLO_DASH = r"""
       window._rpTapaDbg = {encontradas: n, ok: !!ok, t: Date.now()};
     }catch(e){}
   }
+  // Las 2 tarjetas de RECOMPRAS llegan despues (consulta de 180 dias). Hasta tener el numero real van
+  // TAPADAS: antes mostraban 0 y $0 durante 5-12 segundos, que es un dato falso. Tope duro 14s.
+  var _RP_REC = ['recompras', 'facturaci\u00f3n recompra'];
+  function _tapaRec(){
+    try{
+      var listo = (!!window._rpRecOK && !!window._rpValsOK)
+                  || (Date.now() - (window._rpT0 || Date.now()) > 14000);
+      for (var i = 0; i < _RP_REC.length; i++) {
+        var el = null; try{ el = _leafDe(_RP_REC[i]); }catch(x){}
+        if (!el) continue;
+        if (listo) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
+        else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+      }
+    }catch(e){}
+  }
+  setInterval(_tapaRec, 200);
   // Corre cada 40ms desde el arranque: si esperara al loop de 500ms se cuela un frame con los numeros demo.
   (function(){ var _t = setInterval(function(){
       try{ _tapaArriba(_okRevelar()); }catch(e){}
@@ -11855,6 +11872,30 @@ def home():
         _real = _pf_periodo_blob(email, _hoy(), _hoy())
     except Exception:
         _real = None
+    # RECOMPRAS: consulta pesada (180 dias de historia) que va aparte y tarda 5-12s en frio. Si la
+    # historia YA esta cacheada el calculo es instantaneo -> viaja en el HTML y las 2 tarjetas salen
+    # llenas de una. Si esta fria NO frenamos la pagina: se calienta en un hilo y el navegador la pide.
+    try:
+        _hy = _hoy()
+        if _real and (((email, _hy) in _SHOP_HIST_CACHE) or ((email, _hy) in _TN_HIST_CACHE)):
+            _rc = 0; _rf = 0.0
+            for _fn in (_tn_hist_orders, _shop_hist_orders):
+                try:
+                    _c, _f = _recompras_periodo(_fn(email, _hy), _hy, _hy)
+                    _rc += _c; _rf += _f
+                except Exception:
+                    pass
+            _real["raw"]["recompras"] = _rc
+            _real["raw"]["fact_recompra"] = round(_rf, 2)
+        elif _real:
+            import threading as _th
+            def _calentar():
+                for _f2 in (_tn_hist_orders, _shop_hist_orders):
+                    try: _f2(email, _hy)
+                    except Exception: pass
+            _th.Thread(target=_calentar, daemon=True).start()
+    except Exception:
+        pass
     _frescos = bool(_real and (_real.get("raw") or {}).get("be_cpa") is not None)
     try:
         blob = _json.dumps(_real or _load_last_blob(email) or _blob_vacio(), ensure_ascii=False)
