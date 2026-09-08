@@ -2239,7 +2239,11 @@ _SOLO_DASH = r"""
     // OJO: aca NO se puede llamar a _okRevelar()/_tapaArriba() — viven en OTRO bloque <script> y desde
     // aca son undefined: la excepcion mataba estructura() y volvia a aparecer la seccion FINANZAS.
     // El tope pasa de 2600ms a 4000ms porque los valores reales entran ~2,7s (antes se destapaba justo antes).
-    var _ok = (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
+    // Tope DINAMICO: si el server nos mando los numeros reales en el HTML, esperamos a que esten
+    // PINTADOS (tope 10s como ultimo recurso). Con un tope fijo de 4s, en una carga lenta se destapaba
+    // la grilla con los numeros demo del ProfitFlow. Sin datos del server el tope sigue en 4s.
+    var _tope = (window.__RPSRV__ && (window.__RPSRV__.raw || window.__RPSRV__.be_cpa!=null)) ? 10000 : 4000;
+    var _ok = (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > _tope);
     if(_ok){ if(grid.style.opacity!=='1'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='1'; } _painted=true; }
     else if(grid.style.opacity!=='0'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
@@ -2743,7 +2747,8 @@ _SOLO_DASH = r"""
   // a los 4,5s se revelan si o si, pase lo que pase, para que nunca queden en blanco.
   function _okRevelar(){
     if(!window._rpT0) window._rpT0=Date.now();
-    return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
+    var _tope = (window.__RPSRV__ && (window.__RPSRV__.raw || window.__RPSRV__.be_cpa!=null)) ? 10000 : 4000;
+    return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > _tope);
   }
   // La cortina busca las tarjetas de arriba IGUAL que _fixLeaf (el unico buscador que si las agarra):
   // hoja con el titulo -> tarjeta 'rounded' -> hoja con el numero. Tapo con visibility, no mueve nada.
@@ -2786,7 +2791,8 @@ _SOLO_DASH = r"""
   var _RP_REC = ['recompras', 'facturaci\u00f3n recompra'];
   function _tapaRec(){
     try{
-      var listo = !!window._rpRecOK || (Date.now() - (window._rpT0 || Date.now()) > 9000);
+      var listo = (!!window._rpRecOK && !!window._rpValsOK)
+                  || (Date.now() - (window._rpT0 || Date.now()) > 11000);
       for (var i = 0; i < _RP_REC.length; i++) {
         var el = null; try{ el = _leafDe(_RP_REC[i]); }catch(x){}
         if (!el) continue;
