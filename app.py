@@ -9552,7 +9552,9 @@ la direcci&oacute;n a mano, no entra.</div>
 </div>
 </div>
 <script>
-var SECS=[];
+// Las secciones van EN EL HTML, no las trae un fetch: si la app tarda, la pantalla se pintaba
+// igual pero vacia y quedaba "Cargando..." para siempre (le paso a Cristian el 8/9).
+var SECS=__SECS__;
 function get(u){return fetch(u).then(function(r){return r.json();});}
 function post(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json();});}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -9565,9 +9567,11 @@ function pintarSecs(marcadas){
 function marcadas(){return [].slice.call(document.querySelectorAll('#secs input:checked')).map(function(i){return i.value;});}
 function limpiar(){document.getElementById('em').value='';document.getElementById('nom').value='';document.getElementById('pw').value='';pintarSecs([]);document.getElementById('msg').textContent='';}
 function cargar(){
- get('/equipo-listar').then(function(j){
+ var ctl=new AbortController(); var corto=setTimeout(function(){ctl.abort();},12000);
+ fetch('/equipo-listar',{signal:ctl.signal}).then(function(r){return r.json();}).then(function(j){
+  clearTimeout(corto);
   if(!j.ok){document.getElementById('tb').innerHTML='<tr><td colspan=4 style="color:#f87171">Sin permiso</td></tr>';return;}
-  SECS=j.secciones;if(!document.querySelector('#secs input'))pintarSecs([]);
+  if(j.secciones&&j.secciones.length)SECS=j.secciones;
   var h='';(j.gente||[]).forEach(function(p){
    var chips=(p.secciones||[]).map(function(c){var s=SECS.filter(function(x){return x.clave===c;})[0];return '<span class=chip>'+esc(s?s.label:c)+'</span>';}).join('');
    h+='<tr><td>'+esc(p.email)+'</td><td>'+esc(p.nombre||'&mdash;')+'</td><td>'+(chips||'<span style="color:#8493a8">sin accesos</span>')+'</td>'
@@ -9575,6 +9579,11 @@ function cargar(){
      +'<button class=gris style="padding:7px 12px;font-size:12px" onclick=\'editar("'+esc(p.email)+'","'+esc(p.nombre||'')+'",'+JSON.stringify(p.secciones||[])+')\'>Editar</button> '
      +'<button class=rojo onclick=\'borrar("'+esc(p.email)+'")\'>Borrar</button></td></tr>';});
   document.getElementById('tb').innerHTML=h||'<tr><td colspan=4 style="color:#8493a8">Todav&iacute;a no diste acceso a nadie.</td></tr>';
+ }).catch(function(e){
+  clearTimeout(corto);
+  document.getElementById('tb').innerHTML='<tr><td colspan=4 style="color:#f87171">No pude traer la lista ('
+   +(e&&e.name==='AbortError'?'la app tard&oacute; m&aacute;s de 12s':esc(String(e)))
+   +'). <a href="#" onclick="cargar();return false;" style="color:#54a8f0">Reintentar</a></td></tr>';
  });
 }
 function editar(mail,nom,secs){document.getElementById('em').value=mail;document.getElementById('nom').value=nom;document.getElementById('pw').value='';pintarSecs(secs);window.scrollTo(0,0);
@@ -9588,6 +9597,7 @@ function guardar(){
 }
 function borrar(mail){ if(!confirm('¿Sacarle el acceso a '+mail+'?'))return;
  post('/equipo-borrar',{email:mail}).then(function(j){ if(!j.ok){alert(j.msg||'error');return;} cargar(); }); }
+pintarSecs([]);
 cargar();
 </script></body></html>"""
 
@@ -9600,7 +9610,8 @@ def equipo_page():
     if _mi_rol() != "admin":
         return Response("<h3 style='font-family:system-ui;padding:40px'>Solo el admin puede "
                         "administrar el equipo.</h3>", status=403)
-    return Response(_EQUIPO_PAGE, mimetype="text/html")
+    secs = _json.dumps([{"clave": k, "label": v[0]} for k, v in SECCIONES.items()], ensure_ascii=False)
+    return Response(_EQUIPO_PAGE.replace("__SECS__", secs), mimetype="text/html")
 
 
 @app.get("/equipo-listar")
