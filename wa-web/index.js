@@ -167,9 +167,13 @@ function reconectar(acc, s, ms) {
   s._rt = setTimeout(() => { s._rt = null; startSession(acc).catch(() => {}); }, ms);
 }
 
-async function startSession(acc) {
+async function startSession(acc, force) {
   let s = sessions.get(acc);
-  if (s && (s.status === "connected" || s.starting)) return s;
+  // Con force=1 se rehace el socket AUNQUE diga "connected": es la unica forma de revivir la
+  // conexion zombie (manda bien pero no recibe nada, y como el estado dice "connected" ni el
+  // /connect ni el watchdog la tocaban).
+  if (s && !force && (s.status === "connected" || s.starting)) return s;
+  if (s && force) s.starting = false;
   // Marcar "arrancando" ANTES del primer await: si no, dos llamadas casi simultaneas
   // (el close de un socket + el watchdog) pasan las dos el chequeo de arriba y abren DOS sockets.
   if (s) {
@@ -482,6 +486,8 @@ app.get("/diag", (_req, res) => {
       creds_guardados: s.credsN || 0,
       creds_error: s.credsErr || null,
       historial_recibido: s.histN || 0,
+      sondeo: { ok: s.sondOk || 0, fallos_seguidos: s.sondFail || 0,
+                rehechas: s.sondRehechas || 0, ultimo_fallo: s.sondUlt || null },
       eventos: s.ev || {},
       auth: (() => {
         try {
@@ -503,8 +509,9 @@ app.get("/diag", (_req, res) => {
 app.post("/connect", async (req, res) => {
   const acc = (req.body?.acc || "").trim();
   if (!acc) return res.status(400).json({ ok: false, msg: "falta acc" });
+  const force = String(req.body?.force || "") === "1";
   try {
-    const s = await startSession(acc);
+    const s = await startSession(acc, force);
     // esperar hasta ~6s a que aparezca el QR o conecte
     for (let i = 0; i < 24 && s.status === "connecting" && !s.qr; i++) {
       await new Promise((r) => setTimeout(r, 250));
@@ -679,6 +686,25 @@ function bootSessions() {
   } catch {}
 }
 
+// PRUEBA ACTIVA (lo que faltaba hoy): el socket puede estar "abierto" y no recibir NADA. La unica
+// forma de saberlo es pedirle algo al server y ver si contesta. Si no contesta 2 veces seguidas
+// (=~2 min) la sesion esta sorda y hay que rehacer el socket.
+// Es a prueba de bombas a proposito: timeout propio, try/catch total y NUNCA toca el socket.
+// Lo unico que hace es contar fallos. Quien reconecta es el watchdog de siempre.
+async function sondear(s) {
+  try {
+    const sock = s && s.sock;
+    if (!sock || typeof sock.onWhatsApp !== "function") return null;   // no se puede sondear
+    const yo = String(sock.user?.id || "").split(":")[0];
+    if (!yo) return null;
+    const r = await Promise.race([
+      sock.onWhatsApp(yo).then(() => true).catch(() => false),
+      new Promise((res) => setTimeout(() => res(null), 12000)),        // null = no contesto a tiempo
+    ]);
+    return r === true;   // true=vivo, false=error del server (igual contesto), null=mudo
+  } catch { return null; }
+}
+
 function wsDead(sock) {
   try {
     const w = sock && sock.ws;
@@ -709,14 +735,34 @@ setInterval(() => {
       // que reconectaba a su vez cada 2,5s -> el celular sincronizando sin parar).
       // Una caida real la detecta Baileys con su keepAlive de 20s -> wsDead(). "muda" queda solo
       // como red de seguridad remota.
-      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 3 * 60 * 60 * 1000;
+      // 25 min de silencio ABSOLUTO (ni un receipt, ni una presencia) = zombie. Con 3h el zombie de
+      // hoy estuvo sordo toda la tarde; con 7 min reconectaba sesiones sanas. 25 min es el medio.
+      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 25 * 60 * 1000;
       if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda)) {
-        s.status = "connecting";
+        s.status = "connecting";   // sin esto startSession() sale por el early-return y no revive nada
         reconectar(acc, s, 100);
         continue;
       }
       // Ping activo: mantiene la conexión caliente y fuerza round-trip con el server cada vuelta.
       if (s.status === "connected" && !s.starting) { try { s.sock?.sendPresenceUpdate?.("available"); } catch {} }
+      // Sondeo activo: 2 fallos seguidos (≈2 min) = sorda → rehacer socket. No espera a los 25 min.
+      if (s.status === "connected" && !s.starting) {
+        sondear(s).then((vivo) => {
+          if (vivo === null) {
+            s.sondFail = (s.sondFail || 0) + 1;
+            s.sondUlt = new Date().toISOString();
+            if (s.sondFail >= 2 && s.status === "connected" && !s.starting) {
+              s.sondRehechas = (s.sondRehechas || 0) + 1;
+              s.sondFail = 0;
+              s.status = "connecting";
+              reconectar(acc, s, 100);
+            }
+          } else {
+            s.sondFail = 0;
+            s.sondOk = (s.sondOk || 0) + 1;
+          }
+        }).catch(() => {});
+      }
       if (s.status !== "connected" && !s.starting) reconectar(acc, s, 100);
     }
     // cuenta con creds en disco que quedó fuera de memoria → levantarla
