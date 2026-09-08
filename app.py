@@ -2718,25 +2718,46 @@ _SOLO_DASH = r"""
     if(!window._rpT0) window._rpT0=Date.now();
     return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
   }
-  // Buscar un contenedor padre comun no funciono (el DOM del React no lo tiene). Tapo el VALOR de cada
-  // tarjeta de arriba por separado, con el mismo buscador que ya usa el resto (_rpFindVal), y con
-  // visibility:hidden para no mover un pixel del layout.
-  var _RP_TOP = ['Ventas', 'Ticket Prom', 'Ganancia'];
+  // La cortina busca las tarjetas de arriba IGUAL que _fixLeaf (el unico buscador que si las agarra):
+  // hoja con el titulo -> tarjeta 'rounded' -> hoja con el numero. Tapo con visibility, no mueve nada.
+  var _RP_TOP = ['ventas', 'facturaci\u00f3n', 'ticket prom', 'ganancia'];
+  function _leafDe(suf){
+    suf = suf.toLowerCase();
+    var all = document.querySelectorAll('span,p,div');
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i], tx = (e.textContent || '').replace(/\s+/g, ' ').trim();
+      if (tx.length > 44 || tx.toLowerCase().slice(-suf.length) !== suf) continue;
+      if (e.offsetParent === null) continue;
+      var card = e;
+      for (var k = 0; k < 9 && card; k++) { card = card.parentElement; if (card && /rounded/.test(card.className || '')) break; }
+      if (!card || !/rounded/.test(card.className || '') || card.offsetParent === null) continue;
+      var dvs = card.querySelectorAll('span,div');
+      for (var q = 0; q < dvs.length; q++) {
+        if (dvs[q].children.length) continue;
+        var vt = (dvs[q].textContent || '').trim();
+        if (/^-?\$\s?-?[\d.,]+$/.test(vt) || (/^\d[\d.,]*$/.test(vt) && vt.length < 9)) return dvs[q];
+      }
+    }
+    return null;
+  }
   function _tapaArriba(ok){
     try{
-      var els = [];
+      var n = 0;
       for (var i = 0; i < _RP_TOP.length; i++) {
-        try{ var e = _rpFindVal(_RP_TOP[i]); if(e) els.push(e); }catch(x){}
-      }
-      try{ var f = _findFactEl(); if(f) els.push(f); }catch(x){}     // Facturacion tiene su propio buscador
-      window._rpTapaDbg = {encontradas: els.length, ok: !!ok, t: Date.now()};   // diagnostico
-      for (var k = 0; k < els.length; k++) {
-        var el = els[k];
+        var el = null; try{ el = _leafDe(_RP_TOP[i]); }catch(x){}
+        if (!el) continue;
+        n++;
         if (ok) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
         else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
       }
+      window._rpTapaDbg = {encontradas: n, ok: !!ok, t: Date.now()};
     }catch(e){}
   }
+  // Corre cada 40ms desde el arranque: si esperara al loop de 500ms se cuela un frame con los numeros demo.
+  (function(){ var _t = setInterval(function(){
+      try{ _tapaArriba(_okRevelar()); }catch(e){}
+      if (Date.now() - (window._rpT0 || Date.now()) > 6000) clearInterval(_t);
+    }, 40); })();
   setTimeout(function(){ try{ _tapaArriba(true); }catch(e){} }, 4500);   // red de seguridad: nunca en blanco
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
 })();
