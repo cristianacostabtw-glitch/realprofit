@@ -2701,31 +2701,24 @@ _SOLO_DASH = r"""
     if(!window._rpT0) window._rpT0=Date.now();
     return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
   }
-  function _filaArriba(){
-    if(window._rpTopEl && document.body.contains(window._rpTopEl)) return window._rpTopEl;
+  // Buscar un contenedor padre comun no funciono (el DOM del React no lo tiene). Tapo el VALOR de cada
+  // tarjeta de arriba por separado, con el mismo buscador que ya usa el resto (_rpFindVal), y con
+  // visibility:hidden para no mover un pixel del layout.
+  var _RP_TOP = ['Ventas', 'Ticket Prom', 'Ganancia'];
+  function _tapaArriba(ok){
     try{
-      var sp=document.querySelectorAll('span,div,p');
-      for(var i=0;i<sp.length;i++){
-        var tx=(sp[i].textContent||'').replace(/\s+/g,' ').trim().toUpperCase();
-        if(tx!=='VENTAS') continue;
-        var c=sp[i];
-        for(var k=0;k<8&&c;k++){
-          c=c.parentElement; if(!c) break;
-          var t=(c.textContent||'').toUpperCase();
-          if(t.indexOf('VENTAS')>-1 && t.indexOf('GANANCIA')>-1 && t.indexOf('BREAK EVEN')<0 && c.children.length>=3){
-            window._rpTopEl=c; return c; }
-        }
+      var els = [];
+      for (var i = 0; i < _RP_TOP.length; i++) {
+        try{ var e = _rpFindVal(_RP_TOP[i]); if(e) els.push(e); }catch(x){}
+      }
+      try{ var f = _findFactEl(); if(f) els.push(f); }catch(x){}     // Facturacion tiene su propio buscador
+      for (var k = 0; k < els.length; k++) {
+        var el = els[k];
+        if (ok) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
+        else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
       }
     }catch(e){}
-    return null;
   }
-  function _tapaArriba(ok){
-    var el=_filaArriba(); if(!el) return;
-    if(ok){ if(el.style.opacity!=='1'){ el.style.transition='opacity .25s ease'; el.style.opacity='1'; } }
-    else if(el.style.opacity!=='0'){ el.style.transition='opacity .25s ease'; el.style.opacity='0'; }
-  }
-  (function(){ var _t=setInterval(function(){ try{ _tapaArriba(_okRevelar()); }catch(e){}
-    if(Date.now()-(window._rpT0||Date.now()) > 5000) clearInterval(_t); }, 40); })();  // 40ms: no se cuela un frame demo
   setTimeout(function(){ try{ _tapaArriba(true); }catch(e){} }, 4500);   // red de seguridad: nunca en blanco
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
 })();
