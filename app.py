@@ -2773,12 +2773,13 @@ _SOLO_DASH = r"""
       var card = e;
       for (var k = 0; k < 9 && card; k++) { card = card.parentElement; if (card && /rounded/.test(card.className || '')) break; }
       if (!card || !/rounded/.test(card.className || '') || card.offsetParent === null) continue;
-      var dvs = card.querySelectorAll('span,div');
+      var dvs = card.querySelectorAll('span,div'), hojas = [];
       for (var q = 0; q < dvs.length; q++) {
         if (dvs[q].children.length) continue;
         var vt = (dvs[q].textContent || '').trim();
-        if (/^-?\$\s?-?[\d.,]+$/.test(vt) || (/^\d[\d.,]*$/.test(vt) && vt.length < 9)) return dvs[q];
+        if (/^-?\$\s?-?[\d.,]+$/.test(vt) || (/^\d[\d.,]*$/.test(vt) && vt.length < 9)) hojas.push(dvs[q]);
       }
+      if (hojas.length) return hojas;
     }
     return null;
   }
@@ -2786,11 +2787,14 @@ _SOLO_DASH = r"""
     try{
       var n = 0;
       for (var i = 0; i < _RP_TOP.length; i++) {
-        var el = null; try{ el = _leafDe(_RP_TOP[i]); }catch(x){}
-        if (!el) continue;
+        var els = null; try{ els = _leafDe(_RP_TOP[i]); }catch(x){}
+        if (!els) continue;
         n++;
-        if (ok) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
-        else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+        for (var j = 0; j < els.length; j++) {
+          var el = els[j];
+          if (ok) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
+          else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+        }
       }
       window._rpTapaDbg = {encontradas: n, ok: !!ok, t: Date.now()};
     }catch(e){}
@@ -2803,18 +2807,21 @@ _SOLO_DASH = r"""
       var listo = (!!window._rpRecOK && !!window._rpValsOK)
                   || (Date.now() - (window._rpT0 || Date.now()) > 14000);
       for (var i = 0; i < _RP_REC.length; i++) {
-        var el = null; try{ el = _leafDe(_RP_REC[i]); }catch(x){}
-        if (!el) continue;
-        if (listo) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
-        else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+        var els = null; try{ els = _leafDe(_RP_REC[i]); }catch(x){}
+        if (!els) continue;
+        for (var j = 0; j < els.length; j++) {
+          var el = els[j];
+          if (listo) { if (el.style.visibility === 'hidden') el.style.visibility = ''; }
+          else if (el.style.visibility !== 'hidden') el.style.visibility = 'hidden';
+        }
       }
     }catch(e){}
   }
-  setInterval(_tapaRec, 200);
   // Corre cada 40ms desde el arranque: si esperara al loop de 500ms se cuela un frame con los numeros demo.
   (function(){ var _t = setInterval(function(){
       try{ _tapaArriba(_okRevelar()); }catch(e){}
-      if (Date.now() - (window._rpT0 || Date.now()) > 6000) clearInterval(_t);
+      try{ _tapaRec(); }catch(e){}
+      if (Date.now() - (window._rpT0 || Date.now()) > 15000) clearInterval(_t);
     }, 40); })();
   setTimeout(function(){ try{ _tapaArriba(true); }catch(e){} }, 4500);   // red de seguridad: nunca en blanco
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
