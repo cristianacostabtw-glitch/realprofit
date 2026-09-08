@@ -1960,7 +1960,24 @@ _SOLO_DASH = r"""
   // ese rato mostraba SUS numeros, calculados con porcentajes fijos (break even 2.70x, CPA $49.450,
   // comisiones/envios en $0). Ahora los pedimos nosotros al instante: el endpoint contesta en ~0,4s
   // y el loop de pintado (cada 500ms) los aplica en cuanto el DOM existe.
+  // 1) LOS DATOS YA VIENEN EN EL HTML (window.__RPSRV__, calculados por el server en esta misma
+  //    request). Se toman en el acto: el primer pintado ya sale con los numeros REALES.
+  (function _rpDelServer(){
+    try{
+      var j = window.__RPSRV__; var r = j && (j.raw || j);
+      if(r && (r.be_cpa!=null || r.be_roas!=null)){
+        _raw = r; window.__RP = r;
+        if(r.dolar) window.__RATE = r.dolar;
+        if(!window.__CUR) window.__CUR = 'ARS';
+        [0,60,150,300,600,1200,2500].forEach(function(ms){ setTimeout(function(){ try{ paint(); }catch(e){} }, ms); });
+        try{ pedirRecompras(r.desde, r.hasta); }catch(e){}
+      }
+    }catch(e){}
+  })();
+  // 2) Respaldo: si el server NO pudo mandarlos (falla o cuenta sin datos), los pedimos nosotros.
+  //    No esperamos al React: eso era lo que tardaba ~28 segundos.
   (function _rpPedirYa(){
+    if(_raw) return;
     var intentos = 0;
     function pedir(){
       intentos++;
@@ -11719,13 +11736,24 @@ def home():
         return Response(f"<p style='color:#fff;font-family:sans-serif;padding:20px'>"
                         f"No se pudo cargar pf.html: {e}</p>", mimetype="text/html")
     import json as _json
+    # LOS NUMEROS REALES VIAJAN EN EL HTML. Antes se inyectaba el ULTIMO snapshot guardado y los
+    # numeros de verdad recien aparecian cuando el React pedia /pf-periodo (~28s). Ahora los calcula
+    # el server aca mismo (cache de 60s: 0,4s tibio, ~2s frio) y salen pintados desde el primer frame.
+    # Si falla o no hay datos, se cae al snapshot viejo y, si tampoco hay, a vacio con guiones.
+    _real = None
     try:
-        blob = _json.dumps(_load_last_blob(email) or _blob_vacio(), ensure_ascii=False)   # ultimos datos guardados = carga al toque
+        _real = _pf_periodo_blob(email, _hoy(), _hoy())
     except Exception:
-        blob = _json.dumps(_blob_vacio(), ensure_ascii=False)
+        _real = None
+    _frescos = bool(_real and (_real.get("raw") or {}).get("be_cpa") is not None)
+    try:
+        blob = _json.dumps(_real or _load_last_blob(email) or _blob_vacio(), ensure_ascii=False)
+    except Exception:
+        blob = _json.dumps(_blob_vacio(), ensure_ascii=False); _frescos = False
     # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
     if "</head>" in html:
-        html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";</script></head>", 1)
+        html = html.replace("</head>", "<script>window.__MFY__=" + blob + ";window.__RPSRV__="
+                            + (blob if _frescos else "null") + ";</script></head>", 1)
     # Caja de usuario abajo a la izquierda (email + cerrar sesión).
     inicial = (email[0] if email else "?").upper()
     userbox = ('<a class="rp-pill" href="/logout" title="Cerrar sesión" style="bottom:16px" '
@@ -11771,97 +11799,104 @@ def _load_last_blob(email):
         return None
 
 
+def _pf_periodo_blob(email, desde, hasta):
+    """Los KPI reales del período (lo que devuelve /pf-periodo). Se saco de la ruta para poder
+    llamarlo TAMBIEN desde home(): asi la pagina sale con los numeros de verdad ya adentro del
+    HTML, en vez de mostrar el snapshot viejo mientras espera un fetch."""
+    key = (email, desde, hasta)
+    now = _dt.datetime.utcnow()
+    c = _PF_CACHE.get(key)
+    if c and (now - c[0]).total_seconds() < 60:
+        return c[1]
+    blob = None
+    sh_blob = None
+    if email in _shop_tokens():
+        sh_blob = _shopify_resumen(email, desde, hasta)
+        blob = sh_blob
+    tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
+    if tn_blob:
+        blob = _combinar_resumen(blob, tn_blob)
+    if blob is None:
+        blob = _blob_vacio()
+    try:   # iconos por canal CONECTADO (Ventas KPI) - NUNCA puede romper el dashboard
+        _cn = []
+        if (_shop_tokens().get(email) or {}).get("access_token"):
+            _cn.append("shopify")
+        _tkn = _tn_tokens().get(email) or {}
+        if _tkn.get("access_token") and _tkn.get("store_id"):
+            _cn.append("tn")
+        blob["raw"]["canales"] = _cn
+        blob["raw"]["shopify_ordenes"] = int((sh_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
+        blob["raw"]["tn_ordenes"] = int((tn_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
+    except Exception:
+        pass
+    try:
+        blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
+    except Exception:
+        pass
+    try:
+        blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
+    except Exception:
+        blob["raw"]["dolar"] = 1200
+    # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
+    spend = _meta_spend(email, desde, hasta)
+    if spend:
+        r = blob["raw"]
+        fact = r.get("facturado", 0.0)
+        ordenes = r.get("ordenes", 0)
+        r["publi_ars"] = round(spend, 2)
+        r["publi_cuenta"] = round(spend, 2)
+        r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+        r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
+        r["roas"] = round(fact / spend, 2) if spend else 0.0
+        r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+        r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
+        r["tot_ganancia"] = r["ganancia"]
+        r["tot_margen"] = r["margen"]
+    # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
+    r = blob["raw"]
+    _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
+    _fact = r.get("facturado", 0.0) or 0.0
+    _iva_deb = _fact * _F
+    _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
+                 + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
+    _iva_cred = _base_cred * _F
+    _iva_pag = _iva_deb - _iva_cred
+    r["iva_total"] = round(_iva_deb, 2)
+    r["iva_favor"] = round(_iva_cred, 2)
+    r["iva_pagar"] = round(_iva_pag, 2)
+    if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
+        _ord = r.get("ordenes", 0) or 0
+        r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
+        r["tot_ganancia"] = r["ganancia"]
+        r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
+        r["tot_margen"] = r["margen"]
+        r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
+        r["tot_gan_por_venta"] = r["gan_por_venta"]
+        # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
+        # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
+        _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
+                - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
+                - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
+        _pre_ri = _pre - _iva_pag
+        r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
+        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
+    _PF_CACHE[key] = (now, blob)
+    try:
+        if desde == hasta == _hoy():
+            _save_last_blob(email, blob)   # snapshot de HOY para carga instantanea
+    except Exception:
+        pass
+    return blob
+
+
 @app.get("/pf-periodo")
 def pf_periodo():
     email = _user_actual()
     desde = request.args.get("desde") or _hoy()
     hasta = request.args.get("hasta") or desde
     if email:
-        key = (email, desde, hasta)
-        now = _dt.datetime.utcnow()
-        c = _PF_CACHE.get(key)
-        if c and (now - c[0]).total_seconds() < 60:
-            return jsonify({"ok": True, **c[1]})
-        blob = None
-        sh_blob = None
-        if email in _shop_tokens():
-            sh_blob = _shopify_resumen(email, desde, hasta)
-            blob = sh_blob
-        tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
-        if tn_blob:
-            blob = _combinar_resumen(blob, tn_blob)
-        if blob is None:
-            blob = _blob_vacio()
-        try:   # iconos por canal CONECTADO (Ventas KPI) - NUNCA puede romper el dashboard
-            _cn = []
-            if (_shop_tokens().get(email) or {}).get("access_token"):
-                _cn.append("shopify")
-            _tkn = _tn_tokens().get(email) or {}
-            if _tkn.get("access_token") and _tkn.get("store_id"):
-                _cn.append("tn")
-            blob["raw"]["canales"] = _cn
-            blob["raw"]["shopify_ordenes"] = int((sh_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
-            blob["raw"]["tn_ordenes"] = int((tn_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
-        except Exception:
-            pass
-        try:
-            blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
-        except Exception:
-            pass
-        try:
-            blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
-        except Exception:
-            blob["raw"]["dolar"] = 1200
-        # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
-        spend = _meta_spend(email, desde, hasta)
-        if spend:
-            r = blob["raw"]
-            fact = r.get("facturado", 0.0)
-            ordenes = r.get("ordenes", 0)
-            r["publi_ars"] = round(spend, 2)
-            r["publi_cuenta"] = round(spend, 2)
-            r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
-            r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
-            r["roas"] = round(fact / spend, 2) if spend else 0.0
-            r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
-            r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
-            r["tot_ganancia"] = r["ganancia"]
-            r["tot_margen"] = r["margen"]
-        # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
-        r = blob["raw"]
-        _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
-        _fact = r.get("facturado", 0.0) or 0.0
-        _iva_deb = _fact * _F
-        _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
-                     + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
-        _iva_cred = _base_cred * _F
-        _iva_pag = _iva_deb - _iva_cred
-        r["iva_total"] = round(_iva_deb, 2)
-        r["iva_favor"] = round(_iva_cred, 2)
-        r["iva_pagar"] = round(_iva_pag, 2)
-        if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
-            _ord = r.get("ordenes", 0) or 0
-            r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
-            r["tot_ganancia"] = r["ganancia"]
-            r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
-            r["tot_margen"] = r["margen"]
-            r["gan_por_venta"] = round(r["ganancia"] / _ord, 2) if _ord else 0.0
-            r["tot_gan_por_venta"] = r["gan_por_venta"]
-            # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
-            # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
-            _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
-                    - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
-                    - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
-            _pre_ri = _pre - _iva_pag
-            r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
-            r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
-        _PF_CACHE[key] = (now, blob)
-        try:
-            if desde == hasta == _hoy():
-                _save_last_blob(email, blob)   # snapshot de HOY para carga instantanea
-        except Exception:
-            pass
-        return jsonify({"ok": True, **blob})
+        return jsonify({"ok": True, **_pf_periodo_blob(email, desde, hasta)})
     return jsonify({"ok": True, **_blob_vacio()})
 
 
