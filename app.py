@@ -2684,12 +2684,27 @@ _SOLO_DASH = r"""
       if(best){ cand=best; candLen=t.length; } }
     return cand;
   }
-  function _rpOvApply(){ for(var i=0;i<_RP_OV.length;i++){ var o=_RP_OV[i];
-    var v=window._rpOvVals&&window._rpOvVals[o.key]; if(!v) continue;
-    var el=document.querySelector('[data-'+o.key+']');            // ya marcado → rápido
-    if(!el || el.offsetParent===null){ el=_rpFindVal(o.label); }  // React lo reemplazó → re-buscar
-    if(!el) continue;
-    try{ _rpOverlay(el, v, o.key); }catch(e){} } }
+  // El nodo marcado se REVALIDA cada 400ms. Antes se confiaba en la marca para siempre: cuando el React
+  // reordenaba las tarjetas, ese nodo terminaba adentro de OTRA tarjeta y le pintaba encima un valor que
+  // no era el suyo (caso real: RECOMPRAS mostrando $34.517, que es el Break Even CPA). Ahora, si el nodo
+  // marcado ya no es el de esa tarjeta, se le saca la marca y se vuelve a buscar el correcto.
+  var _rpOvChk=0;
+  function _rpOvApply(){
+    var revisar = (Date.now() - _rpOvChk > 400);      // acotado: no en cada mutacion del DOM
+    if(revisar) _rpOvChk = Date.now();
+    for(var i=0;i<_RP_OV.length;i++){ var o=_RP_OV[i];
+      var v=window._rpOvVals&&window._rpOvVals[o.key]; if(!v) continue;
+      var el=document.querySelector('[data-'+o.key+']');            // ya marcado → rápido
+      if(revisar || !el || el.offsetParent===null){
+        var tgt=null; try{ tgt=_rpFindVal(o.label); }catch(e){}
+        var marcados=document.querySelectorAll('[data-'+o.key+']');
+        for(var k=0;k<marcados.length;k++){
+          if(marcados[k]!==tgt) marcados[k].removeAttribute('data-'+o.key);   // marca huerfana → fuera
+        }
+        el=tgt;
+      }
+      if(!el) continue;
+      try{ _rpOverlay(el, v, o.key); }catch(e){} } }
   var _rpOvObs=null, _rpOvQ=false;
   function _rpOvWatch(){ if(_rpOvObs) return;
     _rpOvObs=new MutationObserver(function(){ if(_rpOvQ) return; _rpOvQ=true;
