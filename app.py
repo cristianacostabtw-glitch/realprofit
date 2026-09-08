@@ -2192,7 +2192,10 @@ _SOLO_DASH = r"""
     if(!window._rpT0) window._rpT0=Date.now();
     // Revelar cuando: orden OK **Y** valores ya remapeados (_rpValsOK) → nunca se ve el flash de valores nativos
     // (ej Break Even CPA $50.786 antes de corregirse a $35.631). Tope duro 2,6s = red de seguridad (nunca queda oculto).
-    var _ok = (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 2600);
+    // El tope era 2600ms y los valores reales entran ~2700ms: se destapaba JUSTO antes y se veia
+    // el flash de los numeros del ProfitFlow. 4000ms deja pasar el pintado real.
+    var _ok = _okRevelar();
+    try{ _tapaArriba(_ok); }catch(e){}   // misma cortina para la fila de arriba (Ventas/Facturacion/Ticket/Ganancia)
     if(_ok){ if(grid.style.opacity!=='1'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='1'; } _painted=true; }
     else if(grid.style.opacity!=='0'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
@@ -2690,6 +2693,40 @@ _SOLO_DASH = r"""
   setTimeout(_kpiDbg,4500); setTimeout(_kpiDbg,9000);
   [120,350,650,1000,1500,2100,2900,4000,5500,7500].forEach(function(ms){ setTimeout(loop,ms); });
   setInterval(loop, 500);
+  // CORTINA DE LA FILA DE ARRIBA. Esas 4 tarjetas (Ventas/Facturacion/Ticket prom/Ganancia) no estaban
+  // tapadas mientras cargaba, asi que se veian los numeros DEMO del pf.html (81 ventas, $3.200.000) hasta
+  // que entraban los reales. Ahora arrancan invisibles y se revelan con las de abajo. Red de seguridad:
+  // a los 4,5s se revelan si o si, pase lo que pase, para que nunca queden en blanco.
+  function _okRevelar(){
+    if(!window._rpT0) window._rpT0=Date.now();
+    return (window._rpDashOK && window._rpValsOK) || (Date.now()-window._rpT0 > 4000);
+  }
+  function _filaArriba(){
+    if(window._rpTopEl && document.body.contains(window._rpTopEl)) return window._rpTopEl;
+    try{
+      var sp=document.querySelectorAll('span,div,p');
+      for(var i=0;i<sp.length;i++){
+        var tx=(sp[i].textContent||'').replace(/\s+/g,' ').trim().toUpperCase();
+        if(tx!=='VENTAS') continue;
+        var c=sp[i];
+        for(var k=0;k<8&&c;k++){
+          c=c.parentElement; if(!c) break;
+          var t=(c.textContent||'').toUpperCase();
+          if(t.indexOf('VENTAS')>-1 && t.indexOf('GANANCIA')>-1 && t.indexOf('BREAK EVEN')<0 && c.children.length>=3){
+            window._rpTopEl=c; return c; }
+        }
+      }
+    }catch(e){}
+    return null;
+  }
+  function _tapaArriba(ok){
+    var el=_filaArriba(); if(!el) return;
+    if(ok){ if(el.style.opacity!=='1'){ el.style.transition='opacity .25s ease'; el.style.opacity='1'; } }
+    else if(el.style.opacity!=='0'){ el.style.transition='opacity .25s ease'; el.style.opacity='0'; }
+  }
+  (function(){ var _t=setInterval(function(){ try{ _tapaArriba(_okRevelar()); }catch(e){}
+    if(Date.now()-(window._rpT0||Date.now()) > 5000) clearInterval(_t); }, 40); })();  // 40ms: no se cuela un frame demo
+  setTimeout(function(){ try{ _tapaArriba(true); }catch(e){} }, 4500);   // red de seguridad: nunca en blanco
   setTimeout(function(){ window._rpDashOK=true; }, 2200);   // tope DURO: nunca dejar el Resumen escondido
 })();
 </script>
