@@ -10665,10 +10665,21 @@ def fin_gasto_manual():
     crudos = d.get("items") or []
     if not isinstance(crudos, list) or not crudos:
         return jsonify({"ok": False, "msg": "mandá items: [{concepto, monto, fecha?}]"})
+    def _monto(v):
+        """Un numero se usa TAL CUAL. Solo se interpreta formato argentino cuando viene como
+        texto CON coma decimal (322.158,09). Sin esto, un float 322158.09 pasado como string
+        perdia el punto y quedaba x100 (paso: cargue $32.215.809 en vez de $322.158)."""
+        if isinstance(v, (int, float)):
+            return float(v)
+        s = str(v).replace("$", "").replace(" ", "").strip()
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+        return float(s)
+
     items = []
     for it in crudos[:50]:
         try:
-            monto = float(str(it.get("monto")).replace("$", "").replace(".", "").replace(",", ".").strip())
+            monto = _monto(it.get("monto"))
         except Exception:
             return jsonify({"ok": False, "msg": "monto invalido en %s" % (it.get("concepto") or "?")})
         if monto <= 0:
@@ -10678,6 +10689,25 @@ def fin_gasto_manual():
             return jsonify({"ok": False, "msg": "falta el concepto"})
         fecha = str(it.get("fecha") or "")[:10] or _fin_hoy_ar().strftime("%Y-%m-%d")
         items.append({"concepto": concepto, "monto": monto, "fecha": fecha})
+    fila = d.get("fila")
+    pestana = (d.get("pestana") or "").strip()
+    if fila and pestana:
+        # CORRECCION: pisa una fila ya cargada (U concepto / V monto) en vez de agregar una nueva
+        try:
+            it = items[0]
+            f = _dt.date.fromisoformat(it["fecha"])
+            sess = _fin_sess()
+            from urllib.parse import quote as _q2
+            sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                      json={"valueInputOption": "RAW", "data": [
+                          {"range": "%s!U%d:V%d" % (pestana, int(fila), int(fila)),
+                           "values": [["%02d/%02d · %s" % (f.day, f.month, it["concepto"]), it["monto"]]]}]},
+                      timeout=(15, 90))
+            _gastos_formato(sess, sid, pestana)
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:200])})
+        return jsonify({"ok": True, "corregida": int(fila), "pestana": pestana,
+                        "concepto": items[0]["concepto"], "monto": items[0]["monto"]})
     try:
         puestos = _gastos_escribir(email, sid, items)
     except Exception as e:
