@@ -8431,6 +8431,31 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
             "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
 
+    # PASO PREVIO: los fulfillment orders de TODOS los pedidos en pocas consultas, en vez de una
+    # llamada REST por pedido. Con 89 pedidos eran 89 requests contra el limite de ~2/seg de
+    # Shopify: solo eso ya se comia minutos. Asi son 4 consultas.
+    def _fos_en_lote(pedidos):
+        mapa = {}
+        ids = [str(p.get("order_id")) for p in pedidos if p.get("order_id") and not p.get("tn")]
+        for i in range(0, len(ids), 25):
+            trozo = ids[i:i + 25]
+            q = "query{" + " ".join(
+                'o%d: order(id:"gid://shopify/Order/%s"){fulfillmentOrders(first:5){nodes{id status}}}'
+                % (k, oid) for k, oid in enumerate(trozo)) + "}"
+            try:
+                gr = requests.post(gql, headers=H, data=_json.dumps({"query": q}), timeout=40)
+                dat = (gr.json() or {}).get("data") or {}
+            except Exception:
+                continue                      # si falla, cada pedido cae al camino viejo (REST)
+            for k, oid in enumerate(trozo):
+                o = dat.get("o%d" % k) or {}
+                nodos = ((o.get("fulfillmentOrders") or {}).get("nodes") or [])
+                mapa[oid] = [{"id": str(x.get("id", "")).rsplit("/", 1)[-1],
+                              "status": str(x.get("status", "")).lower()} for x in nodos]
+        return mapa
+
+    FOS = _fos_en_lote(pedidos)
+
     def _one(p):
         """Procesa UN pedido → ('env'|'salt'|'fail', error|None). Thread-safe (sin estado compartido)."""
         num = str(p.get("num"))
@@ -8439,13 +8464,15 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
         oid = p.get("order_id")
         if not oid:
             return ("fail", {"num": num, "msg": "no está en Shopify"})
-        try:
-            rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=30)
-            if rr.status_code != 200:
-                return ("fail", {"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])})
-            fos = rr.json().get("fulfillment_orders", [])
-        except Exception as e:
-            return ("fail", {"num": num, "msg": str(e)[:160]})
+        fos = FOS.get(str(oid))
+        if fos is None:                     # no vino en el lote → camino viejo, uno por uno
+            try:
+                rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=30)
+                if rr.status_code != 200:
+                    return ("fail", {"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])})
+                fos = rr.json().get("fulfillment_orders", [])
+            except Exception as e:
+                return ("fail", {"num": num, "msg": str(e)[:160]})
         fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
         if fo:
             # VÍA 1: fulfillment order ABIERTO → crear el fulfillment con el tracking + avisar.
@@ -8490,7 +8517,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
 
     from concurrent.futures import ThreadPoolExecutor
     env = salt = fail = 0; errores = []
-    with ThreadPoolExecutor(max_workers=6) as ex:   # en paralelo → ~6x más rápido
+    with ThreadPoolExecutor(max_workers=8) as ex:   # en paralelo → ~8x más rápido
         for k, err in ex.map(_one, pedidos):
             if k == "env": env += 1
             elif k == "salt": salt += 1
@@ -8733,6 +8760,7 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
     env = salt = fail = 0
     errores = []
     marcar = []
+    tareas = []
     for p in pedidos:
         num = str(p.get("num"))
         if (not force) and wpp_env.get(num):
@@ -8761,16 +8789,31 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
             _r = requests.post("%s/%s/messages" % (WA_GRAPH, c["phone_id"]),
                                headers={"Authorization": "Bearer " + c["token"]},
                                json={"messaging_product": "whatsapp", "to": wa, "type": "template", "template": _tpl},
-                               timeout=25)
+                               timeout=12)
             return _r, (_r.json() if _r.content else {})
+        tareas.append((num, wa, n, link, name, params, combo_tpl, p, _snd))
+    # Los envios a Meta van EN PARALELO: eran de a uno y 89 plantillas tardaban minutos.
+    # El HTTP se hace en hilos; la contabilidad (chats, marcados) se arma despues, en serie.
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    def _mandar(t):
+        num, wa, n, link, name, params, combo_tpl, p, _snd = t
         try:
             r, j = _snd(name, params)
-            # Si el template combo no existe/está aprobado en esta cuenta (132001), caigo al base.
             if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and combo_tpl and name == combo_tpl:
                 name = "seguimiento_despacho"; params = [n, num, link]
                 r, j = _snd(name, params)
+            return (t, r, j, None)
         except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": str(e)[:80]}); continue
+            return (t, None, None, str(e)[:80])
+
+    with _TPE(max_workers=8) as _ex:
+        resultados = list(_ex.map(_mandar, tareas))
+
+    for t, r, j, err in resultados:
+        num, wa, n, link, name, params, combo_tpl, p, _snd = t
+        if err:
+            fail += 1; errores.append({"num": num, "msg": err}); continue
         if r.status_code >= 400:
             fail += 1; errores.append({"num": num, "msg": (j.get("error") or {}).get("message", "error")[:80]}); continue
         mid = (j.get("messages") or [{}])[0].get("id", "")
