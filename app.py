@@ -1979,6 +1979,18 @@ _SOLO_DASH = r"""
    (be_roas = facturación / contribución antes de ads · be_cpa = contribución antes de ads / pedidos). */
 (function(){
   var _raw=null, _painted=false, _of=window.fetch;
+  // NO IR PARA ATRAS. El server, si el calculo fresco no llega a tiempo, contesta con el snapshot
+  // anterior. Sin este filtro ese snapshot viejo pisaba los numeros buenos y los KPI titilaban
+  // entre dos valores distintos. Solo se acepta un blob con sello IGUAL o MAS NUEVO que el puesto.
+  function _rpMasNuevo(r){
+    try{
+      if(!r) return false;
+      if(!_raw) return true;
+      var a=+(r.calc_ts||0), b=+((_raw&&_raw.calc_ts)||0);
+      if(!a || !b) return true;          // alguno sin sello (blob viejo) -> no bloqueo
+      return a >= b;
+    }catch(e){ return true; }
+  }
   // COALESCE de /pf-periodo. El dashboard React lo pide cada ~2s y a veces 10 veces en 1 segundo
   // (medido en los logs de Render). Cada una ocupa un hilo del server esperando. Si ya hay una
   // IGUAL en vuelo devuelvo ESA: cada quien se lleva su propio clone (el body se lee una sola vez).
@@ -1992,7 +2004,7 @@ _SOLO_DASH = r"""
     try{ var u=_u0;
       if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
         p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
-          if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS'; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
+          if(r && (r.be_cpa!=null || r.be_roas!=null) && _rpMasNuevo(r)){ _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS'; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
       } }catch(e){}
     if(_esPer) return p.then(function(r){ return r.clone(); });
     return p; };
@@ -2049,7 +2061,7 @@ _SOLO_DASH = r"""
        .then(function(j){
          _rpCargando(false);
          var r=(j&&j.raw)||j;
-         if(r && (r.be_cpa!=null || r.be_roas!=null)){
+         if(r && (r.be_cpa!=null || r.be_roas!=null) && _rpMasNuevo(r)){
            _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar;
            try{ paint(); }catch(e){} setTimeout(paint,200);
            try{ pedirRecompras(r.desde, r.hasta); }catch(e){}
@@ -2068,7 +2080,7 @@ _SOLO_DASH = r"""
         _of('/pf-periodo', {credentials:'same-origin'}).then(function(res){ return res.json(); })
          .then(function(j){
            var r = (j && j.raw) || j;
-           if(r && (r.be_cpa!=null || r.be_roas!=null)){
+           if(r && (r.be_cpa!=null || r.be_roas!=null) && _rpMasNuevo(r)){
              _raw = r; window.__RP = r;
              if(r.dolar) window.__RATE = r.dolar;
              if(!window.__CUR) window.__CUR = 'ARS';
@@ -12245,6 +12257,14 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _pre_ri = _pre - _iva_pag
         r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
         r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
+    # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
+    # y el front lo pintaba encima del bueno: la pantalla saltaba entre 112 y 116 ventas cada 2s.
+    # Con este sello el front puede descartar todo lo que sea MAS VIEJO que lo que ya tiene puesto.
+    try:
+        import time as _tsello
+        blob.setdefault("raw", {})["calc_ts"] = int(_tsello.time())
+    except Exception:
+        pass
     _PF_CACHE[key] = (now, blob)
     try:
         if desde == hasta == _hoy():
