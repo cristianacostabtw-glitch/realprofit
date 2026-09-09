@@ -8572,55 +8572,56 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
     cursor = None
     _got_sem = _SHOP_SEM.acquire(timeout=8)
     try:
-        for _pag in range(12):                               # scan liviano: hasta 12 págs (720 recientes)
+        # PASO 1 — BUSQUEDA DIRECTA POR NUMERO, en lotes de 25 ("name:#1 OR name:#2 OR ...").
+        # Antes esto corria SEGUNDO, despues de escanear la tienda a ciegas pagina por pagina
+        # (12 paginas, tope 90s). Con 100 pedidos del PDF eso se iba a 168s y mas, aunque la
+        # busqueda directa los trae a todos en 4 consultas de un segundo. Ahora va PRIMERO.
+        QN = ("query($q:String!){orders(first:50,query:$q){edges{node{legacyResourceId name}}}}")
+        _LOTE = 25
+        _pend = sorted(faltan)
+        for _i in range(0, min(len(_pend), 600), _LOTE):
             if _tsleep.time() > _TOPE:
                 break
-            r = requests.post(gql, headers=HG, data=_json.dumps({"query": QL, "variables": {"cursor": cursor}}), timeout=20)
-            if r.status_code == 429 or r.status_code >= 500:
-                _tsleep.sleep(1.0); continue
-            j = r.json() if r.content else {}
-            data = (j.get("data") or {}).get("orders") or {}
-            for e in (data.get("edges") or []):
-                node = e.get("node") or {}
-                k = str(node.get("name") or "").lstrip("#").strip()
-                if k in faltan and k not in gids:
-                    gids[k] = "gid://shopify/Order/%s" % node.get("legacyResourceId")
-            if set(gids) >= faltan:
-                break
-            pi = data.get("pageInfo") or {}
-            if not pi.get("hasNextPage"):
-                break
-            cursor = pi.get("endCursor")
-        # PASO 1-bis: los que el scan NO alcanzó (pedidos más viejos que los ~720 recientes) se
-        # buscan UNO POR UNO por nombre exacto. Sin esto, un pedido viejo se reportaba como
-        # "no está en Shopify" aunque existiera — al ritmo actual (~100 pedidos/día) el scan
-        # solo cubría ~7 días hacia atrás.
-        _resto = [n for n in faltan if n not in gids]
-        if _resto:
-            # EN LOTES: Shopify acepta "name:#1 OR name:#2 OR ..." → 25 pedidos por consulta
-            # en vez de una consulta por pedido. Con 272 pedidos, uno por uno tardaba 10+ minutos.
-            QN = ("query($q:String!){orders(first:50,query:$q){edges{node{legacyResourceId name}}}}")
-            _LOTE = 25
-            for _i in range(0, min(len(_resto), 600), _LOTE):
+            _chunk = _pend[_i:_i + _LOTE]
+            _q = " OR ".join("name:#%s" % x for x in _chunk)
+            for _try in range(2):
+                try:
+                    r = requests.post(gql, headers=HG, timeout=12, data=_json.dumps(
+                        {"query": QN, "variables": {"q": _q}}))
+                    if r.status_code == 429 or r.status_code >= 500:
+                        _tsleep.sleep(1.0)
+                        continue
+                    for e in (((r.json().get("data") or {}).get("orders") or {}).get("edges") or []):
+                        nd = e.get("node") or {}
+                        k = str(nd.get("name") or "").lstrip("#").strip()
+                        if k in faltan:
+                            gids[k] = "gid://shopify/Order/%s" % nd.get("legacyResourceId")
+                    break
+                except Exception:
+                    break
+        # PASO 1-bis — SOLO SI QUEDO ALGUNO SIN UBICAR: recien ahi el scan pagina por pagina.
+        # Es la red de seguridad para un pedido con el nombre raro que la busqueda no matchea.
+        # Si la busqueda directa los encontro a todos (el caso normal), esto NO se ejecuta.
+        if set(gids) < faltan:
+            for _pag in range(12):                               # scan liviano: hasta 12 págs (720 recientes)
                 if _tsleep.time() > _TOPE:
                     break
-                _chunk = _resto[_i:_i + _LOTE]
-                _q = " OR ".join("name:#%s" % x for x in _chunk)
-                for _try in range(2):
-                    try:
-                        r = requests.post(gql, headers=HG, timeout=12, data=_json.dumps(
-                            {"query": QN, "variables": {"q": _q}}))
-                        if r.status_code == 429 or r.status_code >= 500:
-                            _tsleep.sleep(1.0)
-                            continue
-                        for e in (((r.json().get("data") or {}).get("orders") or {}).get("edges") or []):
-                            nd = e.get("node") or {}
-                            k = str(nd.get("name") or "").lstrip("#").strip()
-                            if k in faltan:
-                                gids[k] = "gid://shopify/Order/%s" % nd.get("legacyResourceId")
-                        break
-                    except Exception:
-                        break
+                r = requests.post(gql, headers=HG, data=_json.dumps({"query": QL, "variables": {"cursor": cursor}}), timeout=20)
+                if r.status_code == 429 or r.status_code >= 500:
+                    _tsleep.sleep(1.0); continue
+                j = r.json() if r.content else {}
+                data = (j.get("data") or {}).get("orders") or {}
+                for e in (data.get("edges") or []):
+                    node = e.get("node") or {}
+                    k = str(node.get("name") or "").lstrip("#").strip()
+                    if k in faltan and k not in gids:
+                        gids[k] = "gid://shopify/Order/%s" % node.get("legacyResourceId")
+                if set(gids) >= faltan:
+                    break
+                pi = data.get("pageInfo") or {}
+                if not pi.get("hasNextPage"):
+                    break
+                cursor = pi.get("endCursor")
         # PASO 2: datos completos SOLO de los matcheados (nodes por id, en lotes de 40).
         QF = ("query($ids:[ID!]!){nodes(ids:$ids){... on Order{"
               "legacyResourceId name email phone customer{firstName lastName phone} "
