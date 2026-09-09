@@ -10504,7 +10504,71 @@ def _ads_crear(acct, obj, payload):
                            for k, v in payload.items()})["id"]
 
 
+def _ads_ffmpeg():
+    """Ruta al ffmpeg. Viene con el paquete imageio-ffmpeg (pip), no hace falta instalarlo en el server."""
+    import shutil as _sh
+    exe = _sh.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def _ads_convertir_mp4(ruta):
+    """Reconvierte a MP4 H.264 + AAC, que es lo que Meta acepta siempre. Los videos de iPhone
+    (MOV/HEVC) y algunos MP4 con audio raro los rechaza con 'formato que no se admite'.
+    Devuelve la ruta del archivo nuevo, o None si no se pudo."""
+    exe = _ads_ffmpeg()
+    if not exe:
+        return None
+    import subprocess as _sp, tempfile as _tf, time as _tt
+    dest = _os.path.join(_tf.gettempdir(), "conv_%d.mp4" % int(_tt.time() * 1000))
+    cmd = [exe, "-y", "-i", ruta,
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+           "-pix_fmt", "yuv420p", "-profile:v", "high",
+           "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "44100",
+           "-movflags", "+faststart", dest]
+    try:
+        r = _sp.run(cmd, capture_output=True, timeout=900)
+    except Exception:
+        return None
+    if r.returncode == 0 and _os.path.exists(dest) and _os.path.getsize(dest) > 0:
+        return dest
+    try: _os.remove(dest)
+    except Exception: pass
+    return None
+
+
 def _ads_subir_video(acct, ruta):
+    """Sube el video a Meta. Si lo rechaza por formato (MOV/HEVC de iPhone, codecs raros),
+    lo convierte a MP4 H.264+AAC y reintenta UNA vez. Se intenta primero el archivo original
+    para no gastar CPU convirtiendo los que ya estan bien."""
+    try:
+        return _ads_subir_video_directo(acct, ruta)
+    except Exception as e:
+        m = str(e).lower()
+        es_formato = any(k in m for k in (
+            "no se admite", "not supported", "unsupported", "formato", "format", "codec",
+            "invalid video", "cannot be processed"))
+        if not es_formato:
+            raise
+        nuevo = _ads_convertir_mp4(ruta)
+        if not nuevo:
+            raise RuntimeError(
+                "Meta rechazo el formato del video y no pude convertirlo (falta ffmpeg en el server). "
+                "Detalle de Meta: %s" % e)
+        try:
+            vid = _ads_subir_video_directo(acct, nuevo)
+        finally:
+            try: _os.remove(nuevo)
+            except Exception: pass
+        return vid
+
+
+def _ads_subir_video_directo(acct, ruta):
     """Sube un video a /advideos. Grandes (>40MB) por partes (resumable)."""
     size = _os.path.getsize(ruta)
     base = "act_%s/advideos" % acct
