@@ -22,6 +22,9 @@ import path from "path";
 import {
   makeWASocket,
   useMultiFileAuthState,
+  initAuthCreds,
+  BufferJSON,
+  proto,
   fetchLatestBaileysVersion,
   DisconnectReason,
   downloadMediaMessage,
@@ -48,6 +51,84 @@ process.on("unhandledRejection", (e) => {
 });
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRABADO ATOMICO DE LA SESION  (arregla el "Bad MAC" que obligaba a re-escanear el QR)
+//
+// useMultiFileAuthState (el de Baileys) guarda cada clave de Signal con writeFile ASINCRONO y
+// escribiendo ENCIMA del archivo final. Render manda SIGTERM en cada deploy y cada vez que falla
+// el health check (pasa seguido: ver "nonZeroExit: 143" en los eventos del servicio). Si el
+// SIGTERM cae justo mientras se escribia una clave, el archivo queda CORTADO. Al levantar de
+// nuevo, libsignal lee esa clave rota y tira "Bad MAC" / "Key used already or never filled" en
+// CADA mensaje entrante: la sesion queda sorda y hay que re-vincular. Por eso se rompia casi
+// todos los dias.
+//
+// Aca cada clave se escribe en un .tmp y RECIEN DESPUES se renombra al nombre final. El rename es
+// atomico en el mismo disco: el archivo o esta ENTERO o no esta. Un corte a mitad ya no puede
+// dejar una clave corrupta. Y es sincrono, asi no queda nada "en vuelo" cuando llega el SIGTERM.
+function _escribirAtomico(file, texto) {
+  const tmp = file + ".tmp" + process.pid;
+  fs.writeFileSync(tmp, texto);
+  fs.renameSync(tmp, file);
+}
+function _leerJSON(file) {
+  try { return JSON.parse(fs.readFileSync(file, { encoding: "utf-8" }), BufferJSON.reviver); }
+  catch { return null; }
+}
+function _nombreClave(f) { return String(f).replace(/\//g, "__").replace(/:/g, "-"); }
+
+async function authAtomico(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  // .tmp huerfanos de un corte anterior: no sirven y confunden. Fuera.
+  try { for (const f of fs.readdirSync(dir)) if (f.includes(".tmp")) fs.unlinkSync(path.join(dir, f)); } catch {}
+  const P = (f) => path.join(dir, _nombreClave(f) + ".json");
+  const creds = _leerJSON(P("creds")) || initAuthCreds();
+  return {
+    state: {
+      creds,
+      keys: {
+        get: (type, ids) => {
+          const data = {};
+          for (const id of ids) {
+            let v = _leerJSON(P(type + "-" + id));
+            if (type === "app-state-sync-key" && v) v = proto.Message.AppStateSyncKeyData.fromObject(v);
+            data[id] = v;   // igual que el original: la clave va aunque sea null
+          }
+          return data;
+        },
+        set: (data) => {
+          for (const type in data) {
+            for (const id in data[type]) {
+              const v = data[type][id];
+              const file = P(type + "-" + id);
+              if (v) _escribirAtomico(file, JSON.stringify(v, BufferJSON.replacer));
+              else { try { fs.unlinkSync(file); } catch {} }
+            }
+          }
+        },
+      },
+    },
+    saveCreds: () => _escribirAtomico(P("creds"), JSON.stringify(creds, BufferJSON.replacer)),
+  };
+}
+
+// APAGADO LIMPIO. Sin esto el SIGTERM de Render mata el proceso de golpe y WhatsApp ve la conexion
+// cortarse sin aviso. Cerramos el socket (sin desloguear) y recien ahi salimos.
+let _apagando = false;
+function _apagar() {
+  if (_apagando) return;
+  _apagando = true;
+  try {
+    for (const [, s] of sessions) {
+      try { s.saveCredsNow && s.saveCredsNow(); } catch {}
+      try { s.sock && s.sock.end(undefined); } catch {}
+    }
+  } catch {}
+  setTimeout(() => process.exit(0), 1200);
+}
+process.on("SIGTERM", _apagar);
+process.on("SIGINT", _apagar);
+
 
 // --- estado en memoria por cuenta ---
 const sessions = new Map(); // acc -> { sock, status, qr, me, chats:Map, msgs:Map, starting }
@@ -206,7 +287,7 @@ async function startSession(acc, force) {
       log.warn({ acc, borrados: n }, "limpieza de sesiones signal corrompidas");
     }
   } catch (e) { log.warn({ e: String(e && e.message || e) }, "no se pudo limpiar sesiones"); }
-  const { state, saveCreds } = await useMultiFileAuthState(dir);
+  const { state, saveCreds } = await authAtomico(dir);
   // NO usamos fetchLatestBaileysVersion(): trae la ultima version de WhatsApp Web, que puede ser
   // mas nueva que la que soporta el Baileys instalado. Con esa combinacion el telefono muestra el
   // dispositivo vinculado pero la sincronizacion no cierra nunca (reintenta cada ~1s). Dejando que
@@ -239,6 +320,7 @@ async function startSession(acc, force) {
   s.sock = sock;
   s.lastRecv = Date.now();
 
+  s.saveCredsNow = saveCreds;   // para poder grabar en el apagado
   sock.ev.on("creds.update", async () => {
     s.credsN = (s.credsN || 0) + 1;
     try { await saveCreds(); } catch (e) { s.credsErr = String(e && e.message || e).slice(0, 160); }
