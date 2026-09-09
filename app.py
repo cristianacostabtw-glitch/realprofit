@@ -1690,9 +1690,11 @@ _SOLO_DASH = r"""
        fetch('/pf-despachos-seg-progreso?job='+j.job).then(function(r){return r.json();}).then(function(p){
          if(!p||!p.ok){ clearInterval(poll); _leyLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((p&&p.msg)||'No se pudo procesar')+'.</div>'; return; }
          if(!p.listo){ var s=Math.round((Date.now()-t0)/1000);
-           // TOPE: antes se quedaba contando para siempre. Si a los 90s no termino, algo salio mal
-           // (casi siempre: el PDF es de la OTRA tienda y los pedidos no existen en esta).
-           if(s>90){ clearInterval(poll); _leyLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Tardó demasiado buscando en '+_tn+' ('+s+'s). Fijate que el PDF sea de esa tienda: si es de la otra, cambiá arriba y volvé a subirlo.</div>'; return; }
+           // TOPE PROPORCIONAL. Antes puse 90s fijos y corte una busqueda SANA de 100 pedidos a los
+           // 92s. Ubicar cada pedido lleva su tiempo: el tope tiene que crecer con la cantidad.
+           // 3s por pedido, minimo 180s. Con 10 pedidos = 180s; con 100 = 300s.
+           var _tope=Math.max(180, 3*(total||0));
+           if(s>_tope){ clearInterval(poll); _leyLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Tardó demasiado buscando en '+_tn+' ('+s+'s de '+_tope+'s). Fijate que el PDF sea de esa tienda: si es de la otra, cambiá arriba y volvé a subirlo.</div>'; return; }
            res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Buscando '+(total||'los')+' pedidos en '+_tn+'… ('+s+'s)</div>'; return; }
          clearInterval(poll); _leyLibre();
          if(!(p.pedidos&&p.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No encontré esos pedidos en '+_tn+'. ¿Es la tienda correcta?</div>'; return; }
@@ -1722,10 +1724,10 @@ _SOLO_DASH = r"""
    else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
    if(!lote.length){ _segLibre(); res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
    // TANDAS de 25: cada request termina rápido y NO se corta por timeout aunque sean 150+ pedidos.
-   // TANDA CHICA. Con 15 por los DOS canales cada request tardaba ~81s (medido en Render) y la
-   // ultima pasaba los 150s del corte del navegador: se cortaba siempre en 30 de 45. Con 4 por
-   // los dos canales (~25s) y 8 por uno solo, ninguna request se acerca al limite.
-   var CH=(canal=='todos'?4:8), i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
+   // TANDA DE 15. Lo que hacia que se cortara NO era el tamanio de la tanda: era que un pedido
+   // por la via lenta podia colgarse 70s (timeouts de Shopify en 40s/30s). Bajados a 15s/10s,
+   // 15 por tanda entra comodo, que es como venia andando bien.
+   var CH=15, i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
    function markChunk(chunk,ch){ chunk.forEach(function(o){ if(ch=='wpp'&&o.wa_id)o.wpp=true; if(ch=='tn'&&o.order_id)o.tn=true; }); }
    function fin(){
      var errBox = errs.length ? ('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ '+errs.length+' fallaron. Ej #'+(errs[0].num||'')+':</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>') : '';
