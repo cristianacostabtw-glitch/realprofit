@@ -12010,7 +12010,7 @@ def home():
     # Si falla o no hay datos, se cae al snapshot viejo y, si tampoco hay, a vacio con guiones.
     _real = None
     try:
-        _real = _pf_periodo_blob(email, _hoy(), _hoy())
+        _real = _pf_periodo_blob(email, _hoy(), _hoy(), solo_fresco=True)
     except Exception:
         _real = None
     # RECOMPRAS: consulta pesada (180 dias de historia) que va aparte y tarda 5-12s en frio. Si la
@@ -12110,7 +12110,7 @@ def _load_last_blob(email):
         return None
 
 
-def _pf_periodo_blob(email, desde, hasta):
+def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
     """Los KPI reales del período (lo que devuelve /pf-periodo). Se saco de la ruta para poder
     llamarlo TAMBIEN desde home(): asi la pagina sale con los numeros de verdad ya adentro del
     HTML, en vez de mostrar el snapshot viejo mientras espera un fetch."""
@@ -12125,6 +12125,11 @@ def _pf_periodo_blob(email, desde, hasta):
     c = _PF_CACHE.get(key)
     if c and (now - c[0]).total_seconds() < 60:
         return c[1]
+    # home() entra con solo_fresco=True: si no hay un valor FRESCO en memoria devuelve None y la
+    # pagina sale al instante (el front pide /pf-periodo por su cuenta y la cortina tapa hasta que
+    # llegan los numeros REALES). Antes home() esperaba hasta 45s al calculo y la app no abria.
+    if solo_fresco:
+        return None
     with _PF_LOCKS_G:
         lk = _PF_LOCKS.get(key)
         if lk is None:
@@ -12132,7 +12137,10 @@ def _pf_periodo_blob(email, desde, hasta):
     if c:
         if not lk.acquire(False):
             return c[1]              # otro ya lo esta calculando y tengo valor previo -> lo sirvo YA
-    elif not lk.acquire(True, 45):
+    # 8s (era 45). Con 45 cada request esperaba con un HILO tomado: el dashboard pide /pf-periodo
+    # cada 2s, asi que en medio minuto habia 22 esperando y se comian los 16 hilos de gunicorn ->
+    # la app entera dejaba de contestar (y con la cache fria, despues de cada deploy, siempre).
+    elif not lk.acquire(True, espera):
         # El que calcula tarda demasiado y no tengo nada en memoria. Devolver _blob_vacio() serviria
         # CEROS, que es un dato falso en pantalla. Prefiero el ultimo snapshot guardado en disco: es
         # de hace un rato pero es real, y el proximo poll (a los 2s) ya trae el valor fresco.
