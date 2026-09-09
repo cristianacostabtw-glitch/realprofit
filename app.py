@@ -8691,7 +8691,9 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
                 'o%d: order(id:"gid://shopify/Order/%s"){fulfillmentOrders(first:5){nodes{id status}}}'
                 % (k, oid) for k, oid in enumerate(trozo)) + "}"
             try:
-                gr = requests.post(gql, headers=H, data=_json.dumps({"query": q}), timeout=40)
+                # 15s (era 40). Shopify contesta en <2s cuando esta sano; 40s solo servia para
+                # que un hilo quedara clavado 40 segundos cuando NO lo esta.
+                gr = requests.post(gql, headers=H, data=_json.dumps({"query": q}), timeout=15)
                 dat = (gr.json() or {}).get("data") or {}
             except Exception:
                 continue                      # si falla, cada pedido cae al camino viejo (REST)
@@ -8715,7 +8717,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
         fos = FOS.get(str(oid))
         if fos is None:                     # no vino en el lote → camino viejo, uno por uno
             try:
-                rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=30)
+                rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=10)
                 if rr.status_code != 200:
                     return ("fail", {"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])})
                 fos = rr.json().get("fulfillment_orders", [])
@@ -8729,7 +8731,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
                 "notifyCustomer": True,
                 "trackingInfo": {"company": "Andreani", "number": p.get("track")}}}
             try:
-                gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=40)
+                gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=15)
                 j = gr.json() if gr.content else {}
                 res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
                 ue = res.get("userErrors") or []
@@ -8740,7 +8742,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
                 return ("fail", {"num": num, "msg": str(e)[:120]})
         # VÍA 2: sin FO abierto → la orden YA está preparada → actualizar tracking del fulfillment existente + avisar.
         try:
-            fr = requests.get("%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=30)
+            fr = requests.get("%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=10)
             fus = fr.json().get("fulfillments", []) if fr.status_code == 200 else []
         except Exception as e:
             return ("fail", {"num": num, "msg": "fulfillments: " + str(e)[:120]})
@@ -8753,7 +8755,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             return ("salt", None)
         v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": {"company": "Andreani", "number": p.get("track")}}
         try:
-            gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=40)
+            gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=15)
             j = gr.json() if gr.content else {}
             res = ((j.get("data") or {}).get("fulfillmentTrackingInfoUpdate") or {})
             ue = res.get("userErrors") or []
