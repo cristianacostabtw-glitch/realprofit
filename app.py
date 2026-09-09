@@ -61,7 +61,9 @@ def _watchdog():
     _t.sleep(60)                                   # gracia de arranque
     while True:
         try:
-            ok = (requests.get(url, timeout=8).status_code == 200)
+            # 25s (era 8): con los hilos ocupados esperando a TiendaNube/Shopify la app tarda
+            # en contestar aunque este SANA (medido: CPU 0,3%, memoria 461MB y aun asi 30s).
+            ok = (requests.get(url, timeout=25).status_code == 200)
         except Exception:
             ok = False
         if ok:
@@ -69,8 +71,11 @@ def _watchdog():
             fails = 0
         elif armed:                                # solo cuenta fallos DESPUÉS de haber servido bien
             fails += 1
-            if fails >= 4:                         # ~4 fallos seguidos (>80s) → reinicio
-                _sys.stderr.write("[watchdog] el server no responde hace >80s → me reinicio\n")
+            # 8 fallos (~3 min) en vez de 4 (~80s). Con 80s el watchdog mataba la app entera por
+            # una busqueda lenta en TiendaNube, con el CPU en 0%: mataba al paciente sano y encima
+            # se llevaba puesto el envio de seguimientos a medio hacer.
+            if fails >= 8:
+                _sys.stderr.write("[watchdog] el server no responde hace >3 min → me reinicio\n")
                 _sys.stderr.flush()
                 _os._exit(1)
         _t.sleep(20)
@@ -1669,29 +1674,44 @@ _SOLO_DASH = r"""
        +(_dSegWppOn?('<button onclick="rpDSeg(\'todos\')" style="'+b+';background:#232d3d;color:#e7edf5">⚪ Enviar en Todos</button>'):'')
        +(_dSegWppOn?('<button onclick="rpDSeg(\'wpp\',false,true)" style="'+b+';background:#2a0f2e;color:#f5d0fe;border:1px solid #6b2c74">🔁 Reenviar TODOS por WPP</button>'):'')
      +'</div></div>'; }
- window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-segres');
+ window.rpDUpSeg=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return;
+   if(window._rpSegLey){ return; }            // ya hay una lectura en curso: no apilar otra
+   window._rpSegLey=true;
+   var _leyLibre=function(){ window._rpSegLey=false; };
+   var res=document.getElementById('rp-d-segres');
    var _tn=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
    res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Leyendo el PDF…</div>';
    var fd=new FormData(); fd.append('pdf',f); fd.append('tienda',_dSegTienda||'tn');
    // El backend arranca un JOB y devuelve al toque; acá consultamos el progreso (no cuelga nunca).
    fetch('/pf-despachos-seg-leer',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-     if(!j||!j.ok||!j.job){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer el PDF')+'.</div>'; return; }
+     if(!j||!j.ok||!j.job){ _leyLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No pude leer el PDF')+'.</div>'; return; }
      var total=j.total||0, t0=Date.now();
      var poll=setInterval(function(){
        fetch('/pf-despachos-seg-progreso?job='+j.job).then(function(r){return r.json();}).then(function(p){
-         if(!p||!p.ok){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((p&&p.msg)||'No se pudo procesar')+'.</div>'; return; }
-         if(!p.listo){ var s=Math.round((Date.now()-t0)/1000); res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Buscando '+(total||'los')+' pedidos en '+_tn+'… ('+s+'s)</div>'; return; }
-         clearInterval(poll);
+         if(!p||!p.ok){ clearInterval(poll); _leyLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((p&&p.msg)||'No se pudo procesar')+'.</div>'; return; }
+         if(!p.listo){ var s=Math.round((Date.now()-t0)/1000);
+           // TOPE: antes se quedaba contando para siempre. Si a los 90s no termino, algo salio mal
+           // (casi siempre: el PDF es de la OTRA tienda y los pedidos no existen en esta).
+           if(s>90){ clearInterval(poll); _leyLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Tardó demasiado buscando en '+_tn+' ('+s+'s). Fijate que el PDF sea de esa tienda: si es de la otra, cambiá arriba y volvé a subirlo.</div>'; return; }
+           res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Buscando '+(total||'los')+' pedidos en '+_tn+'… ('+s+'s)</div>'; return; }
+         clearInterval(poll); _leyLibre();
          if(!(p.pedidos&&p.pedidos.length)){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No encontré esos pedidos en '+_tn+'. ¿Es la tienda correcta?</div>'; return; }
          if(p.tienda){ _dSegTienda=p.tienda; rpDSegTiendaRender(); }
          _dSeg=p.pedidos; _dSegWppOn=(p.wpp_on!==false); _dSegRender();
        }).catch(function(){ /* reintenta en el próximo tick, no corta */ });
      }, 1500);
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error subiendo el PDF.</div>'; }); inp.value=''; };
- window.rpDSeg=function(canal,solo1,force){ if(!_dSeg.length)return; var res=document.getElementById('rp-d-segres');
+ window.rpDSeg=function(canal,solo1,force){ if(!_dSeg.length)return;
+   // TRABA. Cada clic largaba OTRA tanda en paralelo, cada una con su propio cartel de 1s: se
+   // peleaban por el mismo cuadro (el titileo) y ademas mandaban los MISMOS pedidos de nuevo,
+   // ocupando todos los hilos del server hasta que el watchdog lo reiniciaba.
+   if(window._rpSegEnv){ return; }
+   window._rpSegEnv=true;
+   var _segLibre=function(){ window._rpSegEnv=false; };
+   var res=document.getElementById('rp-d-segres');
    var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
-   if(force && canal=='wpp' && !confirm('Reenviar el WhatsApp a TODOS ('+_dSeg.filter(function(o){return o.wa_id;}).length+') con el tracking del PDF, incluso a los que ya lo recibieron. ¿Seguro?')) return;
+   if(force && canal=='wpp' && !confirm('Reenviar el WhatsApp a TODOS ('+_dSeg.filter(function(o){return o.wa_id;}).length+') con el tracking del PDF, incluso a los que ya lo recibieron. ¿Seguro?')){ _segLibre(); return; }
    // Mandar SOLO los pendientes del canal (no re-intentar los ya hechos), salvo force (WPP) = TODOS:
    var _pendStore=_dSeg.filter(function(o){return !o.tn;});       // faltan en la tienda
    var _pendWpp=_dSeg.filter(function(o){return !o.wpp;});        // faltan en WhatsApp
@@ -1700,7 +1720,7 @@ _SOLO_DASH = r"""
    else if(canal=='wpp'){ lote= force ? _dSeg.filter(function(o){return o.wa_id;}) : _pendWpp; }
    else if(canal=='tn'){ lote=_pendStore; }
    else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
-   if(!lote.length){ res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
+   if(!lote.length){ _segLibre(); res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
    // TANDAS de 25: cada request termina rápido y NO se corta por timeout aunque sean 150+ pedidos.
    var CH=15, i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
    function markChunk(chunk,ch){ chunk.forEach(function(o){ if(ch=='wpp'&&o.wa_id)o.wpp=true; if(ch=='tn'&&o.order_id)o.tn=true; }); }
@@ -1711,6 +1731,7 @@ _SOLO_DASH = r"""
        : ((canal=='wpp'?'🟢 WhatsApp ':(_dSegTienda==='shopify'?'🛍️ Shopify ':'🔵 TiendaNube '))+acc.env+' enviados'+(acc.salt?(' · '+acc.salt+' ya estaban'):'')+(acc.fail?(' · '+acc.fail+' fallaron'):''));
      _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+errBox+res.innerHTML;
      _dLoaded=false; rpDLoad();
+     _segLibre();
    }
    function paso(){
      if(i>=lote.length){ fin(); return; }
@@ -1731,11 +1752,11 @@ _SOLO_DASH = r"""
      fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},signal:(_ac?_ac.signal:undefined),body:JSON.stringify({pedidos:chunk,force:!!force})}).then(function(r){return r.json();}).then(function(j){
        _fincorte();
        if(j&&j.busy){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Servidor ocupado, reintentando '+hasta+'/'+lote.length+'…</div>'; setTimeout(paso,3000); return; }   // ocupado → reintenta la MISMA tanda
-       if(!j||!j.ok){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
+       if(!j||!j.ok){ _segLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
        if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
        else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
        i=hasta; paso();
-     }).catch(function(){ _fincorte(); _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó con '+i+' de '+lote.length+' listos (a los '+Math.round((Date.now()-_t1)/1000)+'s). Volvé a tocar Enviar: sigue desde donde quedó, los ya cargados se saltan.</div>'; });
+     }).catch(function(){ _fincorte(); _segLibre(); _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó con '+i+' de '+lote.length+' listos (a los '+Math.round((Date.now()-_t1)/1000)+'s). Volvé a tocar Enviar: sigue desde donde quedó, los ya cargados se saltan.</div>'; });
    }
    paso(); };
  // ===================== FACTURACIÓN =====================
@@ -1953,12 +1974,22 @@ _SOLO_DASH = r"""
    (be_roas = facturación / contribución antes de ads · be_cpa = contribución antes de ads / pedidos). */
 (function(){
   var _raw=null, _painted=false, _of=window.fetch;
-  window.fetch=function(){ var args=arguments, p=_of.apply(this,args);
-    try{ var u=(args[0]&&args[0].url)||args[0];
+  // COALESCE de /pf-periodo. El dashboard React lo pide cada ~2s y a veces 10 veces en 1 segundo
+  // (medido en los logs de Render). Cada una ocupa un hilo del server esperando. Si ya hay una
+  // IGUAL en vuelo devuelvo ESA: cada quien se lleva su propio clone (el body se lee una sola vez).
+  var _pfVuelo={};
+  window.fetch=function(){ var args=arguments, _u0='';
+    try{ _u0=(args[0]&&args[0].url)||args[0]||''; }catch(e){ _u0=''; }
+    var _esPer=(typeof _u0==='string' && _u0.indexOf('/pf-periodo')>-1);
+    if(_esPer && _pfVuelo[_u0]) return _pfVuelo[_u0].then(function(r){ return r.clone(); });
+    var p=_of.apply(this,args);
+    if(_esPer){ _pfVuelo[_u0]=p; var _soltar=function(){ try{ delete _pfVuelo[_u0]; }catch(e){} }; p.then(_soltar,_soltar); }
+    try{ var u=_u0;
       if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
         p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
           if(r && (r.be_cpa!=null || r.be_roas!=null)){ _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS'; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
       } }catch(e){}
+    if(_esPer) return p.then(function(r){ return r.clone(); });
     return p; };
   // NO ESPERAR AL REACT. Antes solo interceptabamos el fetch ajeno: los numeros reales aparecian
   // cuando el dashboard de ProfitFlow decidia pedir /pf-periodo, y eso tardaba ~28 segundos. Durante
@@ -8407,15 +8438,20 @@ def _seg_mapa_orders(store, hdr, numeros) -> dict:
     Los pedidos del PDF suelen estar en las primeras 2-3 páginas → ~12-18s. SECUENCIAL a propósito: TN
     rate-limita las requests en paralelo (429) y termina MÁS lento. Corta apenas los encuentra a todos,
     con TOPE de 6 páginas: si algún pedido no está (typo/cancelado) NO se cuelga paginando 15 (eso daba 90-120s)."""
+    import time as _tt
     faltan = set(str(n) for n in numeros)
     mapa = {}
     page = 1
-    while page <= 6 and faltan:                     # tope 6 (=1200 pedidos atrás); corta al encontrarlos
+    _t0 = _tt.time()
+    # PRESUPUESTO DE 40s. Antes: 6 paginas x hasta 30s = ~85s si algun pedido no estaba (por ej.
+    # el PDF es de la otra tienda). Eso pasaba el limite del watchdog y REINICIABA la app entera.
+    # Ahora corta a los 40s y devuelve lo que encontro: el front avisa cuales faltaron.
+    while page <= 6 and faltan and (_tt.time() - _t0) < 40:
         try:
             r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
                 "per_page": 200, "page": page, "sort": "-id",
                 "fields": ("id,number,customer,total,fulfillments,products,"
-                           "shipping_status,contact_phone,billing_phone,shipping_address")}, timeout=30)
+                           "shipping_status,contact_phone,billing_phone,shipping_address")}, timeout=12)
             lote = r.json() if r.status_code == 200 else []
         except Exception:
             lote = []
