@@ -3242,7 +3242,13 @@ _SOLO_DASH = r"""
   <div>
    <div class="card">
     <div class="ch"><div class="cn">1</div><div class="ct">Cuenta e identidad</div></div>
-    <select class="in" id="rpa-cuenta" onchange="rpaCuentaChange()" style="margin-bottom:12px;font-weight:700"></select>
+    <select class="in" id="rpa-cuenta" onchange="rpaCuentaChange()" style="margin-bottom:10px;font-weight:700"></select>
+    <label class="sw" id="rpa-multiwrap" onclick="rpaMulti()" style="margin-bottom:10px"><span class="tk" id="rpa-multitk"><i></i></span><span style="font-size:13.5px;font-weight:700">Subir la misma renovaci&oacute;n a m&aacute;s de una cuenta <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(los mismos videos, una campa&ntilde;a en cada una)</span></span></label>
+    <div id="rpa-multibox" style="display:none;margin-bottom:12px;background:#0a1322;border:1px solid #22324a;border-radius:10px;padding:10px 12px">
+      <div style="color:#8fb3e0;font-size:12px;font-weight:700;margin-bottom:8px">EN QU&Eacute; CUENTAS</div>
+      <div id="rpa-multilista"></div>
+      <div id="rpa-multimon" style="color:#fbbf24;font-size:12px;margin-top:8px;display:none"></div>
+    </div>
     <div class="row"><div><span class="lb">P&aacute;gina</span><select class="in" id="rpa-page"></select></div>
      <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
     <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select></div>
@@ -3268,6 +3274,7 @@ _SOLO_DASH = r"""
     <div id="rpa-boxn">
      <div class="row"><div><span class="lb">&Aacute;ngulo (nombre)</span><input class="in" id="rpa-ang" value="UGC RENOVACION" oninput="rpaCalc()"></div>
       <div><span class="lb" id="rpa-presuplb">Presupuesto diario</span><input class="in" id="rpa-presup" value="35" oninput="rpaCalc()"></div></div>
+     <div id="rpa-presupmulti" style="display:none;margin-top:12px"></div>
      <span class="lb" style="margin-top:13px">Presupuesto a nivel</span>
      <div class="seg"><div class="s on" id="rpa-tc" onclick="rpaTipo('cbo')">CBO<small>en la campa&ntilde;a</small></div><div class="s" id="rpa-ta" onclick="rpaTipo('abo')">ABO<small>por conjunto</small></div></div>
      <label class="sw" id="rpa-sharewrap" onclick="rpaShare()" style="margin-top:13px;display:none"><span class="tk" id="rpa-sharetk"><i></i></span><span style="font-size:13.5px;font-weight:700">Compartir presupuesto entre conjuntos <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(hasta 20% entre s&iacute;, opci&oacute;n de Meta). Apagado = cada conjunto gasta lo suyo (mejor para testear)</span></span></label>
@@ -3333,15 +3340,86 @@ _SOLO_DASH = r"""
    var cs=(j&&j.cuentas)||[]; window._ADSCTAS=cs;
    $('rpa-cuenta').innerHTML=opt(cs.map(function(c){return {v:c.key,t:c.nombre};}));
    if(cs.length){ $('rpa-cuenta').value=cs[0].key; rpaCuentaChange(); }
+   if(window._MULTI) rpaMultiLista();
   });
   rpaCalc();}
+ // MULTI-CUENTA. Cada cuenta publicitaria tiene SU moneda (una puede estar en ARS y otra en USD):
+ // por eso, si se elige mas de una, se pide un presupuesto POR CUENTA con su moneda al lado, en vez
+ // de un solo numero que significaria cosas distintas en cada una. La moneda la da /pf-ads-identidad.
+ window._MULTI=false; window._MULTISEL={}; window._MONEDAS={};
+ window.rpaMulti=function(){
+   window._MULTI=!window._MULTI;
+   $('rpa-multitk').classList.toggle('on',window._MULTI);
+   $('rpa-multibox').style.display=window._MULTI?'block':'none';
+   if(window._MULTI){ rpaMultiLista(); } else { window._MULTISEL={}; rpaPresupMulti(); }
+   rpaCalc();
+ };
+ window.rpaMultiLista=function(){
+   var cs=window._ADSCTAS||[], act=($('rpa-cuenta')||{}).value||'';
+   var h=cs.map(function(c){
+     var chk=(c.key===act)||(window._MULTISEL[c.key]?true:false);
+     if(c.key===act) window._MULTISEL[c.key]=true;
+     var mon=window._MONEDAS[c.key]?(' <span style="color:#5b6678;font-weight:600">('+window._MONEDAS[c.key]+')</span>'):'';
+     return '<label style="display:flex;align-items:center;gap:9px;padding:5px 0;cursor:'+(c.key===act?'default':'pointer')+'">'
+       +'<input type="checkbox" '+(chk?'checked':'')+' '+(c.key===act?'disabled':'')+' onchange="rpaMultiSel(\''+c.key+'\',this.checked)" style="width:16px;height:16px;accent-color:#137fec">'
+       +'<span style="color:#e2e8f0;font-size:13px;font-weight:600">'+c.nombre+mon+(c.key===act?' <span style="color:#5b6678;font-weight:500">· la principal</span>':'')+'</span></label>';
+   }).join('');
+   $('rpa-multilista').innerHTML=h||'<div style="color:#5b6678;font-size:12.5px">No hay otras cuentas disponibles con este token.</div>';
+   rpaMultiMonedas();
+ };
+ window.rpaMultiSel=function(k,on){ if(on) window._MULTISEL[k]=true; else delete window._MULTISEL[k]; rpaMultiMonedas(); rpaCalc(); };
+ window.rpaCuentasElegidas=function(){
+   var act=($('rpa-cuenta')||{}).value||'cp1';
+   if(!window._MULTI) return [act];
+   var ks=Object.keys(window._MULTISEL).filter(function(k){return window._MULTISEL[k];});
+   if(ks.indexOf(act)<0) ks.unshift(act);
+   return ks;
+ };
+ // pide la moneda de cada cuenta elegida (la cachea) y despues arma los campos de presupuesto
+ window.rpaMultiMonedas=function(){
+   var ks=rpaCuentasElegidas(), falta=ks.filter(function(k){return !(k in window._MONEDAS);});
+   if(!falta.length){ rpaPresupMulti(); return; }
+   var quedan=falta.length;
+   falta.forEach(function(k){
+     fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){
+       window._MONEDAS[k]=(j&&j.moneda)||'';
+     }).catch(function(){ window._MONEDAS[k]=''; }).then(function(){
+       if(--quedan<=0){ rpaMultiLista(); rpaPresupMulti(); }
+     });
+   });
+ };
+ window.rpaPresupMulti=function(){
+   var box=$('rpa-presupmulti'); if(!box) return;
+   var ks=rpaCuentasElegidas();
+   if(!window._MULTI || ks.length<2){ box.style.display='none'; box.innerHTML=''; $('rpa-presup').parentElement.style.display=''; $('rpa-multimon').style.display='none'; return; }
+   var mons={}; ks.forEach(function(k){ mons[window._MONEDAS[k]||'?']=1; });
+   var distintas=Object.keys(mons).length>1;
+   var av=$('rpa-multimon');
+   if(distintas){ av.style.display='block'; av.textContent='⚠ Estas cuentas están en monedas distintas ('+Object.keys(mons).join(' y ')+'). Cargá el presupuesto de cada una por separado: no se convierte solo.'; }
+   else { av.style.display='none'; }
+   $('rpa-presup').parentElement.style.display='none';   // el campo unico no aplica con varias cuentas
+   var cs=window._ADSCTAS||[];
+   box.style.display='block';
+   box.innerHTML='<span class="lb">Presupuesto diario por cuenta</span>'+ks.map(function(k){
+     var c=cs.filter(function(x){return x.key==k;})[0]||{};
+     var mon=window._MONEDAS[k]||'';
+     var val=(document.getElementById('rpa-pm-'+k)||{}).value || c.presupuesto || 35;
+     return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px">'
+       +'<span style="flex:1;color:#c7d2e0;font-size:12.5px;font-weight:600">'+(c.nombre||k)+'</span>'
+       +'<span style="color:#5b6678;font-size:12px;font-weight:700;min-width:34px;text-align:right">'+(mon||'—')+'</span>'
+       +'<input class="in" id="rpa-pm-'+k+'" value="'+val+'" oninput="rpaCalc()" style="width:110px">'
+       +'</div>';
+   }).join('');
+ };
  window.rpaCuentaChange=function(){
   var k=($('rpa-cuenta')||{}).value||'cp1';
+  if(window._MULTI){ window._MULTISEL[k]=true; }
   var c=(window._ADSCTAS||[]).filter(function(x){return x.key==k;})[0]||{};
   $('rpa-copy').value=c.copy||''; if(c.titulo)$('rpa-titulo').value=c.titulo; if(c.subtitulo)$('rpa-sub').value=c.subtitulo;
   if(c.presupuesto)$('rpa-presup').value=c.presupuesto; if(c.landing)$('rpa-url').value=c.landing;
   fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
-   MONEDA=j.moneda||''; rpaPresupLb();
+   MONEDA=j.moneda||''; try{ window._MONEDAS[k]=MONEDA; }catch(e){} rpaPresupLb();
+   if(window._MULTI){ rpaMultiLista(); }
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
    $('rpa-pixel').innerHTML=opt(j.pixels.map(function(p){return {v:p.id,t:p.name};}));
@@ -3431,14 +3509,45 @@ _SOLO_DASH = r"""
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
+  // MULTI-CUENTA: mando la lista y el presupuesto de CADA una (cada cuenta tiene su moneda).
+  var _ks=rpaCuentasElegidas();
+  if(_ks.length>1){
+    body.cuentas=_ks;
+    var _pp={}; _ks.forEach(function(k){ var e=document.getElementById('rpa-pm-'+k); if(e&&e.value) _pp[k]=e.value; });
+    body.presupuestos=_pp;
+    if(_pp[_ks[0]]) body.presupuesto=_pp[_ks[0]];
+  }
   var go=$('rpa-go');go.disabled=true;go.textContent='Lanzando…';var pr=$('rpa-prog'),bar=$('rpa-bar'),msg=$('rpa-msg');pr.style.display='block';
   fetch('/pf-ads-lanzar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){msg.style.color='#fb7185';msg.textContent=(j&&j.msg)||'error';go.disabled=false;go.textContent='🚀 Lanzar campaña';return;}
-   var job=j.job;var poll=setInterval(function(){fetch('/pf-ads-progreso?job='+job).then(function(r){return r.json();}).then(function(p){
-    if(!p||!p.ok)return; if(p.error){clearInterval(poll);msg.style.color='#fb7185';msg.textContent='Error: '+p.error;go.disabled=false;go.textContent='🚀 Lanzar campaña';return;}
-    var pct=p.total?Math.round(p.done/p.total*100):5;if(pct<3)pct=3;if(!p.listo&&pct>97)pct=97;bar.style.width=pct+'%';msg.textContent=p.msg||'Procesando…';
-    if(p.listo){clearInterval(poll);bar.style.width='100%';msg.style.color='#34d399';go.disabled=false;go.textContent='🚀 Lanzar otra';}
-   });},900);
+   // Con varias cuentas el server devuelve UN job por cuenta: los sigo a todos y muestro una
+   // linea por cuenta. Termina cuando terminaron todos (o quedo alguna con error, que se ve cual).
+   var jobs=(j.jobs&&j.jobs.length)?j.jobs:[{job:j.job,nombre:''}];
+   var est={};
+   var poll=setInterval(function(){
+    Promise.all(jobs.map(function(J){
+      return fetch('/pf-ads-progreso?job='+J.job).then(function(r){return r.json();})
+        .then(function(p){ est[J.job]={n:J.nombre,p:p}; }).catch(function(){});
+    })).then(function(){
+      var listos=0, errs=0, tot=0, hechos=0, lineas=[];
+      jobs.forEach(function(J){
+        var e=est[J.job]||{}, p=e.p||{};
+        if(!p.ok){ lineas.push((J.nombre?J.nombre+': ':'')+'esperando…'); return; }
+        if(p.error){ errs++; listos++; lineas.push((J.nombre?J.nombre+': ':'')+'❌ '+p.error); return; }
+        if(p.listo){ listos++; }
+        tot+=(p.total||0); hechos+=(p.done||0);
+        lineas.push((J.nombre?J.nombre+': ':'')+(p.listo?'✅ listo':(p.msg||'Procesando…')));
+      });
+      var pct=tot?Math.round(hechos/tot*100):5; if(pct<3)pct=3; if(listos<jobs.length&&pct>97)pct=97;
+      bar.style.width=pct+'%';
+      msg.innerHTML=lineas.join('<br>');
+      if(listos>=jobs.length){
+        clearInterval(poll); bar.style.width='100%';
+        msg.style.color=errs?'#fb7185':'#34d399';
+        go.disabled=false; go.textContent='🚀 Lanzar otra';
+      }
+    });
+   },900);
   }).catch(function(){msg.style.color='#fb7185';msg.textContent='error de conexión';go.disabled=false;go.textContent='🚀 Lanzar campaña';});};
 })();
 </script>
@@ -11989,13 +12098,34 @@ def pf_ads_lanzar():
     if not (data.get("drive") or "").strip() and not (data.get("upload_id") or "").strip():
         return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
     import uuid
-    job = uuid.uuid4().hex[:12]
-    data["_token"] = _ads_token_para_cuenta(data.get("cuenta"))   # token que REALMENTE puede usar la cuenta elegida (no cruza cuentas)
-    _ads_lastcfg_set(_user_actual(), data.get("cuenta"), data)   # recordar la config para la próxima subida
-    _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
-    _job_put(job, _ADS_JOBS[job])      # a DISCO: si el worker se recicla, el progreso no se pierde
-    threading.Thread(target=_ads_run, args=(job, data), daemon=True).start()
-    return jsonify({"ok": True, "job": job})
+    # MULTI-CUENTA: si vienen varias, se lanza UN job por cuenta. Cada uno con SU token y SU
+    # presupuesto (las cuentas pueden estar en monedas distintas: un solo numero no sirve para las dos).
+    ctas = [str(x) for x in (data.get("cuentas") or []) if str(x).strip()]
+    if not ctas:
+        ctas = [data.get("cuenta") or "cp1"]
+    vistas = []
+    for c in ctas:                       # sin repetidos, respetando el orden
+        if c not in vistas and c in _ADS_CUENTAS:
+            vistas.append(c)
+    if not vistas:
+        return jsonify({"ok": False, "msg": "no reconocí la cuenta elegida"}), 400
+    presups = data.get("presupuestos") or {}
+    jobs = []
+    for c in vistas:
+        d = dict(data)
+        d["cuenta"] = c
+        d.pop("cuentas", None); d.pop("presupuestos", None)
+        if presups.get(c):
+            d["presupuesto"] = presups[c]
+        d["_token"] = _ads_token_para_cuenta(c)   # token que REALMENTE puede usar esa cuenta (no cruza cuentas)
+        job = uuid.uuid4().hex[:12]
+        _ads_lastcfg_set(_user_actual(), c, d)    # recordar la config para la próxima subida
+        _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+        _job_put(job, _ADS_JOBS[job])   # a DISCO: si el worker se recicla, el progreso no se pierde
+        threading.Thread(target=_ads_run, args=(job, d), daemon=True).start()
+        jobs.append({"job": job, "cuenta": c,
+                     "nombre": (_ADS_CUENTAS.get(c) or {}).get("nombre", c)})
+    return jsonify({"ok": True, "job": jobs[0]["job"], "jobs": jobs})
 
 
 @app.get("/pf-ads-progreso")
