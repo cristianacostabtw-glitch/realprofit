@@ -1606,29 +1606,52 @@ _SOLO_DASH = r"""
     +'<div style="height:12px;background:#0b1220;border:1px solid #2b2350;border-radius:20px;overflow:hidden">'
     +'<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#7c3aed,#a78bfa);border-radius:20px;transition:width .3s ease"></div></div>'
     +'<div style="font-size:11px;color:#7a6ca8;margin-top:5px;text-align:right">'+pct+'%</div>'; }
+ // Bitácora de lo que REALMENTE está haciendo el server, segundo a segundo.
+ function rpDSkuDet(et,quieto){ if(!et||!et.length)return '';
+   var ult=et.slice(-6).map(function(x){ return '<div style="color:#8b7fb0">• '+String(x).replace(/</g,'&lt;')+'</div>'; }).join('');
+   var q=(quieto>12)?('<div style="color:#f0b429;margin-top:5px">⏳ sin moverse hace '+quieto+'s</div>'):'';
+   return '<div style="margin-top:9px;background:#0b1220;border:1px solid #1f1a3a;border-radius:10px;padding:9px 11px;font-size:11px;line-height:1.55;max-height:120px;overflow:auto">'+ult+q+'</div>'; }
+ function rpDSkuErr(msg,et){
+   return '<div style="background:#2a0f14;border:1px solid #5b1d28;border-radius:12px;padding:13px 15px;color:#fb7185;font-size:12.5px;font-weight:600">❌ '+String(msg).replace(/</g,'&lt;')+'</div>'
+     +rpDSkuDet(et,0)+'<div style="color:#7a6ca8;font-size:11px;margin-top:6px">Pasame esta lista y te digo exactamente dónde se trabó.</div>'; }
  window.rpDUpSku=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; var res=document.getElementById('rp-d-skures');
+   // TRABA: si ya hay un estampado en curso, no arranco OTRO job. Dos jobs poleando a la vez
+   // queman el cupo de --max-requests de gunicorn y el worker se recicla matando el hilo.
+   if(window._rpSkuUp){ inp.value=''; return; }
+   window._rpSkuUp=true; var _skuLibre=function(){ window._rpSkuUp=false; };
    res.innerHTML=rpDBarra(2,'⏳ Subiendo el PDF…');
    var fd=new FormData(); fd.append('pdf',f);
    fetch('/pf-despachos-sku',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
      if(!j||!j.ok){ throw (j&&j.msg)||'error'; }
-     var job=j.job;
+     var job=j.job, t0=Date.now(), fallos=0, etapas=[];
      var poll=setInterval(function(){
        fetch('/pf-despachos-sku-progreso?job='+job).then(function(r){return r.json();}).then(function(p){
-         if(!p||!p.ok){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((p&&p.msg)||'Se cortó el proceso')+' — probá de nuevo.</div>'; return; }   // job caído (ej reinicio): muestro y freno, NO poleo infinito
-         if(p.error){ clearInterval(poll); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar: '+p.error+'</div>'; return; }
+         fallos=0;
+         if(!p||!p.ok){ clearInterval(poll); _skuLibre(); res.innerHTML=rpDSkuErr(((p&&p.msg)||'Se cortó el proceso')+' — probá de nuevo.',etapas); return; }   // job caído (ej reinicio): muestro y freno, NO poleo infinito
+         if(p.etapas&&p.etapas.length){ etapas=p.etapas; }
+         if(p.error){ clearInterval(poll); _skuLibre(); res.innerHTML=rpDSkuErr(p.error,etapas); return; }
+         var seg=Math.round((Date.now()-t0)/1000), quieto=Math.round(p.quieto||0);
          var pct=p.total?Math.round(p.done/p.total*100):5; if(pct<2)pct=2; if(!p.listo&&pct>98)pct=98;
-         res.innerHTML=rpDBarra(pct,p.msg||'Procesando…');
-         if(p.listo){ clearInterval(poll);
+         // TOPE PROPORCIONAL: nunca más un poleo infinito mostrando 5%.
+         var tope=Math.max(240,4*(p.total||0));
+         if(!p.listo&&seg>tope){ clearInterval(poll); _skuLibre();
+           res.innerHTML=rpDSkuErr('Tardó demasiado: '+seg+'s (tope '+tope+'s). Se quedó en "'+(p.msg||'?')+'" hace '+quieto+'s.',etapas); return; }
+         res.innerHTML=rpDBarra(pct,(p.msg||'Procesando…')+' · '+seg+'s')+rpDSkuDet(etapas,quieto);
+         if(p.listo){ clearInterval(poll); _skuLibre();
            var s=p.stats||{};
            fetch('/pf-despachos-sku-descargar?job='+job).then(function(r){return r.blob();}).then(function(b){
              var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='etiquetas-con-sku.pdf'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
              var extra=''; if(s.conflicto)extra+=' · ⚠️ '+s.conflicto+' sin estampar (nombre no coincide)'; if(s.sin_pedido)extra+=' · '+s.sin_pedido+' sin pedido en la tienda';
-             res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">✅ '+(s.estampadas||0)+' de '+(s.total||0)+' etiquetas con SKU — PDF descargado.'+extra+'</div>';
-           });
+             res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:13px 15px;color:#34d399;font-size:13px;font-weight:700">✅ '+(s.estampadas||0)+' de '+(s.total||0)+' etiquetas con SKU — PDF descargado.'+extra+'</div>'+rpDSkuDet(etapas,0);
+           }).catch(function(){ res.innerHTML=rpDSkuErr('Terminó pero no pude bajar el PDF. Recargá y volvé a subirlo.',etapas); });
          }
-       }).catch(function(){});
-     },400);
-   }).catch(function(e){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
+       }).catch(function(){ fallos++;
+         var seg=Math.round((Date.now()-t0)/1000);
+         if(fallos>=30){ clearInterval(poll); _skuLibre(); res.innerHTML=rpDSkuErr('El servidor no contesta: '+fallos+' consultas seguidas fallaron ('+seg+'s).',etapas); return; }
+         res.innerHTML=rpDBarra(5,'⚠️ El server no contesta, reintentando… ('+fallos+' fallos · '+seg+'s)')+rpDSkuDet(etapas,0);
+       });
+     },1000);   // 400ms→1s: el poleo mismo quemaba el cupo --max-requests y reciclaba el worker
+   }).catch(function(e){ _skuLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
  // ---- Modal Enviar seguimiento ----
  window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; }
    _dSegTienda=(_dTienda&&_dTienda!=='todas')?_dTienda:(_dTiendas[0]||'tn'); _dSeg=[]; rpDSegTiendaRender(); };
@@ -8023,14 +8046,26 @@ def _sku_label_nombre(texto):
     return m.group(1).strip() if m else ""
 
 
-def _sku_pedidos_map(email):
+def _sku_pedidos_map(email, prog=None):
     """{nº pedido → [ {'nom','items','tienda'}, ... ] } (lista: el mismo nº puede estar en las 2 tiendas) de las
     tiendas conectadas (Shopify + Tiendanube). Trae los PRODUCTOS de cada pedido para calcular
-    el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO (cacheado)."""
+    el SKU con la config de Productos. Guarda el nombre para verificar el match. RÁPIDO (cacheado).
+    prog: callback opcional prog(msg) para contar EN VIVO qué está haciendo y por qué tarda.
+    Sin prog se comporta EXACTAMENTE igual que antes."""
     import time as _t
+    _tt0 = _t.time()
+
+    def _p(m):
+        if prog:
+            try:
+                prog(m)
+            except Exception:
+                pass
+    _p("Abriendo la caché de pedidos…")
     _sku_ped_load()                        # trae la caché de disco (tras deploy) → 1er sync NO arranca en frío
     _c = _SKU_PED_CACHE.get(email)
     if _c and (_t.time() - _c[0] < _SKU_PED_TTL):
+        _p("Pedidos tomados de la caché (%d) en %.1fs" % (len(_c[1]), _t.time() - _tt0))
         return _c[1]                       # caché fresco → no rebaja Shopify/TN de nuevo
     deadline = _t.time() + 22              # TOPE DURO: el sync NUNCA tarda más de ~22s (antes se colgaba hasta 40min
     #                                        si Shopify tiraba 429 y reintentaba 80 veces × 30s)
@@ -8041,13 +8076,16 @@ def _sku_pedidos_map(email):
         store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
         for page in (1, 2):
             if _t.time() > deadline:
+                _p("TiendaNube cortada por tiempo (tope 22s) en la página %d" % page)
                 break
+            _p("Bajando pedidos de TiendaNube — página %d…" % page)
             try:
                 r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
                     "per_page": 200, "page": page, "sort": "-id", "payment_status": "paid",
                     "fields": "number,products,contact_name,shipping_address"}, timeout=12)
                 d = r.json() if r.content else []
-            except Exception:
+            except Exception as _e:
+                _p("TiendaNube falló en la página %d: %s" % (page, type(_e).__name__))
                 d = []
             if not isinstance(d, list) or not d:
                 break
@@ -8062,14 +8100,22 @@ def _sku_pedidos_map(email):
                 mapa.setdefault(str(o.get("number")), []).append({"nom": nom, "items": items, "tienda": "tn"})
             if len(d) < 200:
                 break
+    _p("TiendaNube: %d pedidos leídos" % len(mapa))
     # --- Shopify (sku_key = '<product_id>') ---
+    _n_tn = len(mapa)
     tks = _shop_tokens().get(email)
+    if tks and tks.get("access_token") and _t.time() >= deadline:
+        _p("Shopify salteado: se consumieron los 22s del tope en TiendaNube")
     if tks and tks.get("access_token") and _t.time() < deadline:
         hasta = _hoy()
         desde = (_dt.date.today() - _dt.timedelta(days=35)).isoformat()   # 60→35 días: las etiquetas son de pedidos recientes
+        _p("Pidiendo turno para Shopify…")
         _got = _SHOP_SEM.acquire(timeout=4)     # tope de ops pesadas → no cuelga los hilos del server
+        if not _got:
+            _p("Shopify ocupado: ya hay 5 tareas pesadas y no entré en 4s")
         if _got:
             try:
+                _p("Bajando pedidos de Shopify (últimos 35 días)…")
                 for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta,
                                          deadline=deadline, max_pages=10, timeout=12):
                     num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
@@ -8083,12 +8129,15 @@ def _sku_pedidos_map(email):
                     cu = o.get("customer") or {}
                     nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
                     mapa.setdefault(num, []).append({"nom": nom, "items": items, "tienda": "shopify"})
-            except Exception:
-                pass
+                _p("Shopify: %d pedidos leídos" % (len(mapa) - _n_tn))
+            except Exception as _e:
+                _p("Shopify falló: %s: %s" % (type(_e).__name__, str(_e)[:90]))
             finally:
                 _SHOP_SEM.release()
+    _p("Guardando la caché (%d pedidos)…" % len(mapa))
     _SKU_PED_CACHE[email] = (_t.time(), mapa)
     _sku_ped_save()                        # persisto a disco → el próximo deploy no arranca frío
+    _p("Sync terminado: %d pedidos en %.1fs" % (len(mapa), _t.time() - _tt0))
     return mapa
 
 
@@ -8148,14 +8197,31 @@ def pf_despachos_sku():
 
 
 def _sku_run(job, data, email):
-    """Procesa el PDF en background, actualizando el progreso del job."""
+    """Procesa el PDF en background, actualizando el progreso del job.
+    OJO: gunicorn corre 2 workers y el poll del progreso puede caer en el OTRO. Si el avance no
+    se deja EN DISCO, el front ve para siempre 'Sincronizando…' (era el cuelgue del 5%)."""
+    import time as _t
     st = _SKU_JOBS.get(job)
+    _t0 = _t.time()
+    st["t0"] = _t0
+    st["etapas"] = []
+
+    def _late(msg):
+        st["msg"] = msg
+        st["ts"] = _t.time()                       # latido: si se frena, el front sabe hace cuánto
+        st["seg"] = round(_t.time() - _t0, 1)
+        _job_put(job, st)
+
+    def _etapa(msg):
+        st["etapas"] = (st.get("etapas") or [])[-15:] + ["%ds · %s" % (int(_t.time() - _t0), msg)]
+        _late(msg)
     try:
         import fitz
         import io
-        st["msg"] = "Sincronizando pedidos de tu tienda…"; _job_put(job, st)
+        _etapa("Sincronizando pedidos de tu tienda…")
         skus = _skus_map(email)                 # config de SKU por producto (lo que cargó el usuario)
-        mapa = _sku_pedidos_map(email)          # {nº → nombre + productos} de Shopify + Tiendanube
+        mapa = _sku_pedidos_map(email, prog=_etapa)   # {nº → nombre + productos} de Shopify + Tiendanube
+        _etapa("Abriendo el PDF de etiquetas…")
         doc = fitz.open(stream=data, filetype="pdf")
         # Si el PDF que suben YA trae una hoja "PARA EMPAQUETAR" (porque ya pasó por acá antes),
         # se saca: si no, queda la vieja + la nueva y el PDF termina con dos hojas iguales.
@@ -8167,12 +8233,19 @@ def _sku_run(job, data, email):
             pass
         total = len(doc)
         st["total"] = total
+        _etapa("Leyendo %d etiquetas del PDF…" % total)
         estampadas = conflicto = sin_pedido = 0
         detalle = []
         orden = []   # (clave, indice de pagina) -> reordenar por SKU al final (x1, x2, x3...)
+        _ultimo_put = 0.0
         for i, pg in enumerate(doc):
             st["done"] = i
             st["msg"] = "Analizando etiqueta %d de %d…" % (i + 1, total)
+            if _t.time() - _ultimo_put > 0.8:      # ~1 vez por segundo dejo el avance en disco
+                _ultimo_put = _t.time()
+                st["ts"] = _ultimo_put
+                st["seg"] = round(_ultimo_put - _t0, 1)
+                _job_put(job, st)
             texto = pg.get_text()
             nuevo = ("Bulto" in texto) and bool(_re_and.search(r"Peso:\s*\d+\s*Gr", texto, _re_and.I))
             ped = _sku_pedido(texto, nuevo)
@@ -8205,12 +8278,13 @@ def _sku_run(job, data, email):
                 _sku_estampar_std(pg, sku)
             estampadas += 1
             orden.append(((unidades, len(sku), sku), i))   # menor a mayor: por unidades, luego SKU
-        st["msg"] = "Ordenando etiquetas y armando 'PARA EMPAQUETAR'…"
+        _etapa("Ordenando etiquetas y armando 'PARA EMPAQUETAR'…")
         orden.sort(key=lambda x: x[0])                      # x1, x2, x3... y agrupa mismos SKU
         nuevo_doc = fitz.open()
         for _clave, idx in orden:
             nuevo_doc.insert_pdf(doc, from_page=idx, to_page=idx)
         _sku_hoja_empaquetar(nuevo_doc, detalle)
+        _etapa("Guardando el PDF final…")
         buf = io.BytesIO()
         nuevo_doc.save(buf, garbage=3, deflate=True)
         nuevo_doc.close()
@@ -8224,15 +8298,16 @@ def _sku_run(job, data, email):
         st["done"] = total
         st["stats"] = {"total": total, "estampadas": estampadas,
                        "conflicto": conflicto, "sin_pedido": sin_pedido}
-        st["msg"] = "¡Listo! %d de %d etiquetas con SKU." % (estampadas, total)
         st["listo"] = True
-        _job_put(job, st)
+        _etapa("¡Listo! %d de %d etiquetas con SKU." % (estampadas, total))
     except Exception as e:
         import traceback as _tb
         _tbl = _tb.extract_tb(e.__traceback__)
         _ln = (" @ %s:%d" % (_tbl[-1].name, _tbl[-1].lineno)) if _tbl else ""
-        st["error"] = "%s: %s%s" % (type(e).__name__, str(e)[:180], _ln)
+        st["error"] = "%s: %s%s (a los %ds, en: %s)" % (
+            type(e).__name__, str(e)[:180], _ln, int(_t.time() - _t0), st.get("msg") or "?")
         st["listo"] = True
+        st["ts"] = _t.time()
         _job_put(job, st)
 
 
@@ -8244,8 +8319,24 @@ def pf_despachos_sku_progreso():
     st = _SKU_JOBS.get(_jid) or _job_get(_jid)      # disco → sirve aunque caiga en otro worker
     if not st:
         return jsonify({"ok": False, "msg": "job no encontrado"}), 404
+    import time as _t
+    _ts = 0.0
+    try:
+        _ts = float(st.get("ts") or 0)
+    except Exception:
+        _ts = 0.0
+    _quieto = (_t.time() - _ts) if _ts else 0.0
+    _err = st.get("error")
+    if (not st.get("listo")) and _ts and _quieto > 75:
+        # El job dejó de latir. Pasa cuando gunicorn recicla el worker (--max-requests 800) y se
+        # lleva puesto el hilo: el estado queda congelado y el front poleaba para siempre en 5%.
+        _err = ("El proceso se cortó en el servidor: quedó frenado en \"%s\" hace %ds "
+                "(se recicló el worker de gunicorn). Volvé a subir el PDF."
+                % (st.get("msg") or "?", int(_quieto)))
     return jsonify({"ok": True, "done": st.get("done", 0), "total": st.get("total", 0), "msg": st.get("msg", ""),
-                    "listo": st.get("listo", False), "error": st.get("error"), "stats": st.get("stats") or {}})
+                    "listo": st.get("listo", False), "error": _err, "stats": st.get("stats") or {},
+                    "seg": st.get("seg", 0), "quieto": round(_quieto, 1),
+                    "etapas": st.get("etapas") or []})
 
 
 @app.get("/pf-despachos-sku-descargar")
