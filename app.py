@@ -3346,7 +3346,7 @@ _SOLO_DASH = r"""
  // MULTI-CUENTA. Cada cuenta publicitaria tiene SU moneda (una puede estar en ARS y otra en USD):
  // por eso, si se elige mas de una, se pide un presupuesto POR CUENTA con su moneda al lado, en vez
  // de un solo numero que significaria cosas distintas en cada una. La moneda la da /pf-ads-identidad.
- window._MULTI=false; window._MULTISEL={}; window._MONEDAS={};
+ window._MULTI=false; window._MULTISEL={}; window._MONEDAS={}; window._MINDIA={};
  window.rpaMulti=function(){
    window._MULTI=!window._MULTI;
    $('rpa-multitk').classList.toggle('on',window._MULTI);
@@ -3382,7 +3382,7 @@ _SOLO_DASH = r"""
    var quedan=falta.length;
    falta.forEach(function(k){
      fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){
-       window._MONEDAS[k]=(j&&j.moneda)||'';
+       window._MONEDAS[k]=(j&&j.moneda)||''; window._MINDIA[k]=(j&&j.min_diario)||0;
      }).catch(function(){ window._MONEDAS[k]=''; }).then(function(){
        if(--quedan<=0){ rpaMultiLista(); rpaPresupMulti(); }
      });
@@ -3403,13 +3403,34 @@ _SOLO_DASH = r"""
    box.innerHTML='<span class="lb">Presupuesto diario por cuenta</span>'+ks.map(function(k){
      var c=cs.filter(function(x){return x.key==k;})[0]||{};
      var mon=window._MONEDAS[k]||'';
+     var mn=window._MINDIA[k]||0;
      var val=(document.getElementById('rpa-pm-'+k)||{}).value || c.presupuesto || 35;
+     if(mn && (+val)<mn) val=Math.ceil(mn);          // arranca en el minimo REAL de esa cuenta
+     var bajo=mn && (+val)<mn;
      return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px">'
-       +'<span style="flex:1;color:#c7d2e0;font-size:12.5px;font-weight:600">'+(c.nombre||k)+'</span>'
+       +'<span style="flex:1;color:#c7d2e0;font-size:12.5px;font-weight:600">'+(c.nombre||k)
+       +(mn?('<span style="color:#5b6678;font-weight:500"> · m&iacute;nimo '+Math.ceil(mn)+'</span>'):'')+'</span>'
        +'<span style="color:#5b6678;font-size:12px;font-weight:700;min-width:34px;text-align:right">'+(mon||'—')+'</span>'
-       +'<input class="in" id="rpa-pm-'+k+'" value="'+val+'" oninput="rpaCalc()" style="width:110px">'
+       +'<input class="in" id="rpa-pm-'+k+'" value="'+val+'" oninput="rpaPresupChk()" style="width:110px'+(bajo?';border-color:#fb7185':'')+'">'
        +'</div>';
    }).join('');
+ };
+ // avisa si algun presupuesto quedo por debajo del minimo que pide Meta en ESA cuenta
+ window.rpaPresupChk=function(){
+   var ks=rpaCuentasElegidas(), malas=[];
+   ks.forEach(function(k){
+     var e=document.getElementById('rpa-pm-'+k); if(!e) return;
+     var mn=window._MINDIA[k]||0, v=+(e.value||0);
+     var mal=mn && v<mn;
+     e.style.borderColor = mal ? '#fb7185' : '';
+     if(mal){ var c=(window._ADSCTAS||[]).filter(function(x){return x.key==k;})[0]||{};
+              malas.push((c.nombre||k)+': mínimo '+Math.ceil(mn)+' '+(window._MONEDAS[k]||'')); }
+   });
+   var av=$('rpa-multimon');
+   if(av && malas.length){ av.style.display='block'; av.style.color='#fb7185';
+     av.textContent='⚠ Presupuesto por debajo del mínimo de Meta → ' + malas.join(' · '); }
+   else if(av && av.style.color==='rgb(251, 113, 133)'){ av.style.color='#fbbf24'; rpaPresupMulti(); }
+   rpaCalc();
  };
  window.rpaCuentaChange=function(){
   var k=($('rpa-cuenta')||{}).value||'cp1';
@@ -3418,7 +3439,7 @@ _SOLO_DASH = r"""
   $('rpa-copy').value=c.copy||''; if(c.titulo)$('rpa-titulo').value=c.titulo; if(c.subtitulo)$('rpa-sub').value=c.subtitulo;
   if(c.presupuesto)$('rpa-presup').value=c.presupuesto; if(c.landing)$('rpa-url').value=c.landing;
   fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
-   MONEDA=j.moneda||''; try{ window._MONEDAS[k]=MONEDA; }catch(e){} rpaPresupLb();
+   MONEDA=j.moneda||''; try{ window._MONEDAS[k]=MONEDA; window._MINDIA[k]=j.min_diario||0; }catch(e){} rpaPresupLb();
    if(window._MULTI){ rpaMultiLista(); }
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
@@ -11958,12 +11979,18 @@ def pf_ads_identidad():
         igs.insert(0, {"id": cfg["ig"], "name": ("@" + nmig) if nmig else "Instagram conectado"})
     # MONEDA de la cuenta: el presupuesto se manda en centavos de ESTA moneda, así que poner "35"
     # en una cuenta en pesos son $35 ARS (Meta lo rechaza), no US$35. Se muestra al lado del campo.
-    moneda = ""
+    # MINIMO DIARIO: Meta lo devuelve en la unidad chica (centavos). Sin esto, en una cuenta en
+    # pesos el usuario ponia 35 pensando en dolares y Meta contestaba "presupuesto demasiado bajo".
+    moneda = ""; min_diario = 0
     try:
-        moneda = (_ads_call("GET", "act_%s" % acct, params={"fields": "currency"}) or {}).get("currency", "") or ""
+        _cta = _ads_call("GET", "act_%s" % acct,
+                         params={"fields": "currency,min_daily_budget"}) or {}
+        moneda = _cta.get("currency", "") or ""
+        min_diario = int(float(_cta.get("min_daily_budget") or 0)) / 100.0
     except Exception:
         pass
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages, "moneda": moneda,
+                    "min_diario": min_diario,
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
                     "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
 
