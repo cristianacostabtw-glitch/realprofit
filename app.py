@@ -17308,16 +17308,23 @@ def _cli_bajar_shopify(email, prog=None):
         return []
     shop, token = tk["shop"], tk["access_token"]
     url = "https://%s/admin/api/2026-07/orders.json" % shop
+    # Sin rango de fechas Shopify escanea toda la tabla y la primera pagina puede tardar MUCHISIMO
+    # (medido: mas de 150s sin contestar). Con created_at_min/max usa indice y vuelve en segundos.
     params = {"status": "any", "financial_status": "paid", "limit": 250,
+              "created_at_min": "2019-01-01T00:00:00-03:00",
+              "created_at_max": _hoy() + "T23:59:59-03:00",
+              "order": "created_at asc",
               "fields": "order_number,name,created_at,total_price,current_total_price,"
                         "cancelled_at,customer,email,contact_email,billing_address,shipping_address"}
     out = []
     tope = _t.time() + 300                         # 5 min como MUCHO: nunca se queda colgado
     pag = 0
     reint = 0
+    if prog:
+        prog("Pidiendo turno para Shopify…")
     got = _SHOP_SEM.acquire(timeout=8)              # no saturo Shopify mientras el usuario opera
-    if not got and prog:
-        prog("Shopify ocupado (5 tareas pesadas), sigo igual sin turno")
+    if prog:
+        prog("Turno de Shopify: %s" % ("OK" if got else "ocupado, sigo igual"))
     try:
         while pag < 60:                            # tope 60 paginas = 15.000 pedidos
             if _t.time() > tope:
@@ -17325,8 +17332,10 @@ def _cli_bajar_shopify(email, prog=None):
                     prog("Corte por tiempo (5 min) con %d pedidos leidos" % len(out))
                 break
             pag += 1
+            if prog:
+                prog("Pidiendo la pagina %d a Shopify… (%d pedidos hasta ahora)" % (pag, len(out)))
             try:
-                r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=30)
+                r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=25)
             except Exception as e:
                 if prog:
                     prog("Shopify fallo en la pagina %d: %s" % (pag, type(e).__name__))
@@ -17391,6 +17400,8 @@ def _cli_bajar_tn(email, prog=None):
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
     out = []
     for page in range(1, 61):
+        if prog:
+            prog("Pidiendo la pagina %d a TiendaNube… (%d pedidos hasta ahora)" % (page, len(out)))
         try:
             r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
                 "per_page": 200, "page": page, "sort": "-id", "payment_status": "paid",
