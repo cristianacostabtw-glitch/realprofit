@@ -7919,7 +7919,7 @@ def _sku_de_items(items, skus):
     # Los UNITARIOS con la misma base se SUMAN (2 renglones de 'x1 Pote' → 'x2 Pote', no 'x1 + x1').
     # Los variable/fijo se dejan tal cual (el 'spray' usa su propio ' + ', ej '3 60ML + 1 30ML').
     uni = {}          # base_norm -> [base_display, total_qty]
-    otras = []
+    var = {}          # sku_key -> [cfg, total_qty, orden_de_aparicion]   (variable/fijo)
     sin_sku = 0       # productos SIN SKU cargado (ej la Guía Digital): no se empaquetan
     for key, qty, pname in items:
         if not qty or qty <= 0:
@@ -7939,9 +7939,13 @@ def _sku_de_items(items, skus):
                 uni[k] = [base, 0]
             uni[k][1] += int(qty)      # MISMA base = se SUMAN (2 productos "POTE" → 'x3 POTE')
         else:
-            _s = _sku_calc(cfg, qty)
-            if _s:
-                otras.append(_s)
+            # MISMO producto en VARIOS renglones = se SUMAN las unidades ANTES de calcular el SKU.
+            # Antes se calculaba renglon por renglon y salia '1 60ML + 1 60ML' (pedido #1106) en
+            # vez de '2 60ML': eran 2 renglones de 2 unidades del mismo spray = 4 unidades.
+            _k2 = str(key)
+            if _k2 not in var:
+                var[_k2] = [cfg, 0, len(var)]
+            var[_k2][1] += int(qty)
     # Orden FIJO = el MISMO que tienen los productos en la pantalla de Costos (config del usuario).
     # Así el producto principal (POTE) va siempre primero y el complemento (CAPS) después, incluso
     # cuando llevan la misma cantidad. Sin un orden fijo, la MISMA combinación se imprimía de dos
@@ -7953,6 +7957,11 @@ def _sku_de_items(items, skus):
             _rank[_b] = _i
     partes = ["x%d %s" % (tot, base) for base, tot in
               sorted(uni.values(), key=lambda v: (_rank.get(v[0].lower(), 9999), v[0].lower()))]
+    otras = []
+    for _cfg, _tot, _ord in sorted(var.values(), key=lambda v: v[2]):
+        _s = _sku_calc(_cfg, _tot)
+        if _s:
+            otras.append(_s)
     partes += sorted(otras)
     if not partes and sin_sku:
         partes = ["x%d" % sin_sku]     # red de seguridad: nunca devolver una etiqueta vacía
