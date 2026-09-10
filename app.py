@@ -12378,6 +12378,40 @@ def _load_last_blob(email):
         return None
 
 
+_PF_DISCO = {"email": None, "ts": 0.0, "blob": None}   # memo 5s del snapshot que dejo el OTRO worker
+
+
+def _pf_blob_ts(b):
+    try:
+        return int(((b or {}).get("raw") or {}).get("calc_ts") or 0)
+    except Exception:
+        return 0
+
+
+def _pf_mejor(email, blob, desde, hasta, key=None, now=None):
+    """Devuelve el blob MAS NUEVO entre el que tiene ESTE worker y el que dejo el otro en disco.
+    gunicorn corre 2 workers y _PF_CACHE es memoria de cada uno: cuando uno se queda con un
+    snapshot viejo, la pagina alterna entre los dos y el KPI de Ventas titila (ese lo pinta el
+    React directo, no pasa por el filtro calc_ts del front). Solo puede ir para ADELANTE:
+    nunca devuelve algo con sello mas viejo que el que ya tenia."""
+    try:
+        if not (desde == hasta == _hoy()):
+            return blob                     # el snapshot de disco es SOLO el del dia de hoy
+        import time as _tm
+        if _PF_DISCO["email"] != email or (_tm.time() - _PF_DISCO["ts"]) > 5:
+            _PF_DISCO["blob"] = _load_last_blob(email)
+            _PF_DISCO["email"] = email
+            _PF_DISCO["ts"] = _tm.time()
+        otro = _PF_DISCO["blob"]
+        if otro and _pf_blob_ts(otro) > _pf_blob_ts(blob):
+            if key is not None and now is not None:
+                _PF_CACHE[key] = (now, otro)    # me pongo al dia: dejo de servir el viejo
+            return otro
+    except Exception:
+        pass
+    return blob
+
+
 def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
     """Los KPI reales del período (lo que devuelve /pf-periodo). Se saco de la ruta para poder
     llamarlo TAMBIEN desde home(): asi la pagina sale con los numeros de verdad ya adentro del
@@ -12392,7 +12426,7 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
     now = _dt.datetime.utcnow()
     c = _PF_CACHE.get(key)
     if c and (now - c[0]).total_seconds() < 60:
-        return c[1]
+        return _pf_mejor(email, c[1], desde, hasta, key, now)
     # home() entra con solo_fresco=True: si no hay un valor FRESCO en memoria devuelve None y la
     # pagina sale al instante (el front pide /pf-periodo por su cuenta y la cortina tapa hasta que
     # llegan los numeros REALES). Antes home() esperaba hasta 45s al calculo y la app no abria.
@@ -12404,7 +12438,9 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
             lk = _PF_LOCKS[key] = threading.Lock()
     if c:
         if not lk.acquire(False):
-            return c[1]              # otro ya lo esta calculando y tengo valor previo -> lo sirvo YA
+            # otro ya lo esta calculando y tengo valor previo -> lo sirvo YA (pero si el OTRO
+            # worker ya dejo uno mas nuevo en disco, va ese: si no, los KPI titilan entre ambos)
+            return _pf_mejor(email, c[1], desde, hasta, key, now)
     # 8s (era 45). Con 45 cada request esperaba con un HILO tomado: el dashboard pide /pf-periodo
     # cada 2s, asi que en medio minuto habia 22 esperando y se comian los 16 hilos de gunicorn ->
     # la app entera dejaba de contestar (y con la cache fria, despues de cada deploy, siempre).
@@ -12413,13 +12449,13 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
         # CEROS, que es un dato falso en pantalla. Prefiero el ultimo snapshot guardado en disco: es
         # de hace un rato pero es real, y el proximo poll (a los 2s) ya trae el valor fresco.
         try:
-            return _load_last_blob(email) or _blob_vacio()
+            return _pf_mejor(email, _load_last_blob(email) or _blob_vacio(), desde, hasta, key, now)
         except Exception:
             return _blob_vacio()
     try:
         c2 = _PF_CACHE.get(key)      # pudo terminar el otro mientras yo esperaba el candado
         if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < 60:
-            return c2[1]
+            return _pf_mejor(email, c2[1], desde, hasta, key, now)
         return _pf_periodo_calcular(email, desde, hasta, key, now)
     finally:
         lk.release()
