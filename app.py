@@ -8279,7 +8279,20 @@ def _sku_run(job, data, email):
             estampadas += 1
             orden.append(((unidades, len(sku), sku), i))   # menor a mayor: por unidades, luego SKU
         _etapa("Ordenando etiquetas y armando 'PARA EMPAQUETAR'…")
-        orden.sort(key=lambda x: x[0])                      # x1, x2, x3... y agrupa mismos SKU
+        # ORDEN: el GRUPO MAS GRANDE primero (x2, x1, x3, x6+1...), o sea EXACTAMENTE el mismo
+        # orden que la hoja PARA EMPAQUETAR, que es como empaqueta el usuario. Antes ordenaba de
+        # menor a mayor por unidades (x1, x2, x3) y no coincidia con la hoja.
+        # Las que no se pudieron estampar quedan al final, en el mismo orden que antes.
+        from collections import Counter as _Cnt
+        _grupos = _Cnt(d["sku"] for d in detalle if d.get("sku"))
+
+        def _clave_orden(par):
+            _k, _i = par
+            _sku = (detalle[_i] or {}).get("sku") or ""
+            if not _sku:
+                return (1, _k[0], "")            # sin pedido / conflicto / sin SKU -> al final
+            return (0, -_grupos[_sku], _sku)     # mismo criterio que _sku_hoja_empaquetar
+        orden.sort(key=_clave_orden)
         nuevo_doc = fitz.open()
         for _clave, idx in orden:
             nuevo_doc.insert_pdf(doc, from_page=idx, to_page=idx)
