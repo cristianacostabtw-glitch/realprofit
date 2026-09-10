@@ -354,6 +354,7 @@ SOLO_ADMIN = [
     "/pf-comisiones", "/pf-cambiar-mp", "/pf-congelar-mp", "/pf-congelado-estado",
     "/pf-cambio-mp-estado",
     "/pf-movimientos",
+    "/clientes", "/pf-clientes",
     "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-",
     "/envialo",
     "/fin-", "/equipo",
@@ -17254,6 +17255,516 @@ def wa_plantilla_enviar():
     conv["messages"].append({"dir": "out", "text": "[plantilla: %s]" % name, "ts": _wa_now(), "type": "template", "id": mid, "status": "sent"})
     conv["updated"] = _wa_now(); _wa_save_chats(chats)
     return jsonify({"ok": True})
+
+
+# ============================== CLIENTES =====================================================
+# Una fila por CLIENTE: sus ordenes PAGAS (numero por numero), cuantas compras hizo y cuanto
+# gasto en total en la tienda conectada. Baja TODO el historial (no 180 dias como recompras).
+# Corre como job en background con latido en disco, igual que Insertar SKU: gunicorn tiene 2
+# workers y el poll del progreso puede caer en el otro.
+_CLI_JOBS = {}
+_CLI_FILE = DATA_DIR / "clientes_cache.json"
+_CLI_TTL = 1800                       # 30 min: despues de eso vuelve a bajar de la tienda
+
+
+def _cli_norm(s):
+    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+
+
+def _cli_tel(s):
+    d = re.sub(r"\D", "", s or "")
+    return d[-8:] if len(d) >= 8 else ""      # ultimos 8 digitos: ignora 54/9/0/15
+
+
+def _cli_cache_get(email):
+    import time as _t
+    try:
+        d = _json.loads(_CLI_FILE.read_text(encoding="utf-8")).get(str(email))
+        if d and (_t.time() - float(d.get("ts") or 0)) < _CLI_TTL:
+            return d
+    except Exception:
+        pass
+    return None
+
+
+def _cli_cache_put(email, filas, pedidos):
+    import time as _t
+    try:
+        d = {}
+        if _CLI_FILE.exists():
+            d = _json.loads(_CLI_FILE.read_text(encoding="utf-8"))
+        d[str(email)] = {"ts": _t.time(), "filas": filas, "pedidos": pedidos}
+        _CLI_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _CLI_FILE.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _cli_bajar_shopify(email, prog=None):
+    """TODAS las ordenes PAGADAS de Shopify, con su numero. Pagina de a 250 por Link header."""
+    import time as _t
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("shop"):
+        return []
+    shop, token = tk["shop"], tk["access_token"]
+    url = "https://%s/admin/api/2026-07/orders.json" % shop
+    params = {"status": "any", "financial_status": "paid", "limit": 250,
+              "fields": "order_number,name,created_at,total_price,current_total_price,"
+                        "cancelled_at,customer,email,contact_email,billing_address,shipping_address"}
+    out = []
+    for pag in range(1, 61):                       # tope 60 paginas = 15.000 pedidos
+        try:
+            r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=30)
+        except Exception as e:
+            if prog:
+                prog("Shopify fallo en la pagina %d: %s" % (pag, type(e).__name__))
+            break
+        if r.status_code == 429 or r.status_code >= 500:
+            _t.sleep(float(r.headers.get("Retry-After", 1)) + 0.3)
+            continue
+        if r.status_code != 200:
+            if prog:
+                prog("Shopify respondio %d y corte ahi" % r.status_code)
+            break
+        for o in (r.json().get("orders") or []):
+            if o.get("cancelled_at"):
+                continue
+            cu = o.get("customer") or {}
+            ba = _D(o.get("billing_address"))
+            sa = _D(o.get("shipping_address"))
+            out.append({
+                "num": str(o.get("order_number") or (o.get("name") or "").replace("#", "")).strip(),
+                "fecha": (o.get("created_at") or "")[:10],
+                "total": float(o.get("total_price") or o.get("current_total_price") or 0),
+                "mail": _cli_norm(o.get("email") or o.get("contact_email") or cu.get("email") or ""),
+                "tel": _cli_tel(cu.get("phone") or ba.get("phone") or sa.get("phone") or ""),
+                "nom": (((cu.get("first_name") or "") + " " + (cu.get("last_name") or "")).strip()
+                        or ba.get("name") or sa.get("name") or ""),
+                "tienda": "shopify"})
+        if prog:
+            prog("Shopify: %d pedidos pagos leidos (pagina %d)" % (len(out), pag))
+        nxt = None
+        for part in (r.headers.get("Link", "") or "").split(","):
+            if 'rel="next"' in part:
+                m = re.search(r"<([^>]+)>", part)
+                if m:
+                    nxt = m.group(1)
+        if not nxt:
+            break
+        url, params = nxt, {}
+    return out
+
+
+def _cli_bajar_tn(email, prog=None):
+    """TODAS las ordenes PAGADAS de Tiendanube, con su numero."""
+    tk = _tn_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("store_id"):
+        return []
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    out = []
+    for page in range(1, 61):
+        try:
+            r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr, params={
+                "per_page": 200, "page": page, "sort": "-id", "payment_status": "paid",
+                "fields": "number,total,created_at,customer,contact_name,contact_email,"
+                          "contact_phone,billing_address,shipping_address"}, timeout=30)
+            d = r.json() if r.content else []
+        except Exception as e:
+            if prog:
+                prog("TiendaNube fallo en la pagina %d: %s" % (page, type(e).__name__))
+            break
+        if not isinstance(d, list) or not d:
+            break
+        for o in d:
+            cu = o.get("customer") or {}
+            ba = _D(o.get("billing_address"))
+            out.append({
+                "num": str(o.get("number") or ""),
+                "fecha": (o.get("created_at") or "")[:10],
+                "total": float(o.get("total") or 0),
+                "mail": _cli_norm(o.get("contact_email") or cu.get("email") or ""),
+                "tel": _cli_tel(o.get("contact_phone") or cu.get("phone") or ba.get("phone") or ""),
+                "nom": (cu.get("name") or o.get("contact_name") or ba.get("name") or ""),
+                "tienda": "tn"})
+        if prog:
+            prog("TiendaNube: %d pedidos pagos leidos (pagina %d)" % (len(out), page))
+        if len(d) < 200:
+            break
+    return out
+
+
+def _cli_agrupar(pedidos):
+    """Junta los pedidos por CLIENTE.
+
+    OJO: no alcanza con elegir mail > telefono > nombre. Si el mismo tipo compro una vez dejando
+    el mail y otra dejando solo el telefono, quedaba partido en DOS clientes y el gasto se
+    dividia. Por eso primero UNO las identidades: si un pedido trae mail Y telefono, esos dos
+    quedan pegados, y cualquier pedido que traiga uno de los dos cae en el mismo cliente.
+    El NOMBRE nunca une (dos "Juan Perez" distintos se cruzarian): solo sirve de ultimo recurso
+    cuando el pedido no trae ni mail ni telefono."""
+    padre = {}
+
+    def _raiz(x):
+        padre.setdefault(x, x)
+        while padre[x] != x:
+            padre[x] = padre[padre[x]]
+            x = padre[x]
+        return x
+
+    def _unir(a, b):
+        ra, rb = _raiz(a), _raiz(b)
+        if ra != rb:
+            padre[ra] = rb
+
+    claves = []
+    for p in pedidos:
+        ids = []
+        if p.get("mail"):
+            ids.append("m:" + p["mail"])
+        if p.get("tel"):
+            ids.append("t:" + p["tel"])
+        if not ids:                                   # sin mail ni telefono: me apoyo en el nombre
+            ids.append(("n:" + _cli_norm(p["nom"])) if p.get("nom") else ("x:" + str(p.get("num") or "")))
+        for i in ids:
+            _raiz(i)
+        for i in ids[1:]:
+            _unir(ids[0], i)
+        claves.append(ids[0])
+
+    idx = {}
+    for p, k0 in zip(pedidos, claves):
+        k = _raiz(k0)
+        c = idx.setdefault(k, {"nombre": "", "mail": "", "tel": "", "ords": [], "gastado": 0.0,
+                               "tiendas": set()})
+        if p.get("nom") and len(p["nom"]) > len(c["nombre"]):
+            c["nombre"] = p["nom"]
+        if p.get("mail") and not c["mail"]:
+            c["mail"] = p["mail"]
+        if p.get("tel") and not c["tel"]:
+            c["tel"] = p["tel"]
+        c["ords"].append({"num": p.get("num") or "", "fecha": p.get("fecha") or "",
+                          "total": round(float(p.get("total") or 0), 2)})
+        c["gastado"] += float(p.get("total") or 0)
+        c["tiendas"].add(p.get("tienda") or "")
+    filas = []
+    for c in idx.values():
+        c["ords"].sort(key=lambda o: (o["fecha"] or "", int(o["num"]) if str(o["num"]).isdigit() else 0))
+        filas.append({
+            "nombre": c["nombre"] or "(sin nombre)", "mail": c["mail"], "tel": c["tel"],
+            "ords": c["ords"], "compras": len(c["ords"]), "gastado": round(c["gastado"], 2),
+            "primera": (c["ords"][0]["fecha"] if c["ords"] else ""),
+            "ultima": (c["ords"][-1]["fecha"] if c["ords"] else ""),
+            "tiendas": sorted(x for x in c["tiendas"] if x)})
+    filas.sort(key=lambda f: -f["gastado"])
+    return filas
+
+
+def _cli_run(job, email, refresh):
+    import time as _t
+    st = _CLI_JOBS.get(job)
+    t0 = _t.time()
+
+    def _late(msg):
+        st["msg"] = msg
+        st["ts"] = _t.time()
+        st["seg"] = round(_t.time() - t0, 1)
+        _job_put(job, st)
+
+    def _etapa(msg):
+        st["etapas"] = (st.get("etapas") or [])[-15:] + ["%ds · %s" % (int(_t.time() - t0), msg)]
+        _late(msg)
+    try:
+        if not refresh:
+            _etapa("Buscando en la cache…")
+            c = _cli_cache_get(email)
+            if c:
+                st["filas"] = c["filas"]
+                st["listo"] = True
+                _etapa("Listo (de cache): %d clientes" % len(c["filas"]))
+                return
+        _etapa("Bajando pedidos pagos de la tienda…")
+        pedidos = _cli_bajar_shopify(email, _etapa) + _cli_bajar_tn(email, _etapa)
+        _etapa("Agrupando %d pedidos por cliente…" % len(pedidos))
+        filas = _cli_agrupar(pedidos)
+        st["filas"] = filas
+        _cli_cache_put(email, filas, len(pedidos))
+        st["listo"] = True
+        _etapa("Listo: %d clientes sobre %d pedidos pagos" % (len(filas), len(pedidos)))
+    except Exception as e:
+        import traceback as _tb
+        _tbl = _tb.extract_tb(e.__traceback__)
+        _ln = (" @ %s:%d" % (_tbl[-1].name, _tbl[-1].lineno)) if _tbl else ""
+        st["error"] = "%s: %s%s (a los %ds, en: %s)" % (type(e).__name__, str(e)[:180], _ln,
+                                                        int(_t.time() - t0), st.get("msg") or "?")
+        st["listo"] = True
+        st["ts"] = _t.time()
+        _job_put(job, st)
+
+
+@app.post("/pf-clientes-run")
+def pf_clientes_run():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    import uuid
+    job = uuid.uuid4().hex[:12]
+    refresh = (request.args.get("refresh") in ("1", "true", "yes"))
+    _CLI_JOBS[job] = {"msg": "Arrancando…", "listo": False, "error": None, "filas": [],
+                      "etapas": [], "email": email}
+    _job_put(job, _CLI_JOBS[job])
+    threading.Thread(target=_cli_run, args=(job, email, refresh), daemon=True).start()
+    return jsonify({"ok": True, "job": job})
+
+
+@app.get("/pf-clientes-progreso")
+def pf_clientes_progreso():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    import time as _t
+    jid = (request.args.get("job") or "").strip()
+    st = _CLI_JOBS.get(jid) or _job_get(jid)
+    if not st:
+        return jsonify({"ok": False, "msg": "job no encontrado"}), 404
+    try:
+        ts = float(st.get("ts") or 0)
+    except Exception:
+        ts = 0.0
+    quieto = (_t.time() - ts) if ts else 0.0
+    err = st.get("error")
+    if (not st.get("listo")) and ts and quieto > 90:
+        err = ('El proceso se corto en el servidor: quedo frenado en "%s" hace %ds '
+               "(se reciclo el worker de gunicorn). Volve a recargar." % (st.get("msg") or "?", int(quieto)))
+    return jsonify({"ok": True, "msg": st.get("msg", ""), "listo": st.get("listo", False),
+                    "error": err, "seg": st.get("seg", 0), "quieto": round(quieto, 1),
+                    "etapas": st.get("etapas") or [],
+                    "n": len(st.get("filas") or [])})
+
+
+@app.get("/pf-clientes-datos")
+def pf_clientes_datos():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    jid = (request.args.get("job") or "").strip()
+    st = _CLI_JOBS.get(jid) or _job_get(jid)
+    if not st or not st.get("listo"):
+        return jsonify({"ok": False, "msg": "todavia no esta listo"}), 404
+    filas = st.get("filas") or []
+    return jsonify({"ok": True, "filas": filas,
+                    "tot_clientes": len(filas),
+                    "tot_ordenes": sum(f["compras"] for f in filas),
+                    "tot_gastado": round(sum(f["gastado"] for f in filas), 2)})
+
+
+@app.get("/clientes")
+def pagina_clientes():
+    """Pagina propia: un cliente por fila, con sus ordenes pagas, compras y valor consumido."""
+    if not _user_actual():
+        return redirect("/")
+    return Response(_CLIENTES_HTML, mimetype="text/html")
+
+
+_CLIENTES_HTML = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clientes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#080c15;--panel:#101a2c;--panel2:#0b1220;--line:#1b2536;--line2:#25344a;
+ --ink:#f1f5f9;--ink2:#93a3ba;--ink3:#5b6b82;--accent:#137fec;--ok:#34d399;--warn:#e8b13e;--bad:#f0637f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+ font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1320px;margin:0 auto;padding:26px 20px 70px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;
+ border-bottom:1px solid var(--line2);padding-bottom:16px}
+h1{font-family:Archivo,system-ui,sans-serif;font-size:28px;font-weight:700;margin:0;letter-spacing:-.025em}
+.sub{color:var(--ink2);font-size:13px;margin-top:4px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px 16px}
+.kpi .t{color:var(--ink3);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+.kpi .v{font-family:Archivo,sans-serif;font-size:25px;font-weight:700;margin-top:5px}
+.barra{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input[type=search]{flex:1;min-width:220px;background:var(--panel2);border:1px solid var(--line2);color:var(--ink);
+ border-radius:11px;padding:11px 14px;font-size:13.5px;font-family:inherit}
+input[type=search]:focus{outline:none;border-color:var(--accent)}
+button{background:var(--panel);border:1px solid var(--line2);color:var(--ink);border-radius:11px;
+ padding:11px 15px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+button:hover{border-color:var(--accent)}
+.tabla{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.scroll{overflow-x:auto;max-height:70vh;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{position:sticky;top:0;background:#0d1626;z-index:2;text-align:left;padding:11px 13px;
+ color:var(--ink3);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;
+ border-bottom:1px solid var(--line2);white-space:nowrap}
+thead th.ord{cursor:pointer;user-select:none}
+thead th.ord:hover{color:var(--ink)}
+thead th .fl{color:var(--accent);margin-left:4px}
+tbody td{padding:10px 13px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:hover{background:rgba(19,127,236,.05)}
+.nom{font-weight:600;color:var(--ink)}
+.cto{color:var(--ink3);font-size:11.5px;margin-top:2px}
+.nums{display:flex;flex-wrap:wrap;gap:4px;max-width:520px}
+.n{background:#132033;border:1px solid var(--line2);border-radius:7px;padding:2px 7px;
+ font-size:11.5px;color:#b9c8dc;white-space:nowrap}
+.num{text-align:right;white-space:nowrap;font-weight:700}
+.plata{text-align:right;white-space:nowrap;font-weight:700;color:var(--ok)}
+.rank{color:var(--ink3);font-size:11.5px;text-align:right;width:44px}
+.msg{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px 18px}
+.bar{height:10px;background:var(--panel2);border:1px solid var(--line2);border-radius:20px;overflow:hidden;margin-top:9px}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,#137fec,#7cb8ff);width:8%}
+.log{margin-top:9px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+ padding:9px 11px;font-size:11.5px;color:var(--ink3);max-height:130px;overflow:auto;line-height:1.6}
+.err{color:var(--bad);font-weight:600}
+.pill{background:#132033;border:1px solid var(--line2);border-radius:20px;padding:3px 9px;font-size:11px;color:var(--ink2)}
+@media(max-width:720px){.nums{max-width:none}}
+</style></head><body>
+<div class="wrap">
+ <header>
+  <div><h1>Clientes</h1><div class="sub" id="sub">Cargando…</div></div>
+  <div class="barra">
+   <button onclick="cargar(1)" id="btnref">↻ Actualizar</button>
+   <button onclick="bajarCsv()">⬇ Excel (CSV)</button>
+  </div>
+ </header>
+
+ <div class="kpis">
+  <div class="kpi"><div class="t">Clientes</div><div class="v" id="k1">—</div></div>
+  <div class="kpi"><div class="t">Órdenes pagas</div><div class="v" id="k2">—</div></div>
+  <div class="kpi"><div class="t">Total facturado</div><div class="v" id="k3">—</div></div>
+  <div class="kpi"><div class="t">Promedio por cliente</div><div class="v" id="k4">—</div></div>
+ </div>
+
+ <div class="barra"><input type="search" id="q" placeholder="Buscar por nombre, mail, teléfono o número de orden…" oninput="pintar()"></div>
+
+ <div id="estado" class="msg"><div id="emsg">Trayendo los pedidos de tu tienda…</div>
+  <div class="bar"><i id="ebar"></i></div><div class="log" id="elog"></div></div>
+
+ <div class="tabla" style="display:none" id="tabla"><div class="scroll"><table>
+  <thead><tr>
+   <th class="rank">#</th>
+   <th class="ord" onclick="ordenar('nombre')">Cliente <span class="fl" id="f-nombre"></span></th>
+   <th>Órdenes pagas</th>
+   <th class="ord num" onclick="ordenar('compras')">Compras <span class="fl" id="f-compras"></span></th>
+   <th class="ord num" onclick="ordenar('gastado')">Valor consumido <span class="fl" id="f-gastado"></span></th>
+  </tr></thead>
+  <tbody id="tb"></tbody>
+ </table></div></div>
+</div>
+
+<script>
+var FILAS=[], ORD='gastado', DIR=-1, T0=0;
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function plata(n){ try{ return '$'+Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:0}); }catch(e){ return '$'+n; } }
+function num(n){ try{ return Number(n||0).toLocaleString('es-AR'); }catch(e){ return n; } }
+
+function ordenar(col){
+  // Mismo click de nuevo = doy vuelta el orden (mayor a menor <-> menor a mayor).
+  if(ORD===col){ DIR=-DIR; } else { ORD=col; DIR=(col==='nombre')?1:-1; }
+  pintar();
+}
+function flechas(){
+  ['nombre','compras','gastado'].forEach(function(c){
+    var e=document.getElementById('f-'+c); if(e) e.textContent=(ORD===c)?(DIR<0?'▼':'▲'):'';
+  });
+}
+function pintar(){
+  var q=(document.getElementById('q').value||'').trim().toLowerCase();
+  var v=FILAS.filter(function(f){
+    if(!q) return true;
+    if((f.nombre||'').toLowerCase().indexOf(q)>-1) return true;
+    if((f.mail||'').toLowerCase().indexOf(q)>-1) return true;
+    if((f.tel||'').indexOf(q)>-1) return true;
+    return (f.ords||[]).some(function(o){ return String(o.num).indexOf(q.replace('#',''))>-1; });
+  });
+  v.sort(function(a,b){
+    var x,y;
+    if(ORD==='nombre'){ x=(a.nombre||'').toLowerCase(); y=(b.nombre||'').toLowerCase(); return x<y?-DIR:(x>y?DIR:0); }
+    x=Number(a[ORD]||0); y=Number(b[ORD]||0);
+    if(x===y) return Number(b.gastado||0)-Number(a.gastado||0);
+    return (x<y? -1:1)*DIR;
+  });
+  flechas();
+  var html=v.slice(0,1200).map(function(f,i){
+    var chips=(f.ords||[]).map(function(o){ return '<span class="n" title="'+esc(o.fecha)+' · '+plata(o.total)+'">#'+esc(o.num)+'</span>'; }).join('');
+    var cto=[f.mail,f.tel].filter(Boolean).map(esc).join(' · ');
+    return '<tr><td class="rank">'+(i+1)+'</td>'
+      +'<td><div class="nom">'+esc(f.nombre)+'</div>'+(cto?('<div class="cto">'+cto+'</div>'):'')+'</td>'
+      +'<td><div class="nums">'+chips+'</div></td>'
+      +'<td class="num">'+num(f.compras)+'</td>'
+      +'<td class="plata">'+plata(f.gastado)+'</td></tr>';
+  }).join('');
+  document.getElementById('tb').innerHTML=html;
+  document.getElementById('sub').textContent=v.length+' clientes'+(q?(' (filtrado de '+FILAS.length+')'):'')
+    +(v.length>1200?' — muestro los primeros 1200':'');
+}
+function bajarCsv(){
+  var l=['Cliente;Email;Telefono;Compras;Valor consumido;Primera;Ultima;Ordenes pagas'];
+  FILAS.forEach(function(f){
+    l.push([f.nombre,f.mail,f.tel,f.compras,f.gastado,f.primera,f.ultima,
+            (f.ords||[]).map(function(o){return '#'+o.num;}).join(' ')]
+      .map(function(x){ return '"'+String(x==null?'':x).replace(/"/g,'""')+'"'; }).join(';'));
+  });
+  var b=new Blob(['﻿'+l.join('\n')],{type:'text/csv;charset=utf-8;'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download='clientes-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function log(et,quieto){
+  var e=document.getElementById('elog'); if(!e) return;
+  e.innerHTML=(et||[]).slice(-7).map(function(x){ return '• '+esc(x); }).join('<br>')
+    +((quieto>15)?('<br><span style="color:#e8b13e">⏳ sin moverse hace '+quieto+'s</span>'):'');
+}
+function fallo(msg,et){
+  document.getElementById('emsg').innerHTML='<span class="err">❌ '+esc(msg)+'</span>';
+  document.getElementById('ebar').style.width='100%';
+  document.getElementById('ebar').style.background='#f0637f';
+  log(et,0);
+}
+function cargar(refresh){
+  document.getElementById('estado').style.display='';
+  document.getElementById('tabla').style.display='none';
+  document.getElementById('btnref').disabled=true;
+  document.getElementById('emsg').textContent='Trayendo los pedidos de tu tienda…';
+  document.getElementById('ebar').style.background='linear-gradient(90deg,#137fec,#7cb8ff)';
+  document.getElementById('ebar').style.width='8%';
+  T0=Date.now();
+  fetch('/pf-clientes-run'+(refresh?'?refresh=1':''),{method:'POST'}).then(function(r){return r.json();}).then(function(j){
+    if(!j||!j.ok||!j.job) throw 'no pude arrancar';
+    var job=j.job, fallos=0, et=[];
+    var poll=setInterval(function(){
+      fetch('/pf-clientes-progreso?job='+job).then(function(r){return r.json();}).then(function(p){
+        fallos=0;
+        if(!p||!p.ok){ clearInterval(poll); document.getElementById('btnref').disabled=false; fallo((p&&p.msg)||'se corto el proceso',et); return; }
+        if(p.etapas&&p.etapas.length) et=p.etapas;
+        if(p.error){ clearInterval(poll); document.getElementById('btnref').disabled=false; fallo(p.error,et); return; }
+        var s=Math.round((Date.now()-T0)/1000);
+        if(!p.listo && s>420){ clearInterval(poll); document.getElementById('btnref').disabled=false;
+          fallo('Tardo demasiado ('+s+'s). Se quedo en "'+(p.msg||'?')+'".',et); return; }
+        document.getElementById('emsg').textContent=(p.msg||'Procesando…')+' · '+s+'s';
+        var w=Math.min(95,8+s*2.2); document.getElementById('ebar').style.width=w+'%';
+        log(et,Math.round(p.quieto||0));
+        if(p.listo){ clearInterval(poll);
+          fetch('/pf-clientes-datos?job='+job).then(function(r){return r.json();}).then(function(d){
+            document.getElementById('btnref').disabled=false;
+            if(!d||!d.ok){ fallo('termino pero no pude traer los datos',et); return; }
+            FILAS=d.filas||[];
+            document.getElementById('k1').textContent=num(d.tot_clientes);
+            document.getElementById('k2').textContent=num(d.tot_ordenes);
+            document.getElementById('k3').textContent=plata(d.tot_gastado);
+            document.getElementById('k4').textContent=plata(d.tot_clientes? (d.tot_gastado/d.tot_clientes):0);
+            document.getElementById('estado').style.display='none';
+            document.getElementById('tabla').style.display='';
+            pintar();
+          });
+        }
+      }).catch(function(){ fallos++;
+        if(fallos>=30){ clearInterval(poll); document.getElementById('btnref').disabled=false;
+          fallo('el servidor no contesta ('+fallos+' consultas seguidas fallaron)',et); return; }
+      });
+    },1000);
+  }).catch(function(e){ document.getElementById('btnref').disabled=false; fallo(typeof e==='string'?e:'error arrancando',[]); });
+}
+cargar(0);
+</script></body></html>"""
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
