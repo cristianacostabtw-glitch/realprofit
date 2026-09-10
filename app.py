@@ -17312,46 +17312,74 @@ def _cli_bajar_shopify(email, prog=None):
               "fields": "order_number,name,created_at,total_price,current_total_price,"
                         "cancelled_at,customer,email,contact_email,billing_address,shipping_address"}
     out = []
-    for pag in range(1, 61):                       # tope 60 paginas = 15.000 pedidos
-        try:
-            r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=30)
-        except Exception as e:
-            if prog:
-                prog("Shopify fallo en la pagina %d: %s" % (pag, type(e).__name__))
-            break
-        if r.status_code == 429 or r.status_code >= 500:
-            _t.sleep(float(r.headers.get("Retry-After", 1)) + 0.3)
-            continue
-        if r.status_code != 200:
-            if prog:
-                prog("Shopify respondio %d y corte ahi" % r.status_code)
-            break
-        for o in (r.json().get("orders") or []):
-            if o.get("cancelled_at"):
+    tope = _t.time() + 300                         # 5 min como MUCHO: nunca se queda colgado
+    pag = 0
+    reint = 0
+    got = _SHOP_SEM.acquire(timeout=8)              # no saturo Shopify mientras el usuario opera
+    if not got and prog:
+        prog("Shopify ocupado (5 tareas pesadas), sigo igual sin turno")
+    try:
+        while pag < 60:                            # tope 60 paginas = 15.000 pedidos
+            if _t.time() > tope:
+                if prog:
+                    prog("Corte por tiempo (5 min) con %d pedidos leidos" % len(out))
+                break
+            pag += 1
+            try:
+                r = requests.get(url, headers={"X-Shopify-Access-Token": token}, params=params, timeout=30)
+            except Exception as e:
+                if prog:
+                    prog("Shopify fallo en la pagina %d: %s" % (pag, type(e).__name__))
+                break
+            if r.status_code == 429 or r.status_code >= 500:
+                # Shopify me esta frenando. ANTES esto reintentaba en silencio y el job parecia
+                # muerto (el mensaje no cambiaba nunca): ahora lo digo y no gasto la pagina.
+                reint += 1
+                espera = min(float(r.headers.get("Retry-After", 1)) + 0.3, 8.0)
+                if prog:
+                    prog("Shopify me frena (HTTP %d), reintento %d en %.0fs — %d pedidos leidos"
+                         % (r.status_code, reint, espera, len(out)))
+                if reint > 12:
+                    if prog:
+                        prog("Shopify sigue frenando despues de 12 reintentos, corto con lo que tengo")
+                    break
+                pag -= 1
+                _t.sleep(espera)
                 continue
-            cu = o.get("customer") or {}
-            ba = _D(o.get("billing_address"))
-            sa = _D(o.get("shipping_address"))
-            out.append({
-                "num": str(o.get("order_number") or (o.get("name") or "").replace("#", "")).strip(),
-                "fecha": (o.get("created_at") or "")[:10],
-                "total": float(o.get("total_price") or o.get("current_total_price") or 0),
-                "mail": _cli_norm(o.get("email") or o.get("contact_email") or cu.get("email") or ""),
-                "tel": _cli_tel(cu.get("phone") or ba.get("phone") or sa.get("phone") or ""),
-                "nom": (((cu.get("first_name") or "") + " " + (cu.get("last_name") or "")).strip()
-                        or ba.get("name") or sa.get("name") or ""),
-                "tienda": "shopify"})
-        if prog:
-            prog("Shopify: %d pedidos pagos leidos (pagina %d)" % (len(out), pag))
-        nxt = None
-        for part in (r.headers.get("Link", "") or "").split(","):
-            if 'rel="next"' in part:
-                m = re.search(r"<([^>]+)>", part)
-                if m:
-                    nxt = m.group(1)
-        if not nxt:
-            break
-        url, params = nxt, {}
+            reint = 0
+            if r.status_code != 200:
+                if prog:
+                    prog("Shopify respondio %d y corte ahi" % r.status_code)
+                break
+            for o in (r.json().get("orders") or []):
+                if o.get("cancelled_at"):
+                    continue
+                cu = o.get("customer") or {}
+                ba = _D(o.get("billing_address"))
+                sa = _D(o.get("shipping_address"))
+                out.append({
+                    "num": str(o.get("order_number") or (o.get("name") or "").replace("#", "")).strip(),
+                    "fecha": (o.get("created_at") or "")[:10],
+                    "total": float(o.get("total_price") or o.get("current_total_price") or 0),
+                    "mail": _cli_norm(o.get("email") or o.get("contact_email") or cu.get("email") or ""),
+                    "tel": _cli_tel(cu.get("phone") or ba.get("phone") or sa.get("phone") or ""),
+                    "nom": (((cu.get("first_name") or "") + " " + (cu.get("last_name") or "")).strip()
+                            or ba.get("name") or sa.get("name") or ""),
+                    "tienda": "shopify"})
+            if prog:
+                prog("Shopify: %d pedidos pagos leidos (pagina %d)" % (len(out), pag))
+            nxt = None
+            for part in (r.headers.get("Link", "") or "").split(","):
+                if 'rel="next"' in part:
+                    m = re.search(r"<([^>]+)>", part)
+                    if m:
+                        nxt = m.group(1)
+            if not nxt:
+                break
+            url, params = nxt, {}
+    finally:
+        if got:
+            _SHOP_SEM.release()
     return out
 
 
@@ -17531,7 +17559,7 @@ def pf_clientes_progreso():
         ts = 0.0
     quieto = (_t.time() - ts) if ts else 0.0
     err = st.get("error")
-    if (not st.get("listo")) and ts and quieto > 90:
+    if (not st.get("listo")) and ts and quieto > 150:
         err = ('El proceso se corto en el servidor: quedo frenado en "%s" hace %ds '
                "(se reciclo el worker de gunicorn). Volve a recargar." % (st.get("msg") or "?", int(quieto)))
     return jsonify({"ok": True, "msg": st.get("msg", ""), "listo": st.get("listo", False),
