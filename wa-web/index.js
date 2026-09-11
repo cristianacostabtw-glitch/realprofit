@@ -274,18 +274,14 @@ async function startSession(acc, force) {
   // Sesiones de signal corrompidas ("Bad MAC"): se borran UNA sola vez (marca en disco). Se van
   // solo los session-* y sender-key-*, que WhatsApp renegocia solo. creds.json y las app-state-sync
   // quedan intactas, asi que el telefono sigue vinculado y NO hay que escanear el QR de nuevo.
+  // Antes esto corria UNA SOLA VEZ en la vida (marca .limpio-badmac-1) y listo. Las sesiones se
+  // volvieron a romper despues de esa unica limpieza y quedo el WhatsApp SORDO: los mensajes
+  // llegaban pero no se podian desencriptar (Bad MAC), asi que nunca entraban al bot.
+  // Ahora se puede limpiar cuando haga falta: automatico si hace mas de LIMPIEZA_H horas, o a
+  // pedido con POST /limpiar-sesiones. NUNCA toca creds.json ni app-state-sync-*, asi que el
+  // telefono sigue vinculado y NO hay que escanear el QR.
   try {
-    const marca = path.join(dir, ".limpio-badmac-1");
-    if (!fs.existsSync(marca)) {
-      let n = 0;
-      for (const f of fs.readdirSync(dir)) {
-        if (f.startsWith("session-") || f.startsWith("sender-key-")) {
-          try { fs.unlinkSync(path.join(dir, f)); n++; } catch {}
-        }
-      }
-      fs.writeFileSync(marca, new Date().toISOString());
-      log.warn({ acc, borrados: n }, "limpieza de sesiones signal corrompidas");
-    }
+    if (limpiarSesiones(acc, false)) log.warn({ acc }, "limpieza automatica de sesiones signal");
   } catch (e) { log.warn({ e: String(e && e.message || e) }, "no se pudo limpiar sesiones"); }
   const { state, saveCreds } = await authAtomico(dir);
   // NO usamos fetchLatestBaileysVersion(): trae la ultima version de WhatsApp Web, que puede ser
@@ -758,6 +754,43 @@ function touch_send(s, jid, text) {
   c.ts = Math.floor(Date.now() / 1000);
   s.chats.set(jid, c);
 }
+
+// Borra SOLO las sesiones de signal (session-* y sender-key-*), que WhatsApp renegocia solo.
+// creds.json y app-state-sync-* quedan intactos => el telefono sigue vinculado, sin QR.
+// forzar=true ignora el tiempo minimo entre limpiezas.
+const LIMPIEZA_H = 6;
+function limpiarSesiones(acc, forzar) {
+  const dir = accDir(acc);
+  if (!fs.existsSync(dir)) return 0;
+  const marca = path.join(dir, ".limpieza-signal");
+  if (!forzar) {
+    try {
+      const st = fs.statSync(marca);
+      if ((Date.now() - st.mtimeMs) < LIMPIEZA_H * 3600 * 1000) return 0;
+    } catch {}
+  }
+  let n = 0;
+  for (const f of fs.readdirSync(dir)) {
+    if (f.startsWith("session-") || f.startsWith("sender-key-")) {
+      try { fs.unlinkSync(path.join(dir, f)); n++; } catch {}
+    }
+  }
+  try { fs.writeFileSync(marca, new Date().toISOString()); } catch {}
+  return n;
+}
+
+app.post("/limpiar-sesiones", async (req, res) => {
+  const acc = (req.body?.acc || "").trim();
+  if (!acc) return res.status(400).json({ ok: false, msg: "falta acc" });
+  let borrados = 0;
+  try { borrados = limpiarSesiones(acc, true); }
+  catch (e) { return res.json({ ok: false, msg: String(e && e.message || e).slice(0, 160) }); }
+  try { await startSession(acc); } catch (e) {
+    return res.json({ ok: false, borrados, msg: "limpio pero no reconecto: " + String(e && e.message || e).slice(0, 120) });
+  }
+  const s = sessions.get(acc);
+  res.json({ ok: true, borrados, status: s?.status || "?", me: s?.me || null });
+});
 
 app.post("/logout", async (req, res) => {
   const acc = (req.body?.acc || "").trim();
