@@ -74,6 +74,7 @@ Todo lo que sabés sobre el producto, precios, links de compra, envíos, formas 
 4. SALUD (si la marca es de salud/bienestar): respondé directo lo que preguntan en clave de bienestar ("ayuda a…", "muchos lo notan con el uso constante"). NUNCA digas que cura, frena ni trata enfermedades. No agregues muletillas tipo "consultá con tu médico" si no las pidieron.
 5. Reclamos de entrega reales ("nunca me llegó / no recibí / quiero reembolso / hice el reclamo y nadie responde") → responder=false, escalar=true (lo maneja un humano).
 6. Sé CAUTELOSO. En la duda, escalá. No inventes. Si te piden algo que requiere mirar el pedido puntual → escalá.
+6.b. ESCALAR NO ES QUEDARSE MUDO. Cuando pongas escalar=true, salvo que sea un cierre, escribí IGUAL en "mensaje" una o dos líneas cortas para el cliente: que sos el asistente virtual, que eso puntual lo ve una persona del equipo y que le responden por este mismo chat. Nunca lo dejes sin ninguna respuesta. Solo dejá "mensaje" vacío si de verdad no corresponde contestar nada (un "gracias", un "ok").
 7. Tono: argentino, cálido, humano, breve. Emojis con moderación. Nunca sonar robot.
 
 # Comprobantes de pago (imágenes)
@@ -218,7 +219,12 @@ def decidir(mensajes, imagenes=None, canal="whatsapp", nombre="", extra_instr=""
                 "categoria": "otro", "motivo": f"error cerebro: {type(e).__name__}: {e}",
                 "es_comprobante": False}
 
-    if d.get("escalar"):
-        d["responder"] = False
+    # ESCALAR YA NO ES QUEDARSE MUDO. Antes, cualquier caso que se derivaba a un humano dejaba al
+    # cliente sin NINGUNA respuesta: preguntaba "donde esta mi pedido?" y no le contestaba nadie
+    # hasta que un humano entraba. Ahora, si el cerebro escribio un mensaje corto de espera, ESE
+    # se manda igual (el cliente sabe que lo estan viendo) y el chat queda flagueado para el humano.
+    # Si no escribio nada, se comporta como antes: no se manda nada.
     d.setdefault("mensaje", "")
+    if d.get("escalar") and not (d.get("mensaje") or "").strip():
+        d["responder"] = False
     return d

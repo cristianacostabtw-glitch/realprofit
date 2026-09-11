@@ -485,6 +485,15 @@ async function startSession(acc, force) {
         || "";
       const esGrupo = jid.endsWith("@g.us");
       const mk2 = mediaKind(m);
+      // El ARCHIVO viaja al bot. Antes solo se mandaba el TIPO ("image"/"audio") y nunca el id,
+      // asi que RealProfit sabia que habia una foto pero no la tenia: el bot leia el texto
+      // "📷 Foto" y nada mas. Por eso no leia capturas ni escuchaba audios.
+      // El nombre del archivo es DETERMINISTICO (id del mensaje + extension), el mismo que usa
+      // saveMedia(), asi que lo puedo mandar YA aunque la descarga siga en curso: RealProfit
+      // reintenta 3 veces hasta que el puente termina de escribirlo.
+      const _kid = (m.key?.id || "").replace(/[^a-zA-Z0-9._-]/g, "");
+      const mkOk = mk2 && ["image", "audio", "document", "video"].includes(mk2.kind);
+      const mediaId = mkOk && _kid ? (_kid + "." + mk2.ext) : "";
       // En 1:1 avisamos solo si hay TEXTO (como siempre). En el grupo de gastos también avisamos
       // cuando viene solo un audio, una foto o un PDF: ahí el contenido ES el archivo.
       // En el grupo de gastos también procesamos los mensajes PROPIOS: el dueño carga gastos
@@ -506,7 +515,9 @@ async function startSession(acc, force) {
         if (s.vistos.size > 4000) s.vistos = new Set(Array.from(s.vistos).slice(-2000));
       }
       const paso = _fresco && !_repetido && (esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe);
-      if (HOOK && type === "notify" && paso && (texto || (esGrupo && mk2))) {
+      // Antes: en 1:1 solo avisaba si habia TEXTO. Un audio NUNCA tiene leyenda, y una foto sin
+      // leyenda tampoco: esos mensajes no llegaban al bot en los chats de atencion al cliente.
+      if (HOOK && type === "notify" && paso && (texto || mkOk)) {
         notifyHook({
           acc,
           from: jid,
@@ -517,6 +528,9 @@ async function startSession(acc, force) {
           grupo: esGrupo,
           autor: (m.key?.participant || "").split("@")[0],   // quién escribió dentro del grupo
           medio: mk2 ? mk2.kind : "",
+          media_id: mediaId,
+          mime: mk2 ? mk2.mime : "",
+          id: m.key?.id || "",          // RealProfit busca "id"/"msgId"/"wamid", no "msg_id"
           msg_id: m.key?.id || "",
         }).catch(() => {});
       }
