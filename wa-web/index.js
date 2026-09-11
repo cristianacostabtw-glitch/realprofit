@@ -466,6 +466,11 @@ async function startSession(acc, force) {
   sock.ev.on("messages.upsert", ({ messages, type }) => {
     if (s.gen !== gen) return;
     s.lastRecv = Date.now();   // hay actividad → sesión viva (watchdog anti-cuelgue-silencioso)
+    // MENSAJE DE VERDAD. lastRecv lo refresca CUALQUIER evento — incluidos los receipts y las
+    // presencias que genera nuestro propio ping cada 60s. Por eso una sesion podia quedar 10 horas
+    // sin recibir un solo mensaje con lastRecv siempre fresco y el watchdog nunca disparaba.
+    // Este reloj se mueve SOLO con mensajes, que es lo unico que le importa al bot.
+    s.msgRecv = Date.now();
     for (const m of messages) {
       const jid = m.key?.remoteJid;
       if (!jid || jid === "status@broadcast" || !grupoOK(s, acc, jid)) continue;
@@ -571,6 +576,7 @@ app.get("/diag", (_req, res) => {
       status: s.status,
       gen: s.gen || 0,                             // = cantidad de sockets abiertos desde el boot
       seg_sin_recibir: Math.round((now - (s.lastRecv || 0)) / 1000),
+      seg_sin_mensajes: Math.round((now - (s.msgRecv || s.startedAt || 0)) / 1000),
       seg_desde_arranque_sesion: Math.round((now - (s.startedAt || 0)) / 1000),
       ws_muerto: wsDead(s.sock),
       reconexion_pendiente: !!s._rt,
@@ -759,7 +765,7 @@ function touch_send(s, jid, text) {
 // creds.json y app-state-sync-* quedan intactos => el telefono sigue vinculado, sin QR.
 // forzar=true ignora el tiempo minimo entre limpiezas.
 const LIMPIEZA_H = 6;
-function limpiarSesiones(acc, forzar) {
+function limpiarSesiones(acc, forzar, profundo) {
   const dir = accDir(acc);
   if (!fs.existsSync(dir)) return 0;
   const marca = path.join(dir, ".limpieza-signal");
@@ -771,7 +777,10 @@ function limpiarSesiones(acc, forzar) {
   }
   let n = 0;
   for (const f of fs.readdirSync(dir)) {
-    if (f.startsWith("session-") || f.startsWith("sender-key-")) {
+    // creds.json NUNCA se toca: es lo unico que mantiene el telefono vinculado (sin el, pide QR).
+    const esSesion = f.startsWith("session-") || f.startsWith("sender-key-");
+    const esSync = f.startsWith("app-state-sync-");   // solo en modo profundo
+    if (esSesion || (profundo && esSync)) {
       try { fs.unlinkSync(path.join(dir, f)); n++; } catch {}
     }
   }
@@ -782,8 +791,9 @@ function limpiarSesiones(acc, forzar) {
 app.post("/limpiar-sesiones", async (req, res) => {
   const acc = (req.body?.acc || "").trim();
   if (!acc) return res.status(400).json({ ok: false, msg: "falta acc" });
+  const profundo = !!(req.body?.profundo);
   let borrados = 0;
-  try { borrados = limpiarSesiones(acc, true); }
+  try { borrados = limpiarSesiones(acc, true, profundo); }
   catch (e) { return res.json({ ok: false, msg: String(e && e.message || e).slice(0, 160) }); }
   try { await startSession(acc); } catch (e) {
     return res.json({ ok: false, borrados, msg: "limpio pero no reconecto: " + String(e && e.message || e).slice(0, 120) });
@@ -867,7 +877,19 @@ setInterval(() => {
       // 25 min de silencio ABSOLUTO (ni un receipt, ni una presencia) = zombie. Con 3h el zombie de
       // hoy estuvo sordo toda la tarde; con 7 min reconectaba sesiones sanas. 25 min es el medio.
       const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 25 * 60 * 1000;
-      if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda)) {
+      // SORDERA: el socket contesta, el sondeo da vivo, los receipts entran... y sin embargo no
+      // llega NI UN mensaje. Paso el 11/9: 10 horas sorda sin que nada lo detectara. El unico
+      // sintoma fiable es el silencio de MENSAJES, asi que lo vigilo aparte.
+      // El umbral se mide desde el ultimo mensaje o desde que arranco la sesion.
+      const SORDA_MIN = Number(process.env.WA_SORDA_MIN || 40);
+      const sorda = Date.now() - (s.msgRecv || s.startedAt || 0) > SORDA_MIN * 60 * 1000;
+      if (s.status === "connected" && !s.starting && (wsDead(s.sock) || muda || sorda)) {
+        if (sorda) {
+          // Sesiones de signal corrompidas es la causa conocida de la sordera: se borran (NO toca
+          // creds.json, no pide QR) y recien ahi se rehace el socket.
+          try { const n = limpiarSesiones(acc, true); log.warn({ acc, borrados: n }, "SORDA: limpio sesiones y reconecto"); } catch {}
+          s.msgRecv = Date.now();   // sin esto vuelve a dispararse en la vuelta siguiente
+        }
         s.status = "connecting";   // sin esto startSession() sale por el early-return y no revive nada
         reconectar(acc, s, 100);
         continue;
