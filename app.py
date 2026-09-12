@@ -14444,6 +14444,7 @@ def _wa_web_keepalive():
     _WA_SALUD["arranco"] = _t.time()
     while True:
         _WA_SALUD["vueltas"] = (_WA_SALUD.get("vueltas") or 0) + 1
+        _WA_SALUD["latido"] = _t.time()      # se mueve en CADA vuelta: distingue vivo de colgado
         try:
             if WA_WEB_URL:
                 requests.get(WA_WEB_URL + "/health", timeout=15)
@@ -14456,7 +14457,22 @@ def _wa_web_keepalive():
             _WA_SALUD["error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
             try: _wa_anotar("vigilante fallo: %s: %s" % (type(e).__name__, str(e)[:80]))
             except Exception: pass
-        _t.sleep(180)
+        _t.sleep(90)
+
+
+def _wa_vig_vivo():
+    """Levanta el hilo si se murio. Un vigilante que corre una sola vez no protege nada:
+    el 11/09 quedo en la vuelta 1 durante 15 min. Esto lo resucita desde cualquier request."""
+    import time as _t
+    lat = _WA_SALUD.get("latido") or 0
+    if lat and (_t.time() - lat) < 300:
+        return False                          # late: esta vivo
+    try:
+        threading.Thread(target=_wa_web_keepalive, daemon=True).start()
+        _WA_SALUD["resucitado"] = (_WA_SALUD.get("resucitado") or 0) + 1
+        return True
+    except Exception:
+        return False
 
 
 @app.get("/wa-salud")
@@ -14466,7 +14482,12 @@ def wa_salud():
         return jsonify({"ok": False}), 401
     import time as _t
     _a = _WA_SALUD.get("arranco") or 0
+    _lat = _WA_SALUD.get("latido") or 0
+    _revivio = _wa_vig_vivo()
     return jsonify({"ok": True,
+                    "latido_hace_seg": round(_t.time() - _lat, 1) if _lat else None,
+                    "resucitado": _WA_SALUD.get("resucitado") or 0,
+                    "revivio_ahora": _revivio,
                     "hilo_arranco": bool(_a),
                     "hilo_hace_seg": round(_t.time() - _a, 1) if _a else None,
                     "vueltas": _WA_SALUD.get("vueltas") or 0,
