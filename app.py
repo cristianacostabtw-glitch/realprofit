@@ -13203,13 +13203,17 @@ def meli_duplicar():
         cuotas = int(d.get("cuotas") or 0)     # 0=sin cuotas (Clásica), 3/6/9/12 sin interés (Premium)
     except Exception:
         cuotas = 0
-    # cuotas sin interés = Premium (gold_pro) + tag de campaña; sin cuotas = Clásica (gold_special)
-    listing_type = "gold_pro" if cuotas > 0 else (d.get("listing_type_id") or s.get("listing_type_id") or "gold_special")
-    # Primera foto propia de esta copia (variante por unidades); el resto se copia del original.
+    # El tipo de publicacion se COPIA del original. Antes se forzaba a Premium cuando se pedian
+    # cuotas: eso le cambiaba la comision al usuario y ML aplicaba su propio maximo (se pedian 3
+    # y salian 9). Las cuotas se eligen en MercadoLibre, no se pueden fijar por la API.
+    listing_type = (d.get("listing_type_id") or s.get("listing_type_id") or "gold_special")
+    # Primera foto propia de esta copia; el resto se copia del original.
+    # OJO: REEMPLAZA la principal del original, no se le pone adelante. Antes quedaba la foto
+    # nueva (2 potes) y JUSTO ATRAS la del original (1 pote), que es un pack distinto.
     pics = [{"source": p.get("url")} for p in (s.get("pictures") or []) if p.get("url")]
     first_pic = (d.get("first_pic") or "").strip()
     if first_pic:
-        pics = [{"id": first_pic}] + pics
+        pics = [{"id": first_pic}] + pics[1:]
     payload = {
         "title": titulo,
         "category_id": s.get("category_id"),
@@ -13362,19 +13366,11 @@ def meli_duplicar():
                           json={"plain_text": desc["plain_text"]}, timeout=20)
     except Exception:
         pass
+    # CUOTAS: NO se pueden fijar por la API. Medido el 12/09: el numero de cuotas no vive en
+    # el item (INSTALLMENTS_CAMPAIGN vale "pcj-co-funded" igual con 3 que con 6) y los tags que
+    # se probaban ("cuota-simple-3", "mshops_3x_campaign", "3x_campaign") no existen: ML devolvia
+    # 200 y los ignoraba, asi que la pantalla cantaba exito sin haber hecho nada. Se elige en ML.
     cuotas_ok = None
-    if cuotas > 0 and newid:          # activar la campaña de N cuotas sin interés (tag)
-        cuotas_ok = False
-        for tag in ("cuota-simple-%d" % cuotas, "mshops_%dx_campaign" % cuotas, "%dx_campaign" % cuotas):
-            try:
-                rt = requests.put("%s/items/%s" % (MELI_API, newid),
-                                  headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
-                                  json={"tags": [tag]}, timeout=20)
-                if rt.status_code < 400:
-                    cuotas_ok = True
-                    break
-            except Exception:
-                pass
     return jsonify({"ok": True, "id": newid, "permalink": j.get("permalink", ""),
                     "title": j.get("title", ""), "cuotas": cuotas, "cuotas_ok": cuotas_ok,
                     "sacados": sorted(set(sacados))})
@@ -13839,7 +13835,7 @@ function guardarSku(id){ var inp=document.getElementById('sku_'+id), m=document.
 }
 var DUPID='';
 var DUPMODE='simple';
-function dupCuotasSel(v){ v=+v||0; var o=[[0,'Sin cuotas (Clásica · menos comisión)'],[3,'3 cuotas sin interés'],[6,'6 cuotas sin interés (recomendada)'],[9,'9 cuotas sin interés'],[12,'12 cuotas sin interés']];
+function dupCuotasSel(v){ v=+v||0; var o=[[0,'Cuotas: las define ML (se elige alla)']];
  var h='<select class="dupl" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:12.5px">';
  for(var i=0;i<o.length;i++){ h+='<option value="'+o[i][0]+'"'+(o[i][0]===v?' selected':'')+'>'+o[i][1]+'</option>'; } return h+'</select>';
 }
@@ -13947,7 +13943,7 @@ function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
  function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,base_cont:j.base_cont,base_peso:j.base_peso,sabor:j.sabor,peso:j.peso,first_pic:picid||''}).then(function(r){
-    if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+((r.sacados&&r.sacados.length)?(' · ML no acepto: '+r.sacados.join(', ')):'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
+    if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+((r.sacados&&r.sacados.length)?(' · ML no acepto: '+r.sacados.join(', ')):'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):'')+'<div style="font-weight:500;color:#e8b64c;margin-top:3px">⚠ Las CUOTAS se definen en MercadoLibre (no se pueden fijar desde acá). Entra al link y elegilas.</div>'; st.style.color='#34d399'; }
     else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
     i++; next();
    }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); }); }
