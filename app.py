@@ -13366,11 +13366,26 @@ def meli_duplicar():
                           json={"plain_text": desc["plain_text"]}, timeout=20)
     except Exception:
         pass
-    # CUOTAS: NO se pueden fijar por la API. Medido el 12/09: el numero de cuotas no vive en
-    # el item (INSTALLMENTS_CAMPAIGN vale "pcj-co-funded" igual con 3 que con 6) y los tags que
-    # se probaban ("cuota-simple-3", "mshops_3x_campaign", "3x_campaign") no existen: ML devolvia
-    # 200 y los ignoraba, asi que la pantalla cantaba exito sin haber hecho nada. Se elige en ML.
+    # CUOTAS: se HEREDA la campana del original. El tag real es "pcj-co-funded" (leido de las
+    # publicaciones del usuario, no inventado): activa cuotas de 3 a 12 con interes bajo (~4%).
+    # El NUMERO de cuotas lo elige el comprador y no se puede fijar por API; la comision es la
+    # misma sea 3, 6, 9 o 12. Antes se probaban tags inexistentes y ML devolvia 200 ignorandolos,
+    # asi que la pantalla cantaba exito sin haber hecho nada. Ahora se VERIFICA releyendo el item.
     cuotas_ok = None
+    tags_camp = [t for t in (s.get("tags") or [])
+                 if any(k in str(t).lower() for k in ("co-funded", "campaign", "cuota"))]
+    if tags_camp and newid:
+        cuotas_ok = False
+        try:
+            requests.put("%s/items/%s" % (MELI_API, newid),
+                         headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                         json={"tags": tags_camp}, timeout=25)
+            jv = requests.get("%s/items/%s?attributes=tags" % (MELI_API, newid),
+                              headers={"Authorization": "Bearer " + tok}, timeout=25).json()
+            puestos = [t for t in tags_camp if t in (jv.get("tags") or [])]
+            cuotas_ok = len(puestos) == len(tags_camp)
+        except Exception:
+            cuotas_ok = False
     return jsonify({"ok": True, "id": newid, "permalink": j.get("permalink", ""),
                     "title": j.get("title", ""), "cuotas": cuotas, "cuotas_ok": cuotas_ok,
                     "sacados": sorted(set(sacados))})
@@ -13943,7 +13958,7 @@ function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
  function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,base_cont:j.base_cont,base_peso:j.base_peso,sabor:j.sabor,peso:j.peso,first_pic:picid||''}).then(function(r){
-    if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+((r.sacados&&r.sacados.length)?(' · ML no acepto: '+r.sacados.join(', ')):'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):'')+'<div style="font-weight:500;color:#e8b64c;margin-top:3px">⚠ Las CUOTAS se definen en MercadoLibre (no se pueden fijar desde acá). Entra al link y elegilas.</div>'; st.style.color='#34d399'; }
+    if(r&&r.ok){ ok++; var cuo=(r.cuotas_ok===true)?'<div style="font-weight:500;color:#5fd39a;margin-top:3px">✓ Cuotas: heredó la campaña del original (3 a 12 con interés bajo). El número lo elige el comprador.</div>':((r.cuotas_ok===false)?'<div style="font-weight:500;color:#e8b64c;margin-top:3px">⚠ No se pudo copiar la campaña de cuotas. Revisala en ML.</div>':'<div style="font-weight:500;color:#8ea3bf;margin-top:3px">La publicación original no tenía campaña de cuotas.</div>'); st.innerHTML='✓ Creada'+((r.sacados&&r.sacados.length)?(' · ML no acepto: '+r.sacados.join(', ')):'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):'')+cuo; st.style.color='#34d399'; }
     else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
     i++; next();
    }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); }); }
