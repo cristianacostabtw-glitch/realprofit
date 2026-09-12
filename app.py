@@ -14548,7 +14548,7 @@ def _wa_now():
 # El cerebro vive en agente_ia.py. Se activa SOLO por cuenta (conf["bot"]=True) — así queda
 # gateado a VisionPure y apagado para el resto. Arranca DESACTIVADO por defecto.
 
-def _wa_web_media_bytes(email, media_id, intentos=3):
+def _wa_web_media_bytes(email, media_id, intentos=12):
     """Baja del puente el archivo de un medio del canal WEB -> (bytes, mime) o (None, "").
     Reintenta: el puente avisa del mensaje y guarda el archivo en paralelo, asi que el primer
     intento puede llegar antes de que termine de escribirlo."""
@@ -14678,9 +14678,14 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             conv["bot_nota"] = "🎤 Audio transcripto: " + _txt[:120]
             _wa_save_chats(chats)
         else:
+            # Antes esto hacia `return` y el cliente quedaba SIN NINGUNA respuesta (paso el
+            # 11/09 con el audio de las 21:49). Ahora sigue igual, con un texto que le dice
+            # al cerebro que hubo un audio que no se pudo escuchar: contesta y pide que lo
+            # escriba, en vez de dejarlo mudo.
             conv["bot_nota"] = "🎤 Llegó un audio y no lo pude transcribir — escuchalo vos"
+            last_in["text"] = ("[el cliente mando un audio que no se pudo escuchar: pedile "
+                               "amablemente que lo escriba o lo mande de nuevo]")
             _wa_save_chats(chats)
-            return
 
     # Historial legible (últimos 40) para el cerebro.
     hist = []
