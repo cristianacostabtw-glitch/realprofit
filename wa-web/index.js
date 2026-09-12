@@ -898,7 +898,18 @@ setInterval(() => {
       // como red de seguridad remota.
       // 25 min de silencio ABSOLUTO (ni un receipt, ni una presencia) = zombie. Con 3h el zombie de
       // hoy estuvo sordo toda la tarde; con 7 min reconectaba sesiones sanas. 25 min es el medio.
-      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > 25 * 60 * 1000;
+      // MEDIDO 12/09/2026: la cuenta de gastos se reconectaba SOLA cada 25 min (gen 1->2 a los
+      // 1546s) con CERO eventos, ~57 veces por dia. NoxaLab, con cientos de eventos, no se
+      // reconecto nunca en la misma ventana. La causa: "muda" mide silencio y lo llama muerte.
+      // Ese numero solo recibe cuando se carga un comprobante: 1-3 veces por dia, a veces ninguna.
+      // Una sesion que NUNCA recibio un evento y cuyo sondeo activo contesta bien no esta zombie,
+      // esta OCIOSA. Se le dan 6h en vez de 25 min: deja de reconectarse al pedo, pero un zombie
+      // real igual se recupera solo. Ojo: NO se desactiva el chequeo (eso dejaria sin la red que
+      // salvo a NoxaLab de las 10h mudo), solo se estira para la sesion que nunca recibio nada.
+      const nuncaRecibio = Object.keys(s.ev || {}).length === 0;
+      const sondeoSano = (s.sondFail || 0) === 0;
+      const limiteMuda = (nuncaRecibio && sondeoSano) ? 6 * 60 * 60 * 1000 : 25 * 60 * 1000;
+      const muda = Date.now() - (s.lastRecv || s.startedAt || 0) > limiteMuda;
       // SORDERA: el socket contesta, el sondeo da vivo, los receipts entran... y sin embargo no
       // llega NI UN mensaje. Paso el 11/9: 10 horas sorda sin que nada lo detectara. El unico
       // sintoma fiable es el silencio de MENSAJES, asi que lo vigilo aparte.
