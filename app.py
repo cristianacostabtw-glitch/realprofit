@@ -14435,6 +14435,27 @@ def _wa_vigilar_sordera():
             _wa_anotar("%s sorda %d min -> fallo el arreglo: %s" % (acc, int(mudos), str(e)[:80]))
 
 
+def _wa_con_limite(fn, seg, nombre):
+    """Corre fn en un hilo aparte y no espera mas de `seg` segundos. Si se cuelga se abandona
+    (es daemon) y el vigilante sigue girando. Un vigilante bloqueado no vigila nada."""
+    caja = {}
+    def _correr():
+        try:
+            caja["r"] = fn()
+        except Exception as e:
+            caja["e"] = e
+    h = threading.Thread(target=_correr, daemon=True, name=nombre)
+    h.start()
+    h.join(seg)
+    if h.is_alive():
+        _WA_SALUD["colgados"] = (_WA_SALUD.get("colgados") or 0) + 1
+        _WA_SALUD["ult_colgado"] = nombre
+        return False
+    if "e" in caja:
+        raise caja["e"]
+    return True
+
+
 def _wa_web_keepalive():
     """Ping al servicio de WhatsApp Web cada 3 min (para que Render no lo duerma) + vigilante
     de sordera: si deja de RECIBIR mensajes, lo repara solo.
@@ -14448,12 +14469,14 @@ def _wa_web_keepalive():
         _WA_SALUD["paso"] = "health"
         try:
             if WA_WEB_URL:
-                requests.get(WA_WEB_URL + "/health", timeout=(10, 15))
+                _wa_con_limite(lambda: requests.get(WA_WEB_URL + "/health", timeout=(10, 15)),
+                               25, "wa-ping")
         except Exception:
             pass
         _WA_SALUD["paso"] = "sordera"
         try:
-            _wa_vigilar_sordera()
+            # 150s: la limpieza de sesiones puede tardar hasta 120s cuando repara de verdad
+            _wa_con_limite(_wa_vigilar_sordera, 150, "wa-sordera")
             _WA_SALUD["error"] = None
         except Exception as e:
             _WA_SALUD["error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
@@ -14502,6 +14525,8 @@ def wa_salud():
     return jsonify({"ok": True,
                     "pid": _os.getpid(),
                     "paso": _WA_SALUD.get("paso"),
+                    "colgados": _WA_SALUD.get("colgados") or 0,
+                    "ult_colgado": _WA_SALUD.get("ult_colgado"),
                     "latido_hace_seg": round(_t.time() - _lat, 1) if _lat else None,
                     "resucitado": _WA_SALUD.get("resucitado") or 0,
                     "revivio_ahora": _revivio,
