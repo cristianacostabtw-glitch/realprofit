@@ -13772,47 +13772,89 @@ function dupCuotasSel(v){ v=+v||0; var o=[[0,'Sin cuotas (Clásica · menos comi
 }
 function dupBase(it){ var rows=document.getElementById('dup-rows'); var b=document.getElementById('dup-base');
  if(DUPMODE!=='variante'){ if(b)b.style.display='none'; return; }
- var lb='font-size:11px;color:#7d8ea7;margin:0 0 3px;font-weight:600';
- var inp='width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px';
- if(!b){ b=document.createElement('div'); b.id='dup-base'; b.style.cssText='border:1px dashed #2a3b55;border-radius:11px;padding:12px;margin-bottom:9px;background:#0b111e'; rows.parentNode.insertBefore(b,rows); }
- b.style.display='block';
- b.innerHTML='<b style="font-size:11.5px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.4px">Base por unidad</b>'
-  +'<div style="font-size:10.5px;color:#5f6f86;margin:4px 0 8px">Cuanto trae UNA unidad. Con esto se calculan solos el contenido, el peso y el SKU de cada copia.</div>'
-  +'<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:90px"><div style="'+lb+'">Contenido</div><input id="dupb-cont" type="number" placeholder="150" style="'+inp+'"></div>'
-  +'<div style="flex:1;min-width:110px"><div style="'+lb+'">Unidad</div><select id="dupb-u" style="'+inp+'"><option value="g">gramos</option><option value="ml">mililitros</option><option value="u">capsulas / u</option></select></div>'
-  +'<div style="flex:1;min-width:90px"><div style="'+lb+'">Peso 1u (g)</div><input id="dupb-peso" type="number" placeholder="150" style="'+inp+'"></div>'
-  +'<div style="flex:1;min-width:90px"><div style="'+lb+'">Palabra SKU</div><input id="dupb-pal" value="POTE" style="'+inp+'"></div></div>';
+ var lb='font-size:10.5px;color:#8ea3bf;margin:0 0 4px;font-weight:700;letter-spacing:.2px';
+ var inp='width:100%;box-sizing:border-box;background:#070e1a;border:1px solid #24354e;color:#eaf0f7;border-radius:9px;padding:9px 10px;font-size:13px;outline:none';
+ if(!b){ b=document.createElement('div'); b.id='dup-base'; rows.parentNode.insertBefore(b,rows); }
+ b.style.cssText='border:1px solid #2b3d58;border-left:3px solid #ffe600;border-radius:12px;padding:13px 14px;margin-bottom:12px;background:linear-gradient(180deg,#0d1524,#0a1120);display:block';
+ b.innerHTML='<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px"><span style="font-size:11px;color:#ffe600;font-weight:800;letter-spacing:.5px">BASE POR UNIDAD</span><span style="font-size:10px;color:#64758d">se carga una sola vez</span></div>'
+  +'<div style="font-size:10.5px;color:#67788f;margin-bottom:10px">Cuanto trae y cuanto pesa <b style="color:#9fb3cc">UNA</b> unidad. Con esto se calculan solos el contenido, el peso y el SKU de cada copia.</div>'
+  +'<div style="display:flex;gap:9px;flex-wrap:wrap">'
+  +'<div style="flex:1;min-width:98px"><div style="'+lb+'">Contenido de 1u</div><input id="dupb-cont" type="number" placeholder="ej: 150" style="'+inp+'"></div>'
+  +'<div style="flex:1;min-width:124px"><div style="'+lb+'">Unidad</div><select id="dupb-u" style="'+inp+'"><option value="g">gramos (g)</option><option value="ml">mililitros (ml)</option><option value="u">capsulas / u</option></select></div>'
+  +'<div style="flex:1;min-width:98px"><div style="'+lb+'">Peso de 1u (g)</div><input id="dupb-peso" type="number" placeholder="ej: 150" style="'+inp+'"></div>'
+  +'<div style="flex:1;min-width:106px"><div style="'+lb+'">Palabra del SKU</div><input id="dupb-pal" value="POTE" placeholder="POTE" style="'+inp+';text-transform:uppercase"></div>'
+  +'</div>'
+  +'<div style="font-size:10px;color:#5c6c83;margin-top:9px">En <b style="color:#8ea3bf">Palabra del SKU</b> va SOLO la palabra (POTE, SPRAY, CAPS). El numero lo agrega solo: 2 unidades da <span style="color:#ffe600;font-weight:700">X2-POTE</span>.</div>';
  var re=function(){ var rs=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rs.length;i++){ var u=rs[i].querySelector('.dupu'); if(u)dupCalc(u); } };
  b.querySelector('#dupb-cont').oninput=re; b.querySelector('#dupb-peso').oninput=re;
  b.querySelector('#dupb-u').onchange=re; b.querySelector('#dupb-pal').oninput=re;
 }
+function dupMarcar(row){ if(!row)return;
+ var sels=['.dupml','.duppe','.dupk'];
+ for(var i=0;i<sels.length;i++){ var el=row.querySelector(sels[i]); if(!el)continue;
+  var cont=el.parentNode; var chip=cont.querySelector('.dupchip'); if(!chip)continue;
+  var manual=!!el.dataset.tocado;
+  chip.textContent=manual?'manual':'auto';
+  chip.style.background=manual?'#2a2033':'#12251c';
+  chip.style.color=manual?'#c9a6f0':'#5fd39a';
+  chip.style.cursor=manual?'pointer':'default';
+  chip.title=manual?'Lo escribiste vos. Clic para volver al automatico.':'Se calcula solo segun las unidades';
+  el.style.borderColor=manual?'#3b2f4d':'#24354e';
+ }
+}
+function dupSoltar(chip){ var row=chip.closest?chip.closest('.dup-row'):null; if(!row)return;
+ var el=chip.parentNode.querySelector('input'); if(!el||!el.dataset.tocado)return;
+ delete el.dataset.tocado; var u=row.querySelector('.dupu'); if(u)dupCalc(u); else dupMarcar(row);
+}
 function dupCalc(el){ var row=(el&&el.closest)?el.closest('.dup-row'):null; if(!row)return;
- var n=+(el.value||0); if(!(n>0))return;
- var bc=document.getElementById('dupb-cont'), bp=document.getElementById('dupb-peso'), bpal=document.getElementById('dupb-pal');
+ var n=+(el.value||0);
+ var bc=document.getElementById('dupb-cont'), bp=document.getElementById('dupb-peso');
+ var bpal=document.getElementById('dupb-pal'), bu=document.getElementById('dupb-u');
  var c=bc?+(bc.value||0):0, p=bp?+(bp.value||0):0;
+ var uni=(bu&&bu.value)||'g';
  var cEl=row.querySelector('.dupml'), peEl=row.querySelector('.duppe'), skEl=row.querySelector('.dupk');
- // solo autocompleta lo que el usuario NO toco a mano
- if(c>0&&cEl&&!cEl.dataset.tocado) cEl.value=Math.round(c*n*100)/100;
- if(p>0&&peEl&&!peEl.dataset.tocado) peEl.value=Math.round(p*n*100)/100;
  var pal=((bpal&&bpal.value)||'POTE').trim().toUpperCase()||'POTE';
- if(skEl&&!skEl.dataset.tocado) skEl.value='X'+n+'-'+pal;
+ if(n>0){
+  if(c>0&&cEl&&!cEl.dataset.tocado) cEl.value=Math.round(c*n*100)/100;
+  if(p>0&&peEl&&!peEl.dataset.tocado) peEl.value=Math.round(p*n*100)/100;
+  if(skEl&&!skEl.dataset.tocado) skEl.value='X'+n+'-'+pal;
+ }
+ dupMarcar(row);
+ var sum=row.querySelector('.dupsum');
+ if(sum){ var t='';
+  if(n>0){ t=n+' x '+pal; if(cEl&&cEl.value)t+=' · '+cEl.value+' '+uni; if(skEl&&skEl.value)t+=' · '+skEl.value; }
+  sum.textContent=t; sum.style.display=t?'inline-block':'none'; }
 }
 function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows'); var n=wrap.children.length+1;
- var row=document.createElement('div'); row.className='dup-row'; row.style.cssText='border:1px solid #1b2635;border-radius:11px;padding:12px;margin-bottom:9px;background:#0b111e';
- var lb='font-size:11px;color:#7d8ea7;margin:0 0 3px;font-weight:600';
- row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:11.5px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.4px">Copia '+n+'</b><span class="dup-rm" style="cursor:pointer;color:#e0637f;font-size:17px;display:'+(n>1?'inline':'none')+'">&times;</span></div>'
-  +'<div style="'+lb+'">Título</div><input class="dupt" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px">'
-  +'<div style="'+lb+'">Precio ($)</div><input class="dupp" type="number" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px">'
-  +'<div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
+ var row=document.createElement('div'); row.className='dup-row'; row.style.cssText='border:1px solid #1e2a3b;border-radius:12px;padding:13px 14px;margin-bottom:10px;background:linear-gradient(180deg,#0c1320,#0a1019)';
+ var lb='font-size:10.5px;color:#8ea3bf;margin:0 0 4px;font-weight:700;letter-spacing:.2px';
+ var inp='width:100%;box-sizing:border-box;background:#070e1a;border:1px solid #24354e;color:#eaf0f7;border-radius:9px;padding:9px 10px;font-size:13px;outline:none';
+ var auto=function(label,cls,ph,tipo){ return '<div style="flex:1;min-width:0">'
+   +'<div style="display:flex;align-items:center;justify-content:space-between;gap:5px">'
+   +'<div style="'+lb+'">'+label+'</div>'
+   +'<span class="dupchip" onclick="dupSoltar(this)" style="font-size:8.5px;font-weight:800;border-radius:6px;padding:1px 5px;background:#12251c;color:#5fd39a;letter-spacing:.3px">auto</span></div>'
+   +'<input class="'+cls+'" type="'+tipo+'" placeholder="'+ph+'" oninput="this.dataset.tocado=1;dupMarcar(this.closest(&#39;.dup-row&#39;))" style="'+inp+'"></div>'; };
+ row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">'
+   +'<div style="display:flex;align-items:center;gap:8px;min-width:0"><b style="font-size:11px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.5px">Copia '+n+'</b>'
+   +'<span class="dupsum" style="display:none;font-size:10px;font-weight:700;color:#ffe600;background:#241f05;border:1px solid #3d3508;border-radius:20px;padding:2px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></span></div>'
+   +'<span class="dup-rm" style="cursor:pointer;color:#e0637f;font-size:18px;line-height:1;display:'+(n>1?'inline':'none')+'">&times;</span></div>'
+  +'<div style="'+lb+'">Titulo</div><input class="dupt" placeholder="ej: Noxalab Pack 4 Meses | Recupera Energia" style="'+inp+';margin-bottom:9px">'
+  +'<div style="display:flex;gap:9px;margin-bottom:9px"><div style="flex:1;min-width:0"><div style="'+lb+'">Precio ($)</div><input class="dupp" type="number" placeholder="ej: 59990" style="'+inp+'"></div>'
+  +'<div style="flex:1.3;min-width:0"><div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)+'</div></div>'
   +(DUPMODE==='variante'
-     ? ('<div style="'+lb+';margin-top:8px">SKU de esta variante (unidades)</div><input class="dupk" placeholder="ej: X3-POTE" oninput="this.dataset.tocado=1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px">'
-        +'<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1;min-width:0"><div style="'+lb+'">Unidades/pack</div><input class="dupu" type="number" placeholder="3" oninput="dupCalc(this)" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Contenido</div><input class="dupml" type="number" placeholder="300" oninput="this.dataset.tocado=1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Peso (g)</div><input class="duppe" type="number" placeholder="300" oninput="this.dataset.tocado=1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div></div>'
-        +'<div style="'+lb+';margin-top:8px">Primera foto (opcional — cambia la principal)</div><input class="dupf" type="file" accept="image/*" style="width:100%;color:#9fb3cc;font-size:12px">'
-        +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">Esta variante cambia título, precio, cuotas, SKU, unidades/contenido/peso y foto principal. El resto (categoría, descripción, demás fotos) se copia del original.</div>')
-     : '<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">El resto (SKU, cantidad, fotos, categoría, descripción) se copia igual del original.</div>')
-  +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:6px"></div>';
+     ? ('<div style="border-top:1px solid #17212f;margin:11px 0 10px"></div>'
+        +'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;color:#8aa0bd;font-weight:800;letter-spacing:.4px">UNIDADES DE ESTA COPIA</span><span style="font-size:10px;color:#5c6c83">escribi las unidades y el resto se completa solo</span></div>'
+        +'<div style="display:flex;gap:9px;margin-bottom:9px"><div style="flex:1;min-width:0"><div style="'+lb+'">Unidades/pack</div><input class="dupu" type="number" placeholder="ej: 2" oninput="dupCalc(this)" style="'+inp+';border-color:#3a4f70"></div>'
+        + auto('Contenido','dupml','se calcula','number')
+        + auto('Peso (g)','duppe','se calcula','number') + '</div>'
+        + '<div style="display:flex;gap:9px;margin-bottom:9px">' + auto('SKU de esta copia','dupk','se calcula','text') + '</div>'
+        +'<div style="'+lb+'">Primera foto (opcional, cambia la principal)</div><input class="dupf" type="file" accept="image/*" style="width:100%;color:#9fb3cc;font-size:12px">'
+        +'<div style="font-size:10px;color:#5c6c83;margin-top:9px">Se copian del original: categoria, descripcion, demas fotos, atributos y envio.</div>')
+     : '<div style="font-size:10px;color:#5c6c83;margin-top:7px">Se copia igual del original: SKU, cantidad, fotos, categoria y descripcion.</div>')
+  +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:8px"></div>';
  wrap.appendChild(row);
  row.querySelector('.dupt').value=pre.title||''; row.querySelector('.dupp').value=(pre.price!=null?pre.price:'');
+ dupMarcar(row);
  var rm=row.querySelector('.dup-rm'); if(rm)rm.onclick=function(){ row.remove(); dupRenum(); };
 }
 function dupRenum(){ var rows=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rows.length;i++){ rows[i].querySelector('b').textContent='Copia '+(i+1); var x=rows[i].querySelector('.dup-rm'); if(x)x.style.display=(i>0?'inline':'none'); } }
