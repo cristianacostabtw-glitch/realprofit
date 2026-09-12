@@ -14409,7 +14409,7 @@ def _wa_vigilar_sordera():
     SORDA_2 = int(_os.getenv("WA_VIG_MIN2", "120"))      # min -> limpieza profunda
     ESPERA = int(_os.getenv("WA_VIG_ESPERA", "30"))      # min minimos entre dos arreglos de la misma cuenta
     h = {"x-wa-secret": WA_WEB_SECRET}
-    d = requests.get(WA_WEB_URL + "/diag", headers=h, timeout=20).json()
+    d = requests.get(WA_WEB_URL + "/diag", headers=h, timeout=(10, 20)).json()
     ahora = _t.time()
     _WA_SALUD["ts"] = ahora
     _WA_SALUD["sesiones"] = [{"acc": x.get("acc"), "status": x.get("status"),
@@ -14445,11 +14445,13 @@ def _wa_web_keepalive():
     while True:
         _WA_SALUD["vueltas"] = (_WA_SALUD.get("vueltas") or 0) + 1
         _WA_SALUD["latido"] = _t.time()      # se mueve en CADA vuelta: distingue vivo de colgado
+        _WA_SALUD["paso"] = "health"
         try:
             if WA_WEB_URL:
-                requests.get(WA_WEB_URL + "/health", timeout=15)
+                requests.get(WA_WEB_URL + "/health", timeout=(10, 15))
         except Exception:
             pass
+        _WA_SALUD["paso"] = "sordera"
         try:
             _wa_vigilar_sordera()
             _WA_SALUD["error"] = None
@@ -14457,6 +14459,7 @@ def _wa_web_keepalive():
             _WA_SALUD["error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
             try: _wa_anotar("vigilante fallo: %s: %s" % (type(e).__name__, str(e)[:80]))
             except Exception: pass
+        _WA_SALUD["paso"] = "durmiendo"
         _t.sleep(90)
 
 
@@ -14465,7 +14468,7 @@ def _wa_vig_vivo():
     el 11/09 quedo en la vuelta 1 durante 15 min. Esto lo resucita desde cualquier request."""
     import time as _t
     lat = _WA_SALUD.get("latido") or 0
-    if lat and (_t.time() - lat) < 300:
+    if lat and (_t.time() - lat) < 200:
         return False                          # late: esta vivo
     try:
         _WA_SALUD["latido"] = _t.time()   # marcar YA: si entran 2 requests juntas no nacen 2 hilos
@@ -14498,6 +14501,7 @@ def wa_salud():
     _revivio = _wa_vig_vivo()
     return jsonify({"ok": True,
                     "pid": _os.getpid(),
+                    "paso": _WA_SALUD.get("paso"),
                     "latido_hace_seg": round(_t.time() - _lat, 1) if _lat else None,
                     "resucitado": _WA_SALUD.get("resucitado") or 0,
                     "revivio_ahora": _revivio,
