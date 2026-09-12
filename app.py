@@ -14609,6 +14609,22 @@ def _wa_now():
 # El cerebro vive en agente_ia.py. Se activa SOLO por cuenta (conf["bot"]=True) — así queda
 # gateado a VisionPure y apagado para el resto. Arranca DESACTIVADO por defecto.
 
+def _pdf_a_imagen(datos):
+    """Convierte la 1er pagina de un PDF en PNG para que el cerebro la PUEDA VER.
+    Varios bancos mandan el comprobante de transferencia en PDF y WhatsApp lo entrega como
+    'document', no como foto: el 12/09 Sergio mando comprobante_177651199855.pdf y el bot
+    tuvo que pedirle una captura porque no lo abria."""
+    try:
+        import pymupdf
+        doc = pymupdf.open(stream=datos, filetype="pdf")
+        if not doc.page_count:
+            return None, ""
+        pix = doc.load_page(0).get_pixmap(dpi=140)
+        return pix.tobytes("png"), "image/png"
+    except Exception:
+        return None, ""
+
+
 def _wa_web_media_bytes(email, media_id, intentos=12):
     """Baja del puente el archivo de un medio del canal WEB -> (bytes, mime) o (None, "").
     Reintenta: el puente avisa del mensaje y guarda el archivo en paralelo, asi que el primer
@@ -14758,14 +14774,20 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
 
     # Imagen del último entrante (comprobante/foto) → visión.
     # Por el canal WEB el archivo lo tiene el puente (Baileys), no la Graph API de Meta.
+    # Un comprobante NO siempre llega como foto: los bancos lo mandan en PDF y WhatsApp lo
+    # entrega como "document". Tambien cuenta la foto enviada "como archivo" (document con
+    # mime image/*). Antes solo entraba type=="image" y todo lo demas quedaba sin mirar.
     imagenes = []
-    if last_in.get("type") == "image" and last_in.get("media_id"):
+    if last_in.get("type") in ("image", "document") and last_in.get("media_id"):
         if last_in.get("canal") == "web":
             data, mime = _wa_web_media_bytes(email, last_in["media_id"])
         else:
             data, mime = _wa_bot_media(conf, last_in["media_id"])
-        if data:
-            imagenes.append((data, mime or last_in.get("mime") or "image/jpeg"))
+        mime = (mime or last_in.get("mime") or "").lower()
+        if data and "pdf" in mime:
+            data, mime = _pdf_a_imagen(data)
+        if data and (mime.startswith("image/") or last_in.get("type") == "image"):
+            imagenes.append((data, mime if mime.startswith("image/") else "image/jpeg"))
 
     d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
                           extra_instr=_bot_extra_instr(conf),
