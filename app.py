@@ -13249,36 +13249,96 @@ def meli_duplicar():
     pack = (d.get("pack") or "").strip()
     ml = (d.get("ml") or "").strip()
     peso = (d.get("peso") or "").strip()
-    if pack:
-        _ovr_attr(["UNITS_PER_PACK", "PACKAGE_UNITS"], "UNITS_PER_PACK", pack)
-    # El contenido NO siempre son mililitros: NoxaLab va en GRAMOS. Antes se le pegaba " ml"
-    # a cualquier valor, asi que "300 g" se guardaba como "300 g ml" y la publicacion salia mal.
     cont = (d.get("cont") or "").strip()
     cont_u = (d.get("cont_u") or "").strip().lower()
-    if cont and cont_u in ("g", "ml", "u"):
-        if cont_u == "ml":
-            _ovr_attr(["VOLUME_CAPACITY", "NET_VOLUME"], "VOLUME_CAPACITY", cont + " ml")
-        elif cont_u == "g":
-            _ovr_attr(["NET_CONTENT", "CONTENT", "NET_WEIGHT"], "NET_CONTENT", cont + " g")
-        else:
-            _ovr_attr(["NET_CONTENT", "CONTENT"], "NET_CONTENT", cont + " u")
+    base_cont = (d.get("base_cont") or "").strip()
+    base_peso = (d.get("base_peso") or "").strip()
+
+    # MAPEO REAL DE MERCADOLIBRE (visto en "Formato de venta" del panel de vendedores):
+    #   SALE_FORMAT     -> "Unidad" o "Pack"
+    #   UNITS_PER_PACK  -> unidades por envase
+    #   UNIT_WEIGHT     -> peso de UNA unidad      NET_WEIGHT -> peso neto TOTAL
+    #   UNIT_VOLUME     -> volumen de UNA unidad   NET_VOLUME -> volumen neto TOTAL
+    # Antes se escribia NET_CONTENT, que en esta categoria no existe: ML rechazaba la creacion
+    # entera con "Attribute [UNITS_PER_PACK] to be added with values [(null,1)]".
+    # Ademas el match era por substring, asi que "WEIGHT" pisaba tambien UNIT_WEIGHT. Ahora es exacto.
+    def _set_attr(aid, value):
+        for a in attrs:
+            if (a.get("id") or "").upper() == aid:
+                a.pop("value_id", None)
+                a["value_name"] = value
+                return
+        attrs.append({"id": aid, "value_name": value})
+
+    def _con_u(v, u):
+        v = str(v).strip()
+        return v if v.lower().rstrip().endswith(u) else (v + " " + u)
+
+    try:
+        n_un = int(float(pack)) if pack else 0
+    except Exception:
+        n_un = 0
+    if n_un > 0:
+        _set_attr("UNITS_PER_PACK", str(n_un))
+        _set_attr("SALE_FORMAT", "Pack" if n_un > 1 else "Unidad")
+    if cont_u == "ml":
+        if cont:
+            _set_attr("NET_VOLUME", _con_u(cont, "ml"))
+        if base_cont:
+            _set_attr("UNIT_VOLUME", _con_u(base_cont, "ml"))
+    elif cont_u == "g":
+        if cont:
+            _set_attr("NET_WEIGHT", _con_u(cont, "g"))
+        if base_cont:
+            _set_attr("UNIT_WEIGHT", _con_u(base_cont, "g"))
     elif ml:
-        _ovr_attr(["VOLUME_CAPACITY", "NET_VOLUME", "NET_CONTENT", "CONTENT"], "VOLUME_CAPACITY",
-                  ml if ml.lower().rstrip().endswith("ml") else (ml + " ml"))
-    if peso:
-        _ovr_attr(["NET_WEIGHT", "WEIGHT"], "NET_WEIGHT",
-                  peso if any(peso.lower().rstrip().endswith(u) for u in ("g", "kg")) else (peso + " g"))
+        _set_attr("NET_VOLUME", _con_u(ml, "ml"))
+    # el peso solo se toca aparte cuando el contenido NO es peso (si no, se pisarian entre si)
+    if peso and cont_u != "g":
+        _set_attr("NET_WEIGHT", _con_u(peso, "g"))
+    if base_peso and cont_u != "g":
+        _set_attr("UNIT_WEIGHT", _con_u(base_peso, "g"))
     if attrs:
         payload["attributes"] = attrs
     if s.get("shipping"):
         payload["shipping"] = s["shipping"]
+    # La campana de cuotas NO se puede copiar: ML responde "Not allowed to modify sale term
+    # INSTALLMENTS_CAMPAIGN" y no crea nada. Las cuotas se piden aparte (listing_type + tag).
     if s.get("sale_terms"):
-        payload["sale_terms"] = s["sale_terms"]
+        payload["sale_terms"] = [t for t in s["sale_terms"]
+                                 if (t.get("id") or "").upper() != "INSTALLMENTS_CAMPAIGN"]
+
+    # Si ML rechaza un atributo que en ESA categoria no se puede setear, se lo saca y se
+    # reintenta, en vez de fallar la creacion entera. Lo sacado se avisa en pantalla.
+    sacados = []
+    def _postear(pl):
+        rr = requests.post("%s/items" % MELI_API,
+                           headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                           json=pl, timeout=45)
+        return rr, (rr.json() if rr.content else {})
     try:
-        r = requests.post("%s/items" % MELI_API,
-                          headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
-                          json=payload, timeout=45)
-        j = r.json() if r.content else {}
+        r, j = _postear(payload)
+        for _ in range(3):
+            if r.status_code < 400:
+                break
+            txt = str(j)
+            malos = set(re.findall(r"Attribute \[([A-Z0-9_]+)\]", txt))
+            malos_st = set(re.findall(r"sale term ([A-Z0-9_]+)", txt))
+            cambio = False
+            if malos and payload.get("attributes"):
+                n0 = len(payload["attributes"])
+                payload["attributes"] = [a for a in payload["attributes"] if a.get("id") not in malos]
+                if len(payload["attributes"]) != n0:
+                    cambio = True; sacados += sorted(malos)
+            if malos_st and payload.get("sale_terms"):
+                n0 = len(payload["sale_terms"])
+                payload["sale_terms"] = [t for t in payload["sale_terms"]
+                                         if (t.get("id") or "").upper() not in malos_st]
+                if len(payload["sale_terms"]) != n0:
+                    cambio = True; sacados += sorted(malos_st)
+            if not cambio:
+                break
+            r, j = _postear(payload)
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:120]})
     if r.status_code >= 400:
@@ -13311,7 +13371,8 @@ def meli_duplicar():
             except Exception:
                 pass
     return jsonify({"ok": True, "id": newid, "permalink": j.get("permalink", ""),
-                    "title": j.get("title", ""), "cuotas": cuotas, "cuotas_ok": cuotas_ok})
+                    "title": j.get("title", ""), "cuotas": cuotas, "cuotas_ok": cuotas_ok,
+                    "sacados": sorted(set(sacados))})
 
 
 @app.post("/meli/sku-set")
@@ -13766,11 +13827,11 @@ function variantePub(id){ dupAbrir(id,'variante'); }
 function dupClose(){ document.getElementById('dupov').style.display='none'; }
 function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice.call(document.querySelectorAll('#dup-rows .dup-row'));
  function gv(r,c){ var e=r.querySelector(c); return e?e.value.trim():''; }
- var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),cont:gv(r,'.dupml'),cont_u:(document.getElementById('dupb-u')?document.getElementById('dupb-u').value:''),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
+ var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),cont:gv(r,'.dupml'),cont_u:(document.getElementById('dupb-u')?document.getElementById('dupb-u').value:''),base_cont:(document.getElementById('dupb-cont')?document.getElementById('dupb-cont').value.trim():''),base_peso:(document.getElementById('dupb-peso')?document.getElementById('dupb-peso').value.trim():''),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
- function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,peso:j.peso,first_pic:picid||''}).then(function(r){
-    if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
+ function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,base_cont:j.base_cont,base_peso:j.base_peso,peso:j.peso,first_pic:picid||''}).then(function(r){
+    if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+((r.sacados&&r.sacados.length)?(' · ML no acepto: '+r.sacados.join(', ')):'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
     else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
     i++; next();
    }).catch(function(){ st.textContent='✗ error de red'; st.style.color='#e0637f'; i++; next(); }); }
