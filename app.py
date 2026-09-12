@@ -14379,8 +14379,65 @@ def _wa_marca_auto(email, cfg):
     return m or (_WA_WEB_NAMES.get(email) or "").strip()
 
 
+# Estado del vigilante, para poder mirarlo desde afuera (/wa-salud).
+_WA_SALUD = {"ts": 0, "sesiones": [], "acciones": []}
+_WA_ULT_ARREGLO = {}
+
+
+def _wa_anotar(msg):
+    import time as _t
+    _WA_SALUD["acciones"] = (_WA_SALUD.get("acciones") or [])[-19:] + [
+        {"ts": _t.time(), "hora": _dt.datetime.now().strftime("%d/%m %H:%M:%S"), "msg": msg}]
+
+
+def _wa_vigilar_sordera():
+    """El WhatsApp Web puede quedar 'connected', con el socket vivo y el sondeo OK, y NO RECIBIR
+    NADA. Paso el 11/09: diez horas mudo sin que nada lo detectara, porque el watchdog miraba
+    'hace cuanto no llega ALGO' y ese reloj lo refrescan los acuses y el propio ping.
+
+    Este vigilante mira lo unico que importa: hace cuanto no entra UN MENSAJE. Si pasa el umbral
+    repara solo, en dos escalones, y NUNCA pide QR (no toca creds.json):
+      1) SORDA_1 min  -> limpieza de las sesiones de signal + reconexion
+      2) SORDA_2 min  -> limpieza PROFUNDA (tambien las app-state-sync de la bandeja)
+    El puente tiene su propio watchdog a los 40 min; este es la red de seguridad por si aquel
+    quedo trabado. Por eso los umbrales van despues, y se espera entre arreglos para no estar
+    reconectando sesiones sanas de madrugada."""
+    import time as _t
+    if not (WA_WEB_URL and WA_WEB_SECRET):
+        return
+    SORDA_1 = int(_os.getenv("WA_VIG_MIN", "60"))        # min sin un solo mensaje -> limpieza normal
+    SORDA_2 = int(_os.getenv("WA_VIG_MIN2", "120"))      # min -> limpieza profunda
+    ESPERA = int(_os.getenv("WA_VIG_ESPERA", "30"))      # min minimos entre dos arreglos de la misma cuenta
+    h = {"x-wa-secret": WA_WEB_SECRET}
+    d = requests.get(WA_WEB_URL + "/diag", headers=h, timeout=20).json()
+    ahora = _t.time()
+    _WA_SALUD["ts"] = ahora
+    _WA_SALUD["sesiones"] = [{"acc": x.get("acc"), "status": x.get("status"),
+                              "seg_sin_mensajes": x.get("seg_sin_mensajes"),
+                              "ws_muerto": x.get("ws_muerto")} for x in (d.get("sesiones") or [])]
+    for ses in (d.get("sesiones") or []):
+        acc = ses.get("acc") or ""
+        if ses.get("status") != "connected":
+            continue                                     # no conectada: el puente ya la reconecta
+        mudos = (ses.get("seg_sin_mensajes") or 0) / 60.0
+        if mudos < SORDA_1:
+            continue
+        if (ahora - _WA_ULT_ARREGLO.get(acc, 0)) < ESPERA * 60:
+            continue                                     # recien arreglada: darle tiempo
+        profundo = mudos >= SORDA_2
+        try:
+            r = requests.post(WA_WEB_URL + "/limpiar-sesiones", headers=h, timeout=120,
+                              json={"acc": acc, "profundo": profundo})
+            _WA_ULT_ARREGLO[acc] = ahora
+            _wa_anotar("%s sorda %d min -> limpieza %s: %s"
+                       % (acc, int(mudos), "PROFUNDA" if profundo else "normal", str(r.text)[:90]))
+        except Exception as e:
+            _wa_anotar("%s sorda %d min -> fallo el arreglo: %s" % (acc, int(mudos), str(e)[:80]))
+
+
 def _wa_web_keepalive():
-    """Ping al servicio de WhatsApp Web cada 5 min para que Render no lo duerma (mientras RealProfit esté vivo)."""
+    """Ping al servicio de WhatsApp Web cada 3 min (para que Render no lo duerma) + vigilante
+    de sordera: si deja de RECIBIR mensajes, lo repara solo."""
     import time as _t
     while True:
         try:
@@ -14388,7 +14445,23 @@ def _wa_web_keepalive():
                 requests.get(WA_WEB_URL + "/health", timeout=15)
         except Exception:
             pass
+        try:
+            _wa_vigilar_sordera()
+        except Exception as e:
+            try: _wa_anotar("vigilante fallo: %s: %s" % (type(e).__name__, str(e)[:80]))
+            except Exception: pass
         _t.sleep(180)
+
+
+@app.get("/wa-salud")
+def wa_salud():
+    """Estado del WhatsApp Web y lo que hizo el vigilante. Para mirar si estuvo sordo."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    import time as _t
+    return jsonify({"ok": True, "hace_seg": round(_t.time() - (_WA_SALUD.get("ts") or 0), 1),
+                    "sesiones": _WA_SALUD.get("sesiones") or [],
+                    "acciones": list(reversed(_WA_SALUD.get("acciones") or []))})
 
 
 if WA_WEB_URL:
