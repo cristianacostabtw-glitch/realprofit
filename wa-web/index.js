@@ -518,7 +518,16 @@ async function startSession(acc, force) {
       const paso = _fresco && !_repetido && (esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe);
       // Antes: en 1:1 solo avisaba si habia TEXTO. Un audio NUNCA tiene leyenda, y una foto sin
       // leyenda tampoco: esos mensajes no llegaban al bot en los chats de atencion al cliente.
+      // DIAGNOSTICO: por que NO se avisa un mensaje. El 11/09 llegaron 6 avisos en 23 min y
+      // ninguno era de una foto ni de un audio, con 0 excepciones y el orden del codigo correcto.
+      // Sin registrar el motivo no hay forma de saber cual de las condiciones lo descarta.
+      if (mkOk && !(HOOK && type === "notify" && paso && (texto || mkOk))) {
+        log.warn({ acc, tipo: mk2 && mk2.kind, type, fresco: _fresco, repetido: _repetido,
+                   fromMe: !!m.key?.fromMe, hayTexto: !!texto },
+                 "MEDIO DESCARTADO: no se avisa al bot");
+      }
       if (HOOK && type === "notify" && paso && (texto || mkOk)) {
+        if (mkOk) log.warn({ acc, tipo: mk2 && mk2.kind, mediaId }, "MEDIO AVISADO al bot");
         notifyHook({
           acc,
           from: jid,
