@@ -14539,11 +14539,9 @@ def wa_salud():
                     "acciones": list(reversed(_WA_SALUD.get("acciones") or []))})
 
 
-if WA_WEB_URL:
-    try:
-        threading.Thread(target=_wa_web_keepalive, daemon=True).start()
-    except Exception:
-        pass
+# El vigilante NO se arranca aca a proposito (ver _wa_vig_vivo): un hilo lanzado durante el
+# import queda trabado en el start() y no vuelve a girar. Lo levanta el primer request, que es
+# el camino probado. Por eso ver "resucitado: 1" despues de un deploy es lo NORMAL.
 
 try:    # bot de finanzas: completa la planilla del día vencido ~1:15am (hora AR)
     threading.Thread(target=_fin_bot_loop, daemon=True, name="fin-bot").start()
