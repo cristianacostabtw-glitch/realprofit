@@ -13253,6 +13253,7 @@ def meli_duplicar():
     cont_u = (d.get("cont_u") or "").strip().lower()
     base_cont = (d.get("base_cont") or "").strip()
     base_peso = (d.get("base_peso") or "").strip()
+    sabor = (d.get("sabor") or "").strip()
 
     # MAPEO REAL DE MERCADOLIBRE (visto en "Formato de venta" del panel de vendedores):
     #   SALE_FORMAT     -> "Unidad" o "Pack"
@@ -13298,6 +13299,10 @@ def meli_duplicar():
         _set_attr("NET_WEIGHT", _con_u(peso, "g"))
     if base_peso and cont_u != "g":
         _set_attr("UNIT_WEIGHT", _con_u(base_peso, "g"))
+    # Sabor: ML lo exige en alimentos/suplementos (MLA8830 pidio [FLAVOR]). Si la publicacion
+    # original no lo tiene cargado, la copia tampoco lo lleva y ML rechaza la creacion.
+    if sabor:
+        _set_attr("FLAVOR", sabor)
     if attrs:
         payload["attributes"] = attrs
     if s.get("shipping"):
@@ -13784,6 +13789,7 @@ function dupBase(it){ var rows=document.getElementById('dup-rows'); var b=docume
   +'<div style="flex:1;min-width:98px"><div style="'+lb+'">Peso de 1u (g)</div><input id="dupb-peso" type="number" placeholder="ej: 150" style="'+inp+'"></div>'
   +'<div style="flex:1;min-width:106px"><div style="'+lb+'">Palabra del SKU</div><input id="dupb-pal" value="POTE" placeholder="POTE" style="'+inp+';text-transform:uppercase"></div>'
   +'</div>'
+  +'<div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:9px"><div style="flex:1;min-width:160px"><div style="'+lb+'">Sabor <span style="color:#5c6c83;font-weight:500">(ML lo exige en suplementos)</span></div><input id="dupb-sabor" placeholder="ej: Limon" style="'+inp+'"></div></div>'
   +'<div style="font-size:10px;color:#5c6c83;margin-top:9px">En <b style="color:#8ea3bf">Palabra del SKU</b> va SOLO la palabra (POTE, SPRAY, CAPS). El numero lo agrega solo: 2 unidades da <span style="color:#ffe600;font-weight:700">X2-POTE</span>.</div>';
  var re=function(){ var rs=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rs.length;i++){ var u=rs[i].querySelector('.dupu'); if(u)dupCalc(u); } };
  b.querySelector('#dupb-cont').oninput=re; b.querySelector('#dupb-peso').oninput=re;
@@ -13869,10 +13875,10 @@ function variantePub(id){ dupAbrir(id,'variante'); }
 function dupClose(){ document.getElementById('dupov').style.display='none'; }
 function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice.call(document.querySelectorAll('#dup-rows .dup-row'));
  function gv(r,c){ var e=r.querySelector(c); return e?e.value.trim():''; }
- var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),cont:gv(r,'.dupml'),cont_u:(document.getElementById('dupb-u')?document.getElementById('dupb-u').value:''),base_cont:(document.getElementById('dupb-cont')?document.getElementById('dupb-cont').value.trim():''),base_peso:(document.getElementById('dupb-peso')?document.getElementById('dupb-peso').value.trim():''),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
+ var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),cont:gv(r,'.dupml'),cont_u:(document.getElementById('dupb-u')?document.getElementById('dupb-u').value:''),base_cont:(document.getElementById('dupb-cont')?document.getElementById('dupb-cont').value.trim():''),base_peso:(document.getElementById('dupb-peso')?document.getElementById('dupb-peso').value.trim():''),sabor:(document.getElementById('dupb-sabor')?document.getElementById('dupb-sabor').value.trim():''),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
- function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,base_cont:j.base_cont,base_peso:j.base_peso,peso:j.peso,first_pic:picid||''}).then(function(r){
+ function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,base_cont:j.base_cont,base_peso:j.base_peso,sabor:j.sabor,peso:j.peso,first_pic:picid||''}).then(function(r){
     if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+((r.sacados&&r.sacados.length)?(' · ML no acepto: '+r.sacados.join(', ')):'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
     else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
     i++; next();
