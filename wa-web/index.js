@@ -511,10 +511,7 @@ async function startSession(acc, force) {
       const _id = m.key?.id || "";
       s.vistos = s.vistos || new Set();
       const _repetido = _id ? s.vistos.has(_id) : false;
-      if (_id) {
-        s.vistos.add(_id);
-        if (s.vistos.size > 4000) s.vistos = new Set(Array.from(s.vistos).slice(-2000));
-      }
+      // OJO: el id se marca como visto ABAJO, recien cuando se avisa de verdad al bot.
       const paso = _fresco && !_repetido && (esGrupo ? (!m.key?.fromMe || mio) : !m.key?.fromMe);
       // Antes: en 1:1 solo avisaba si habia TEXTO. Un audio NUNCA tiene leyenda, y una foto sin
       // leyenda tampoco: esos mensajes no llegaban al bot en los chats de atencion al cliente.
@@ -527,6 +524,13 @@ async function startSession(acc, force) {
                  "MEDIO DESCARTADO: no se avisa al bot");
       }
       if (HOOK && type === "notify" && paso && (texto || mkOk)) {
+        // Marcar ACA (no antes): asi una pasada que NO avisa no quema el id. Sigue siendo
+        // sincronico y antes del notifyHook, o sea que el anti-duplicados sigue intacto:
+        // si el mismo mensaje vuelve a entrar, ya figura visto y no se contesta dos veces.
+        if (_id) {
+          s.vistos.add(_id);
+          if (s.vistos.size > 4000) s.vistos = new Set(Array.from(s.vistos).slice(-2000));
+        }
         if (mkOk) log.warn({ acc, tipo: mk2 && mk2.kind, mediaId }, "MEDIO AVISADO al bot");
         notifyHook({
           acc,
