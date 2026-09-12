@@ -13840,7 +13840,7 @@ function dupCuotasSel(v){ v=+v||0; var o=[[0,'Cuotas: las define ML (se elige al
  for(var i=0;i<o.length;i++){ h+='<option value="'+o[i][0]+'"'+(o[i][0]===v?' selected':'')+'>'+o[i][1]+'</option>'; } return h+'</select>';
 }
 function dupBase(it){ var rows=document.getElementById('dup-rows'); var b=document.getElementById('dup-base');
- if(DUPMODE!=='variante'){ if(b)b.style.display='none'; return; }
+ if(false){ if(b)b.style.display='none'; return; }   // se muestra SIEMPRE: ML pide sabor y unidades tambien al duplicar
  var lb='font-size:10.5px;color:#8ea3bf;margin:0 0 4px;font-weight:700;letter-spacing:.2px';
  var inp='width:100%;box-sizing:border-box;background:#070e1a;border:1px solid #24354e;color:#eaf0f7;border-radius:9px;padding:9px 10px;font-size:13px;outline:none';
  if(!b){ b=document.createElement('div'); b.id='dup-base'; rows.parentNode.insertBefore(b,rows); }
@@ -13911,7 +13911,7 @@ function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows
   +'<div style="'+lb+'">Titulo</div><input class="dupt" placeholder="ej: Noxalab Pack 4 Meses | Recupera Energia" style="'+inp+';margin-bottom:9px">'
   +'<div style="display:flex;gap:9px;margin-bottom:9px"><div style="flex:1;min-width:0"><div style="'+lb+'">Precio ($)</div><input class="dupp" type="number" placeholder="ej: 59990" style="'+inp+'"></div>'
   +'<div style="flex:1.3;min-width:0"><div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)+'</div></div>'
-  +(DUPMODE==='variante'
+  +(true   /* ML exige sabor+unidades tambien al duplicar */
      ? ('<div style="border-top:1px solid #17212f;margin:11px 0 10px"></div>'
         +'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px"><span style="font-size:10.5px;color:#8aa0bd;font-weight:800;letter-spacing:.4px">UNIDADES DE ESTA COPIA</span><span style="font-size:10px;color:#5c6c83">escribi las unidades y el resto se completa solo</span></div>'
         +'<div style="display:flex;gap:9px;margin-bottom:9px"><div style="flex:1;min-width:0"><div style="'+lb+'">Unidades/pack</div><input class="dupu" type="number" placeholder="ej: 2" oninput="dupCalc(this)" style="'+inp+';border-color:#3a4f70"></div>'
