@@ -13251,7 +13251,18 @@ def meli_duplicar():
     peso = (d.get("peso") or "").strip()
     if pack:
         _ovr_attr(["UNITS_PER_PACK", "PACKAGE_UNITS"], "UNITS_PER_PACK", pack)
-    if ml:
+    # El contenido NO siempre son mililitros: NoxaLab va en GRAMOS. Antes se le pegaba " ml"
+    # a cualquier valor, asi que "300 g" se guardaba como "300 g ml" y la publicacion salia mal.
+    cont = (d.get("cont") or "").strip()
+    cont_u = (d.get("cont_u") or "").strip().lower()
+    if cont and cont_u in ("g", "ml", "u"):
+        if cont_u == "ml":
+            _ovr_attr(["VOLUME_CAPACITY", "NET_VOLUME"], "VOLUME_CAPACITY", cont + " ml")
+        elif cont_u == "g":
+            _ovr_attr(["NET_CONTENT", "CONTENT", "NET_WEIGHT"], "NET_CONTENT", cont + " g")
+        else:
+            _ovr_attr(["NET_CONTENT", "CONTENT"], "NET_CONTENT", cont + " u")
+    elif ml:
         _ovr_attr(["VOLUME_CAPACITY", "NET_VOLUME", "NET_CONTENT", "CONTENT"], "VOLUME_CAPACITY",
                   ml if ml.lower().rstrip().endswith("ml") else (ml + " ml"))
     if peso:
@@ -13698,6 +13709,33 @@ function dupCuotasSel(v){ v=+v||0; var o=[[0,'Sin cuotas (Clásica · menos comi
  var h='<select class="dupl" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:12.5px">';
  for(var i=0;i<o.length;i++){ h+='<option value="'+o[i][0]+'"'+(o[i][0]===v?' selected':'')+'>'+o[i][1]+'</option>'; } return h+'</select>';
 }
+function dupBase(it){ var rows=document.getElementById('dup-rows'); var b=document.getElementById('dup-base');
+ if(DUPMODE!=='variante'){ if(b)b.style.display='none'; return; }
+ var lb='font-size:11px;color:#7d8ea7;margin:0 0 3px;font-weight:600';
+ var inp='width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px';
+ if(!b){ b=document.createElement('div'); b.id='dup-base'; b.style.cssText='border:1px dashed #2a3b55;border-radius:11px;padding:12px;margin-bottom:9px;background:#0b111e'; rows.parentNode.insertBefore(b,rows); }
+ b.style.display='block';
+ b.innerHTML='<b style="font-size:11.5px;color:#8aa0bd;text-transform:uppercase;letter-spacing:.4px">Base por unidad</b>'
+  +'<div style="font-size:10.5px;color:#5f6f86;margin:4px 0 8px">Cuanto trae UNA unidad. Con esto se calculan solos el contenido, el peso y el SKU de cada copia.</div>'
+  +'<div style="display:flex;gap:8px;flex-wrap:wrap"><div style="flex:1;min-width:90px"><div style="'+lb+'">Contenido</div><input id="dupb-cont" type="number" placeholder="150" style="'+inp+'"></div>'
+  +'<div style="flex:1;min-width:110px"><div style="'+lb+'">Unidad</div><select id="dupb-u" style="'+inp+'"><option value="g">gramos</option><option value="ml">mililitros</option><option value="u">capsulas / u</option></select></div>'
+  +'<div style="flex:1;min-width:90px"><div style="'+lb+'">Peso 1u (g)</div><input id="dupb-peso" type="number" placeholder="150" style="'+inp+'"></div>'
+  +'<div style="flex:1;min-width:90px"><div style="'+lb+'">Palabra SKU</div><input id="dupb-pal" value="POTE" style="'+inp+'"></div></div>';
+ var re=function(){ var rs=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rs.length;i++){ var u=rs[i].querySelector('.dupu'); if(u)dupCalc(u); } };
+ b.querySelector('#dupb-cont').oninput=re; b.querySelector('#dupb-peso').oninput=re;
+ b.querySelector('#dupb-u').onchange=re; b.querySelector('#dupb-pal').oninput=re;
+}
+function dupCalc(el){ var row=(el&&el.closest)?el.closest('.dup-row'):null; if(!row)return;
+ var n=+(el.value||0); if(!(n>0))return;
+ var bc=document.getElementById('dupb-cont'), bp=document.getElementById('dupb-peso'), bpal=document.getElementById('dupb-pal');
+ var c=bc?+(bc.value||0):0, p=bp?+(bp.value||0):0;
+ var cEl=row.querySelector('.dupml'), peEl=row.querySelector('.duppe'), skEl=row.querySelector('.dupk');
+ // solo autocompleta lo que el usuario NO toco a mano
+ if(c>0&&cEl&&!cEl.dataset.tocado) cEl.value=Math.round(c*n*100)/100;
+ if(p>0&&peEl&&!peEl.dataset.tocado) peEl.value=Math.round(p*n*100)/100;
+ var pal=((bpal&&bpal.value)||'POTE').trim().toUpperCase()||'POTE';
+ if(skEl&&!skEl.dataset.tocado) skEl.value='X'+n+'-'+pal;
+}
 function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows'); var n=wrap.children.length+1;
  var row=document.createElement('div'); row.className='dup-row'; row.style.cssText='border:1px solid #1b2635;border-radius:11px;padding:12px;margin-bottom:9px;background:#0b111e';
  var lb='font-size:11px;color:#7d8ea7;margin:0 0 3px;font-weight:600';
@@ -13706,10 +13744,10 @@ function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows
   +'<div style="'+lb+'">Precio ($)</div><input class="dupp" type="number" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px;margin-bottom:8px">'
   +'<div style="'+lb+'">Cuotas</div>'+dupCuotasSel(pre.cuotas!=null?pre.cuotas:6)
   +(DUPMODE==='variante'
-     ? ('<div style="'+lb+';margin-top:8px">SKU de esta variante (unidades)</div><input class="dupk" placeholder="ej: x3 30ml" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px">'
-        +'<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1;min-width:0"><div style="'+lb+'">Unidades/pack</div><input class="dupu" type="number" placeholder="3" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Mililitros</div><input class="dupml" type="number" placeholder="30" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Peso (g)</div><input class="duppe" type="number" placeholder="150" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div></div>'
+     ? ('<div style="'+lb+';margin-top:8px">SKU de esta variante (unidades)</div><input class="dupk" placeholder="ej: X3-POTE" oninput="this.dataset.tocado=1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px">'
+        +'<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1;min-width:0"><div style="'+lb+'">Unidades/pack</div><input class="dupu" type="number" placeholder="3" oninput="dupCalc(this)" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Contenido</div><input class="dupml" type="number" placeholder="300" oninput="this.dataset.tocado=1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div><div style="flex:1;min-width:0"><div style="'+lb+'">Peso (g)</div><input class="duppe" type="number" placeholder="300" oninput="this.dataset.tocado=1" style="width:100%;box-sizing:border-box;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:8px;font-size:13px"></div></div>'
         +'<div style="'+lb+';margin-top:8px">Primera foto (opcional — cambia la principal)</div><input class="dupf" type="file" accept="image/*" style="width:100%;color:#9fb3cc;font-size:12px">'
-        +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">Esta variante cambia título, precio, cuotas, SKU, unidades/ml/peso y foto principal. El resto (categoría, descripción, demás fotos) se copia del original.</div>')
+        +'<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">Esta variante cambia título, precio, cuotas, SKU, unidades/contenido/peso y foto principal. El resto (categoría, descripción, demás fotos) se copia del original.</div>')
      : '<div style="font-size:10.5px;color:#5f6f86;margin-top:7px">El resto (SKU, cantidad, fotos, categoría, descripción) se copia igual del original.</div>')
   +'<div class="dupst" style="font-size:11.5px;font-weight:600;margin-top:6px"></div>';
  wrap.appendChild(row);
@@ -13719,7 +13757,7 @@ function dupAddRow(pre){ pre=pre||{}; var wrap=document.getElementById('dup-rows
 function dupRenum(){ var rows=document.querySelectorAll('#dup-rows .dup-row'); for(var i=0;i<rows.length;i++){ rows[i].querySelector('b').textContent='Copia '+(i+1); var x=rows[i].querySelector('.dup-rm'); if(x)x.style.display=(i>0?'inline':'none'); } }
 function dupAbrir(id,modo){ var it=(PUBS||[]).filter(function(x){return x.id===id;})[0]||{}; DUPID=id; DUPMODE=modo;
  var tt=document.getElementById('dup-title'); if(tt)tt.textContent=(modo==='variante'?'Nueva variante (por unidades)':'Duplicar publicación');
- document.getElementById('dup-rows').innerHTML=''; document.getElementById('dupm').textContent='';
+ document.getElementById('dup-rows').innerHTML=''; document.getElementById('dupm').textContent=''; dupBase(it);
  dupAddRow({title:it.title||'', price:(it.price!=null?it.price:'')});
  document.getElementById('dupov').style.display='flex';
 }
@@ -13728,10 +13766,10 @@ function variantePub(id){ dupAbrir(id,'variante'); }
 function dupClose(){ document.getElementById('dupov').style.display='none'; }
 function dupCrear(btn){ var m=document.getElementById('dupm'); var rows=[].slice.call(document.querySelectorAll('#dup-rows .dup-row'));
  function gv(r,c){ var e=r.querySelector(c); return e?e.value.trim():''; }
- var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
+ var jobs=rows.map(function(r){ var ff=r.querySelector('.dupf'); return {row:r,title:r.querySelector('.dupt').value.trim(),price:r.querySelector('.dupp').value,cuotas:r.querySelector('.dupl').value,sku:gv(r,'.dupk'),pack:gv(r,'.dupu'),ml:gv(r,'.dupml'),cont:gv(r,'.dupml'),cont_u:(document.getElementById('dupb-u')?document.getElementById('dupb-u').value:''),peso:gv(r,'.duppe'),foto:(ff&&ff.files&&ff.files[0])?ff.files[0]:null}; });
  if(!jobs.length||jobs.some(function(j){return !j.title;})){ m.textContent='Cada copia necesita título'; m.style.color='#e0637f'; return; }
  if(btn)btn.disabled=true; m.textContent='Creando '+jobs.length+' copia(s)…'; m.style.color='#7aa2c8'; var i=0, ok=0;
- function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,peso:j.peso,first_pic:picid||''}).then(function(r){
+ function crear(j,st,picid){ post('/meli/duplicar',{id:DUPID,title:j.title,price:j.price,cuotas:j.cuotas,sku:j.sku,pack:j.pack,ml:j.ml,cont:j.cont,cont_u:j.cont_u,peso:j.peso,first_pic:picid||''}).then(function(r){
     if(r&&r.ok){ ok++; st.innerHTML='✓ Creada'+(+r.cuotas>0?' · Premium con cuotas':'')+' '+(r.permalink?('<a href="'+esc(r.permalink)+'" target="_blank" style="color:#ffe600">ver en ML</a>'):''); st.style.color='#34d399'; }
     else { st.textContent='✗ '+((r&&r.msg)||'error'); st.style.color='#e0637f'; }
     i++; next();
