@@ -14380,7 +14380,7 @@ def _wa_marca_auto(email, cfg):
 
 
 # Estado del vigilante, para poder mirarlo desde afuera (/wa-salud).
-_WA_SALUD = {"ts": 0, "sesiones": [], "acciones": []}
+_WA_SALUD = {"ts": 0, "sesiones": [], "acciones": [], "arranco": 0, "vueltas": 0, "error": None}
 _WA_ULT_ARREGLO = {}
 
 
@@ -14437,9 +14437,13 @@ def _wa_vigilar_sordera():
 
 def _wa_web_keepalive():
     """Ping al servicio de WhatsApp Web cada 3 min (para que Render no lo duerma) + vigilante
-    de sordera: si deja de RECIBIR mensajes, lo repara solo."""
+    de sordera: si deja de RECIBIR mensajes, lo repara solo.
+    Deja constancia de que ARRANCO y de cada vuelta: sin eso, si el hilo no corre o se muere,
+    el endpoint queda en cero y no hay forma de distinguir 'no arranco' de 'arranco y fallo'."""
     import time as _t
+    _WA_SALUD["arranco"] = _t.time()
     while True:
+        _WA_SALUD["vueltas"] = (_WA_SALUD.get("vueltas") or 0) + 1
         try:
             if WA_WEB_URL:
                 requests.get(WA_WEB_URL + "/health", timeout=15)
@@ -14447,7 +14451,9 @@ def _wa_web_keepalive():
             pass
         try:
             _wa_vigilar_sordera()
+            _WA_SALUD["error"] = None
         except Exception as e:
+            _WA_SALUD["error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
             try: _wa_anotar("vigilante fallo: %s: %s" % (type(e).__name__, str(e)[:80]))
             except Exception: pass
         _t.sleep(180)
@@ -14459,7 +14465,13 @@ def wa_salud():
     if not _user_actual():
         return jsonify({"ok": False}), 401
     import time as _t
-    return jsonify({"ok": True, "hace_seg": round(_t.time() - (_WA_SALUD.get("ts") or 0), 1),
+    _a = _WA_SALUD.get("arranco") or 0
+    return jsonify({"ok": True,
+                    "hilo_arranco": bool(_a),
+                    "hilo_hace_seg": round(_t.time() - _a, 1) if _a else None,
+                    "vueltas": _WA_SALUD.get("vueltas") or 0,
+                    "error": _WA_SALUD.get("error"),
+                    "hace_seg": round(_t.time() - (_WA_SALUD.get("ts") or 0), 1) if _WA_SALUD.get("ts") else None,
                     "sesiones": _WA_SALUD.get("sesiones") or [],
                     "acciones": list(reversed(_WA_SALUD.get("acciones") or []))})
 
