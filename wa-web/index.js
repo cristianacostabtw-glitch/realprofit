@@ -567,6 +567,15 @@ app.get("/health", (_req, res) => res.json({ ok: true, sessions: sessions.size }
 
 // Diagnostico: cuantas veces reconecto cada sesion (gen), hace cuanto que no entra nada y si el
 // WS esta vivo. Sin esto habia que mirar los logs de Render para saber si seguia el bucle.
+// Version REAL de Baileys corriendo. La 6.7.9 quedo vieja: conectaba y enviaba pero WhatsApp
+// dejo de ENTREGAR mensajes. Sin exponerla no hay forma de saber si un deploy instalo la version
+// nueva o reuso el cache de node_modules (paso el 11/09: el build decia "up to date").
+let BAILEYS_VER = "?";
+try {
+  BAILEYS_VER = JSON.parse(fs.readFileSync(
+    new URL("./node_modules/@whiskeysockets/baileys/package.json", import.meta.url))).version;
+} catch (e) { BAILEYS_VER = "no pude leerla: " + String(e && e.message || e).slice(0, 60); }
+
 app.get("/diag", (_req, res) => {
   const now = Date.now();
   const out = [];
@@ -601,7 +610,7 @@ app.get("/diag", (_req, res) => {
   let disco = "ok";
   const _exc = { excepciones, ultima: ultimaExcepcion };
   try { fs.writeFileSync(path.join(DATA_DIR, ".probe"), String(now)); } catch (e) { disco = String(e && e.message || e).slice(0, 140); }
-  res.json({ ok: true, uptime_seg: Math.round((now - PROC_START) / 1000), disco, excepciones: _exc, sesiones: out });
+  res.json({ ok: true, baileys: BAILEYS_VER, uptime_seg: Math.round((now - PROC_START) / 1000), disco, excepciones: _exc, sesiones: out });
 });
 
 app.post("/connect", async (req, res) => {
