@@ -14468,11 +14468,23 @@ def _wa_vig_vivo():
     if lat and (_t.time() - lat) < 300:
         return False                          # late: esta vivo
     try:
+        _WA_SALUD["latido"] = _t.time()   # marcar YA: si entran 2 requests juntas no nacen 2 hilos
         threading.Thread(target=_wa_web_keepalive, daemon=True).start()
         _WA_SALUD["resucitado"] = (_WA_SALUD.get("resucitado") or 0) + 1
         return True
     except Exception:
         return False
+
+
+@app.before_request
+def _wa_vig_auto():
+    """Que el resucitador NO dependa de que alguien mire /wa-salud: un domingo no la mira nadie.
+    Enganchado aca lo revisa cualquier request de la app. Es leer un dict y restar: no cuesta nada.
+    Ademas gunicorn corre 2 workers = 2 vigilantes independientes, y asi se cubren los dos."""
+    try:
+        _wa_vig_vivo()
+    except Exception:
+        pass
 
 
 @app.get("/wa-salud")
@@ -14485,6 +14497,7 @@ def wa_salud():
     _lat = _WA_SALUD.get("latido") or 0
     _revivio = _wa_vig_vivo()
     return jsonify({"ok": True,
+                    "pid": _os.getpid(),
                     "latido_hace_seg": round(_t.time() - _lat, 1) if _lat else None,
                     "resucitado": _WA_SALUD.get("resucitado") or 0,
                     "revivio_ahora": _revivio,
