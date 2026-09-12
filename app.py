@@ -13380,6 +13380,45 @@ def meli_duplicar():
                     "sacados": sorted(set(sacados))})
 
 
+@app.get("/meli/item-crudo")
+def meli_item_crudo():
+    """Campos CRUDOS de una publicacion de ML que la pantalla no muestra: condiciones de venta,
+    tags, tipo de publicacion y variantes. Existe para programar contra el dato real: las cuotas
+    se venian aplicando probando nombres de campana a ciegas (el usuario pedia 3 y salian 6).
+    Solo lectura: no modifica ninguna publicacion."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    iid = (request.args.get("id") or "").strip()
+    if not iid:
+        return jsonify({"ok": False, "msg": "falta id"})
+    try:
+        j = requests.get("%s/items/%s" % (MELI_API, iid),
+                         headers={"Authorization": "Bearer " + tok}, timeout=25).json()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    return jsonify({
+        "ok": True,
+        "id": j.get("id"),
+        "title": j.get("title"),
+        "price": j.get("price"),
+        "listing_type_id": j.get("listing_type_id"),
+        "tags": j.get("tags"),
+        "sale_terms": j.get("sale_terms"),
+        "seller_custom_field": j.get("seller_custom_field"),
+        "variations": [{"id": x.get("id"),
+                        "seller_custom_field": x.get("seller_custom_field"),
+                        "available_quantity": x.get("available_quantity"),
+                        "attribute_combinations": x.get("attribute_combinations")}
+                       for x in (j.get("variations") or [])][:6],
+        "attributes": [{"id": a.get("id"), "value_name": a.get("value_name")}
+                       for a in (j.get("attributes") or [])],
+    })
+
+
 @app.post("/meli/sku-set")
 def meli_sku_set():
     email = _user_actual()
