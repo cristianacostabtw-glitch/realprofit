@@ -13419,6 +13419,35 @@ def meli_item_crudo():
     })
 
 
+@app.get("/meli/cuotas-diag")
+def meli_cuotas_diag():
+    """DONDE VIVE EL NUMERO DE CUOTAS. En el item no esta: INSTALLMENTS_CAMPAIGN vale
+    'pcj-co-funded' tanto con 3 como con 6 cuotas. Este endpoint consulta los recursos de
+    precios/campanas de ML para encontrar el dato real. Solo lectura."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    iid = (request.args.get("id") or "").strip()
+    if not iid:
+        return jsonify({"ok": False, "msg": "falta id"})
+    h = {"Authorization": "Bearer " + tok}
+    out = {"ok": True, "id": iid}
+    def _get(clave, url):
+        try:
+            r = requests.get(url, headers=h, timeout=25)
+            out[clave] = {"status": r.status_code,
+                          "body": (r.json() if r.content and r.status_code < 400 else str(r.text)[:400])}
+        except Exception as e:
+            out[clave] = {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+    _get("prices", "%s/items/%s/prices" % (MELI_API, iid))
+    _get("sale_terms", "%s/items/%s/sale_terms" % (MELI_API, iid))
+    _get("item_campanas", "%s/items/%s?attributes=id,tags,sale_terms,listing_type_id,price,base_price,original_price" % (MELI_API, iid))
+    return jsonify(out)
+
+
 @app.post("/meli/sku-set")
 def meli_sku_set():
     email = _user_actual()
