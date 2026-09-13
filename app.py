@@ -9809,6 +9809,101 @@ def _tn_orders_raw(email, desde, hasta):
     return out
 
 
+def _meli_resumen(email, desde, hasta):
+    """Mismo 'raw'/prod/ords que Shopify/Tiendanube pero con las ordenes de MercadoLibre.
+    COSTOS REALES POR ORDEN (medido el 12/09 sobre una venta real):
+      - comision: sale_fee que ML informa en CADA item (ej 12.297,95 sobre 59.990 = 20,5%).
+        No se estima con un porcentaje: sale por venta.
+      - envio: NO se suma (decision de Cristian).
+      - fulfillment: OPER_ORDEN por pedido, igual que los otros canales.
+      - IIBB 3,5%. El 1% de tienda NO aplica: ese es de la tienda propia.
+      - costo de producto: por SKU (meli:X2-POTE). Si no esta cargado queda en 0 y se cuenta
+        en meli_sin_costo, en vez de inventar un numero."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return None
+    h = {"Authorization": "Bearer " + tok}
+    ordenes_ml = []
+    try:
+        off = 0
+        for _ in range(8):                      # hasta 400 ordenes por periodo
+            rr = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=25, params={
+                "seller": uid, "sort": "date_desc", "limit": 50, "offset": off,
+                "order.date_created.from": desde + "T00:00:00.000-03:00",
+                "order.date_created.to": hasta + "T23:59:59.000-03:00"})
+            if rr.status_code >= 400:
+                break
+            jj = rr.json() or {}
+            res = jj.get("results") or []
+            ordenes_ml += res
+            off += 50
+            if off >= int((jj.get("paging") or {}).get("total") or 0):
+                break
+    except Exception:
+        return None
+    costos = (_costos().get(email) or {})
+    r = resumen_vacio()
+    r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
+    r["desde"] = desde; r["hasta"] = hasta
+    r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
+    fact = costo_prod = comis_ml = 0.0
+    unidades = ordenes = sin_costo = 0
+    prodmap, ords_list = {}, []
+    for o in ordenes_ml:
+        if (o.get("status") or "").lower() != "paid":
+            continue
+        ordenes += 1
+        tot = float(o.get("total_amount") or 0)
+        fact += tot
+        for it in (o.get("order_items") or []):
+            q = int(it.get("quantity") or 0)
+            unidades += q
+            comis_ml += float(it.get("sale_fee") or 0) * q     # sale_fee es POR UNIDAD
+            itm = it.get("item") or {}
+            sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
+            c = costos.get("meli:%s" % sku) if sku else None
+            if c:
+                costo_prod += _costo_qty(c, q)
+            else:
+                sin_costo += q
+            nm = itm.get("title") or "?"
+            prodmap[nm] = prodmap.get(nm, 0) + q
+        ords_list.append({"num": str(o.get("id") or ""), "origen": "MercadoLibre",
+                          "estado": "Pagado", "fecha": (o.get("date_created") or ""),
+                          "total": round(tot, 2), "neto": round(tot - comis_ml, 2)})
+    iibb_monto = fact * IIBB_PCT / 100.0
+    oper_monto = OPER_ORDEN * ordenes
+    comision_monto = comis_ml + iibb_monto          # sin 1% de tienda: eso es de la tienda propia
+    ganancia = fact - costo_prod - comision_monto - oper_monto
+    r["mp_costo_real"] = 0.0; r["mp_match"] = 0
+    r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
+    r["envio_monto"] = 0.0; r["envio_real"] = 0     # envio NO se suma
+    r["oper_monto"] = round(oper_monto, 2)
+    _pre = fact - costo_prod - comision_monto - oper_monto
+    r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
+    r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
+    r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
+    r["unidades"] = unidades
+    r["facturado"] = r["tot_facturado"] = round(fact, 2)
+    r["cobrado"] = round(fact - comis_ml, 2)        # lo que entra despues de la comision de ML
+    r["costo_prod"] = r["tot_costo"] = round(costo_prod, 2)
+    r["comision"] = round(comision_monto, 2)
+    r["ganancia"] = r["tot_ganancia"] = round(ganancia, 2)
+    r["margen"] = r["tot_margen"] = round(ganancia / fact * 100, 2) if fact else 0.0
+    r["ticket"] = r["tot_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
+    r["gan_por_venta"] = r["tot_gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    # campos propios de MELI (ya estaban reservados en resumen_vacio y nunca se llenaban)
+    r["meli_ventas"] = ordenes; r["meli_unidades"] = unidades
+    r["meli_facturado"] = round(fact, 2); r["meli_cobrado"] = round(fact - comis_ml, 2)
+    r["meli_comision"] = round(comis_ml, 2); r["meli_costo"] = round(costo_prod, 2)
+    r["meli_ganancia"] = round(ganancia, 2)
+    r["meli_aov"] = r["ticket"]; r["meli_sin_costo"] = sin_costo
+    prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
+            for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
+    ords_list.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+    return {"raw": r, "prod": prod, "ords": ords_list}
+
+
 def _tn_resumen(email, desde, hasta):
     """Mismo 'raw'/prod/ords que _shopify_resumen pero con los pedidos de Tiendanube."""
     tk = _tn_tokens().get(email)
@@ -9898,7 +9993,9 @@ def _combinar_resumen(a, b):
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
            "oper_monto", "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
            "comision", "ganancia", "reemb_cantidad", "reemb_monto",
-           "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo"]
+           "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
+           "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
+           "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
     fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
@@ -12499,6 +12596,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
     if tn_blob:
         blob = _combinar_resumen(blob, tn_blob)
+    try:   # MercadoLibre: suma como un canal mas. NUNCA puede romper el dashboard.
+        ml_blob = _meli_resumen(email, desde, hasta)
+        if ml_blob:
+            blob = _combinar_resumen(blob, ml_blob)
+    except Exception:
+        pass
     if blob is None:
         blob = _blob_vacio()
     try:   # iconos por canal CONECTADO (Ventas KPI) - NUNCA puede romper el dashboard
