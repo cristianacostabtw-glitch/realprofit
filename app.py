@@ -13459,6 +13459,52 @@ def meli_cuotas_diag():
     return jsonify(out)
 
 
+@app.get("/meli/orden-cruda")
+def meli_orden_cruda():
+    """Una orden de ML tal cual la devuelve la API, para ver DONDE viene el neto recibido y la
+    comision real en vez de adivinar nombres de campo. Solo lectura."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    oid = (request.args.get("id") or "").strip()
+    h = {"Authorization": "Bearer " + tok}
+    try:
+        if not oid:
+            r = requests.get("%s/orders/search" % MELI_API, headers=h,
+                             params={"seller": uid, "sort": "date_desc", "limit": 1}, timeout=25)
+            res = (r.json() or {}).get("results") or []
+            if not res:
+                return jsonify({"ok": False, "msg": "sin ordenes"})
+            oid = str(res[0].get("id"))
+        o = requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=25).json()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])})
+    items = []
+    for it in (o.get("order_items") or []):
+        items.append({"titulo": ((it.get("item") or {}).get("title") or "")[:50],
+                      "seller_sku": (it.get("item") or {}).get("seller_sku"),
+                      "seller_custom_field": (it.get("item") or {}).get("seller_custom_field"),
+                      "quantity": it.get("quantity"), "unit_price": it.get("unit_price"),
+                      "full_unit_price": it.get("full_unit_price"),
+                      "sale_fee": it.get("sale_fee"), "listing_type_id": it.get("listing_type_id")})
+    pagos = []
+    for p in (o.get("payments") or []):
+        pagos.append({k: p.get(k) for k in
+                      ("payment_type", "status", "transaction_amount", "total_paid_amount",
+                       "shipping_cost", "taxes_amount", "marketplace_fee", "coupon_amount",
+                       "installments", "date_approved")})
+    return jsonify({"ok": True, "id": o.get("id"), "status": o.get("status"),
+                    "date_created": o.get("date_created"),
+                    "total_amount": o.get("total_amount"), "paid_amount": o.get("paid_amount"),
+                    "currency_id": o.get("currency_id"),
+                    "order_items": items, "payments": pagos,
+                    "shipping_id": (o.get("shipping") or {}).get("id"),
+                    "claves_raiz": sorted(list(o.keys()))})
+
+
 @app.post("/meli/sku-set")
 def meli_sku_set():
     email = _user_actual()
