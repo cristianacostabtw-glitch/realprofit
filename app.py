@@ -13841,6 +13841,17 @@ def meli_orden_cruda():
         o = requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=25).json()
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])})
+    # diagnostico: que trae DE VERDAD buyer/item (para la lista de despachos)
+    _b = o.get("buyer") or {}
+    _i0 = ((o.get("order_items") or [{}])[0].get("item") or {})
+    _diag = {"buyer_claves": sorted(_b.keys()),
+             "buyer_nombre": " ".join(x for x in [_b.get("first_name"), _b.get("last_name")] if x),
+             "buyer_nick": _b.get("nickname"),
+             "item_claves": sorted(_i0.keys()),
+             "item_variation_attributes": _i0.get("variation_attributes"),
+             "item_thumbnail": _i0.get("thumbnail") or _i0.get("secure_thumbnail"),
+             "item_id": _i0.get("id"),
+             "shipping_claves": sorted((o.get("shipping") or {}).keys())}
     items = []
     for it in (o.get("order_items") or []):
         items.append({"titulo": ((it.get("item") or {}).get("title") or "")[:50],
@@ -13855,7 +13866,7 @@ def meli_orden_cruda():
                       ("payment_type", "status", "transaction_amount", "total_paid_amount",
                        "shipping_cost", "taxes_amount", "marketplace_fee", "coupon_amount",
                        "installments", "date_approved")})
-    return jsonify({"ok": True, "id": o.get("id"), "status": o.get("status"),
+    return jsonify({"ok": True, "diag": _diag, "id": o.get("id"), "status": o.get("status"),
                     "date_created": o.get("date_created"),
                     "total_amount": o.get("total_amount"), "paid_amount": o.get("paid_amount"),
                     "currency_id": o.get("currency_id"),
