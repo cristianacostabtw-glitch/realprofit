@@ -18196,6 +18196,12 @@ def wa_diag_meta():
                                  "code_verification_status,platform_type,status"})
         out["numeros_de_la_waba"] = {"http": cod, **(j if isinstance(j, dict) else {})}
 
+    # 5) puede mandar YA? messaging_limit_tier + throughput dicen si esta habilitado de verdad
+    cod, j = _get("%s/%s" % (WA_GRAPH, c["phone_id"]),
+                  {"fields": "messaging_limit_tier,throughput,name_status,"
+                             "new_name_status,account_mode,is_official_business_account"})
+    out["habilitacion"] = {"http": cod, **(j if isinstance(j, dict) else {})}
+
     return jsonify(out)
 
 
