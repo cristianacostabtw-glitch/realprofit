@@ -18140,6 +18140,13 @@ def wa_diag_meta():
                                  "owner_business_info,on_behalf_of_business_info"})
         out["waba_info"] = {"http": cod, **(j if isinstance(j, dict) else {})}
 
+    # 4) numeros que ya cuelgan de esa WABA: para saber si entra uno nuevo sin crear otra cuenta
+    if c.get("waba_id"):
+        cod, j = _get("%s/%s/phone_numbers" % (WA_GRAPH, c["waba_id"]),
+                      {"fields": "id,display_phone_number,verified_name,quality_rating,"
+                                 "code_verification_status,platform_type,status"})
+        out["numeros_de_la_waba"] = {"http": cod, **(j if isinstance(j, dict) else {})}
+
     return jsonify(out)
 
 
