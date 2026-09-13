@@ -8559,9 +8559,26 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
     return buf.getvalue(), orders, stats
 
 
+def _meli_units_sku(sku):
+    """(potes_por_unidad, seguro). seguro=False cuando el SKU NO dice las unidades: ahi no
+    invento un numero, lo marco para revisar. _meli_units_from_sku devuelve 1 en silencio y
+    eso estampa una etiqueta equivocada."""
+    s = str(sku or "").strip()
+    if not s:
+        return 1, False
+    for pat in (r'SP-(\d+)-', r'\bx\s*(\d+)', r'(\d+)\s*pote'):
+        m = _re_and.search(pat, s, _re_and.I)
+        if m:
+            return max(1, int(m.group(1))), True
+    return 1, False
+
+
 def _meli_envios_listos(email, sids=None):
-    """[{sid,tracking,buyer,titulo,sku,cant,potes,fecha}] de los envios en ready_to_ship.
-    Si `sids` viene, deja solo esos: es la seleccion que tildo el usuario."""
+    """[{sid,tracking,buyer,titulo,sku,cant,potes,dudoso,detalle}] de los envios ready_to_ship.
+
+    Agrupa POR ENVIO y suma TODOS los order_items de TODAS las ordenes de ese envio: un carrito
+    puede traer 2 ordenes con el mismo tracking, y una compra puede traer varios productos.
+    Tomar solo order_items[0] estampaba menos potes de los que van en la bolsa."""
     tok, uid = _meli_ctx(email)
     if not tok or not uid:
         return [], "MercadoLibre no conectado"
@@ -8573,32 +8590,47 @@ def _meli_envios_listos(email, sids=None):
     except Exception as e:
         return [], "%s: %s" % (type(e).__name__, str(e)[:120])
     sel = set(str(x) for x in (sids or []))
-    filas = []
+    envios, cache = {}, {}
     for o in res:
         sid = (o.get("shipping") or {}).get("id")
         if not sid:
             continue
-        if sel and str(sid) not in sel:      # filtro ANTES de pedir el envio: no gasto llamadas
+        sid = str(sid)
+        if sel and sid not in sel:        # filtro ANTES de pedir el envio: no gasto llamadas
             continue
-        try:
-            sj = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
-                              headers={"Authorization": "Bearer " + tok,
-                                       "x-format-new": "true"}).json()
-        except Exception:
-            continue
+        if sid not in cache:              # un envio se pide UNA vez aunque tenga 2 ordenes
+            try:
+                cache[sid] = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                                          headers={"Authorization": "Bearer " + tok,
+                                                   "x-format-new": "true"}).json()
+            except Exception:
+                cache[sid] = {}
+        sj = cache[sid]
         if (sj.get("status") or "") != "ready_to_ship":
             continue
-        it = (o.get("order_items") or [{}])[0]
-        itm = it.get("item") or {}
-        sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
-        cant = int(it.get("quantity") or 1)
-        filas.append({"sid": str(sid),
-                      "tracking": sj.get("tracking_number") or "",
-                      "buyer": (o.get("buyer") or {}).get("nickname", ""),
-                      "titulo": (itm.get("title") or "")[:70],
-                      "sku": sku, "cant": cant,
-                      "potes": max(1, _meli_units_from_sku(sku) * max(1, cant)),
-                      "fecha": (o.get("date_created") or "")[:10]})
+        e = envios.setdefault(sid, {
+            "sid": sid, "tracking": sj.get("tracking_number") or "",
+            "buyer": (o.get("buyer") or {}).get("nickname", ""),
+            "titulo": "", "sku": "", "cant": 0, "potes": 0, "dudoso": False,
+            "fecha": (o.get("date_created") or "")[:10], "detalle": []})
+        for it in (o.get("order_items") or []):
+            itm = it.get("item") or {}
+            sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
+            cant = int(it.get("quantity") or 1)
+            u, seguro = _meli_units_sku(sku)
+            e["cant"] += cant
+            e["potes"] += u * cant
+            if not seguro:
+                e["dudoso"] = True
+            e["detalle"].append({"sku": sku, "cant": cant, "potes": u * cant,
+                                 "seguro": seguro, "titulo": (itm.get("title") or "")[:70]})
+    filas = []
+    for e in envios.values():
+        d = e["detalle"] or []
+        e["sku"] = " + ".join((x["sku"] or "(sin SKU)") for x in d)
+        e["titulo"] = (d[0]["titulo"] if len(d) == 1 else "%d productos" % len(d)) if d else ""
+        e["potes"] = max(1, e["potes"])
+        filas.append(e)
     return filas, ""
 
 
@@ -14482,12 +14514,14 @@ function etqCargar(){
     +'<td>'+esc(o.buyer||'')+'</td>'
     +'<td style="font-size:11.5px;color:#9fb3cc">'+esc(o.titulo||'')+'</td>'
     +'<td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td>'
-    +'<td style="font-size:11.5px">'+esc(o.sku||'')+'</td>'
-    +'<td style="text-align:center;font-weight:800;color:#ffe600">X'+(o.potes||0)+'</td></tr>';
+    +'<td style="font-size:11.5px">'+esc(o.sku||'')+(o.cant>1?(' <span style="color:#7aa2c8">('+o.cant+' u)</span>'):'')+'</td>'
+    +'<td style="text-align:center;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+'" title="'+(o.dudoso?'El SKU no dice las unidades: revisá este antes de imprimir':'')+'">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+'</td></tr>';
   }).join('');
   L.innerHTML='<div style="overflow:auto"><table><thead><tr>'
    +'<th style="text-align:center"><input type="checkbox" id="etqall" checked onchange="etqTodos(this.checked)" style="width:17px;height:17px;cursor:pointer"></th>'
    +TH+'Cliente</th>'+TH+'Publicaci&#243;n</th>'+TH+'Tracking</th>'+TH+'SKU</th><th style="text-align:center">Potes</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  var dud=e.filter(function(o){return o.dudoso;}).length;
+  if(dud){ L.innerHTML='<div style="background:#3a2c14;border:1px solid #6b5f18;color:#ffb35a;border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;font-weight:600">&#9888; '+dud+' venta(s) con SKU que no dice las unidades: revisá los potes antes de imprimir.</div>'+L.innerHTML; }
   etqCnt();
  }).catch(function(){ L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
 }
