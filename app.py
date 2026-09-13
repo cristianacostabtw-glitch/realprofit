@@ -2814,7 +2814,10 @@ _SOLO_DASH = r"""
       try{ _rpOverlay(el, v, o.key); }catch(e){} }
     try{ _rpMgChApply(); }catch(e){} }
 
-  // Margen por canal adentro de la tarjeta Margen (arriba a la derecha), con el logo al lado.
+  // Logos REALES de canal (los mismos que el dashboard usa en el desglose por tienda).
+  var _RP_LG_SH='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDI1NiAyOTIiPjxwYXRoIGQ9Ik0yMjMuNzc0IDU3LjM0Yy0uMi0xLjQ2LTEuNDgtMi4yNy0yLjU0LTIuMzYtMS4wNS0uMDktMjMuMzgtMS43NC0yMy4zOC0xLjc0cy0xNS41LTE1LjM5LTE3LjIxLTE3LjFjLTEuNy0xLjctNS4wMy0xLjE4LTYuMzItLjgtLjE5LjA2LTMuMzkgMS4wNS04LjY4IDIuNjhDMTY1LjQ2IDI0LjExIDE1OC42MyA5LjQgMTQyLjU1IDkuNGMtLjQ0IDAtLjkuMDItMS4zNi4wNEMxMzYuNjEgMy40IDEzMC45NC43OCAxMjYuMDUuNzhjLTM3LjQ2IDAtNTUuMzYgNDYuODMtNjAuOTggNzAuNjMtMTQuNTUgNC41MS0yNC45IDcuNzItMjYuMjIgOC4xMy04LjEyIDIuNTUtOC4zOCAyLjgtOS40NCAxMC40NkMyOC42NiA5NS44IDcuNCAyNjAuMjQgNy40IDI2MC4yNGwxNjUuNjggMzEuMDQgODkuNzctMTkuNDJTMjI0LjA1IDU4LjggMjIzLjc3IDU3LjM0eiIgZmlsbD0iIzk1QkY0NiIvPjxwYXRoIGQ9Ik0yMjEuMjQgNTQuOThjLTEuMDYtLjA5LTIzLjM5LTEuNzQtMjMuMzktMS43NHMtMTUuNS0xNS4zOS0xNy4yMS0xNy4xYy0uNjQtLjYzLTEuNS0uOTYtMi40LTEuMWwtMTIuNTMgMjU2LjIzIDg5Ljc3LTE5LjQyUzIyNC4wNSA1OC44IDIyMy43NyA1Ny4zNGMtLjItMS40Ni0xLjQ4LTIuMjctMi41My0yLjM2eiIgZmlsbD0iIzVFOEUzRSIvPjxwYXRoIGQ9Ik0xMzUuMjQgMTA0LjU5bC0xMS4wNyAzMi45MnMtOS43LTUuMTgtMjEuNTktNS4xOGMtMTcuNDMgMC0xOC4zIDEwLjk0LTE4LjMgMTMuNyAwIDE1LjAzIDM5LjIgMjAuOCAzOS4yIDU2LjAyIDAgMjcuNzEtMTcuNTggNDUuNTYtNDEuMjggNDUuNTYtMjguNDQgMC00Mi45OC0xNy43LTQyLjk4LTE3LjdsNy42MS0yNS4xNnMxNC45NSAxMi44NCAyNy41NyAxMi44NGM4LjI0IDAgMTEuNi02LjQ5IDExLjYtMTEuMjMgMC0xOS42Mi0zMi4xNi0yMC41LTMyLjE2LTUyLjczIDAtMjcuMTMgMTkuNDctNTMuMzggNTguNzgtNTMuMzggMTUuMTQgMCAyMi42MiA0LjM0IDIyLjYyIDQuMzR6IiBmaWxsPSIjZmZmIi8+PC9zdmc+';
+  var _RP_LG_ML='data:image/webp;base64,UklGRtgDAABXRUJQVlA4WAoAAAAQAAAAHwAAHwAAQUxQSDIBAAABkHPbtrE9+5z7fV/spPNPSG/b+QFJZdap1Nq2O9u2Stup9dxzzw4fBH1ETAD+sSIipUkIQQBAQlAppoqfa+rVq8HPGvKpAM17zFx34Oa9uzf2rp7WpSkg+jtR1Pbd/NyZMz1Z012h8gsVDLjopJtZSimZmZPpRHeIAFA0W+dMlpw5PVmiLWgAgaLtZcboLOxmPNkagmYXmTlL9YzH6gFLmbH0jLPR+RO9POfHTvNorNA47XBVG05UdaCyPTuqmj++msQxbd/Qy0u83xyzmJUXORmod4SZl+MZdwsEbc4xRi/mFnmsJQSK5ptJi8nzeIqJvqyhBAAiGH6DTrf4W3M6L/aDCH4WRf2hO187c6YXWwbUQgW/VQFa9R43acovJ47t3hwQRW5VFNSAwqI1OYPg/wlWUDgggAIAAPALAJ0BKiAAIAACADQlsAJ0y44D/NbkoYDwOeoB4mf6AcIB/gOoA58P2Mv8T/uPRu//7SBWg1wLUCVBOs+dwzSvPvsBfq5+r3aO9F79gDuGgq5d13OV4E/4+ReYNSl4sHnlVdKRCQHAAP72iL/ST+INSA2NVvX0w46K7dzIMG9pMeqyGzddLSOPY0Law+f/jj3fZ9oREsDKoGL7dlTA4PCMK7cjd3c0qT/69uSZR2/hJeIm0lq5o2/lyPDsqFPw916i//iBOvevZD4KalWQdcayOY/DBoQFuGhdEnaMcRrJ3jxt3PgWR8LF4Cnxq0+dhHCnxm8jtt6DmLQJBDQX3VCL3hOAQdyEPqp5XetEuZXmlsCePxI0M1gv6Rw3VR1Q8J3/JouNTBaniG5Wd4xjAC0SeVMWCx6dGEqe/rQcX0d7kJCOnLp++y+11Q4/8Nd9a2Pjxah+CM3rdHbgnTZKmVe5LJrjXv97ndLFLSBmPPR4t8MzTrd9/N9b2F4APaIvnBs/LMM+RyK1iqmYYwoDi5rD4t3Y0p/M8cT0EeEcSDr+VuMcXJOObf5ef8XQHy/V0Zdph4k5LPqH+2KSFeM52nC5JM//zT0GWhNy1ZCI191SidLotWQ/zV0XT9AA7Pb9sf4uDkb09/6+inmfcf2FND4fudhRUc5Zjjz/m9HZ32l/pLsSMOmGAWmzFm5OMXCmT6Tx0TgfNUuNOfrSjf9CIZ7oKpy1/UV113B6fKhDwxXp9ybfisR951fHFCM1rgfTa5yb1q9JIRZpqc37D8zWVRSSB28mnXi8+IkMRR3xFn+7/9SRDT3/xKmsuijf+c2mPAUC6SjAMSLWJ62sq1v3AAA=';
+  // Margen por canal adentro de la tarjeta Margen (abajo a la derecha), con el logo al lado.
   function _rpMgChApply(){
     var d=window._rpMgCh; if(!d || (d.tienda==null && d.meli==null)) return;
     var card=null; try{ card=cardByLabel('Margen'); }catch(e){}
@@ -2824,15 +2827,16 @@ _SOLO_DASH = r"""
     if(!box){
       box=document.createElement('div');
       box.setAttribute('data-rpmgch','1');
-      box.style.cssText='position:absolute;top:12px;right:12px;display:flex;flex-direction:column;'
-        +'gap:3px;align-items:flex-end;pointer-events:none;z-index:2';
+      box.style.cssText='position:absolute;right:14px;bottom:13px;display:flex;flex-direction:row;'
+        +'gap:13px;align-items:center;pointer-events:none;z-index:2';
       card.appendChild(box);
     }
-    var fila=function(ico,val){
-      return '<span style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;'
-        +'color:#93a3ba;font-variant-numeric:tabular-nums;line-height:1.15">'
-        +'<span style="font-size:12px">'+ico+'</span>'+(val==null?'—':(val+'%'))+'</span>'; };
-    var html=(d.tienda!=null?fila('&#128717;&#65039;',d.tienda):'')+(d.meli!=null?fila('&#128993;',d.meli):'');
+    var fila=function(src,val){
+      return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;'
+        +'font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums;line-height:1">'
+        +'<img src="'+src+'" style="width:15px;height:15px;object-fit:contain;border-radius:3px;display:block">'
+        +(val==null?'&mdash;':(val+'%'))+'</span>'; };
+    var html=(d.tienda!=null?fila(_RP_LG_SH,d.tienda):'')+(d.meli!=null?fila(_RP_LG_ML,d.meli):'');
     if(box.innerHTML!==html) box.innerHTML=html;
   }
   var _rpOvObs=null, _rpOvQ=false;
