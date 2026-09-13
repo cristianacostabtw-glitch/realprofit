@@ -8643,20 +8643,34 @@ def _meli_envios_listos(email, sids=None):
             continue
         e = envios.setdefault(sid, {
             "sid": sid, "tracking": sj.get("tracking_number") or "",
+            "numero": str(o.get("id") or ""),
+            "fecha": (o.get("date_created") or "")[:10],
+            "fecha_hora": o.get("date_created") or "",
             "buyer": (o.get("buyer") or {}).get("nickname", ""),
-            "titulo": "", "sku": "", "cant": 0, "potes": 0, "dudoso": False,
-            "fecha": (o.get("date_created") or "")[:10], "detalle": []})
+            "nombre": (" ".join(x for x in [(o.get("buyer") or {}).get("first_name"),
+                                            (o.get("buyer") or {}).get("last_name")] if x)).strip(),
+            "titulo": "", "sku": "", "sabor": "", "precio": 0.0, "foto": "",
+            "cant": 0, "potes": 0, "dudoso": False, "detalle": []})
         for it in (o.get("order_items") or []):
             itm = it.get("item") or {}
             sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
             cant = int(it.get("quantity") or 1)
             u, seguro = _meli_units_sku(sku)
+            sab = ""
+            for a in (itm.get("variation_attributes") or []):
+                if (a.get("id") or "").upper() == "FLAVOR":
+                    sab = a.get("value_name") or ""
             e["cant"] += cant
             e["potes"] += u * cant
+            e["precio"] += float(it.get("unit_price") or 0) * cant
+            if sab and not e["sabor"]:
+                e["sabor"] = sab
             if not seguro:
                 e["dudoso"] = True
-            e["detalle"].append({"sku": sku, "cant": cant, "potes": u * cant,
-                                 "seguro": seguro, "titulo": (itm.get("title") or "")[:70]})
+            e["detalle"].append({"sku": sku, "cant": cant, "potes": u * cant, "seguro": seguro,
+                                 "sabor": sab, "precio": float(it.get("unit_price") or 0),
+                                 "item_id": str(itm.get("id") or ""),
+                                 "titulo": (itm.get("title") or "")[:70]})
     filas = []
     for e in envios.values():
         d = e["detalle"] or []
@@ -8664,6 +8678,29 @@ def _meli_envios_listos(email, sids=None):
         e["titulo"] = (d[0]["titulo"] if len(d) == 1 else "%d productos" % len(d)) if d else ""
         e["potes"] = max(1, e["potes"])
         filas.append(e)
+    # La foto NO viene en la orden (item.thumbnail = null, verificado): se pide aparte, en UNA
+    # sola llamada para todos los items. Si falla, la fila sale sin foto y nada mas.
+    ids = []
+    for e in filas:
+        for x in e["detalle"]:
+            if x.get("item_id") and x["item_id"] not in ids:
+                ids.append(x["item_id"])
+    fotos = {}
+    if ids:
+        try:
+            rf = requests.get("%s/items" % MELI_API, headers=h, timeout=25,
+                              params={"ids": ",".join(ids[:20]),
+                                      "attributes": "id,secure_thumbnail,thumbnail"})
+            for row in (rf.json() if rf.content else []) or []:
+                b = row.get("body") or {}
+                if b.get("id"):
+                    fotos[b["id"]] = b.get("secure_thumbnail") or b.get("thumbnail") or ""
+        except Exception:
+            pass
+    for e in filas:
+        for x in e["detalle"]:
+            x["foto"] = fotos.get(x.get("item_id")) or ""
+        e["foto"] = (e["detalle"][0].get("foto") if e["detalle"] else "") or ""
     return filas, ""
 
 
@@ -14565,6 +14602,20 @@ function renderEtiquetas(){
   +'</div>';
  etqCargar();
 }
+var ETQTODAS=false;
+function etqVerTodas(v){ ETQTODAS=v; etqCargar(); }
+function etqDesmarcar(sid){
+ fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
+ .then(function(){ etqCargar(); }).catch(function(){});
+}
+function etqPlata(n){ try{ return '$ '+Number(n||0).toLocaleString('es-AR'); }catch(e){ return '$ '+(n||0); } }
+function etqFecha(s){
+ if(!s) return '';
+ var M=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+ var d=new Date(s); if(isNaN(d.getTime())) return String(s).slice(0,10);
+ function p(n){ return (n<10?'0':'')+n; }
+ return d.getDate()+' '+M[d.getMonth()]+' '+p(d.getHours())+':'+p(d.getMinutes())+' hs';
+}
 function etqCargar(){
  var L=document.getElementById('etqlista'), C=document.getElementById('etqcnt');
  if(!L)return; L.innerHTML='Buscando ventas pendientes&#8230;'; if(C)C.textContent='';
@@ -14574,36 +14625,47 @@ function etqCargar(){
   var tog = ETQTODAS
    ? '<a href="#" onclick="etqVerTodas(false);return false" style="color:#ffe600">ocultar las ya bajadas</a>'
    : (yb?(yb+' con la etiqueta ya bajada &#183; <a href="#" onclick="etqVerTodas(true);return false" style="color:#ffe600">ver todas</a>'):'');
-  if(tog) tog='<div style="font-size:12px;color:#7aa2c8;margin-bottom:10px">'+tog+'</div>';
-  if(!e.length){ L.innerHTML=tog+(yb?'Ya bajaste la etiqueta de todas las ventas listas.':'No hay ventas listas para despachar.'); if(typeof etqCnt==='function')etqCnt(); return; }
-  var rows=e.map(function(o){
-   var bj=!!o.bajada;
-   return '<tr style="'+(bj?'opacity:.5':'')+'"><td style="text-align:center"><input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:17px;height:17px;cursor:pointer"></td>'
-    +'<td>'+esc(o.buyer||'')+(bj?(' <span style="color:#34d399;font-size:11px;font-weight:700">&#10003; ya bajada</span> <button onclick="etqDesmarcar(\''+esc(o.sid)+'\')" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:7px;padding:2px 7px;font-size:10.5px;cursor:pointer;margin-left:4px">volver a habilitar</button>'):'')+'</td>'
-    +'<td style="font-size:11.5px;color:#9fb3cc">'+esc(o.titulo||'')+'</td>'
-    +'<td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td>'
-    +'<td style="font-size:11.5px">'+esc(o.sku||'')+(o.cant>1?(' <span style="color:#7aa2c8">('+o.cant+' u)</span>'):'')+'</td>'
-    +'<td style="text-align:center;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+'" title="'+(o.dudoso?'El SKU no dice las unidades: revis&#225; este antes de imprimir':'')+'">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+'</td></tr>';
-  }).join('');
-  L.innerHTML=tog+'<div style="overflow:auto"><table><thead><tr>'
-   +'<th style="text-align:center"><input type="checkbox" id="etqall" checked onchange="etqTodos(this.checked)" style="width:17px;height:17px;cursor:pointer"></th>'
-   +TH+'Cliente</th>'+TH+'Publicaci&#243;n</th>'+TH+'Tracking</th>'+TH+'SKU</th><th style="text-align:center">Potes</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  if(tog) tog='<div style="font-size:12px;color:#7aa2c8;margin-bottom:12px">'+tog+'</div>';
+  if(!e.length){ L.innerHTML=tog+(yb?'Ya bajaste la etiqueta de todas las ventas listas.':'No hay ventas listas para despachar.'); etqCnt(); return; }
   var dud=e.filter(function(o){return o.dudoso;}).length;
-  if(dud){ L.innerHTML='<div style="background:#3a2c14;border:1px solid #6b5f18;color:#ffb35a;border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;font-weight:600">&#9888; '+dud+' venta(s) con SKU que no dice las unidades: revisá los potes antes de imprimir.</div>'+L.innerHTML; }
+  var av = dud?('<div style="background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px;font-weight:600">&#9888; '+dud+' venta(s) con SKU que no dice las unidades: revis&#225; los potes antes de imprimir.</div>'):'';
+  var cards=e.map(function(o){
+   var bj=!!o.bajada;
+   var foto=o.foto?('<img src="'+esc(o.foto)+'" alt="" style="width:44px;height:44px;border-radius:9px;object-fit:cover;background:#16202e;flex:none">')
+                  :('<div style="width:44px;height:44px;border-radius:9px;background:#16202e;flex:none"></div>');
+   return '<div style="border:1px solid #1b2635;border-radius:14px;margin-bottom:10px;overflow:hidden;background:linear-gradient(180deg,#0f1723,#0b111b);'+(bj?'opacity:.5':'')+'">'
+    +'<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid #16202e;background:#0c131e;flex-wrap:wrap">'
+     +'<input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:16px;height:16px;cursor:pointer;flex:none">'
+     +'<span style="font-size:12.5px;font-weight:700;color:#c4d0de">#'+esc(o.numero||'')+'</span>'
+     +'<span style="font-size:12px;color:#7aa2c8">'+esc(etqFecha(o.fecha_hora))+'</span>'
+     +'<span style="flex:1;min-width:6px"></span>'
+     +'<span style="font-size:12.5px;color:#eef3f9;font-weight:600">'+esc(o.nombre||'')+'</span>'
+     +'<span style="font-size:11.5px;color:#7aa2c8">'+esc(o.buyer||'')+'</span>'
+     +(bj?(' <span style="color:#34d399;font-size:11px;font-weight:700">&#10003; ya bajada</span><button onclick="etqDesmarcar(\''+esc(o.sid)+'\')" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:7px;padding:2px 8px;font-size:10.5px;cursor:pointer;margin-left:6px">volver a habilitar</button>'):'')
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:12px;padding:12px 13px;flex-wrap:wrap">'
+     +foto
+     +'<div style="flex:1;min-width:170px">'
+      +'<div style="font-size:13px;color:#eef3f9;line-height:1.35">'+esc(o.titulo||'')+'</div>'
+      +(o.sabor?('<div style="font-size:11.5px;color:#7aa2c8;margin-top:2px">Sabor: '+esc(o.sabor)+'</div>'):'')
+     +'</div>'
+     +'<div style="font-size:13px;font-weight:700;color:#eef3f9;white-space:nowrap">'+etqPlata(o.precio)+'</div>'
+     +'<div style="font-size:12px;color:#93a3ba;white-space:nowrap">'+(o.cant||1)+((o.cant||1)>1?' unidades':' unidad')+'</div>'
+     +'<div style="font-size:11.5px;color:#93a3ba;white-space:nowrap">SKU: '+esc(o.sku||'')+'</div>'
+     +'<div style="font-size:13px;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+';background:#16202e;border-radius:9px;padding:6px 11px;white-space:nowrap">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+' potes</div>'
+    +'</div>'
+    +'<div style="padding:0 13px 11px;font-size:11.5px;color:#34d399;font-weight:600">Etiqueta lista para imprimir &#183; <span style="color:#7aa2c8;font-weight:500">'+esc(o.tracking||'')+'</span></div>'
+   +'</div>';
+  }).join('');
+  L.innerHTML=tog+av+cards;
   etqCnt();
  }).catch(function(){ L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
-}
-var ETQTODAS=false;
-function etqVerTodas(v){ ETQTODAS=v; etqCargar(); }
-function etqDesmarcar(sid){
- fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
- .then(function(){ etqCargar(); }).catch(function(){});
 }
 function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++)c[i].checked=v; etqCnt(); }
 function etqCnt(){
  var c=document.querySelectorAll('.etqck'), n=0, p=0;
  for(var i=0;i<c.length;i++){ if(c[i].checked){ n++; p+=parseInt(c[i].getAttribute('data-potes')||'0',10); } }
- var C=document.getElementById('etqcnt'); if(C)C.textContent=n+' de '+c.length+' tildadas &#183; '+p+' potes';
+ var C=document.getElementById('etqcnt'); if(C)C.innerHTML=n+' seleccionada'+(n===1?'':'s')+' de '+c.length+' &#183; '+p+' potes';
 }
 function etqBajarSel(){
  var c=document.querySelectorAll('.etqck'), ids=[];
