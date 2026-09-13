@@ -8641,14 +8641,24 @@ def _meli_envios_listos(email, sids=None):
         sj = cache[sid]
         if (sj.get("status") or "") != "ready_to_ship":
             continue
+        _b = o.get("buyer") or {}
+        if not (_b.get("first_name") or _b.get("last_name")):
+            # /orders/search devuelve buyer SIN nombre real (solo nickname); la orden individual
+            # si lo trae. Verificado 13/09: por search venian los 10 nombres vacios.
+            try:
+                _of = requests.get("%s/orders/%s" % (MELI_API, o.get("id")),
+                                   headers=h, timeout=20).json()
+                _b = _of.get("buyer") or _b
+            except Exception:
+                pass
         e = envios.setdefault(sid, {
             "sid": sid, "tracking": sj.get("tracking_number") or "",
             "numero": str(o.get("id") or ""),
             "fecha": (o.get("date_created") or "")[:10],
             "fecha_hora": o.get("date_created") or "",
-            "buyer": (o.get("buyer") or {}).get("nickname", ""),
-            "nombre": (" ".join(x for x in [(o.get("buyer") or {}).get("first_name"),
-                                            (o.get("buyer") or {}).get("last_name")] if x)).strip(),
+            "buyer": _b.get("nickname", ""),
+            "nombre": (" ".join(x for x in [_b.get("first_name"),
+                                            _b.get("last_name")] if x)).strip(),
             "titulo": "", "sku": "", "sabor": "", "precio": 0.0, "foto": "",
             "cant": 0, "potes": 0, "dudoso": False, "detalle": []})
         for it in (o.get("order_items") or []):
@@ -8694,7 +8704,10 @@ def _meli_envios_listos(email, sids=None):
             for row in (rf.json() if rf.content else []) or []:
                 b = row.get("body") or {}
                 if b.get("id"):
-                    fotos[b["id"]] = b.get("secure_thumbnail") or b.get("thumbnail") or ""
+                    _f = b.get("secure_thumbnail") or b.get("thumbnail") or ""
+                    if _f.startswith("http://"):   # si no, el navegador la bloquea (mixed content)
+                        _f = "https://" + _f[7:]
+                    fotos[b["id"]] = _f
         except Exception:
             pass
     for e in filas:
