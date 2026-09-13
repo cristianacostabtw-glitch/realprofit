@@ -8438,15 +8438,19 @@ def _meli_frames(pg):
     return ded
 
 
-def _meli_etiquetas_procesar(data):
-    """Devuelve (pdf_bytes, orders, stats). Lee la hoja 'Identificación Productos' para el SKU/cantidad,
-    estampa los potes en cada etiqueta y agrega la hoja PARA EMPAQUETAR."""
+def _meli_etiquetas_procesar(data, mapa_ext=None):
+    """Devuelve (pdf_bytes, orders, stats). Estampa los potes en cada etiqueta y agrega la hoja
+    PARA EMPAQUETAR.
+    El SKU sale de la hoja 'Identificación Productos' del PDF (cuando se sube a mano), o de
+    `mapa_ext` {tracking: {sku, cant, buyer, potes}} cuando el PDF viene de la API de ML, que
+    NO incluye esa hoja (verificado el 13/09). El mapa por API es mas confiable: el SKU sale
+    de seller_sku de la orden, no de parsear texto impreso."""
     import fitz
     import io
     doc = fitz.open(stream=data, filetype="pdf")
     # 1) Mapa tracking → {sku, cantidad, comprador, potes} desde las hojas de identificación.
     ident_pages = set()
-    mapa = {}
+    mapa = dict(mapa_ext or {})
     for i in range(len(doc)):
         t = doc[i].get_text()
         if ("SKU:" in t) and ("Cantidad:" in t):
@@ -8553,6 +8557,74 @@ def _meli_etiquetas_procesar(data):
     stats = {"paquetes": len(orders), "potes": total_potes,
              "sin_estampar": max(0, len(mapa) - len(seen))}
     return buf.getvalue(), orders, stats
+
+
+def _meli_etiquetas_pendientes(email):
+    """(pdf_procesado, orders, stats, info). Baja de la API de ML las etiquetas de los envios en
+    ready_to_ship y les estampa el SKU. NO despacha: bajar la etiqueta no cambia el estado."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return None, [], {}, {"msg": "MercadoLibre no conectado"}
+    h = {"Authorization": "Bearer " + tok}
+    try:
+        r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
+                         params={"seller": uid, "sort": "date_desc", "limit": 50})
+        res = (r.json() if r.content else {}).get("results", [])
+    except Exception as e:
+        return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
+    mapa, sids = {}, []
+    for o in res:
+        sid = (o.get("shipping") or {}).get("id")
+        if not sid:
+            continue
+        try:
+            sj = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                              headers={"Authorization": "Bearer " + tok, "x-format-new": "true"}).json()
+        except Exception:
+            continue
+        if (sj.get("status") or "") != "ready_to_ship":
+            continue
+        trk = sj.get("tracking_number") or ""
+        it = (o.get("order_items") or [{}])[0]
+        itm = it.get("item") or {}
+        sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
+        cant = int(it.get("quantity") or 1)
+        potes = max(1, _meli_units_from_sku(sku) * max(1, cant))
+        if trk:
+            mapa[trk] = {"sku": sku, "cant": cant,
+                         "buyer": (o.get("buyer") or {}).get("nickname", ""), "potes": potes}
+        sids.append(str(sid))
+    if not sids:
+        return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+    try:
+        rr = requests.get("%s/shipment_labels?shipment_ids=%s&response_type=pdf"
+                          % (MELI_API, ",".join(sids[:50])), headers=h, timeout=90)
+    except Exception as e:
+        return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
+    if rr.status_code >= 400 or (rr.content or b"")[:4] != b"%PDF":
+        return None, [], {}, {"msg": "ML no devolvio el PDF (status %s)" % rr.status_code}
+    pdf, orders, stats = _meli_etiquetas_procesar(rr.content, mapa_ext=mapa)
+    return pdf, orders, stats, {"envios": len(sids), "crudo_bytes": len(rr.content)}
+
+
+@app.get("/meli/etiquetas-pendientes")
+@_heavy
+def meli_etiquetas_pendientes():
+    """Baja y procesa las etiquetas pendientes de ML, sin subir nada a mano."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    try:
+        pdf, orders, stats, info = _meli_etiquetas_pendientes(email)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+    if not pdf:
+        return jsonify({"ok": False, "msg": info.get("msg") or "sin etiquetas"})
+    import uuid
+    import time as _t
+    tk = uuid.uuid4().hex[:12]
+    _MELI_ETQ[tk] = {"pdf": pdf, "ts": _t.time(), "email": email}
+    return jsonify({"ok": True, "token": tk, "orders": orders, "stats": stats, "info": info})
 
 
 @app.post("/meli/etiquetas")
