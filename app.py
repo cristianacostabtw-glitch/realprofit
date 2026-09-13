@@ -3153,7 +3153,7 @@ _SOLO_DASH = r"""
      '<div class="tiles">'+tile('En stock',p.stock.toLocaleString('es-AR')+' <small>'+u+'</small>','')+tile('Valor en stock',ars(p.stock*(p.costo||0)),'accent')+tile('Venta por día',rate+' <small>'+u+'/día</small>','')+tile('Valor por '+usg,ars(p.costo||0),'')+'</div>'+
      '<div class="sec"><span class="bb"></span><h2>Proyección de ventas</h2><span class="x">ritmo actual '+rate+' '+u+'/día</span></div>'+
      '<div class="card proj">'+
-       '<div class="pstats"><div class="ps"><div class="k">Últimos 7 días</div><div class="v">'+p.d7+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Últimos 14 días</div><div class="v">'+p.d14+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Promedio por día</div><div class="v">'+rate+' <small>'+u+'</small></div></div></div>'+
+       '<div class="pstats"><div class="ps"><div class="k">Últimos 7 días</div><div class="v">'+p.d7+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Últimos 3 días</div><div class="v">'+(p.d3!=null?p.d3:0)+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Promedio por día</div><div class="v">'+rate+' <small>'+u+'</small></div></div></div>'+
        '<div class="chart"><svg id="spark-'+id+'" viewBox="0 0 700 74" preserveAspectRatio="none"></svg><div class="lb"><span>hace 14 días</span><span>hoy</span></div></div>'+
        '<div class="proj-sel"><span class="lab">Proyectar a</span><span class="chips" id="chips-'+id+'"></span><input id="ndias-'+id+'" class="f sm cinput" type="number" value="30" oninput="proj(\''+p.id+'\')"><span class="lab">días</span></div>'+
        '<div class="proj-out" id="pout-'+id+'"></div>'+
@@ -4645,15 +4645,19 @@ def _stock_metrics(email, pid, orders, split=None, link_pid=None):
     # el pico de los ultimos 3 dias y lo proyectaba, asi que el numero saltaba solo de un dia
     # para el otro (con 499 potes en 3 dias marcaba 166/dia en vez de 71). Si no hay 7 dias de
     # datos cae a 14; d3 queda solo como referencia.
-    if d7:
+    # Ritmo: SOLO los ultimos 3 y 7 dias, promedio de ambos. Los 14 dias ya no entran: diluian
+    # el ritmo de ahora con dias viejos mas flojos. Tampoco se toma el MAYOR de los dos (eso
+    # agarraba el pico de 3 dias y lo proyectaba: marcaba 166/dia cuando el real era 71).
+    if d3 and d7:
+        rate = round((d3 / 3.0 + d7 / 7.0) / 2.0)
+    elif d3:
+        rate = round(d3 / 3.0)
+    elif d7:
         rate = round(d7 / 7.0)
-    elif d14:
-        rate = round(d14 / 14.0)
     else:
         rate = 0
-    _ = d3
     return {"ventas14": ventas14, "v14_tienda": v14_tienda, "v14_meli": v14_meli,
-            "d7": d7, "d14": d14, "rate": rate}
+            "d3": d3, "d7": d7, "d14": d14, "rate": rate}
 
 
 @app.get("/pf-stock")
@@ -4671,7 +4675,8 @@ def pf_stock():
                     "stock": int(p.get("stock", 0)), "costo": float(p.get("costo", 0)),
                     "sku": p.get("sku", ""), "ventas14": m["ventas14"],
                     "snap": ((_stk_read(STOCK_SNAP, {}).get(email) or {}).get(str(pid)) or {}),
-                    "v14_tienda": m["v14_tienda"], "v14_meli": m["v14_meli"], "d7": m["d7"],
+                    "v14_tienda": m["v14_tienda"], "v14_meli": m["v14_meli"],
+                    "d3": m["d3"], "d7": m["d7"],
                     "d14": m["d14"], "rate": m["rate"], "pendientes": pend,
                     "split": p.get("split", ""), "link_pid": p.get("link_pid", "")})
     return jsonify({"ok": True, "productos": out})
