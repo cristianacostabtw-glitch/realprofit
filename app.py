@@ -3076,6 +3076,8 @@ _SOLO_DASH = r"""
  function histTabla(p){
    var v=p.ventas14||[], t=p.v14_tienda||[], m=p.v14_meli||[];
    var MS=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+   var sn=p.snap||{};
+   function kf(x){ return x.getFullYear()+'-'+('0'+(x.getMonth()+1)).slice(-2)+'-'+('0'+x.getDate()).slice(-2); }
    var hoy=new Date(); var fil='';
    for(var i=v.length-1;i>=0;i--){
      var d=new Date(hoy.getTime()-(v.length-1-i)*86400000);
@@ -3085,6 +3087,7 @@ _SOLO_DASH = r"""
         +'<b style="color:var(--ink);font-size:14px">'+d.getDate()+'</b> '+MS[d.getMonth()]
         +(esHoy?' <span style="font-size:10px;color:var(--blue);font-weight:700">HOY</span>':'')+'</td>'
        +'<td style="padding:10px 14px;text-align:right;font-weight:800;font-size:14px;font-variant-numeric:tabular-nums">'+(v[i]||0)+'</td>'
+       +'<td style="padding:10px 14px;text-align:right;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums">'+(sn[kf(d)]!=null?Number(sn[kf(d)]).toLocaleString('es-AR'):'&mdash;')+'</td>'
        +'<td style="padding:10px 14px;text-align:right;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap">'
         +'<span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:#95bf47;color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;margin-right:6px;vertical-align:-3px">S</span>'+(t[i]||0)+'</td>'
        +'<td style="padding:10px 14px;text-align:right;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap">'
@@ -3094,7 +3097,8 @@ _SOLO_DASH = r"""
    return '<table style="width:100%;border-collapse:collapse">'
      +'<thead><tr>'
       +'<th style="padding:10px 14px;text-align:left;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Día</th>'
-      +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Potes</th>'
+      +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Consumió</th>'
+      +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Quedó</th>'
       +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Tienda</th>'
       +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">MercadoLibre</th>'
      +'</tr></thead><tbody>'+fil+'</tbody></table>';
@@ -4342,15 +4346,54 @@ STOCK_PEDIDOS = DATA_DIR / "stock_pedidos.json"  # {email: [{id,pid,qty,fecha,es
 
 
 def _stk_read(path, default):
-    try:
-        return _json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
+    """Lee el JSON; si quedo cortado, cae al .bak en vez de devolver vacio.
+    Antes devolvia {} ante cualquier error: si el proceso moria a mitad de una escritura
+    (Render reiniciando / 502), el archivo quedaba truncado y el stock se perdia EN SILENCIO."""
+    for p in (path, path.with_suffix(path.suffix + ".bak")):
+        try:
+            t = p.read_text(encoding="utf-8")
+            if t.strip():
+                return _json.loads(t)
+        except Exception:
+            continue
+    return default
 
 
 def _stk_write(path, data):
+    """Escritura ATOMICA: escribe un .tmp y recien ahi reemplaza (os.replace es atomico).
+    Deja la version anterior en .bak. Si el proceso muere a mitad, el archivo bueno sigue
+    intacto: nunca queda un JSON truncado."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    txt = _json.dumps(data, ensure_ascii=False, indent=1)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(txt, encoding="utf-8")
+    try:
+        if path.exists():
+            _os.replace(str(path), str(path.with_suffix(path.suffix + ".bak")))
+    except Exception:
+        pass
+    _os.replace(str(tmp), str(path))
+
+
+STOCK_SNAP = DATA_DIR / "stock_snap.json"   # {email: {pid: {"YYYY-MM-DD": stock_al_cierre}}}
+
+
+def _stock_snap_set(email, prods):
+    """Con cuanto stock quedo cada dia. Se registra en CADA lectura, asi el ultimo valor
+    anotado de un dia queda como su cierre (a las 00 rota el dia y el de ayer queda fijo)."""
+    try:
+        hoy = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date().isoformat()
+        sn = _stk_read(STOCK_SNAP, {})
+        e = sn.setdefault(email, {})
+        for pid, p in (prods or {}).items():
+            d = e.setdefault(str(pid), {})
+            d[hoy] = int(p.get("stock") or 0)
+            if len(d) > 400:
+                for k in sorted(d)[:-400]:
+                    d.pop(k, None)
+        _stk_write(STOCK_SNAP, sn)
+    except Exception:
+        pass
 
 
 def _stock_orders(email, dias=90):
@@ -4493,8 +4536,12 @@ def _stock_sync(email):
             entry["estado"] = "reverted"
             changed = True
     if changed:
-        st[email] = prods; _stk_write(STOCK_FILE, st)
+        # El LEDGER primero: si el proceso muere entre las dos escrituras, la venta queda
+        # marcada como aplicada y NO se vuelve a descontar. Al reves (stock primero) el
+        # descuento se repetia en cada corrida y el stock se hundia solo.
         led[email] = ledE; _stk_write(STOCK_LEDGER, led)
+        st[email] = prods; _stk_write(STOCK_FILE, st)
+    _stock_snap_set(email, prods)
     return prods, orders
 
 
@@ -4585,6 +4632,7 @@ def pf_stock():
         out.append({"id": pid, "nombre": p.get("nombre", ""), "unidad": p.get("unidad", "u"),
                     "stock": int(p.get("stock", 0)), "costo": float(p.get("costo", 0)),
                     "sku": p.get("sku", ""), "ventas14": m["ventas14"],
+                    "snap": ((_stk_read(STOCK_SNAP, {}).get(email) or {}).get(str(pid)) or {}),
                     "v14_tienda": m["v14_tienda"], "v14_meli": m["v14_meli"], "d7": m["d7"],
                     "d14": m["d14"], "rate": m["rate"], "pendientes": pend,
                     "split": p.get("split", ""), "link_pid": p.get("link_pid", "")})
