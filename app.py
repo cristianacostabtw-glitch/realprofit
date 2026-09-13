@@ -8989,6 +8989,53 @@ def meli_etiquetas_bajar():
     return resp
 
 
+@app.post("/wa-callback")
+def wa_callback_override():
+    """Apunta el webhook de la WABA a RealProfit (o lo devuelve a donde estaba).
+
+    OJO: el override vive a nivel WABA, NO por numero. Cambiarlo afecta a TODOS los numeros
+    de esa cuenta. Hoy apunta a redchat; por eso los mensajes entrantes nunca llegan aca.
+    `solo_ver` devuelve el estado actual sin tocar nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    tok, waba = c.get("token"), str(c.get("waba_id") or "")
+    if not tok or not waba:
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene WhatsApp API conectado"}), 400
+    d = request.get_json(silent=True) or {}
+
+    def _ver():
+        try:
+            r = requests.get("%s/%s/subscribed_apps" % (WA_GRAPH, waba), timeout=20,
+                             headers={"Authorization": "Bearer " + tok})
+            return r.status_code, (r.json() if r.content else {})
+        except Exception as e:
+            return 0, {"error": "%s: %s" % (type(e).__name__, str(e)[:100])}
+
+    if d.get("solo_ver"):
+        cod, j = _ver()
+        return jsonify({"ok": True, "http": cod, "suscripciones": j})
+
+    destino = (d.get("url") or "").strip()
+    if not destino:
+        destino = (WA_URL_PUBLICA or request.url_root.rstrip("/")) + "/wa-webhook"
+    vt = c.get("verify_token") or ""
+    if not vt:
+        return jsonify({"ok": False, "msg": "falta el verify_token de la cuenta"}), 400
+    antes_cod, antes = _ver()
+    try:
+        r = requests.post("%s/%s/subscribed_apps" % (WA_GRAPH, waba), timeout=30,
+                          headers={"Authorization": "Bearer " + tok},
+                          json={"override_callback_uri": destino, "verify_token": vt})
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:110])}), 502
+    desp_cod, desp = _ver()
+    return jsonify({"ok": r.status_code < 400, "http": r.status_code, "destino": destino,
+                    "respuesta": j, "antes": antes, "despues": desp}), (200 if r.status_code < 400 else 400)
+
+
 @app.post("/wa-registrar-numero")
 def wa_registrar_numero():
     """Registra el numero en la Cloud API con su PIN (POST /{phone_id}/register).
@@ -16025,6 +16072,7 @@ def desconectar_shopify():
 WA_TOKENS = DATA_DIR / "wa_tokens.json"   # {email: {phone_id, token, waba_id, verify_token, forward_url, numero}}
 WA_CHATS = DATA_DIR / "wa_chats.json"     # {email: {wa_id: {name, updated, messages:[...]}}}
 WA_GRAPH = "https://graph.facebook.com/v21.0"
+WA_URL_PUBLICA = _os.environ.get("WA_URL_PUBLICA", "https://www.realprofitapp.com")
 # Servicio WhatsApp Web (Baileys), corre aparte en Render. RealProfit le habla por HTTP.
 WA_WEB_URL = _os.environ.get("WA_WEB_URL", "").rstrip("/")     # ej https://realprofit-wa-web.onrender.com
 WA_WEB_SECRET = _os.environ.get("WA_WEB_SECRET", "")           # mismo secret que el servicio Node
