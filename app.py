@@ -3073,6 +3073,32 @@ _SOLO_DASH = r"""
    b.innerHTML=P.map(bloque).join('')+add;
    P.forEach(function(p){ renderProj(p.id); proj(p.id); });
   }).catch(function(){ if(b)b.innerHTML='<div class="card" style="margin-top:20px;padding:22px">No se pudo cargar el stock.</div>'; }); };
+ function histTabla(p){
+   var v=p.ventas14||[], t=p.v14_tienda||[], m=p.v14_meli||[];
+   var MS=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+   var hoy=new Date(); var fil='';
+   for(var i=v.length-1;i>=0;i--){
+     var d=new Date(hoy.getTime()-(v.length-1-i)*86400000);
+     var esHoy=(i===v.length-1);
+     fil+='<tr style="border-top:1px solid rgba(255,255,255,.05)">'
+       +'<td style="padding:10px 14px;font-size:12.5px;color:var(--ink2);white-space:nowrap">'
+        +'<b style="color:var(--ink);font-size:14px">'+d.getDate()+'</b> '+MS[d.getMonth()]
+        +(esHoy?' <span style="font-size:10px;color:var(--blue);font-weight:700">HOY</span>':'')+'</td>'
+       +'<td style="padding:10px 14px;text-align:right;font-weight:800;font-size:14px;font-variant-numeric:tabular-nums">'+(v[i]||0)+'</td>'
+       +'<td style="padding:10px 14px;text-align:right;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap">'
+        +'<span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:#95bf47;color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;margin-right:6px;vertical-align:-3px">S</span>'+(t[i]||0)+'</td>'
+       +'<td style="padding:10px 14px;text-align:right;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap">'
+        +'<span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:#ffe600;color:#2d3277;font-size:10px;font-weight:800;line-height:16px;text-align:center;margin-right:6px;vertical-align:-3px">M</span>'+(m[i]||0)+'</td>'
+       +'</tr>';
+   }
+   return '<table style="width:100%;border-collapse:collapse">'
+     +'<thead><tr>'
+      +'<th style="padding:10px 14px;text-align:left;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Día</th>'
+      +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Potes</th>'
+      +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">Tienda</th>'
+      +'<th style="padding:10px 14px;text-align:right;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--ink3)">MercadoLibre</th>'
+     +'</tr></thead><tbody>'+fil+'</tbody></table>';
+ }
  function bloque(p){
    var rate=p.rate||0, d=rate?Math.round(p.stock/rate):0, s=salud(rate?d:99);
    var cov=Math.max(5,Math.min(100,rate?d/20*100:100)), id=sid(p.id), u=esc(p.unidad), usg=esc((p.unidad||'').replace(/s$/,''));
@@ -3092,6 +3118,8 @@ _SOLO_DASH = r"""
        '<div class="proj-sel"><span class="lab">Proyectar a</span><span class="chips" id="chips-'+id+'"></span><input id="ndias-'+id+'" class="f sm cinput" type="number" value="30" oninput="proj(\''+p.id+'\')"><span class="lab">días</span></div>'+
        '<div class="proj-out" id="pout-'+id+'"></div>'+
      '</div>'+
+     '<div class="sec"><span class="bb"></span><h2>Historial de consumo</h2><span class="x">potes que salieron cada día</span></div>'+
+     '<div class="card proj" style="padding:0;overflow:hidden">'+histTabla(p)+'</div>'+
      '<div class="sec"><span class="bb"></span><h2>Pedir stock</h2></div>'+
      '<div class="note">Poné cuántas unidades vas a pedir. Queda <b>en proceso</b> &mdash; no suma al stock todavía.</div>'+
      '<div class="card pedir"><div class="pedir-row"><div class="field"><div class="l">Unidades a pedir ('+u+')</div><input id="ped-'+id+'" class="f big" type="number" placeholder="0" oninput="rpStkHint(\''+p.id+'\')"></div><button class="btn btn-b" onclick="rpStkPedir(\''+p.id+'\')">Pedir</button></div>'+
@@ -4381,9 +4409,53 @@ def _stock_orders(email, dias=90):
                        else "refunded" if fs in ("refunded", "partially_refunded", "voided")
                        else "paid" if fs in ("paid", "partially_paid") else "pending")
                 out.append({"key": "sh:%s" % o.get("id"), "pid_qty": pq, "estado": est,
-                            "fecha": str(o.get("created_at") or "")[:10]})
+                            "fecha": str(o.get("created_at") or "")[:10], "canal": "tienda"})
         except Exception:
             pass
+    # MercadoLibre: hasta el 13/09 NO descontaba stock (solo se leia TN y Shopify), asi que los
+    # potes vendidos por ML nunca se restaban del deposito. Se cuentan en POTES via el SKU.
+    try:
+        _tok, _uid = _meli_ctx(email)
+    except Exception:
+        _tok = _uid = None
+    if _tok and _uid:
+        _pid_ml = None
+        try:
+            _pr = (_stk_read(STOCK_FILE, {}).get(email) or {})
+            if _pr:
+                _pid_ml = sorted(_pr.items(), key=lambda kv: -int(kv[1].get("stock") or 0))[0][0]
+        except Exception:
+            _pid_ml = None
+        if _pid_ml:
+            _off = 0
+            while _off < 400:
+                try:
+                    _r = requests.get("%s/orders/search" % MELI_API, timeout=30,
+                                      headers={"Authorization": "Bearer " + _tok},
+                                      params={"seller": _uid, "sort": "date_desc",
+                                              "limit": 50, "offset": _off,
+                                              "order.date_created.from": desde + "T00:00:00.000-03:00"})
+                    _res = ((_r.json() if _r.content else {}) or {}).get("results") or []
+                except Exception:
+                    break
+                for _o in _res:
+                    _q = 0
+                    for _it in (_o.get("order_items") or []):
+                        _im = _it.get("item") or {}
+                        _sk = str(_im.get("seller_sku") or _im.get("seller_custom_field") or "")
+                        _q += _meli_units_sku(_sk)[0] * int(_it.get("quantity") or 1)
+                    if not _q:
+                        continue
+                    _st = (_o.get("status") or "").lower()
+                    _e = ("cancelled" if _st == "cancelled"
+                          else "refunded" if _st in ("refunded", "partially_refunded")
+                          else "paid" if _st in ("paid", "confirmed", "partially_paid") else "pending")
+                    out.append({"key": "ml:%s" % _o.get("id"), "pid_qty": {_pid_ml: _q},
+                                "estado": _e, "fecha": str(_o.get("date_created") or "")[:10],
+                                "canal": "meli"})
+                if len(_res) < 50:
+                    break
+                _off += 50
     return out
 
 
@@ -4458,7 +4530,31 @@ def _stock_metrics(email, pid, orders, split=None, link_pid=None):
         off = (hoy - f).days
         if 0 <= off < 14:
             dias[off] = dias.get(off, 0) + q
+    # mismo calculo, partido por canal (para el historial de abajo)
+    dias_t, dias_m = {}, {}
+    for o in orders:
+        if o["estado"] != "paid":
+            continue
+        if split and link_pid:
+            _b = o["pid_qty"].get(link_pid, 0)
+            _q = (_b // 2) if split == "60" else (_b % 2)
+        else:
+            _q = o["pid_qty"].get(pid, 0)
+        if not _q:
+            continue
+        try:
+            _f = _dt.date.fromisoformat(o["fecha"])
+        except Exception:
+            continue
+        _off = (hoy - _f).days
+        if 0 <= _off < 14:
+            if (o.get("canal") or "tienda") == "meli":
+                dias_m[_off] = dias_m.get(_off, 0) + _q
+            else:
+                dias_t[_off] = dias_t.get(_off, 0) + _q
     ventas14 = [dias.get(13 - i, 0) for i in range(14)]
+    v14_tienda = [dias_t.get(13 - i, 0) for i in range(14)]
+    v14_meli = [dias_m.get(13 - i, 0) for i in range(14)]
     d14 = sum(ventas14); d7 = sum(ventas14[-7:]); d3 = sum(dias.get(off, 0) for off in range(3))
     # Promedio/día = promedio REAL de los ultimos 7 dias. Antes era max(d3/3, d7/7): agarraba
     # el pico de los ultimos 3 dias y lo proyectaba, asi que el numero saltaba solo de un dia
@@ -4471,7 +4567,8 @@ def _stock_metrics(email, pid, orders, split=None, link_pid=None):
     else:
         rate = 0
     _ = d3
-    return {"ventas14": ventas14, "d7": d7, "d14": d14, "rate": rate}
+    return {"ventas14": ventas14, "v14_tienda": v14_tienda, "v14_meli": v14_meli,
+            "d7": d7, "d14": d14, "rate": rate}
 
 
 @app.get("/pf-stock")
@@ -4487,7 +4584,8 @@ def pf_stock():
         pend = [x for x in ped if x.get("pid") == pid and x.get("estado") == "proceso"]
         out.append({"id": pid, "nombre": p.get("nombre", ""), "unidad": p.get("unidad", "u"),
                     "stock": int(p.get("stock", 0)), "costo": float(p.get("costo", 0)),
-                    "sku": p.get("sku", ""), "ventas14": m["ventas14"], "d7": m["d7"],
+                    "sku": p.get("sku", ""), "ventas14": m["ventas14"],
+                    "v14_tienda": m["v14_tienda"], "v14_meli": m["v14_meli"], "d7": m["d7"],
                     "d14": m["d14"], "rate": m["rate"], "pendientes": pend,
                     "split": p.get("split", ""), "link_pid": p.get("link_pid", "")})
     return jsonify({"ok": True, "productos": out})
