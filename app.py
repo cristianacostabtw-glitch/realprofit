@@ -3683,6 +3683,7 @@ def resumen_vacio() -> dict:
                    "publi_cuenta", "ganancia", "margen", "roas", "roas_be", "ticket",
                    "tasa_recompra", "facturacion_recompras",
                    "meli_facturado", "meli_cobrado", "meli_comision", "meli_costo", "meli_ganancia",
+                   "meli_adelanto",
                    "meli_rent", "meli_fullfilment", "meli_aov", "meli_roas",
                    "tot_facturado", "tot_ganancia", "tot_margen", "tot_costo", "tot_fullfilment",
                    "tot_gan_por_venta", "tot_aov"]
@@ -3811,7 +3812,8 @@ def _mp_freeze_end(email):
 
 
 TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
-IIBB_PCT = 3.5          # Ingresos Brutos: 3,5% fijo por venta, no editable
+IIBB_PCT = 3.5
+MP_ADELANTO_PCT = 3.75   # Adelanto Programado de MercadoPago (IVA incluido), sobre lo acreditado          # Ingresos Brutos: 3,5% fijo por venta, no editable
 FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
 # INSUMOS en 0 a proposito: el dueno carga los insumos/packaging UNA VEZ AL MES como gasto real
 # (bloque GASTOS de la planilla, por el bot de WhatsApp). Si ademas se cobraran $200 por pedido
@@ -10345,12 +10347,15 @@ def _meli_resumen(email, desde, hasta):
     iibb_monto = fact * IIBB_PCT / 100.0
     oper_monto = OPER_ORDEN * ordenes
     comision_monto = comis_ml + iibb_monto          # sin 1% de tienda: eso es de la tienda propia
-    ganancia = fact - costo_prod - comision_monto - oper_monto
+    # Adelanto Programado de MercadoPago: 3,75% (IVA incluido) sobre la plata que MP adelanta,
+    # que es lo que queda DESPUES de la comision de ML (no sobre el precio de venta).
+    adelanto_monto = (fact - comis_ml) * MP_ADELANTO_PCT / 100.0
+    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
     r["mp_costo_real"] = 0.0; r["mp_match"] = 0
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
     r["envio_monto"] = 0.0; r["envio_real"] = 0     # envio NO se suma
     r["oper_monto"] = round(oper_monto, 2)
-    _pre = fact - costo_prod - comision_monto - oper_monto
+    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
@@ -10369,6 +10374,7 @@ def _meli_resumen(email, desde, hasta):
     r["meli_comision"] = round(comis_ml, 2); r["meli_costo"] = round(costo_prod, 2)
     r["meli_ganancia"] = round(ganancia, 2)
     r["meli_aov"] = r["ticket"]; r["meli_sin_costo"] = sin_costo
+    r["meli_adelanto"] = round(adelanto_monto, 2)
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
             for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
     ords_list.sort(key=lambda x: x.get("fecha") or "", reverse=True)
@@ -10466,7 +10472,7 @@ def _combinar_resumen(a, b):
            "comision", "ganancia", "reemb_cantidad", "reemb_monto",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
-           "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo"]
+           "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
     fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
