@@ -8559,6 +8559,39 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
     return buf.getvalue(), orders, stats
 
 
+_MELI_ETQ_BAJ = DATA_DIR / "meli_etq_bajadas.json"   # {email: {sid: ts}} — etiquetas ya bajadas
+
+
+def _meli_baj_all() -> dict:
+    try:
+        return _json.loads(_MELI_ETQ_BAJ.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _meli_baj_de(email) -> dict:
+    return _meli_baj_all().get(email) or {}
+
+
+def _meli_baj_marcar(email, sids, borrar=False) -> None:
+    """Marca (o desmarca) envios como 'etiqueta ya bajada'. Va a DISCO: son 2 workers y el
+    worker se recicla, en memoria se perderia ([[realprofit-2-workers-estado]])."""
+    if not sids:
+        return
+    import time as _t
+    d = _meli_baj_all()
+    m = d.setdefault(email, {})
+    for x in sids:
+        if borrar:
+            m.pop(str(x), None)
+        else:
+            m[str(x)] = int(_t.time())
+    try:
+        _MELI_ETQ_BAJ.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def _meli_units_sku(sku):
     """(potes_por_unidad, seguro). seguro=False cuando el SKU NO dice las unidades: ahi no
     invento un numero, lo marco para revisar. _meli_units_from_sku devuelve 1 en silencio y
@@ -8660,7 +8693,7 @@ def _meli_etiquetas_pendientes(email, sids=None):
     if rr.status_code >= 400 or (rr.content or b"")[:4] != b"%PDF":
         return None, [], {}, {"msg": "ML no devolvio el PDF (status %s)" % rr.status_code}
     pdf, orders, stats = _meli_etiquetas_procesar(rr.content, mapa_ext=mapa)
-    return pdf, orders, stats, {"envios": len(ids), "crudo_bytes": len(rr.content)}
+    return pdf, orders, stats, {"envios": len(ids), "crudo_bytes": len(rr.content), "sids": ids}
 
 
 @app.get("/meli/pendientes-lista")
@@ -8675,7 +8708,14 @@ def meli_pendientes_lista():
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
     if err:
         return jsonify({"ok": False, "msg": err})
-    return jsonify({"ok": True, "envios": filas,
+    todas = (request.args.get("todas") or "") in ("1", "true", "si")
+    baj = _meli_baj_de(email)
+    for f in filas:
+        f["bajada"] = baj.get(f["sid"]) or 0
+    ya = len([f for f in filas if f["bajada"]])
+    if not todas:                                   # las ya bajadas no vuelven a aparecer
+        filas = [f for f in filas if not f["bajada"]]
+    return jsonify({"ok": True, "envios": filas, "ya_bajadas": ya, "todas": todas,
                     "potes": sum(f.get("potes") or 0 for f in filas)})
 
 
@@ -8701,7 +8741,19 @@ def meli_etiquetas_bajar():
     resp.headers["X-Paquetes"] = str(stats.get("paquetes", 0))
     resp.headers["X-Potes"] = str(stats.get("potes", 0))
     resp.headers["X-Sin-Estampar"] = str(stats.get("sin_estampar", 0))
+    _meli_baj_marcar(email, info.get("sids") or [])   # no vuelven a salir en la lista
     return resp
+
+
+@app.post("/meli/etiquetas-desmarcar")
+def meli_etiquetas_desmarcar():
+    """Vuelve a habilitar un envio ya bajado (para reimprimir una etiqueta)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    _meli_baj_marcar(email, d.get("sids") or [], borrar=True)
+    return jsonify({"ok": True})
 
 
 @app.get("/meli/etiquetas-pendientes")
@@ -14505,25 +14557,36 @@ function renderEtiquetas(){
 function etqCargar(){
  var L=document.getElementById('etqlista'), C=document.getElementById('etqcnt');
  if(!L)return; L.innerHTML='Buscando ventas pendientes&#8230;'; if(C)C.textContent='';
- fetch('/meli/pendientes-lista').then(function(r){return r.json();}).then(function(j){
+ fetch('/meli/pendientes-lista'+(ETQTODAS?'?todas=1':'')).then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok){ L.innerHTML='<span style="color:#e0637f">'+esc((j&&j.msg)||'No pude leer las ventas')+'</span>'; return; }
-  var e=j.envios||[];
-  if(!e.length){ L.innerHTML='No hay ventas listas para despachar.'; return; }
+  var e=j.envios||[], yb=j.ya_bajadas||0;
+  var tog = ETQTODAS
+   ? '<a href="#" onclick="etqVerTodas(false);return false" style="color:#ffe600">ocultar las ya bajadas</a>'
+   : (yb?(yb+' con la etiqueta ya bajada &#183; <a href="#" onclick="etqVerTodas(true);return false" style="color:#ffe600">ver todas</a>'):'');
+  if(tog) tog='<div style="font-size:12px;color:#7aa2c8;margin-bottom:10px">'+tog+'</div>';
+  if(!e.length){ L.innerHTML=tog+(yb?'Ya bajaste la etiqueta de todas las ventas listas.':'No hay ventas listas para despachar.'); if(typeof etqCnt==='function')etqCnt(); return; }
   var rows=e.map(function(o){
-   return '<tr><td style="text-align:center"><input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" checked onchange="etqCnt()" style="width:17px;height:17px;cursor:pointer"></td>'
-    +'<td>'+esc(o.buyer||'')+'</td>'
+   var bj=!!o.bajada;
+   return '<tr style="'+(bj?'opacity:.5':'')+'"><td style="text-align:center"><input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:17px;height:17px;cursor:pointer"></td>'
+    +'<td>'+esc(o.buyer||'')+(bj?(' <span style="color:#34d399;font-size:11px;font-weight:700">&#10003; ya bajada</span> <button onclick="etqDesmarcar(\''+esc(o.sid)+'\')" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:7px;padding:2px 7px;font-size:10.5px;cursor:pointer;margin-left:4px">volver a habilitar</button>'):'')+'</td>'
     +'<td style="font-size:11.5px;color:#9fb3cc">'+esc(o.titulo||'')+'</td>'
     +'<td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td>'
     +'<td style="font-size:11.5px">'+esc(o.sku||'')+(o.cant>1?(' <span style="color:#7aa2c8">('+o.cant+' u)</span>'):'')+'</td>'
-    +'<td style="text-align:center;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+'" title="'+(o.dudoso?'El SKU no dice las unidades: revisá este antes de imprimir':'')+'">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+'</td></tr>';
+    +'<td style="text-align:center;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+'" title="'+(o.dudoso?'El SKU no dice las unidades: revis&#225; este antes de imprimir':'')+'">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+'</td></tr>';
   }).join('');
-  L.innerHTML='<div style="overflow:auto"><table><thead><tr>'
+  L.innerHTML=tog+'<div style="overflow:auto"><table><thead><tr>'
    +'<th style="text-align:center"><input type="checkbox" id="etqall" checked onchange="etqTodos(this.checked)" style="width:17px;height:17px;cursor:pointer"></th>'
    +TH+'Cliente</th>'+TH+'Publicaci&#243;n</th>'+TH+'Tracking</th>'+TH+'SKU</th><th style="text-align:center">Potes</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   var dud=e.filter(function(o){return o.dudoso;}).length;
   if(dud){ L.innerHTML='<div style="background:#3a2c14;border:1px solid #6b5f18;color:#ffb35a;border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12.5px;font-weight:600">&#9888; '+dud+' venta(s) con SKU que no dice las unidades: revisá los potes antes de imprimir.</div>'+L.innerHTML; }
   etqCnt();
  }).catch(function(){ L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
+}
+var ETQTODAS=false;
+function etqVerTodas(v){ ETQTODAS=v; etqCargar(); }
+function etqDesmarcar(sid){
+ fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
+ .then(function(){ etqCargar(); }).catch(function(){});
 }
 function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++)c[i].checked=v; etqCnt(); }
 function etqCnt(){
@@ -14551,6 +14614,7 @@ function etqBajarSel(){
   a.download='MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(u);},1500);
   if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
+  etqCargar();                       // las que acaba de bajar ya no tienen que salir
  }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
 }
 function etqProc(){
