@@ -8989,6 +8989,55 @@ def meli_etiquetas_bajar():
     return resp
 
 
+@app.post("/wa-cambiar-numero")
+def wa_cambiar_numero():
+    """Cambia el numero de WhatsApp Cloud API de la cuenta SIN pedir un token nuevo.
+
+    El token guardado es de la WABA, no del numero: si el numero nuevo cuelga de la MISMA WABA,
+    el mismo token lo maneja. Antes de guardar nada se le pregunta a Meta: si rechaza, no se
+    toca la config. Guarda el numero anterior en `phone_id_previo` para poder volver atras."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    d = request.get_json(silent=True) or {}
+    nuevo = str(d.get("phone_id") or "").strip()
+    if not nuevo:
+        return jsonify({"ok": False, "msg": "falta phone_id"}), 400
+    toks = _wa_tokens()
+    c = toks.get(email)
+    if not c or not c.get("token"):
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene WhatsApp API conectado"}), 400
+    tok = c["token"]
+    try:
+        r = requests.get("%s/%s" % (WA_GRAPH, nuevo), timeout=20,
+                         params={"fields": "display_phone_number,verified_name,status,"
+                                           "quality_rating,code_verification_status",
+                                 "access_token": tok})
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude validar con Meta: %s" % str(e)[:90]}), 502
+    if r.status_code >= 400 or not j.get("display_phone_number"):
+        return jsonify({"ok": False, "http": r.status_code,
+                        "msg": "Meta rechazo ese numero con el token actual",
+                        "detalle": j}), 400
+    if d.get("solo_probar"):
+        return jsonify({"ok": True, "probado": True, "numero": j.get("display_phone_number"),
+                        "verified_name": j.get("verified_name"), "detalle": j})
+    c["phone_id_previo"] = c.get("phone_id")
+    c["numero_previo"] = c.get("numero")
+    c["phone_id"] = nuevo
+    c["numero"] = j.get("display_phone_number") or ""
+    if d.get("waba_id"):
+        c["waba_id"] = str(d["waba_id"]).strip()
+    toks[email] = c
+    _wa_save_tokens(toks)
+    return jsonify({"ok": True, "numero": c["numero"], "phone_id": nuevo,
+                    "waba_id": c.get("waba_id"),
+                    "antes": {"phone_id": c.get("phone_id_previo"), "numero": c.get("numero_previo")},
+                    "verified_name": j.get("verified_name"),
+                    "code_verification_status": j.get("code_verification_status")})
+
+
 @app.post("/meli/etiquetas-desmarcar")
 def meli_etiquetas_desmarcar():
     """Vuelve a habilitar un envio ya bajado (para reimprimir una etiqueta)."""
