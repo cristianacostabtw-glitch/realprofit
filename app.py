@@ -14388,11 +14388,15 @@ def meli_stock30_sync():
     if stock30 is None:
         return jsonify({"ok": False, "msg": "Primero cargá el stock real de 30 ml"})
     bpu = c.get("bpu") or {}
-    solo_preview = bool((request.get_json(silent=True) or {}).get("preview"))
+    _d = request.get_json(silent=True) or {}
+    solo_preview = bool(_d.get("preview"))
+    solo_item = str(_d.get("item") or "").strip()      # probar en UNA sola antes de las 28
     try:
         r = requests.get("%s/users/%s/items/search" % (MELI_API, uid), headers={"Authorization": "Bearer " + tok},
                          params={"limit": 50}, timeout=25)
         ids = (r.json() if r.content else {}).get("results", [])
+        if solo_item:
+            ids = [x for x in ids if str(x) == solo_item] or [solo_item]
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:100]})
     results = []
@@ -14418,9 +14422,22 @@ def meli_stock30_sync():
                    "antes": b.get("available_quantity"), "ok": True, "msg": ""}
             if not solo_preview:
                 try:
+                    # Si la publicacion tiene variaciones, el stock vive AHI: ML rechaza
+                    # available_quantity a nivel item con "Cannot update item [status:active]".
+                    vr = requests.get("%s/items/%s" % (MELI_API, iid), timeout=20,
+                                      headers={"Authorization": "Bearer " + tok},
+                                      params={"attributes": "variations"})
+                    vars_ = ((vr.json() if vr.content else {}) or {}).get("variations") or []
+                    if vars_:
+                        cuerpo = {"variations": [{"id": v.get("id"), "available_quantity": units}
+                                                 for v in vars_ if v.get("id")]}
+                        row["via"] = "variaciones(%d)" % len(cuerpo["variations"])
+                    else:
+                        cuerpo = {"available_quantity": units}
+                        row["via"] = "item"
                     pr = requests.put("%s/items/%s" % (MELI_API, iid),
                                       headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
-                                      json={"available_quantity": units}, timeout=25)
+                                      json=cuerpo, timeout=25)
                     if pr.status_code >= 400:
                         j = pr.json() if pr.content else {}
                         row["ok"] = False; row["msg"] = (j.get("message") or "error %s" % pr.status_code)[:80]
