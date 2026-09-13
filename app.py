@@ -13642,6 +13642,64 @@ def meli_orden_cruda():
                     "claves_raiz": sorted(list(o.keys()))})
 
 
+@app.get("/meli/etiquetas-diag")
+def meli_etiquetas_diag():
+    """PRUEBA de la API de etiquetas de ML, SOLO LECTURA: busca los envios en ready_to_ship y
+    pide el PDF a /shipment_labels para ver si baja de verdad. NO despacha ni cambia el estado
+    de ningun envio. Existe para probar con datos reales antes de armar la descarga diaria."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    h = {"Authorization": "Bearer " + tok}
+    out = {"ok": True, "envios": [], "shipment_ids": []}
+    try:
+        r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=25,
+                         params={"seller": uid, "sort": "date_desc", "limit": 30})
+        res = (r.json() if r.content else {}).get("results", [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])})
+    for o in res:
+        sid = (o.get("shipping") or {}).get("id")
+        if not sid:
+            continue
+        try:
+            sj = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=15,
+                              headers={"Authorization": "Bearer " + tok, "x-format-new": "true"}).json()
+        except Exception:
+            continue
+        est = sj.get("status") or ""
+        out["envios"].append({"orden": o.get("id"), "shipment_id": sid, "estado": est,
+                              "tracking": sj.get("tracking_number") or "",
+                              "logistic_type": sj.get("logistic_type") or "",
+                              "substatus": sj.get("substatus") or "",
+                              "metodo": ((sj.get("shipping_option") or {}).get("name") or "")})
+        if est == "ready_to_ship":
+            out["shipment_ids"].append(str(sid))
+    ids = out["shipment_ids"][:20]
+    out["probados"] = ids
+    if not ids:
+        out["pdf"] = {"msg": "no hay envios en ready_to_ship para probar"}
+        return jsonify(out)
+    pruebas = {}
+    for etiqueta, url in (
+            ("zpl_o_pdf", "%s/shipment_labels?shipment_ids=%s&response_type=pdf" % (MELI_API, ",".join(ids))),
+            ("savePdf",   "%s/shipment_labels?shipment_ids=%s&savePdf=Y" % (MELI_API, ",".join(ids)))):
+        try:
+            rr = requests.get(url, headers=h, timeout=60)
+            ct = (rr.headers.get("Content-Type") or "")
+            cuerpo = rr.content or b""
+            pruebas[etiqueta] = {"status": rr.status_code, "content_type": ct, "bytes": len(cuerpo),
+                                 "es_pdf": cuerpo[:4] == b"%PDF",
+                                 "texto": ("" if cuerpo[:4] == b"%PDF" else str(cuerpo[:260]))}
+        except Exception as e:
+            pruebas[etiqueta] = {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+    out["pdf"] = pruebas
+    return jsonify(out)
+
+
 @app.post("/meli/sku-set")
 def meli_sku_set():
     email = _user_actual()
