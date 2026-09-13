@@ -13483,6 +13483,100 @@ def meli_notifications():
     return ("", 200)
 
 
+def _meli_vivo(email):
+    """Ventas de HOY en vivo + la serie de ayer para comparar, como el monitor de ML.
+    OJO zona horaria: ML devuelve las fechas en -04:00 y el usuario opera en Argentina (-03:00);
+    si el dia se calcula en UTC, 'hoy' arranca a las 21 del dia anterior y el total sale mal."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return {"ok": False, "msg": "MercadoLibre no conectado"}
+    import datetime as _dt
+    tz = _dt.timezone(_dt.timedelta(hours=-3))
+    ahora = _dt.datetime.now(tz)
+    hoy0 = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    ayer0 = hoy0 - _dt.timedelta(days=1)
+    h = {"Authorization": "Bearer " + tok}
+
+    def traer(d0, d1):
+        out, off = [], 0
+        while off < 200:
+            try:
+                r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
+                                 params={"seller": uid, "sort": "date_desc", "limit": 50,
+                                         "offset": off,
+                                         "order.date_created.from": d0.isoformat(),
+                                         "order.date_created.to": d1.isoformat()})
+                res = ((r.json() if r.content else {}) or {}).get("results") or []
+            except Exception:
+                break
+            out.extend(res)
+            if len(res) < 50:
+                break
+            off += 50
+        return [o for o in out if (o.get("status") or "") != "cancelled"]
+
+    def hora_de(o):
+        try:
+            return _dt.datetime.fromisoformat(
+                (o.get("date_created") or "").replace("Z", "+00:00")).astimezone(tz).hour
+        except Exception:
+            return None
+
+    oh, oa = traer(hoy0, ahora), traer(ayer0, hoy0)
+    sh, sa = [0.0] * 24, [0.0] * 24
+    for o in oh:
+        k = hora_de(o)
+        if k is not None:
+            sh[k] += float(o.get("total_amount") or 0)
+    for o in oa:
+        k = hora_de(o)
+        if k is not None:
+            sa[k] += float(o.get("total_amount") or 0)
+    fact = sum(float(o.get("total_amount") or 0) for o in oh)
+    unid = sum(int(it.get("quantity") or 0) for o in oh for it in (o.get("order_items") or []))
+    comp = len(set((o.get("buyer") or {}).get("id") for o in oh if (o.get("buyer") or {}).get("id")))
+    top = {}
+    for o in oh:
+        for it in (o.get("order_items") or []):
+            t = ((it.get("item") or {}).get("title") or "")[:60]
+            if not t:
+                continue
+            g = top.setdefault(t, {"titulo": t, "unidades": 0, "monto": 0.0})
+            g["unidades"] += int(it.get("quantity") or 0)
+            g["monto"] += float(it.get("unit_price") or 0) * int(it.get("quantity") or 1)
+    tops = sorted(top.values(), key=lambda x: -x["unidades"])[:5]
+    out = {"ok": True, "facturado": round(fact, 2), "ventas": len(oh), "unidades": unid,
+           "compradores": comp, "ticket": round(fact / len(oh), 2) if oh else 0,
+           "serie_hoy": [round(x, 2) for x in sh], "serie_ayer": [round(x, 2) for x in sa],
+           "fact_ayer": round(sum(sa), 2), "ventas_ayer": len(oa), "top": tops,
+           "hora": ahora.strftime("%H:%M:%S"), "fecha": ahora.strftime("%d/%m/%Y")}
+    # Visitas/conversion: SOLO si la API contesta de verdad. Si no, no se muestran (un 0%
+    # inventado es peor que no tener el dato).
+    try:
+        rv = requests.get("%s/users/%s/items_visits" % (MELI_API, uid), headers=h, timeout=20,
+                          params={"date_from": hoy0.strftime("%Y-%m-%dT00:00:00.000-03:00"),
+                                  "date_to": ahora.strftime("%Y-%m-%dT%H:%M:%S.000-03:00")})
+        if rv.status_code < 400:
+            tv = ((rv.json() if rv.content else {}) or {}).get("total_visits")
+            if isinstance(tv, int):
+                out["visitas"] = tv
+                out["conversion"] = round(len(oh) * 100.0 / tv, 2) if tv else 0
+    except Exception:
+        pass
+    return out
+
+
+@app.get("/meli/vivo")
+def meli_vivo():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    try:
+        return jsonify(_meli_vivo(email))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+
+
 @app.get("/meli/ventas")
 def meli_ventas():
     """Últimas ventas/órdenes de la cuenta de ML conectada (por email)."""
@@ -14371,8 +14465,63 @@ function renderMain(){
  if(f.k==='etiquetas'){ renderEtiquetas(); return; }
  if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
  var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
- m.innerHTML=head+'<div class="card"><div id="mlc" style="color:#5b6b82;font-size:12.5px">Cargando…</div></div>';
- if(f.k==='ventas')cargarVentas(); else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
+ m.innerHTML=head+(f.k==='ventas'?'<div id="mlvivo" style="margin-bottom:16px"></div>':'')+'<div class="card"><div id="mlc" style="color:#5b6b82;font-size:12.5px">Cargando…</div></div>';
+ if(f.k==='ventas'){cargarVivo();cargarVentas();} else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
+}
+function vvPlata(n){ try{ return '$ '+Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }catch(e){ return '$ '+(n||0); } }
+function vvTile(lab,val,col){
+ return '<div style="flex:1;min-width:120px;padding:13px 14px">'
+  +'<div style="font-size:11.5px;color:#7aa2c8;margin-bottom:5px">'+lab+'</div>'
+  +'<div style="font-size:19px;font-weight:800;color:'+(col||'#eef3f9')+'">'+val+'</div></div>';
+}
+function cargarVivo(){
+ var B=document.getElementById('mlvivo'); if(!B)return;
+ fetch('/meli/vivo').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ B.innerHTML=''; return; }
+  var hero='<div style="background:linear-gradient(135deg,#ffe600,#ffc400);border-radius:16px;padding:20px 22px;text-align:center">'
+   +'<div style="font-size:15px;font-weight:800;color:#2d3277;letter-spacing:.2px">Ventas de hoy en vivo</div>'
+   +'<div style="display:inline-block;background:rgba(255,255,255,.65);border-radius:20px;padding:3px 12px;margin-top:8px;font-size:11.5px;font-weight:700;color:#2d3277">&#9679; '+esc(j.fecha||'')+', '+esc(j.hora||'')+'</div>'
+   +'<div style="background:#fff;border-radius:14px;margin-top:12px;padding:18px 10px">'
+    +'<div style="font-size:34px;font-weight:800;color:#1a1f36;letter-spacing:-.5px">'+vvPlata(j.facturado)+'</div>'
+    +'<div style="font-size:11.5px;color:#5b6b82;margin-top:4px">ayer a esta altura: '+vvPlata(j.fact_ayer)+' &#183; '+(j.ventas_ayer||0)+' ventas</div>'
+   +'</div></div>';
+  var tiles='';
+  if(j.visitas!=null) tiles+=vvTile('Visitas únicas',j.visitas);
+  tiles+=vvTile('Total de compradores',j.compradores||0);
+  tiles+=vvTile('Cantidad de ventas',j.ventas||0,'#ffe600');
+  if(j.conversion!=null) tiles+=vvTile('Conversión',(j.conversion||0)+'%');
+  tiles+=vvTile('Unidades vendidas',(j.unidades||0)+' u.');
+  tiles+=vvTile('Precio promedio',vvPlata(j.ticket));
+  var met='<div class="card" style="padding:4px"><div style="display:flex;flex-wrap:wrap">'+tiles+'</div></div>';
+  var sh=j.serie_hoy||[], sa=j.serie_ayer||[], mx=0;
+  for(var i=0;i<24;i++){ if(sh[i]>mx)mx=sh[i]; if(sa[i]>mx)mx=sa[i]; }
+  if(mx<=0)mx=1;
+  var barras='';
+  for(var i=0;i<24;i++){
+   var a=Math.round((sa[i]||0)*100/mx), b=Math.round((sh[i]||0)*100/mx);
+   barras+='<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px;height:110px" title="'+(i<10?'0':'')+i+' hs — hoy '+vvPlata(sh[i])+' / ayer '+vvPlata(sa[i])+'">'
+    +'<div style="display:flex;align-items:flex-end;gap:2px;height:100%;width:100%;justify-content:center">'
+     +'<div style="width:42%;height:'+b+'%;background:#ffe600;border-radius:3px 3px 0 0;min-height:'+(sh[i]>0?'3px':'0')+'"></div>'
+     +'<div style="width:42%;height:'+a+'%;background:#2b3b52;border-radius:3px 3px 0 0;min-height:'+(sa[i]>0?'3px':'0')+'"></div>'
+    +'</div>'
+    +'<div style="font-size:8.5px;color:#5b6b82">'+((i%3===0)?((i<10?'0':'')+i):'')+'</div></div>';
+  }
+  var graf='<div class="card" style="margin-top:12px">'
+   +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">'
+    +'<b style="font-size:14px">Tendencia de ventas por hora</b><span style="flex:1"></span>'
+    +'<span style="font-size:11.5px;color:#7aa2c8"><span style="display:inline-block;width:9px;height:9px;background:#ffe600;border-radius:2px;margin-right:4px"></span>Hoy</span>'
+    +'<span style="font-size:11.5px;color:#7aa2c8"><span style="display:inline-block;width:9px;height:9px;background:#2b3b52;border-radius:2px;margin-right:4px"></span>Ayer</span>'
+   +'</div><div style="display:flex;gap:2px;align-items:flex-end">'+barras+'</div></div>';
+  var tp=(j.top||[]);
+  var lista = tp.length
+   ? tp.map(function(p){ return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #16202e">'
+      +'<div style="flex:1;font-size:12.5px;color:#eef3f9">'+esc(p.titulo)+'</div>'
+      +'<div style="font-size:12px;font-weight:800;color:#ffe600;white-space:nowrap">'+p.unidades+' u.</div>'
+      +'<div style="font-size:12px;color:#93a3ba;white-space:nowrap">'+vvPlata(p.monto)+'</div></div>'; }).join('')
+   : '<div style="color:#7aa2c8;font-size:12.5px;padding-top:8px">No vendiste ningún producto hoy.</div>';
+  var prod='<div class="card" style="margin-top:12px"><b style="font-size:14px">Productos más vendidos hoy</b>'+lista+'</div>';
+  B.innerHTML=hero+'<div style="margin-top:12px"></div>'+met+graf+prod;
+ }).catch(function(){ B.innerHTML=''; });
 }
 function cargarVentas(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/ventas').then(function(r){return r.json();}).then(function(j){
