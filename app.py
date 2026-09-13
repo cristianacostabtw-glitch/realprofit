@@ -14554,9 +14554,9 @@ def _meli_sync_stock(email, solo_item=None, solo_preview=False):
     if potes is None:
         return {"ok": False, "msg": "Primero carga el stock real"}
     try:
-        tope = int(c.get("tope_meli") or 80)
+        tope = int(c.get("tope_meli") or 0)      # 0 = SIN tope: ML espeja el stock real
     except Exception:
-        tope = 80
+        tope = 0
     bpu = c.get("bpu") or {}
     try:
         r = requests.get("%s/users/%s/items/search" % (MELI_API, uid),
@@ -14592,7 +14592,9 @@ def _meli_sync_stock(email, solo_item=None, solo_preview=False):
                         _sku = _a.get("value_name") or ""
                         break
             k = max(1, int(bpu.get(str(iid)) or _bpu_from_sku(_sku) or _bpu_auto(title) or 1))
-            units = min(tope, int(potes) // k)
+            units = int(potes) // k
+            if tope > 0:
+                units = min(tope, units)
             row = {"id": iid, "title": title, "bpu": k, "units": units, "sku": _sku,
                    "antes": b.get("available_quantity"), "ok": True, "msg": "", "via": ""}
             if not solo_preview:
@@ -14666,7 +14668,7 @@ def meli_stock_auto_ver():
         return jsonify({"ok": False}), 401
     c = _meli_tokens().get(email) or {}
     return jsonify({"ok": True, "auto": bool(c.get("auto_stock")),
-                    "tope": int(c.get("tope_meli") or 80),
+                    "tope": int(c.get("tope_meli") or 0),
                     "estado": {k: _MELI_AUTO.get(k) for k in ("vueltas", "ok", "error", "cuando")}})
 
 
@@ -14685,12 +14687,12 @@ def meli_stock_auto_set():
         c["auto_stock"] = bool(d["auto"])
     if "tope" in d:
         try:
-            c["tope_meli"] = max(1, int(d["tope"]))
+            c["tope_meli"] = max(0, int(d["tope"]))     # 0 = sin tope
         except Exception:
             pass
     _meli_save_token(email, c)
     return jsonify({"ok": True, "auto": bool(c.get("auto_stock")),
-                    "tope": int(c.get("tope_meli") or 80)})
+                    "tope": int(c.get("tope_meli") or 0)})
 
 
 @app.post("/meli/stock30-sync")
