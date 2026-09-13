@@ -9863,11 +9863,18 @@ def _meli_resumen(email, desde, hasta):
             comis_ml += float(it.get("sale_fee") or 0) * q
             itm = it.get("item") or {}
             sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
-            c = costos.get("meli:%s" % sku) if sku else None
+            # COSTO POR UNIDAD (meli:POTE), multiplicado por los potes que dice el SKU.
+            # Asi un pack nuevo (X3, X6) toma el costo solo, sin cargar nada de nuevo.
+            c = costos.get("meli:%s" % sku) if sku else None      # costo propio de ESE sku (si lo cargaron)
             if c:
                 costo_prod += _costo_qty(c, q)
             else:
-                sin_costo += q
+                _base = costos.get("meli:POTE")
+                _u = _meli_units_from_sku(sku) if sku else 1
+                if _base:
+                    costo_prod += _costo_num(_base) * _u * q
+                else:
+                    sin_costo += q
             nm = itm.get("title") or "?"
             prodmap[nm] = prodmap.get(nm, 0) + q
         # BUG que introduje y corrijo: comis_ml es el ACUMULADOR de todas las comisiones, no la
@@ -12837,24 +12844,42 @@ def _tn_productos(email):
     return prods
 
 
+def _meli_producto(email):
+    """UNA fila para MercadoLibre en la pantalla de Productos: el costo de UNA unidad (un pote).
+    De ahi sale el costo de TODAS las publicaciones de ML (X1, X2, X3, X6...) multiplicando por
+    las unidades del SKU, asi cada pack nuevo que se duplique ya arranca con el costo puesto."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return []
+    costos = (_costos().get(email) or {})
+    return [{
+        "id": "meli:POTE", "nombre": "MercadoLibre · costo de 1 unidad (pote)",
+        "sku_tipo": "unitario", "sku_base": "POTE", "sku_map": {}, "sku_ej": "X2-POTE",
+        "precio": 0, "img": "", "costo": costos.get("meli:POTE") or 0,
+    }]
+
+
 @app.get("/pf-productos")
 def pf_productos():
-    """Productos de las tiendas conectadas (Shopify + Tiendanube). Sin tienda → lista vacía."""
+    """Productos de las tiendas conectadas (Shopify + Tiendanube + MercadoLibre)."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": True, "tienda": None, "productos": [], "sin_costo": 0})
+    prod_ml = _meli_producto(email)
     tk = _shop_tokens().get(email)
     prod_tn = _tn_productos(email)
-    if (not tk or not tk.get("access_token")) and not prod_tn:
+    if (not tk or not tk.get("access_token")) and not prod_tn and not prod_ml:
         return jsonify({"ok": True, "tienda": None, "productos": [], "sin_costo": 0})
     if (not tk or not tk.get("access_token")):
-        # solo Tiendanube conectada
-        sin = sum(1 for x in prod_tn if not x.get("costo"))
-        return jsonify({"ok": True, "tienda": "Tiendanube", "productos": prod_tn, "sin_costo": sin})
+        # sin Shopify: Tiendanube y/o MercadoLibre
+        _ps = list(prod_tn) + list(prod_ml)
+        sin = sum(1 for x in _ps if not x.get("costo"))
+        return jsonify({"ok": True, "tienda": "Tiendanube" if prod_tn else "MercadoLibre",
+                        "productos": _ps, "sin_costo": sin})
     shop = tk.get("shop"); token = tk.get("access_token")
     costos = (_costos().get(email) or {})
     skus_guardados = _skus_map(email)
-    productos = list(prod_tn)
+    productos = list(prod_tn) + list(prod_ml)
     try:
         r = requests.get("https://%s/admin/api/2026-07/products.json" % shop,
                          headers={"X-Shopify-Access-Token": token},
