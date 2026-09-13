@@ -9855,10 +9855,12 @@ def _meli_resumen(email, desde, hasta):
         ordenes += 1
         tot = float(o.get("total_amount") or 0)
         fact += tot
+        com_orden = 0.0
         for it in (o.get("order_items") or []):
             q = int(it.get("quantity") or 0)
             unidades += q
-            comis_ml += float(it.get("sale_fee") or 0) * q     # sale_fee es POR UNIDAD
+            com_orden += float(it.get("sale_fee") or 0) * q   # sale_fee es POR UNIDAD
+            comis_ml += float(it.get("sale_fee") or 0) * q
             itm = it.get("item") or {}
             sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
             c = costos.get("meli:%s" % sku) if sku else None
@@ -9868,9 +9870,12 @@ def _meli_resumen(email, desde, hasta):
                 sin_costo += q
             nm = itm.get("title") or "?"
             prodmap[nm] = prodmap.get(nm, 0) + q
+        # BUG que introduje y corrijo: comis_ml es el ACUMULADOR de todas las comisiones, no la
+        # de esta orden. Usarlo aca hacia que el neto de cada orden restara el total acumulado y
+        # que la ganancia del dashboard CAMBIARA entre dos lecturas del mismo periodo.
         ords_list.append({"num": str(o.get("id") or ""), "origen": "MercadoLibre",
                           "estado": "Pagado", "fecha": (o.get("date_created") or ""),
-                          "total": round(tot, 2), "neto": round(tot - comis_ml, 2)})
+                          "total": round(tot, 2), "neto": round(tot - com_orden, 2)})
     iibb_monto = fact * IIBB_PCT / 100.0
     oper_monto = OPER_ORDEN * ordenes
     comision_monto = comis_ml + iibb_monto          # sin 1% de tienda: eso es de la tienda propia
@@ -12611,9 +12616,13 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _tkn = _tn_tokens().get(email) or {}
         if _tkn.get("access_token") and _tkn.get("store_id"):
             _cn.append("tn")
+        _mtk, _muid = _meli_ctx(email)
+        if _mtk and _muid:
+            _cn.append("meli")
         blob["raw"]["canales"] = _cn
         blob["raw"]["shopify_ordenes"] = int((sh_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
         blob["raw"]["tn_ordenes"] = int((tn_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
+        blob["raw"]["meli_ordenes"] = int((blob.get("raw") or {}).get("meli_ventas", 0) or 0)
     except Exception:
         pass
     try:
