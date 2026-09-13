@@ -2718,6 +2718,15 @@ _SOLO_DASH = r"""
     var R=window.__RP||null;
     var fa=_val('Facturación'), ga=_val('Ganancia'), iv2=_val('Inversión Ads');
     // MARGEN = Ganancia ÷ Facturación (%). Backend si está; si no, cálculo del DOM.
+    // Margen por canal: MELI viene aparte en el blob; tienda = total menos MELI.
+    try{
+      if(R){
+        var mf=+(R.meli_facturado||0), mgan=+(R.meli_ganancia||0);
+        var tf=+(R.facturado||0)-mf,   tgan=+(R.ganancia||0)-mgan;
+        window._rpMgCh={ meli:(mf>0?Math.round(mgan/mf*1000)/10:null),
+                         tienda:(tf>0?Math.round(tgan/tf*1000)/10:null) };
+      }
+    }catch(e){}
     var mg=null;
     if(R && R.margen!=null) mg=R.margen;
     else if(fa && ga) mg=Math.round(ga/fa*1000)/10;
@@ -2802,7 +2811,30 @@ _SOLO_DASH = r"""
         el=tgt;
       }
       if(!el) continue;
-      try{ _rpOverlay(el, v, o.key); }catch(e){} } }
+      try{ _rpOverlay(el, v, o.key); }catch(e){} }
+    try{ _rpMgChApply(); }catch(e){} }
+
+  // Margen por canal adentro de la tarjeta Margen (arriba a la derecha), con el logo al lado.
+  function _rpMgChApply(){
+    var d=window._rpMgCh; if(!d || (d.tienda==null && d.meli==null)) return;
+    var card=null; try{ card=cardByLabel('Margen'); }catch(e){}
+    if(!card) return;
+    if(getComputedStyle(card).position==='static') card.style.position='relative';
+    var box=card.querySelector('[data-rpmgch]');
+    if(!box){
+      box=document.createElement('div');
+      box.setAttribute('data-rpmgch','1');
+      box.style.cssText='position:absolute;top:12px;right:12px;display:flex;flex-direction:column;'
+        +'gap:3px;align-items:flex-end;pointer-events:none;z-index:2';
+      card.appendChild(box);
+    }
+    var fila=function(ico,val){
+      return '<span style="display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;'
+        +'color:#93a3ba;font-variant-numeric:tabular-nums;line-height:1.15">'
+        +'<span style="font-size:12px">'+ico+'</span>'+(val==null?'—':(val+'%'))+'</span>'; };
+    var html=(d.tienda!=null?fila('&#128717;&#65039;',d.tienda):'')+(d.meli!=null?fila('&#128993;',d.meli):'');
+    if(box.innerHTML!==html) box.innerHTML=html;
+  }
   var _rpOvObs=null, _rpOvQ=false;
   function _rpOvWatch(){ if(_rpOvObs) return;
     _rpOvObs=new MutationObserver(function(){ if(_rpOvQ) return; _rpOvQ=true;
