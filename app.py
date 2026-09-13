@@ -8559,52 +8559,117 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
     return buf.getvalue(), orders, stats
 
 
-def _meli_etiquetas_pendientes(email):
-    """(pdf_procesado, orders, stats, info). Baja de la API de ML las etiquetas de los envios en
-    ready_to_ship y les estampa el SKU. NO despacha: bajar la etiqueta no cambia el estado."""
+def _meli_envios_listos(email, sids=None):
+    """[{sid,tracking,buyer,titulo,sku,cant,potes,fecha}] de los envios en ready_to_ship.
+    Si `sids` viene, deja solo esos: es la seleccion que tildo el usuario."""
     tok, uid = _meli_ctx(email)
     if not tok or not uid:
-        return None, [], {}, {"msg": "MercadoLibre no conectado"}
+        return [], "MercadoLibre no conectado"
     h = {"Authorization": "Bearer " + tok}
     try:
         r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
                          params={"seller": uid, "sort": "date_desc", "limit": 50})
         res = (r.json() if r.content else {}).get("results", [])
     except Exception as e:
-        return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
-    mapa, sids = {}, []
+        return [], "%s: %s" % (type(e).__name__, str(e)[:120])
+    sel = set(str(x) for x in (sids or []))
+    filas = []
     for o in res:
         sid = (o.get("shipping") or {}).get("id")
         if not sid:
             continue
+        if sel and str(sid) not in sel:      # filtro ANTES de pedir el envio: no gasto llamadas
+            continue
         try:
             sj = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
-                              headers={"Authorization": "Bearer " + tok, "x-format-new": "true"}).json()
+                              headers={"Authorization": "Bearer " + tok,
+                                       "x-format-new": "true"}).json()
         except Exception:
             continue
         if (sj.get("status") or "") != "ready_to_ship":
             continue
-        trk = sj.get("tracking_number") or ""
         it = (o.get("order_items") or [{}])[0]
         itm = it.get("item") or {}
         sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
         cant = int(it.get("quantity") or 1)
-        potes = max(1, _meli_units_from_sku(sku) * max(1, cant))
-        if trk:
-            mapa[trk] = {"sku": sku, "cant": cant,
-                         "buyer": (o.get("buyer") or {}).get("nickname", ""), "potes": potes}
-        sids.append(str(sid))
-    if not sids:
+        filas.append({"sid": str(sid),
+                      "tracking": sj.get("tracking_number") or "",
+                      "buyer": (o.get("buyer") or {}).get("nickname", ""),
+                      "titulo": (itm.get("title") or "")[:70],
+                      "sku": sku, "cant": cant,
+                      "potes": max(1, _meli_units_from_sku(sku) * max(1, cant)),
+                      "fecha": (o.get("date_created") or "")[:10]})
+    return filas, ""
+
+
+def _meli_etiquetas_pendientes(email, sids=None):
+    """(pdf_procesado, orders, stats, info). Baja de la API de ML las etiquetas de los envios
+    listos y les estampa el SKU. NO despacha: bajar la etiqueta no cambia el estado."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return None, [], {}, {"msg": "MercadoLibre no conectado"}
+    filas, err = _meli_envios_listos(email, sids)
+    if err:
+        return None, [], {}, {"msg": err}
+    if not filas:
         return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+    mapa = {}
+    for f in filas:
+        if f["tracking"]:
+            mapa[f["tracking"]] = {"sku": f["sku"], "cant": f["cant"],
+                                   "buyer": f["buyer"], "potes": f["potes"]}
+    ids = [f["sid"] for f in filas][:50]
     try:
         rr = requests.get("%s/shipment_labels?shipment_ids=%s&response_type=pdf"
-                          % (MELI_API, ",".join(sids[:50])), headers=h, timeout=90)
+                          % (MELI_API, ",".join(ids)),
+                          headers={"Authorization": "Bearer " + tok}, timeout=90)
     except Exception as e:
         return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
     if rr.status_code >= 400 or (rr.content or b"")[:4] != b"%PDF":
         return None, [], {}, {"msg": "ML no devolvio el PDF (status %s)" % rr.status_code}
     pdf, orders, stats = _meli_etiquetas_procesar(rr.content, mapa_ext=mapa)
-    return pdf, orders, stats, {"envios": len(sids), "crudo_bytes": len(rr.content)}
+    return pdf, orders, stats, {"envios": len(ids), "crudo_bytes": len(rr.content)}
+
+
+@app.get("/meli/pendientes-lista")
+def meli_pendientes_lista():
+    """Las ventas listas para despachar, para tildar cuales imprimir."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    try:
+        filas, err = _meli_envios_listos(email)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+    if err:
+        return jsonify({"ok": False, "msg": err})
+    return jsonify({"ok": True, "envios": filas,
+                    "potes": sum(f.get("potes") or 0 for f in filas)})
+
+
+@app.post("/meli/etiquetas-bajar")
+@_heavy
+def meli_etiquetas_bajar():
+    """Devuelve el PDF DIRECTO (no por token): con 2 workers el token vive en la memoria de
+    uno solo y la descarga fallaba la mitad de las veces. Los totales van en los headers."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    sids = d.get("sids") or None
+    try:
+        pdf, orders, stats, info = _meli_etiquetas_pendientes(email, sids)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+    if not pdf:
+        return jsonify({"ok": False, "msg": info.get("msg") or "sin etiquetas"}), 400
+    import io as _io
+    resp = send_file(_io.BytesIO(pdf), as_attachment=True,
+                     download_name="MELI-etiquetas-SKU.pdf", mimetype="application/pdf")
+    resp.headers["X-Paquetes"] = str(stats.get("paquetes", 0))
+    resp.headers["X-Potes"] = str(stats.get("potes", 0))
+    resp.headers["X-Sin-Estampar"] = str(stats.get("sin_estampar", 0))
+    return resp
 
 
 @app.get("/meli/etiquetas-pendientes")
@@ -8614,8 +8679,9 @@ def meli_etiquetas_pendientes():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
+    sids = [x for x in (request.args.get("sids") or "").split(",") if x.strip()] or None
     try:
-        pdf, orders, stats, info = _meli_etiquetas_pendientes(email)
+        pdf, orders, stats, info = _meli_etiquetas_pendientes(email, sids)
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
     if not pdf:
@@ -14143,7 +14209,7 @@ var FEATURES=[
  {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Estado de los envíos (Mercado Envíos) y tracking de cada venta.',soon:false},
  {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
  {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock unificado en botellas de 30 ml. Un Pack X2 descuenta 2. Sincronizá a ML con un clic.',soon:false},
- {k:'etiquetas',ic:'🏷️',bg:'#241a10',t:'Etiquetas + SKU',d:'Subí el PDF de etiquetas de Mercado Libre: le estampo el SKU (potes) a cada una y agrego la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
+ {k:'etiquetas',ic:'🏷️',bg:'#241a10',t:'Etiquetas + SKU',d:'Tildá las ventas a despachar y bajá las etiquetas ya estampadas con el SKU (potes) y la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
  {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Reputación, nivel y salud de tu cuenta.',soon:false}
 ];
 function renderSide(){
@@ -14382,13 +14448,76 @@ function cargarMetr(){ var box=document.getElementById('mlc'); if(!box)return;
 function renderEtiquetas(){
  var m=document.getElementById('main'); if(!m)return;
  m.innerHTML='<h1>Etiquetas + SKU (MercadoLibre)</h1>'
-  +'<p class="lead">Subí el PDF de etiquetas que bajás de Mercado Libre (con la hoja «Identificación Productos» al final). Le estampo el SKU en <b>potes</b> a cada etiqueta y agrego la hoja <b>PARA EMPAQUETAR</b> con el total de bolsas.</p>'
+  +'<p class="lead">Tildá las ventas que vas a despachar y bajá las etiquetas ya estampadas con el SKU en <b>potes</b>, con la hoja <b>PARA EMPAQUETAR</b> al final.</p>'
   +'<div class="card">'
+  +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+  +'<b style="font-size:15px">Ventas listas para despachar</b>'
+  +'<span id="etqcnt" style="font-size:12.5px;color:#7aa2c8"></span>'
+  +'<span style="flex:1;min-width:8px"></span>'
+  +'<button onclick="etqCargar()" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:9px;padding:9px 14px;font-size:12.5px;cursor:pointer">&#8635; Actualizar</button>'
+  +'<button id="etqbaja" onclick="etqBajarSel()" style="background:#ffe600;color:#2d3277;border:0;border-radius:10px;padding:11px 20px;font-weight:800;font-size:13.5px;cursor:pointer">&#11015; Descargar etiquetas con SKU</button>'
+  +'</div>'
+  +'<div id="etqm2" style="font-size:12.5px;font-weight:600;margin-top:10px;min-height:16px"></div>'
+  +'<div id="etqlista" style="margin-top:12px;color:#7aa2c8;font-size:13px">Buscando ventas pendientes&#8230;</div>'
+  +'</div>'
+  +'<div class="card" style="margin-top:16px">'
+  +'<b style="font-size:14px">&#191;Ten&#233;s el PDF bajado a mano?</b>'
+  +'<p style="color:#7aa2c8;font-size:12.5px;margin:6px 0 12px">Sub&#237; el PDF de Mercado Libre (con la hoja &#171;Identificaci&#243;n Productos&#187;) y le estampo el SKU igual.</p>'
   +'<input type="file" id="etqf" accept="application/pdf" style="display:block;margin-bottom:14px;color:#9fb3cc;font-size:13px">'
-  +'<button id="etqb" onclick="etqProc()" style="background:#ffe600;color:#2d3277;border:0;border-radius:10px;padding:12px 22px;font-weight:800;font-size:14px;cursor:pointer">🏷️ Procesar etiquetas</button>'
+  +'<button id="etqb" onclick="etqProc()" style="background:transparent;color:#ffe600;border:1px solid #6b5f18;border-radius:10px;padding:11px 20px;font-weight:700;font-size:13.5px;cursor:pointer">Procesar ese PDF</button>'
   +' <span id="etqm" style="font-size:12.5px;font-weight:600;margin-left:8px"></span>'
   +'<div id="etqres" style="margin-top:16px"></div>'
   +'</div>';
+ etqCargar();
+}
+function etqCargar(){
+ var L=document.getElementById('etqlista'), C=document.getElementById('etqcnt');
+ if(!L)return; L.innerHTML='Buscando ventas pendientes&#8230;'; if(C)C.textContent='';
+ fetch('/meli/pendientes-lista').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ L.innerHTML='<span style="color:#e0637f">'+esc((j&&j.msg)||'No pude leer las ventas')+'</span>'; return; }
+  var e=j.envios||[];
+  if(!e.length){ L.innerHTML='No hay ventas listas para despachar.'; return; }
+  var rows=e.map(function(o){
+   return '<tr><td style="text-align:center"><input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" checked onchange="etqCnt()" style="width:17px;height:17px;cursor:pointer"></td>'
+    +'<td>'+esc(o.buyer||'')+'</td>'
+    +'<td style="font-size:11.5px;color:#9fb3cc">'+esc(o.titulo||'')+'</td>'
+    +'<td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td>'
+    +'<td style="font-size:11.5px">'+esc(o.sku||'')+'</td>'
+    +'<td style="text-align:center;font-weight:800;color:#ffe600">X'+(o.potes||0)+'</td></tr>';
+  }).join('');
+  L.innerHTML='<div style="overflow:auto"><table><thead><tr>'
+   +'<th style="text-align:center"><input type="checkbox" id="etqall" checked onchange="etqTodos(this.checked)" style="width:17px;height:17px;cursor:pointer"></th>'
+   +TH+'Cliente</th>'+TH+'Publicaci&#243;n</th>'+TH+'Tracking</th>'+TH+'SKU</th><th style="text-align:center">Potes</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  etqCnt();
+ }).catch(function(){ L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
+}
+function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++)c[i].checked=v; etqCnt(); }
+function etqCnt(){
+ var c=document.querySelectorAll('.etqck'), n=0, p=0;
+ for(var i=0;i<c.length;i++){ if(c[i].checked){ n++; p+=parseInt(c[i].getAttribute('data-potes')||'0',10); } }
+ var C=document.getElementById('etqcnt'); if(C)C.textContent=n+' de '+c.length+' tildadas &#183; '+p+' potes';
+}
+function etqBajarSel(){
+ var c=document.querySelectorAll('.etqck'), ids=[];
+ for(var i=0;i<c.length;i++) if(c[i].checked) ids.push(c[i].value);
+ var m=document.getElementById('etqm2'), b=document.getElementById('etqbaja');
+ if(!ids.length){ if(m){m.textContent='Tild\u00e1 al menos una venta';m.style.color='#e0637f';} return; }
+ if(b)b.disabled=true;
+ if(m){m.textContent='Bajando las etiquetas de Mercado Libre y estampando el SKU\u2026';m.style.color='#7aa2c8';}
+ var H={};
+ fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:ids})})
+ .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar');
+   H.ok=r.ok; H.ct=r.headers.get('Content-Type')||'';
+   return (H.ok && H.ct.indexOf('pdf')>=0) ? r.blob() : r.text(); })
+ .then(function(x){
+  if(b)b.disabled=false;
+  if(typeof x==='string'){ var msg='No se pudo generar'; try{ var j=JSON.parse(x); msg=j.msg||msg; }catch(e){}
+   if(m){m.textContent=msg;m.style.color='#e0637f';} return; }
+  var u=URL.createObjectURL(x); var a=document.createElement('a'); a.href=u;
+  a.download='MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(u);},1500);
+  if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
+ }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
 }
 function etqProc(){
  var f=document.getElementById('etqf'), m=document.getElementById('etqm'), b=document.getElementById('etqb');
