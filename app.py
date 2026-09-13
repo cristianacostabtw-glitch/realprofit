@@ -18131,6 +18131,15 @@ def wa_diag_meta():
         cod, j = _get("%s/%s/subscribed_apps" % (WA_GRAPH, c["waba_id"]))
         out["apps_suscriptas"] = {"http": cod, **(j if isinstance(j, dict) else {})}
 
+    # 3) A QUE negocio/cuenta de facturacion pertenece la WABA. El billing hub muestra un
+    #    "Identificador" que puede NO ser el id de la WABA, asi que a ojo no se puede saber
+    #    si la cuenta que tiene tarjeta es la que realmente manda los mensajes.
+    if c.get("waba_id"):
+        cod, j = _get("%s/%s" % (WA_GRAPH, c["waba_id"]),
+                      {"fields": "id,name,currency,account_review_status,"
+                                 "owner_business_info,on_behalf_of_business_info"})
+        out["waba_info"] = {"http": cod, **(j if isinstance(j, dict) else {})}
+
     return jsonify(out)
 
 
