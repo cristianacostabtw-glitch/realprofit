@@ -14379,60 +14379,79 @@ def meli_stock30_set():
     return jsonify({"ok": True, "stock30": c.get("stock30")})
 
 
-@app.post("/meli/stock30-sync")
-def meli_stock30_sync():
-    """Publica en cada listing de ML las unidades disponibles = stock30 // botellas_por_unidad."""
-    email = _user_actual()
-    if not email:
-        return jsonify({"ok": False})
+def _meli_stock_potes(email):
+    """Potes libres REALES, leidos del stock de RealProfit: UNA sola fuente de verdad.
+    Antes la seccion MELI guardaba su propio numero (stock30) y los dos se separaban solos:
+    RealProfit descuenta con cada venta y el de MELI quedaba congelado donde se lo dejo."""
+    try:
+        prods, _o = _stock_sync(email)
+        if prods:
+            p = sorted(prods.values(), key=lambda x: -int(x.get("stock") or 0))[0]
+            return int(p.get("stock") or 0)
+    except Exception:
+        pass
+    c = _meli_tokens().get(email) or {}
+    return c.get("stock30")
+
+
+def _meli_sync_stock(email, solo_item=None, solo_preview=False):
+    """Deja en cada publicacion de ML: min(tope, potes_libres // potes_por_unidad).
+
+    El tope existe porque las publicaciones NO comparten stock: sin el, cada una de las 35
+    anuncia los mismos potes y entre todas prometen mucho mas de lo que hay en el deposito.
+    El stock va en las VARIACIONES cuando existen: ML rechaza available_quantity a nivel item."""
     tok, uid = _meli_ctx(email)
     if not tok or not uid:
-        return jsonify({"ok": False, "msg": "no conectado"})
+        return {"ok": False, "msg": "no conectado"}
     c = _meli_tokens().get(email) or {}
-    stock30 = c.get("stock30")
-    if stock30 is None:
-        return jsonify({"ok": False, "msg": "Primero cargá el stock real de 30 ml"})
-    bpu = c.get("bpu") or {}
-    _d = request.get_json(silent=True) or {}
-    solo_preview = bool(_d.get("preview"))
-    solo_item = str(_d.get("item") or "").strip()      # probar en UNA sola antes de las 28
+    potes = _meli_stock_potes(email)
+    if potes is None:
+        return {"ok": False, "msg": "Primero carga el stock real"}
     try:
-        r = requests.get("%s/users/%s/items/search" % (MELI_API, uid), headers={"Authorization": "Bearer " + tok},
+        tope = int(c.get("tope_meli") or 80)
+    except Exception:
+        tope = 80
+    bpu = c.get("bpu") or {}
+    try:
+        r = requests.get("%s/users/%s/items/search" % (MELI_API, uid),
+                         headers={"Authorization": "Bearer " + tok},
                          params={"limit": 50}, timeout=25)
         ids = (r.json() if r.content else {}).get("results", [])
-        if solo_item:
-            ids = [x for x in ids if str(x) == solo_item] or [solo_item]
     except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)[:100]})
+        return {"ok": False, "msg": str(e)[:100]}
+    if solo_item:
+        ids = [x for x in ids if str(x) == str(solo_item)] or [str(solo_item)]
     results = []
     for i in range(0, len(ids), 20):
         chunk = ids[i:i + 20]
         try:
             rr = requests.get("%s/items" % MELI_API, headers={"Authorization": "Bearer " + tok},
-                              params={"ids": ",".join(chunk), "attributes": "id,title,available_quantity,status,seller_custom_field,attributes"}, timeout=25)
+                              params={"ids": ",".join(chunk),
+                                      "attributes": ("id,title,available_quantity,status,"
+                                                     "seller_custom_field,attributes,variations")},
+                              timeout=25)
             arr = rr.json() if rr.content else []
         except Exception:
             arr = []
         for wrap in arr:
             b = wrap.get("body") or {}
-            iid = b.get("id"); title = b.get("title", "")
+            iid = b.get("id")
+            if not iid:
+                continue
+            title = b.get("title", "")
             _sku = b.get("seller_custom_field") or ""
             if not _sku:
                 for _a in (b.get("attributes") or []):
                     if _a.get("id") == "SELLER_SKU":
-                        _sku = _a.get("value_name") or ""; break
-            k = bpu.get(str(iid)) or _bpu_from_sku(_sku) or _bpu_auto(title)
-            units = int(stock30) // max(1, int(k))
-            row = {"id": iid, "title": title, "bpu": k, "units": units,
-                   "antes": b.get("available_quantity"), "ok": True, "msg": ""}
+                        _sku = _a.get("value_name") or ""
+                        break
+            k = max(1, int(bpu.get(str(iid)) or _bpu_from_sku(_sku) or _bpu_auto(title) or 1))
+            units = min(tope, int(potes) // k)
+            row = {"id": iid, "title": title, "bpu": k, "units": units, "sku": _sku,
+                   "antes": b.get("available_quantity"), "ok": True, "msg": "", "via": ""}
             if not solo_preview:
                 try:
-                    # Si la publicacion tiene variaciones, el stock vive AHI: ML rechaza
-                    # available_quantity a nivel item con "Cannot update item [status:active]".
-                    vr = requests.get("%s/items/%s" % (MELI_API, iid), timeout=20,
-                                      headers={"Authorization": "Bearer " + tok},
-                                      params={"attributes": "variations"})
-                    vars_ = ((vr.json() if vr.content else {}) or {}).get("variations") or []
+                    vars_ = b.get("variations") or []
                     if vars_:
                         cuerpo = {"variations": [{"id": v.get("id"), "available_quantity": units}
                                                  for v in vars_ if v.get("id")]}
@@ -14441,15 +14460,106 @@ def meli_stock30_sync():
                         cuerpo = {"available_quantity": units}
                         row["via"] = "item"
                     pr = requests.put("%s/items/%s" % (MELI_API, iid),
-                                      headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"},
+                                      headers={"Authorization": "Bearer " + tok,
+                                               "Content-Type": "application/json"},
                                       json=cuerpo, timeout=25)
                     if pr.status_code >= 400:
-                        j = pr.json() if pr.content else {}
-                        row["ok"] = False; row["msg"] = (j.get("message") or "error %s" % pr.status_code)[:80]
+                        jj = pr.json() if pr.content else {}
+                        row["ok"] = False
+                        row["msg"] = (jj.get("message") or "error %s" % pr.status_code)[:80]
                 except Exception as e:
-                    row["ok"] = False; row["msg"] = str(e)[:80]
+                    row["ok"] = False
+                    row["msg"] = str(e)[:80]
             results.append(row)
-    return jsonify({"ok": True, "stock30": stock30, "preview": solo_preview, "results": results})
+    return {"ok": True, "potes": potes, "tope": tope, "stock30": potes,
+            "preview": solo_preview, "results": results}
+
+
+_MELI_AUTO = {"ultimo": 0, "vueltas": 0, "ok": 0, "error": None, "cuando": ""}
+
+
+def _meli_sync_vivo():
+    """Re-sincroniza el stock de ML cada hora. Se dispara desde before_request: los hilos
+    arrancados al importar el modulo se cuelgan en start(). Apagado por default."""
+    import time as _t
+    if _t.time() - (_MELI_AUTO.get("ultimo") or 0) < 3600:
+        return False
+    _MELI_AUTO["ultimo"] = _t.time()      # marcar YA: evita que dos requests lo lancen a la vez
+
+    def _tarea():
+        try:
+            _MELI_AUTO["vueltas"] = (_MELI_AUTO.get("vueltas") or 0) + 1
+            for _em, _c in (_meli_tokens() or {}).items():
+                if not (_c or {}).get("access_token") or not (_c or {}).get("auto_stock"):
+                    continue
+                _r = _meli_sync_stock(_em)
+                _MELI_AUTO["ok"] = len([x for x in (_r.get("results") or []) if x.get("ok")])
+                _MELI_AUTO["cuando"] = _dt.datetime.utcnow().isoformat()[:19]
+            _MELI_AUTO["error"] = None
+        except Exception as e:
+            _MELI_AUTO["error"] = "%s: %s" % (type(e).__name__, str(e)[:120])
+    try:
+        threading.Thread(target=_tarea, daemon=True).start()
+        return True
+    except Exception:
+        return False
+
+
+@app.before_request
+def _meli_sync_auto_hook():
+    try:
+        _meli_sync_vivo()
+    except Exception:
+        pass
+
+
+@app.get("/meli/stock-auto")
+def meli_stock_auto_ver():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    c = _meli_tokens().get(email) or {}
+    return jsonify({"ok": True, "auto": bool(c.get("auto_stock")),
+                    "tope": int(c.get("tope_meli") or 80),
+                    "estado": {k: _MELI_AUTO.get(k) for k in ("vueltas", "ok", "error", "cuando")}})
+
+
+@app.post("/meli/stock-auto")
+def meli_stock_auto_set():
+    """Prende/apaga la re-sincronizacion automatica y fija el tope por publicacion."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    toks = _meli_tokens()
+    c = toks.get(email)
+    if not c:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    d = request.get_json(silent=True) or {}
+    if "auto" in d:
+        c["auto_stock"] = bool(d["auto"])
+    if "tope" in d:
+        try:
+            c["tope_meli"] = max(1, int(d["tope"]))
+        except Exception:
+            pass
+    _meli_save_token(email, c)
+    return jsonify({"ok": True, "auto": bool(c.get("auto_stock")),
+                    "tope": int(c.get("tope_meli") or 80)})
+
+
+@app.post("/meli/stock30-sync")
+def meli_stock30_sync():
+    """Sincroniza el stock de las publicaciones con el stock real de RealProfit."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    d = request.get_json(silent=True) or {}
+    try:
+        return jsonify(_meli_sync_stock(email,
+                                        solo_item=str(d.get("item") or "").strip() or None,
+                                        solo_preview=bool(d.get("preview"))))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:150])}), 500
 
 
 _MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
