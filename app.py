@@ -8989,6 +8989,45 @@ def meli_etiquetas_bajar():
     return resp
 
 
+@app.post("/wa-registrar-numero")
+def wa_registrar_numero():
+    """Registra el numero en la Cloud API con su PIN (POST /{phone_id}/register).
+
+    Meta no deja poner el PIN desde WhatsApp Manager si el numero todavia no esta registrado
+    en la nube: devuelve "La cuenta no existe en la API de la nube. Usa /register API".
+    Esta llamada hace justamente ese paso, que es el que habilita el envio (asigna el tier)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    tok, pid = c.get("token"), str(c.get("phone_id") or "")
+    if not tok or not pid:
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene WhatsApp API conectado"}), 400
+    d = request.get_json(silent=True) or {}
+    pin = str(d.get("pin") or "").strip()
+    if not (pin.isdigit() and len(pin) == 6):
+        return jsonify({"ok": False, "msg": "el PIN tiene que ser de 6 digitos"}), 400
+    try:
+        r = requests.post("%s/%s/register" % (WA_GRAPH, pid), timeout=30,
+                          json={"messaging_product": "whatsapp", "pin": pin},
+                          headers={"Authorization": "Bearer " + tok,
+                                   "Content-Type": "application/json"})
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:110])}), 502
+    est = {}
+    try:
+        rr = requests.get("%s/%s" % (WA_GRAPH, pid), timeout=20,
+                          params={"fields": "display_phone_number,status,messaging_limit_tier,"
+                                            "throughput,code_verification_status",
+                                  "access_token": tok})
+        est = rr.json() if rr.content else {}
+    except Exception:
+        pass
+    return jsonify({"ok": r.status_code < 400, "http": r.status_code,
+                    "respuesta": j, "estado_ahora": est}), (200 if r.status_code < 400 else 400)
+
+
 @app.post("/wa-cambiar-numero")
 def wa_cambiar_numero():
     """Cambia el numero de WhatsApp Cloud API de la cuenta SIN pedir un token nuevo.
