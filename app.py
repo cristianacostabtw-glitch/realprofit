@@ -4363,13 +4363,14 @@ def _stock_orders(email, dias=90):
     stk = _shop_tokens().get(email)
     if stk and stk.get("access_token") and stk.get("shop"):
         try:
-            r = requests.get("https://%s/admin/api/2026-07/orders.json" % stk["shop"],
-                             headers={"X-Shopify-Access-Token": stk["access_token"]},
-                             params={"status": "any", "limit": 250,
-                                     "created_at_min": desde + "T00:00:00-03:00",
-                                     "fields": "id,financial_status,cancelled_at,created_at,line_items"},
-                             timeout=30)
-            for o in (r.json().get("orders", []) if r.status_code == 200 else []):
+            # PAGINADO (via _shopify_orders, que sigue el header Link). Antes se pedia
+            # limit=250 SIN paginar: Shopify devolvia solo las 250 mas nuevas, que con este
+            # volumen son ~3 dias, y todo lo anterior quedaba en cero. Ademas el corte caia
+            # en un punto distinto cada vez que entraba un pedido, asi que el stock "saltaba"
+            # solo sin que nadie lo tocara.
+            import time as _tdl
+            for o in _shopify_orders(stk["shop"], stk["access_token"], desde, _hoy(),
+                                     deadline=_tdl.time() + 45):
                 pq = {}
                 for li in (o.get("line_items") or []):
                     pid = str(li.get("product_id") or "")
@@ -4459,13 +4460,17 @@ def _stock_metrics(email, pid, orders, split=None, link_pid=None):
             dias[off] = dias.get(off, 0) + q
     ventas14 = [dias.get(13 - i, 0) for i in range(14)]
     d14 = sum(ventas14); d7 = sum(ventas14[-7:]); d3 = sum(dias.get(off, 0) for off in range(3))
-    # Promedio/día = RITMO RECIENTE y se recalcula en vivo con cada venta (no queda anclado a días
-    # viejos flojos). Tomamos el mayor entre el ritmo de los ultimos 3 dias (tu pace de ahora) y el
-    # de 7 dias (base semanal): al escalar sube al toque. Si no hubo ventas recientes, cae a 14 dias.
-    if d3 or d7:
-        rate = round(max(d3 / 3.0, d7 / 7.0))
+    # Promedio/día = promedio REAL de los ultimos 7 dias. Antes era max(d3/3, d7/7): agarraba
+    # el pico de los ultimos 3 dias y lo proyectaba, asi que el numero saltaba solo de un dia
+    # para el otro (con 499 potes en 3 dias marcaba 166/dia en vez de 71). Si no hay 7 dias de
+    # datos cae a 14; d3 queda solo como referencia.
+    if d7:
+        rate = round(d7 / 7.0)
+    elif d14:
+        rate = round(d14 / 14.0)
     else:
-        rate = round(d14 / 14) if d14 else 0
+        rate = 0
+    _ = d3
     return {"ventas14": ventas14, "d7": d7, "d14": d14, "rate": rate}
 
 
