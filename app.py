@@ -13600,9 +13600,22 @@ def meli_ventas():
         items = o.get("order_items") or []
         tit = (items[0].get("item") or {}).get("title", "") if items else ""
         un = sum(int(it.get("quantity") or 0) for it in items)
+        sku = ""
+        for it in items:
+            _s = str((it.get("item") or {}).get("seller_sku")
+                     or (it.get("item") or {}).get("seller_custom_field") or "").strip()
+            if _s and _s not in sku:
+                sku = (sku + " + " + _s) if sku else _s
+        potes = 0
+        for it in items:
+            _s = str((it.get("item") or {}).get("seller_sku")
+                     or (it.get("item") or {}).get("seller_custom_field") or "").strip()
+            potes += _meli_units_sku(_s)[0] * int(it.get("quantity") or 1)
         out.append({"id": o.get("id"), "fecha": (o.get("date_created") or "")[:10],
                     "estado": o.get("status", ""), "comprador": (o.get("buyer") or {}).get("nickname", ""),
-                    "titulo": tit, "unidades": un, "total": o.get("total_amount", 0)})
+                    "titulo": tit, "unidades": un, "total": o.get("total_amount", 0),
+                    "sku": sku, "potes": potes,
+                    "sid": str((o.get("shipping") or {}).get("id") or "")})
     return jsonify({"ok": True, "ventas": out, "total": (j.get("paging") or {}).get("total")})
 
 
@@ -14569,7 +14582,7 @@ var CONN=false, NICK='', SEL='ventas';
 var FEATURES=[
  {k:'ventas',ic:'📈',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
  {k:'mensajes',ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Preguntas sin responder de tus publicaciones — respondé desde acá.',soon:false},
- {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Estado de los envíos (Mercado Envíos) y tracking de cada venta.',soon:false},
+ {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Las ventas listas para despachar. Al bajar la etiqueta pasan a archivadas, no se borran.',soon:false},
  {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
  {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock unificado en botellas de 30 ml. Un Pack X2 descuenta 2. Sincronizá a ML con un clic.',soon:false},
  {k:'etiquetas',ic:'🖨️',bg:'#241a10',t:'Etiquetas + SKU',d:'Tildá las ventas a despachar y bajá las etiquetas ya estampadas con el SKU (potes) y la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
@@ -14589,7 +14602,7 @@ function renderMain(){
  if(f.k==='etiquetas'){ renderEtiquetas(); return; }
  if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
  var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
- m.innerHTML=head+(f.k==='ventas'?'<div id="mlvivo" style="margin-bottom:16px"></div>':'')+'<div class="card"><div id="mlc" style="color:#5b6b82;font-size:12.5px">Cargando…</div></div>';
+ m.innerHTML=head+(f.k==='ventas'?'<div id="mlvivo" style="margin-bottom:16px"></div>':'')+'<div class="card"><div id="mlc" style="color:var(--ink3);font-size:12.5px">Cargando…</div></div>'+(f.k==='envios'?'<div id="mlhist"></div>':'');
  if(f.k==='ventas'){cargarVivo();cargarVentas();} else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
 }
 function vvPlata(n){ try{ return '$ '+Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }catch(e){ return '$ '+(n||0); } }
@@ -14653,11 +14666,29 @@ function cargarVentas(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/ventas').then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.ventas||[]; if(!v.length){ box.innerHTML=vacio('Sin ventas recientes.'); return; }
   box.innerHTML='<div style="color:#7aa2c8;font-size:12px;margin-bottom:6px">'+(j.total!=null?('Total histórico: '+j.total+' · '):'')+'últimas '+v.length+'</div>'
-   +'<div style="overflow:auto"><table><thead><tr>'+TH+'Fecha</th>'+TH+'Comprador</th>'+TH+'Producto</th><th style="text-align:right">Un.</th><th style="text-align:right">Total</th>'+TH+'Estado</th></tr></thead><tbody>'
-   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="text-align:right">'+o.unidades+'</td><td style="text-align:right;color:#34d399;font-weight:700">'+money(o.total)+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td></tr>'; }).join('')+'</tbody></table></div>';
+   +'<div style="overflow:auto"><table><thead><tr>'+TH+'Fecha</th>'+TH+'Comprador</th>'+TH+'Producto</th>'+TH+'SKU</th><th style="text-align:right">Potes</th><th style="text-align:right">Un.</th><th style="text-align:right">Total</th>'+TH+'Estado</th><th></th></tr></thead><tbody>'
+   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td>'
+    +'<td style="font-size:11.5px;color:var(--ink2)">'+esc(o.sku||'—')+'</td>'
+    +'<td class="num" style="font-weight:800;color:var(--acc)">'+(o.potes?('X'+o.potes):'—')+'</td>'
+    +'<td class="num">'+o.unidades+'</td><td class="num" style="color:var(--ok);font-weight:700">'+money(o.total)+'</td>'
+    +'<td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado)+'</span></td>'
+    +'<td class="num">'+(o.sid?('<button class="btn gh" style="padding:5px 10px;font-size:10.5px;white-space:nowrap" onclick="vtaEtq(\''+esc(o.sid)+'\',this)">&#11015; etiqueta</button>'):'')+'</td></tr>'; }).join('')+'</tbody></table></div>';
  }).catch(function(){ box.innerHTML=err(); });
 }
 var PUBS=[];
+function vtaEtq(sid,b){
+ var t=b.innerHTML; b.disabled=true; b.innerHTML='bajando…';
+ var ct='';
+ fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
+ .then(function(r){ ct=r.headers.get('Content-Type')||''; return (r.ok&&ct.indexOf('pdf')>=0)?r.blob():r.text(); })
+ .then(function(x){
+  b.disabled=false; b.innerHTML=t;
+  if(typeof x==='string'){ var msg='No se pudo'; try{ msg=(JSON.parse(x).msg)||msg; }catch(e){} alert(msg); return; }
+  var u=URL.createObjectURL(x); var a=document.createElement('a'); a.href=u; a.download='MELI-etiqueta-SKU.pdf';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},1500);
+  b.innerHTML='&#10003; bajada';
+ }).catch(function(){ b.disabled=false; b.innerHTML=t; alert('Error de red'); });
+}
 function cargarPubs(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/publicaciones').then(function(r){return r.json();}).then(function(j){
   PUBS=(j&&j.items)||[]; if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.items||[]; if(!v.length){ box.innerHTML=vacio('Sin publicaciones activas.'); return; }
@@ -14833,11 +14864,75 @@ function syncStock30(preview){ var m=document.getElementById('syncm'), rb=docume
    +r.map(function(x){ return '<tr><td style="max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.title)+'</td><td style="text-align:right">'+x.bpu+'</td><td style="text-align:right;color:#93a3ba">'+(x.antes!=null?x.antes:'')+'</td><td style="text-align:right;font-weight:700;color:#34d399">'+x.units+'</td><td>'+(x.ok?'<span style="color:#34d399">✓</span>':'<span style="color:#e0637f">'+esc(x.msg)+'</span>')+'</td></tr>'; }).join('')+'</tbody></table></div>';
  }).catch(function(){ if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
 }
+function envSel(){ var c=document.querySelectorAll('.envck'), n=0,p=0;
+ for(var i=0;i<c.length;i++){ if(c[i].checked){ n++; p+=parseInt(c[i].getAttribute('data-potes')||'0',10); } }
+ var e=document.getElementById('envcnt'); if(e)e.innerHTML=n+' seleccionada'+(n===1?'':'s')+' &#183; '+p+' potes';
+}
+function envTodos(v){ var c=document.querySelectorAll('.envck'); for(var i=0;i<c.length;i++)c[i].checked=v; envSel(); }
+function envReabrir(sid){
+ fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
+ .then(function(){ cargarEnvios(); }).catch(function(){});
+}
+function envBajar(){
+ var c=document.querySelectorAll('.envck'), ids=[];
+ for(var i=0;i<c.length;i++) if(c[i].checked) ids.push(c[i].value);
+ var m=document.getElementById('envmsg'), b=document.getElementById('envbtn');
+ if(!ids.length){ if(m){m.textContent='Tildá al menos una venta';m.style.color='var(--bad)';} return; }
+ if(b)b.disabled=true; if(m){m.textContent='Bajando y estampando el SKU…';m.style.color='var(--ink2)';}
+ var H={};
+ fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:ids})})
+ .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.ok=r.ok;
+   H.ct=r.headers.get('Content-Type')||''; return (H.ok&&H.ct.indexOf('pdf')>=0)?r.blob():r.text(); })
+ .then(function(x){
+  if(b)b.disabled=false;
+  if(typeof x==='string'){ var msg='No se pudo generar'; try{ msg=(JSON.parse(x).msg)||msg; }catch(e){}
+   if(m){m.textContent=msg;m.style.color='var(--bad)';} return; }
+  var u=URL.createObjectURL(x); var a=document.createElement('a'); a.href=u; a.download='MELI-etiquetas-SKU.pdf';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},1500);
+  if(m){ m.innerHTML='&#10003; '+(H.p||ids.length)+' etiqueta(s) &#183; '+(H.t||'?')+' potes &#183; pasaron a archivadas'; m.style.color='var(--ok)'; }
+  cargarEnvios();
+ }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='var(--bad)';} });
+}
+function envFila(o,arch){
+ return '<div class="row" style="'+(arch?'opacity:.45':'')+'">'
+  +'<input type="checkbox" class="envck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" '+(arch?'':'checked')+' onchange="envSel()" style="width:16px;height:16px;cursor:pointer;flex:none">'
+  +(o.foto?('<img src="'+esc(o.foto)+'" style="width:38px;height:38px;border-radius:9px;object-fit:cover;flex:none">'):'<div style="width:38px;height:38px;border-radius:9px;background:var(--surf3);flex:none"></div>')
+  +'<div style="flex:1;min-width:150px"><div style="font-size:12.5px">'+esc(o.titulo||'')+'</div>'
+   +'<div style="font-size:11px;color:var(--ink3);margin-top:2px">'+esc(o.nombre||o.buyer||'')+' &#183; '+esc(o.tracking||'')+'</div></div>'
+  +'<div style="font-size:11.5px;color:var(--ink2);white-space:nowrap">'+esc(o.sku||'')+'</div>'
+  +'<div style="font-size:12.5px;font-weight:800;color:'+(o.dudoso?'var(--warn)':'var(--acc)')+';white-space:nowrap">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+'</div>'
+  +(arch?('<button class="btn gh" style="padding:5px 10px;font-size:10.5px" onclick="envReabrir(\''+esc(o.sid)+'\')">volver a habilitar</button>'):'')
+  +'</div>';
+}
 function cargarEnvios(){ var box=document.getElementById('mlc'); if(!box)return;
- fetch('/meli/envios').then(function(r){return r.json();}).then(function(j){
-  if(!j||!j.ok){ box.innerHTML=err(j); return; } var v=j.envios||[]; if(!v.length){ box.innerHTML=vacio('Sin envíos recientes.'); return; }
-  box.innerHTML='<div style="overflow:auto"><table><thead><tr>'+TH+'Fecha</th>'+TH+'Comprador</th>'+TH+'Producto</th>'+TH+'Tipo</th>'+TH+'Estado envío</th>'+TH+'Tracking</th></tr></thead><tbody>'
-   +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td><td style="font-size:11px;color:#93a3ba">'+esc(o.tipo||'')+'</td><td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado_env||o.estado_pago||'')+'</span></td><td style="font-size:11px;color:#7aa2c8">'+esc(o.tracking||'—')+'</td></tr>'; }).join('')+'</tbody></table></div>';
+ fetch('/meli/pendientes-lista?todas=1').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ box.innerHTML=err(j); return; }
+  var all=j.envios||[], pend=all.filter(function(o){return !o.bajada;}), arch=all.filter(function(o){return !!o.bajada;});
+  var h='<div class="sec-h"><b>Para despachar</b><span id="envcnt" style="font-size:12px;color:var(--ink2)"></span>'
+   +'<span style="flex:1"></span>'
+   +(pend.length?'<button class="btn gh" style="padding:8px 13px;font-size:12px" onclick="envTodos(true)">Tildar todas</button>':'')
+   +'<button class="btn" id="envbtn" onclick="envBajar()">&#11015; Descargar etiquetas con SKU</button></div>'
+   +'<div id="envmsg" style="font-size:12.5px;font-weight:600;min-height:16px;margin-bottom:6px"></div>';
+  h += pend.length ? pend.map(function(o){return envFila(o,false);}).join('')
+                   : '<div style="color:var(--ink3);font-size:12.5px;padding:6px 0">No hay ventas pendientes de despachar.</div>';
+  if(arch.length){
+   h+='<div class="sec-h" style="margin-top:22px"><b>Archivadas</b>'
+    +'<span style="font-size:12px;color:var(--ink3)">'+arch.length+' con la etiqueta ya descargada</span></div>'
+    +arch.map(function(o){return envFila(o,true);}).join('');
+  }
+  box.innerHTML=h;
+  envSel();
+  var hist=document.getElementById('mlhist');
+  if(hist) fetch('/meli/envios').then(function(r){return r.json();}).then(function(k){
+   var v=(k&&k.envios)||[]; if(!v.length){ hist.innerHTML=''; return; }
+   hist.innerHTML='<div class="card" style="margin-top:16px"><div class="sec-h"><b>Historial de envíos</b>'
+    +'<span style="font-size:12px;color:var(--ink3)">estado real en Mercado Libre</span></div>'
+    +'<div style="overflow:auto"><table><thead><tr>'+TH+'Fecha</th>'+TH+'Comprador</th>'+TH+'Producto</th>'+TH+'Estado</th>'+TH+'Tracking</th></tr></thead><tbody>'
+    +v.map(function(o){ return '<tr><td>'+esc(o.fecha)+'</td><td>'+esc(o.comprador)+'</td>'
+     +'<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo)+'</td>'
+     +'<td><span style="font-size:11px;color:#9cc7f5">'+esc(o.estado_env||o.estado_pago||'')+'</span></td>'
+     +'<td style="font-size:11px;color:var(--ink3)">'+esc(o.tracking||'—')+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
+  }).catch(function(){});
  }).catch(function(){ box.innerHTML=err(); });
 }
 function cargarPreg(){ var box=document.getElementById('mlc'); if(!box)return;
