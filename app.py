@@ -13697,6 +13697,28 @@ def meli_etiquetas_diag():
         except Exception as e:
             pruebas[etiqueta] = {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
     out["pdf"] = pruebas
+    # Que TRAE el PDF: la seccion Etiquetas+SKU necesita la hoja "Identificacion Productos"
+    # para saber cuantos potes va en cada paquete. Si la API no la manda, el estampado
+    # automatico no puede funcionar y hay que resolverlo de otra forma.
+    try:
+        rr = requests.get("%s/shipment_labels?shipment_ids=%s&response_type=pdf" % (MELI_API, ",".join(ids)),
+                          headers=h, timeout=60)
+        if (rr.content or b"")[:4] == b"%PDF":
+            import fitz
+            doc = fitz.open(stream=rr.content, filetype="pdf")
+            txt = ""
+            for pg in doc:
+                txt += pg.get_text()
+            out["contenido"] = {
+                "paginas": doc.page_count,
+                "tiene_hoja_identificacion": ("Identificaci" in txt),
+                "tiene_SKU": ("SKU" in txt.upper()),
+                "menciona_POTE": ("POTE" in txt.upper()),
+                "trackings_en_pdf": sorted(set(__import__("re").findall(r"HC\d{9}AR", txt)))[:12],
+                "muestra": txt[:700],
+            }
+    except Exception as e:
+        out["contenido"] = {"error": "%s: %s" % (type(e).__name__, str(e)[:140])}
     return jsonify(out)
 
 
