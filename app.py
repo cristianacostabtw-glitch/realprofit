@@ -14439,6 +14439,60 @@ def meli_orden_cruda():
                     "claves_raiz": sorted(list(o.keys()))})
 
 
+@app.get("/meli/envio-crudo")
+def meli_envio_crudo():
+    """SOLO LECTURA: el ENVIO tal cual lo devuelve ML, sin filtrar campos. Sirve para ver con que
+    nombre exacto viene el PLAZO DE DESPACHO (hasta que hora se despacha en el dia) en vez de
+    adivinar. NO despacha ni cambia nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "no conectado"})
+    h = {"Authorization": "Bearer " + tok}
+    sid = (request.args.get("sid") or "").strip()
+    try:
+        if not sid:
+            r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=25,
+                             params={"seller": uid, "sort": "date_desc", "limit": 30})
+            for o in ((r.json() if r.content else {}) or {}).get("results", []):
+                _s = (o.get("shipping") or {}).get("id")
+                if not _s:
+                    continue
+                _j = requests.get("%s/shipments/%s" % (MELI_API, _s), timeout=15,
+                                  headers={"Authorization": "Bearer " + tok,
+                                           "x-format-new": "true"}).json()
+                if (_j.get("status") or "") == "ready_to_ship":
+                    sid = str(_s); break
+        if not sid:
+            return jsonify({"ok": False, "msg": "no hay envios ready_to_ship"})
+        crudo = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                             headers={"Authorization": "Bearer " + tok,
+                                      "x-format-new": "true"}).json()
+        viejo = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                             headers={"Authorization": "Bearer " + tok}).json()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:140])})
+    def _fechas(d, pre=""):
+        out = {}
+        if isinstance(d, dict):
+            for k, v in d.items():
+                if isinstance(v, (dict, list)):
+                    out.update(_fechas(v, pre + k + "."))
+                elif isinstance(v, str) and ("T" in v and "-" in v and ":" in v):
+                    out[pre + k] = v
+        elif isinstance(d, list):
+            for i, v in enumerate(d[:4]):
+                out.update(_fechas(v, pre + "%d." % i))
+        return out
+    return jsonify({"ok": True, "sid": sid,
+                    "claves_nuevo": sorted(crudo.keys()) if isinstance(crudo, dict) else [],
+                    "claves_viejo": sorted(viejo.keys()) if isinstance(viejo, dict) else [],
+                    "fechas_nuevo": _fechas(crudo), "fechas_viejo": _fechas(viejo),
+                    "crudo": crudo})
+
+
 @app.get("/meli/etiquetas-diag")
 def meli_etiquetas_diag():
     """PRUEBA de la API de etiquetas de ML, SOLO LECTURA: busca los envios en ready_to_ship y
