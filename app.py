@@ -9734,7 +9734,9 @@ _JOBS_DIR = DATA_DIR / "jobs"
 def _job_put(job, d):
     try:
         _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        import time as _tj
         dd = {k: v for k, v in d.items() if k != "pdf"}     # los bytes del PDF NO van al JSON
+        dd["ts"] = _tj.time()                               # latido: ultima señal de vida
         (_JOBS_DIR / (job + ".json")).write_text(_json.dumps(dd, ensure_ascii=False, default=str), encoding="utf-8")
     except Exception:
         pass
@@ -11348,6 +11350,11 @@ def desconectar_meta():
 _ADS_API = "https://graph.facebook.com/v23.0"
 _ADS_JOBS = {}
 _ADS_UPLOADS = {}   # upload_id -> carpeta temporal con los videos que subió el usuario
+# Subida de video a Meta: cuanto se manda por vez. Meta suele pedir el archivo ENTERO de una;
+# leerlo entero y ademas armar el cuerpo multipart = 2/3 copias del video en RAM. Con 2 videos
+# a la vez eso volteaba el server (medido: 284MB -> 1267MB en 2 min -> SIGKILL).
+_ADS_CHUNK = 8 * 1024 * 1024
+_ADS_BIGLOCK = threading.Lock()   # si hay que mandar un tramo grande, UNO por vez en todo el server
 
 # Cuentas configuradas (CP1/NoxaLab). Extensible a más cuentas.
 _ADS_CUENTAS = {
@@ -11594,11 +11601,27 @@ def _ads_subir_video_directo(acct, ruta):
     so, eo = int(ini["start_offset"]), int(ini["end_offset"])
     with open(ruta, "rb") as f:
         while so < eo:
-            f.seek(so); chunk = f.read(eo - so)
+            pide = eo - so
+            f.seek(so); chunk = f.read(min(pide, _ADS_CHUNK))
             res = _ads_call("POST", base,
                             data={"upload_phase": "transfer", "upload_session_id": sess, "start_offset": so},
                             files={"video_file_chunk": ("chunk", chunk)})
-            so, eo = int(res["start_offset"]), int(res["end_offset"])
+            del chunk                                    # soltar la RAM YA, no esperar al recolector
+            so2, eo = int(res["start_offset"]), int(res["end_offset"])
+            if so2 <= so:
+                # Meta no acepto el pedazo chico: le mando el tramo entero que pide, pero de a UNO
+                # por vez en todo el server (dos videos grandes juntos vuelven a quedarse sin memoria).
+                with _ADS_BIGLOCK:
+                    f.seek(so); chunk = f.read(pide)
+                    res = _ads_call("POST", base,
+                                    data={"upload_phase": "transfer", "upload_session_id": sess,
+                                          "start_offset": so},
+                                    files={"video_file_chunk": ("chunk", chunk)})
+                    del chunk
+                so2, eo = int(res["start_offset"]), int(res["end_offset"])
+                if so2 <= so:
+                    raise RuntimeError("Meta dejo de aceptar el video en la mitad (byte %d de %d)" % (so, size))
+            so = so2
     _ads_call("POST", base, data={"upload_phase": "finish", "upload_session_id": sess})
     return vid
 
@@ -12425,6 +12448,18 @@ def _ads_run(job, params):
     st = _ADS_JOBS.get(job)
     import tempfile, shutil
     tmp = tempfile.mkdtemp(prefix="ads_")
+    # LATIDO cada 5s. Sin esto, subir UN video grande no escribia nada por minutos y no habia
+    # forma de distinguir "trabajando" de "muerto": la pantalla quedaba clavada en 5/6 para siempre.
+    _lat = {"on": True}
+
+    def _latir():
+        import time as _tl
+        while _lat["on"]:
+            _tl.sleep(5)
+            if _lat["on"]:
+                _job_put(job, st)
+
+    threading.Thread(target=_latir, daemon=True).start()
     try:
         cfg = dict(_ADS_CUENTAS.get(params.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"])
         if (params.get("page") or "").strip():
@@ -12486,6 +12521,10 @@ def _ads_run(job, params):
                 vid = _ads_subir_video(acct, ruta)
                 # la miniatura se saca al CREAR el anuncio (no acá) para no frenar la subida
                 medio = {"kind": "video", "video_id": vid, "thumb": None}
+            try:
+                _os.remove(ruta)      # ya está en Meta: liberar el archivo local enseguida
+            except Exception:
+                pass
             with _pl:
                 _pn["n"] += 1
                 st["done"] = _pn["n"]
@@ -12657,6 +12696,7 @@ def _ads_run(job, params):
         st["error"] = "%s: %s" % (type(e).__name__, str(e)[:300]); st["listo"] = True
         _job_put(job, st)
     finally:
+        _lat["on"] = False
         try:
             shutil.rmtree(tmp, ignore_errors=True)
         except Exception:
@@ -13004,7 +13044,17 @@ def pf_ads_progreso():
     st = _ADS_JOBS.get(_jid) or _job_get(_jid)
     if not st:
         return jsonify({"ok": False}), 404
-    return jsonify({"ok": True, **{k: st[k] for k in ("done", "total", "msg", "listo", "error", "stats")}})
+    # Si hace mas de 3 minutos que no late, el proceso murio (se quedo sin memoria y el sistema
+    # lo mato). Decirlo, en vez de dejar la pantalla clavada en "Subiendo videos 5/6" para siempre.
+    if not st.get("listo") and not st.get("error"):
+        import time as _tp
+        _ts = float(st.get("ts") or 0)
+        if _ts and (_tp.time() - _ts) > 180:
+            st["error"] = ("El servidor corto la subida (se quedo sin memoria) en \"%s\". "
+                           "No siguio: volve a lanzarla." % (st.get("msg") or "")[:60])
+            st["listo"] = True
+            _job_put(_jid, st)
+    return jsonify({"ok": True, **{k: st.get(k) for k in ("done", "total", "msg", "listo", "error", "stats")}})
 
 
 # ---------------- Dashboard ----------------
