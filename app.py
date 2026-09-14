@@ -15424,7 +15424,7 @@ function envFila(o,arch){
   +(o.foto?('<img src="'+esc(o.foto)+'" style="width:38px;height:38px;border-radius:9px;object-fit:cover;flex:none">'):'<div style="width:38px;height:38px;border-radius:9px;background:var(--surf3);flex:none"></div>')
   +'<div style="flex:1;min-width:150px"><div style="font-size:12.5px">'+esc(o.titulo||'')+'</div>'
    +'<div style="font-size:11px;color:var(--ink3);margin-top:2px">'+esc(o.nombre||o.buyer||'')+' &#183; '+esc(o.tracking||'')+'</div></div>'
-  +'<div style="font-size:11.5px;color:var(--ink2);white-space:nowrap">'+esc(o.sku||'')+'</div>'
+  +'<div style="font-size:11.5px;color:var(--ink2);white-space:nowrap">'+esc(o.sku||'')+((o.cant||1)>1?(' <b style="color:var(--acc)">&#215;'+(o.cant)+'</b>'):'')+'</div>'
   +'<div style="font-size:12.5px;font-weight:800;color:'+(o.dudoso?'var(--warn)':'var(--acc)')+';white-space:nowrap">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+'</div>'
   +(arch?('<button class="btn gh" style="padding:5px 10px;font-size:10.5px" onclick="envReabrir(\''+esc(o.sid)+'\')">volver a habilitar</button>'):'')
   +'</div>';
@@ -15559,7 +15559,7 @@ function etqCargar(){
      +'</div>'
      +'<div style="font-size:13px;font-weight:700;color:#eef3f9;white-space:nowrap">'+etqPlata(o.precio)+'</div>'
      +'<div style="font-size:12px;color:#93a3ba;white-space:nowrap">'+(o.cant||1)+((o.cant||1)>1?' unidades':' unidad')+'</div>'
-     +'<div style="font-size:11.5px;color:#93a3ba;white-space:nowrap">SKU: '+esc(o.sku||'')+'</div>'
+     +'<div style="font-size:11.5px;color:#93a3ba;white-space:nowrap">SKU: '+esc(o.sku||'')+((o.cant||1)>1?(' <b style="color:#ffe600">&#215;'+(o.cant)+'</b>'):'')+'</div>'
      +'<div style="font-size:13px;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+';background:#16202e;border-radius:9px;padding:6px 11px;white-space:nowrap">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+' potes</div>'
     +'</div>'
     +'<div style="padding:0 13px 11px;font-size:11.5px;color:#34d399;font-weight:600">Etiqueta lista para imprimir &#183; <span style="color:#7aa2c8;font-weight:500">'+esc(o.tracking||'')+'</span></div>'
