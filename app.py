@@ -18366,6 +18366,43 @@ def wa_diag_meta():
     return jsonify(out)
 
 
+@app.get("/wa-diag-app")
+def wa_diag_app():
+    """SOLO LECTURA. De que app de Meta es el token guardado, y que apps estan suscriptas al WABA.
+    Sirve para saber si RealProfit puede suscribir SU PROPIA app al mismo WABA y recibir los
+    mensajes EN PARALELO, sin tocar el override_callback_uri que hoy manda todo a redchat.
+    NO escribe nada en Meta."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    tok = c.get("token")
+    if not tok:
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene WhatsApp API conectado"})
+    out = {"ok": True, "waba_id": c.get("waba_id"), "phone_id": c.get("phone_id"),
+           "app_de_realprofit": _os.getenv("META_APP_ID", "")}
+    try:
+        r = requests.get("%s/debug_token" % WA_GRAPH, timeout=25,
+                         params={"input_token": tok, "access_token": tok})
+        j = ((r.json() if r.content else {}) or {}).get("data") or {}
+        out["token_app_id"] = str(j.get("app_id") or "")
+        out["token_app_nombre"] = j.get("application")
+        out["token_tipo"] = j.get("type")
+        out["token_vence"] = j.get("expires_at")
+        out["token_valido"] = j.get("is_valid")
+        out["scopes"] = j.get("scopes")
+    except Exception as e:
+        out["debug_token_error"] = "%s: %s" % (type(e).__name__, str(e)[:140])
+    try:
+        r2 = requests.get("%s/%s/subscribed_apps" % (WA_GRAPH, c.get("waba_id") or ""),
+                          params={"access_token": tok}, timeout=25)
+        out["apps_suscriptas"] = (r2.json() if r2.content else {})
+    except Exception as e:
+        out["subscribed_error"] = "%s: %s" % (type(e).__name__, str(e)[:140])
+    out["misma_app"] = (out.get("token_app_id") or "x") == (out.get("app_de_realprofit") or "y")
+    return jsonify(out)
+
+
 @app.post("/wa-suscribir")
 def wa_suscribir():
     """Suscribe la app al WABA (equivale al boton 'Subscribe' de WhatsApp Manager). Sin esto Meta
