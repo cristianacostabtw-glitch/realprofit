@@ -8810,10 +8810,21 @@ def _meli_envios_listos(email, sids=None):
     if not tok or not uid:
         return [], "MercadoLibre no conectado"
     h = {"Authorization": "Bearer " + tok}
+    # PAGINAR. Con limit=50 se miraban SOLO las 50 ordenes mas nuevas: medido 14-sep la cuenta
+    # tiene 66, asi que un envio listo para despachar mas viejo que esa ventana no aparecia en la
+    # lista NI en el total de potes. Mismo bug que tenia el stock con Shopify.
+    res = []
     try:
-        r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
-                         params={"seller": uid, "sort": "date_desc", "limit": 50})
-        res = (r.json() if r.content else {}).get("results", [])
+        _off = 0
+        while _off < 400:
+            r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
+                             params={"seller": uid, "sort": "date_desc",
+                                     "limit": 50, "offset": _off})
+            _lote = (r.json() if r.content else {}).get("results", [])
+            res += _lote
+            if len(_lote) < 50:
+                break
+            _off += 50
     except Exception as e:
         return [], "%s: %s" % (type(e).__name__, str(e)[:120])
     sel = set(str(x) for x in (sids or []))
