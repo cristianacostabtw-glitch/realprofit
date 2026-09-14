@@ -13044,14 +13044,17 @@ def pf_ads_progreso():
     st = _ADS_JOBS.get(_jid) or _job_get(_jid)
     if not st:
         return jsonify({"ok": False}), 404
-    # Si hace mas de 3 minutos que no late, el proceso murio (se quedo sin memoria y el sistema
-    # lo mato). Decirlo, en vez de dejar la pantalla clavada en "Subiendo videos 5/6" para siempre.
+    # Si hace mas de 3 minutos que no late, el proceso murio. Dos causas vistas: el worker de
+    # gunicorn se reciclo por --max-requests (medido 14-sep: mato el job 19s despues de lanzarlo,
+    # sin una sola linea de OOM) o el sistema lo mato por memoria. NO afirmar cual de las dos:
+    # decir que se corto. Antes la pantalla quedaba clavada en "Subiendo videos 5/6" para siempre.
     if not st.get("listo") and not st.get("error"):
         import time as _tp
         _ts = float(st.get("ts") or 0)
         if _ts and (_tp.time() - _ts) > 180:
-            st["error"] = ("El servidor corto la subida (se quedo sin memoria) en \"%s\". "
-                           "No siguio: volve a lanzarla." % (st.get("msg") or "")[:60])
+            st["error"] = ("Se corto en \"%s\": el servidor reinicio el proceso y no siguio. "
+                           "ANTES de relanzar mira en Meta que quedo creado: puede haber quedado "
+                           "una campana a medias." % (st.get("msg") or "")[:60])
             st["listo"] = True
             _job_put(_jid, st)
     return jsonify({"ok": True, **{k: st.get(k) for k in ("done", "total", "msg", "listo", "error", "stats")}})
