@@ -18366,6 +18366,41 @@ def wa_diag_meta():
     return jsonify(out)
 
 
+@app.get("/wa-diag-num")
+def wa_diag_num():
+    """SOLO LECTURA. Averigua si Meta admite un webhook POR NUMERO (y no solo por WABA).
+    Si existiera, se podria desviar SOLO el numero nuevo a RealProfit dejando el viejo en
+    redchat. Pide campos a proposito para que Meta conteste que campos son validos.
+    NO escribe nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    tok, pid = c.get("token"), c.get("phone_id")
+    if not (tok and pid):
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene WhatsApp API conectado"})
+    out = {"ok": True, "phone_id": pid, "waba_id": c.get("waba_id"), "pruebas": {}}
+
+    def _g(etiqueta, url, params):
+        try:
+            r = requests.get(url, params=params, timeout=25)
+            j = (r.json() if r.content else {})
+            out["pruebas"][etiqueta] = {"http": r.status_code, "resp": j}
+        except Exception as e:
+            out["pruebas"][etiqueta] = {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+
+    # 1) el numero con el campo que buscamos (si no existe, Meta lista los validos en el error)
+    _g("numero_webhook_configuration", "%s/%s" % (WA_GRAPH, pid),
+       {"fields": "display_phone_number,webhook_configuration", "access_token": tok})
+    # 2) el mismo campo como subrecurso
+    _g("subrecurso_webhook_configuration", "%s/%s/webhook_configuration" % (WA_GRAPH, pid),
+       {"access_token": tok})
+    # 3) campo invalido a proposito -> Meta responde con la lista de campos validos del nodo
+    _g("campos_validos_del_numero", "%s/%s" % (WA_GRAPH, pid),
+       {"fields": "zzz_campo_inexistente", "access_token": tok})
+    return jsonify(out)
+
+
 @app.get("/wa-diag-app")
 def wa_diag_app():
     """SOLO LECTURA. De que app de Meta es el token guardado, y que apps estan suscriptas al WABA.
