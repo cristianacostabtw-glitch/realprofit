@@ -12697,16 +12697,26 @@ def pf_ads_diag():
         out["ve_va1"] = any(str(a.get("account_id")) == "964010428983612" for a in aa.get("data", []))
     except Exception as e:
         out["adaccounts_error"] = str(e)
-    try:
-        cid = _ads_crear("964010428983612", "campaigns",
-                         _ads_camp_payload("ZZZ DIAG BORRAR", True, 5, "PAUSED"))
-        out["crear_en_va1"] = "✅ FUNCIONA (" + cid + ")"
+    # Prueba REAL contra las cuentas que se usan (NoxaLab). Antes probaba SOLO VA1 (VisionPure),
+    # una cuenta que ya no existe: el diagnostico mostraba un error rojo que no tenia nada que
+    # ver con el problema y tapaba lo que si importa.
+    out["prueba_por_cuenta"] = {}
+    for _k, _c in _ADS_CUENTAS.items():
+        if _k == "va1":
+            continue                      # VisionPure no se usa: no lo pruebo
+        _acc = str(_c.get("ad_account") or "")
+        if not _acc:
+            continue
         try:
-            _ads_call("DELETE", cid)
-        except Exception:
-            pass
-    except Exception as e:
-        out["crear_en_va1"] = "❌ FALLA: " + str(e)
+            _cid = _ads_crear(_acc, "campaigns",
+                              _ads_camp_payload("ZZZ DIAG BORRAR", True, 5, "PAUSED"))
+            out["prueba_por_cuenta"][_c.get("nombre") or _k] = "OK (%s)" % _cid
+            try:
+                _ads_call("DELETE", _cid)
+            except Exception:
+                pass
+        except Exception as e:
+            out["prueba_por_cuenta"][_c.get("nombre") or _k] = "FALLA: %s" % str(e)[:220]
     return jsonify(out)
 
 
