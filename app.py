@@ -18366,6 +18366,36 @@ def wa_diag_meta():
     return jsonify(out)
 
 
+@app.get("/wa-diag-meta2")
+def wa_diag_meta2():
+    """SOLO LECTURA. Pide la METADATA del nodo del numero y de la WABA: Meta devuelve la lista de
+    campos y conexiones. Sirve para saber si webhook_configuration del NUMERO se puede ESCRIBIR
+    (y por donde), sin intentar escribir nada en produccion."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 401
+    c = _wa_conf(email) or {}
+    tok, pid, waba = c.get("token"), c.get("phone_id"), c.get("waba_id")
+    if not (tok and pid):
+        return jsonify({"ok": False, "msg": "esta cuenta no tiene WhatsApp API conectado"})
+    out = {"ok": True, "phone_id": pid, "waba_id": waba, "pruebas": {}}
+
+    def _g(etq, url, params):
+        try:
+            r = requests.get(url, params=params, timeout=25)
+            out["pruebas"][etq] = {"http": r.status_code, "resp": (r.json() if r.content else {})}
+        except Exception as e:
+            out["pruebas"][etq] = {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+
+    _g("metadata_del_numero", "%s/%s" % (WA_GRAPH, pid),
+       {"metadata": "1", "access_token": tok})
+    _g("metadata_de_la_waba", "%s/%s" % (WA_GRAPH, waba or ""),
+       {"metadata": "1", "access_token": tok})
+    _g("numeros_con_su_webhook", "%s/%s/phone_numbers" % (WA_GRAPH, waba or ""),
+       {"fields": "display_phone_number,verified_name,webhook_configuration", "access_token": tok})
+    return jsonify(out)
+
+
 @app.get("/wa-diag-num")
 def wa_diag_num():
     """SOLO LECTURA. Averigua si Meta admite un webhook POR NUMERO (y no solo por WABA).
