@@ -18381,10 +18381,16 @@ def wa_conectar():
     except Exception as e:
         return jsonify({"ok": False, "msg": "no pude validar con Meta: %s" % str(e)[:80]})
     d = _wa_tokens()
-    prev = d.get(email) or {}
+    prev = dict(d.get(email) or {})
     vt = prev.get("verify_token") or ("rp" + _secrets.token_hex(8))
-    d[email] = {"phone_id": phone_id, "token": token, "waba_id": waba_id,
-                "forward_url": forward_url, "verify_token": vt, "numero": numero}
+    # OJO: acá antes se hacía d[email] = {...} y eso REEMPLAZABA el registro entero → al conectar
+    # un número nuevo se borraban el cerebro del bot (bot_instr), lo aprendido de chats
+    # (bot_ejemplos), la marca, el canal, el horario y los datos de pago. Pasó el 15/09/2026 al
+    # vincular el 5575-6770. Ahora se ACTUALIZA sobre lo que ya había: se cambian sólo las
+    # credenciales del número y todo lo del bot queda intacto.
+    prev.update({"phone_id": phone_id, "token": token, "waba_id": waba_id,
+                 "forward_url": forward_url, "verify_token": vt, "numero": numero})
+    d[email] = prev
     _wa_save_tokens(d)
     base = request.host_url.rstrip("/")
     return jsonify({"ok": True, "numero": numero, "webhook_url": base + "/wa-webhook", "verify_token": vt})
@@ -18395,7 +18401,18 @@ def wa_desconectar():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False})
-    d = _wa_tokens(); d.pop(email, None); _wa_save_tokens(d)
+    # Desconectar = soltar el NÚMERO, no borrar el bot. Antes hacía d.pop(email) y se llevaba
+    # puesto el cerebro (bot_instr), lo aprendido de chats (bot_ejemplos), la marca, el horario,
+    # las reglas y los datos de pago. Ahora se limpian sólo las credenciales del número y todo
+    # lo que empieza con "bot_" queda guardado para cuando se reconecte.
+    d = _wa_tokens()
+    prev = dict(d.get(email) or {})
+    conservado = {k: v for k, v in prev.items() if k.startswith("bot_") or k == "verify_token"}
+    if conservado:
+        d[email] = conservado
+    else:
+        d.pop(email, None)
+    _wa_save_tokens(d)
     return jsonify({"ok": True})
 
 
