@@ -16721,6 +16721,17 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                                 "alias": conf.get("bot_pago_alias", ""),
                                 "cuit": conf.get("bot_pago_cuit", "")})
     conv["bot_motivo"] = d.get("motivo", ""); conv["bot_cat"] = d.get("categoria", "")
+    # TRANSFERENCIA CERRADA -> queda PENDIENTE DE CREAR EL PEDIDO.
+    # El cerebro ya venía validando el comprobante (es_comprobante + titular_ok, que es true SOLO si
+    # el destinatario del comprobante somos nosotros) pero esa señal se tiraba: nadie la leía. Acá
+    # se marca el chat, y esa marca es LA que hace aparecer el botón "Cargar pedido" en /wa.
+    # Se borra sola cuando el pedido se crea, así el botón desaparece de ese chat.
+    _comp = d.get("comprobante") or {}
+    if d.get("es_comprobante") and _comp.get("titular_ok") and not conv.get("pedido_shopify"):
+        conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
+                               "fecha": str(_comp.get("fecha") or ""),
+                               "operacion": str(_comp.get("operacion") or ""),
+                               "ts": _wa_now()}
 
     if d.get("responder") and (d.get("mensaje") or "").strip():
         msg = d["mensaje"].strip()
@@ -16809,8 +16820,17 @@ def wa_pedido_extraer():
         d["potes"] = int(d.get("potes") or 0)
     except Exception:
         d["potes"] = 0
+    # El monto REAL que el bot leyó del comprobante manda sobre la tabla de precios: si transfirió
+    # con descuento o de más, el pedido tiene que salir por lo que pagó de verdad.
+    _pp = conv.get("pend_pedido") or {}
+    if not d.get("total") and _pp.get("monto"):
+        _s = "".join(ch for ch in str(_pp["monto"]).split(",")[0] if ch.isdigit())
+        if _s:
+            d["total"] = float(_s)
     if not d.get("total"):
         d["total"] = _WA_PRECIO_PACK.get(d["potes"]) or 0
+    d["comp_fecha"] = _pp.get("fecha", "")
+    d["comp_oper"] = _pp.get("operacion", "")
     d["nombre"] = (d.get("nombre") or conv.get("name") or "").strip()
     d["dni"] = _solo_dig(d.get("dni"))
     d["tel"] = _solo_dig(d.get("tel")) or _solo_dig(wid)
@@ -16903,8 +16923,9 @@ def wa_pedido_crear():
     wid = (f.get("wa_id") or "").strip()
     chats = _wa_chats_all()
     conv = (chats.get(email) or {}).get(wid)
-    if conv is not None:                      # queda anotado en el chat -> no se carga dos veces
-        conv["pedido_shopify"] = num
+    if conv is not None:
+        conv["pedido_shopify"] = num          # queda anotado -> no se carga dos veces
+        conv.pop("pend_pedido", None)         # ya no está pendiente -> el botón desaparece del chat
         _wa_save_chats(chats)
     try:
         _DESP_CACHE.pop(email, None)          # que Despachos lo vea ya, sin esperar el cache
@@ -17073,7 +17094,6 @@ _WA_PAGE = """<!doctype html>
  .deriv{background:#2e1719;color:#ff9b9b;border-bottom:1px solid #5a2a2e;padding:9px 18px;font-size:12.5px;font-weight:700}
  .pedbtn{margin-left:auto;background:var(--teal);color:#062d23;border:0;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
  .pedbtn:hover{filter:brightness(1.08)}
- .pedbtn.hecho{background:var(--pan3);color:var(--mut)}
  .bwrap{display:flex;flex-direction:column;gap:10px}
  .brow2{border:1px solid var(--line);border-radius:12px;background:var(--pan2);overflow:hidden}
  .brow2.on{border-color:var(--out)}
@@ -17376,7 +17396,7 @@ function renderConv(c){
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
  conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
-  +'<button class="pedbtn'+(c.pedido?' hecho':'')+'" onclick="openPedido()" title="Cargar en Shopify el pedido cerrado por transferencia">'+(c.pedido?'&#10003; Pedido #'+esc(c.pedido):'&#128722; Cargar pedido')+'</button></div>'
+  +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>':'')+'</div>'
   +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
@@ -19006,6 +19026,11 @@ def wa_chats():
         _urg = (("deriv" in _nota.lower()) or (conv.get("bot_cat") or "") == "reclamo") and not _hum
         if _urg and not _nota:
             _nota = _mot or "El bot lo derivó a atención"
+        # ¿Hay una transferencia cerrada esperando que se cargue el pedido? La marca la pone el BOT
+        # cuando valida el comprobante (ver _wa_bot_run), no se adivina acá: antes yo la deducía por
+        # palabras sueltas del chat y el botón terminaba saliendo donde no había ninguna venta.
+        # Una vez creado el pedido la marca se borra -> el botón desaparece de ese chat.
+        _vta = bool(conv.get("pend_pedido")) and not conv.get("pedido_shopify")
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
                     "unread": conv.get("unread", 0),
@@ -19013,6 +19038,7 @@ def wa_chats():
                     "motivo": conv.get("bot_motivo", "") or "",
                     "humano": _hum, "urgente": bool(_urg),
                     "pedido": conv.get("pedido_shopify", "") or "",
+                    "venta": bool(_vta),
                     "messages": apimsgs[-300:]})
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
