@@ -17166,6 +17166,11 @@ _WA_PAGE = """<!doctype html>
  .chat.urg:hover{background:rgba(179,38,30,.15)}
  .deriv{background:#2e1719;color:#ff9b9b;border-bottom:1px solid #5a2a2e;padding:9px 18px;font-size:12.5px;font-weight:700}
  .pedbtn{margin-left:auto;background:var(--teal);color:#062d23;border:0;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+ /* Variante DISCRETA: el bot no marcó nada, pero igual se puede cargar el pedido a mano. Hace falta
+    porque la marca sólo se pone cuando entra un mensaje nuevo: las transferencias cerradas ANTES de
+    que existiera la marca (o en chats que tomó una persona) se quedaban sin forma de cargarse. */
+ .pedbtn.man{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:600;padding:6px 11px;font-size:12px}
+ .pedbtn.man:hover{color:var(--ink);border-color:var(--teal)}
  .pedbtn:hover{filter:brightness(1.08)}
  .vtachip{background:#0b5d43;color:#7ff0c4;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
  .chat.vta{border-left:3px solid #0b5d43;background:rgba(11,93,67,.10)}
@@ -17485,7 +17490,8 @@ function renderConv(c){
  conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.venta?' <span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':''))+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
   +'<div style="flex:1"></div>'
   +((c.urgente&&!c.venta)?'<button class="okbtn" onclick="resolverUrg()" title="Sacar el URGENTE: este caso ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button>':'')
-  +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>':'')+'</div>'
+  +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>'
+    :(c.pedido?'':'<button class="pedbtn man" onclick="openPedido()" title="Cargar a mano el pedido de este chat en Shopify">+ Cargar pedido</button>'))+'</div>'
   +((c.urgente&&!c.venta)?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
