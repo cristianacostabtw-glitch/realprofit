@@ -16756,6 +16756,31 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     _wa_save_chats(chats)
 
 
+@app.post("/wa-resolver")
+def wa_resolver():
+    """Saca el URGENTE / DERIVADO A ATENCION de un chat: lo aprieta el que lo resolvio.
+    Antes el rojo solo se apagaba si atencion CONTESTABA algo; si el tema se resolvia por
+    telefono, o no hacia falta responder, el chat quedaba marcado para siempre."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    wid = (request.form.get("wa_id") or "").strip()
+    if not wid:
+        return jsonify({"ok": False, "msg": "falta el chat"})
+    chats = _wa_chats_all()
+    conv = (chats.get(email) or {}).get(wid)
+    if conv is None:
+        return jsonify({"ok": False, "msg": "no encontré ese chat"})
+    # Mismo camino que cuando contesta una persona (ver _wa_bot_run): queda tomado por humano y
+    # se limpia lo que dispara el rojo en el calculo de _urg de /wa-chats.
+    conv["bot_humano"] = True
+    conv.pop("bot_nota", None)
+    conv.pop("bot_motivo", None)
+    conv.pop("bot_cat", None)
+    _wa_save_chats(chats)
+    return jsonify({"ok": True})
+
+
 # ---------------- Transferencia cerrada por WhatsApp -> pedido REAL en Shopify ----------------
 # Antes, cuando se cerraba una venta por transferencia, el pedido NO existia en ningun lado: el bot
 # juntaba nombre/DNI/direccion, decia "queda en despacho" y todo moria en el chat. Estos dos
@@ -17132,6 +17157,9 @@ _WA_PAGE = """<!doctype html>
  .deriv{background:#2e1719;color:#ff9b9b;border-bottom:1px solid #5a2a2e;padding:9px 18px;font-size:12.5px;font-weight:700}
  .pedbtn{margin-left:auto;background:var(--teal);color:#062d23;border:0;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
  .pedbtn:hover{filter:brightness(1.08)}
+ .vtachip{background:#0b5d43;color:#7ff0c4;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle}
+ .okbtn{margin-left:10px;background:#3a1f22;color:#ffc9c9;border:1px solid #7a3a3f;border-radius:7px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
+ .okbtn:hover{background:#4d2a2e}
  .bwrap{display:flex;flex-direction:column;gap:10px}
  .brow2{border:1px solid var(--line);border-radius:12px;background:var(--pan2);overflow:hidden}
  .brow2.on{border-color:var(--out)}
@@ -17406,7 +17434,7 @@ function renderList(){
  if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.</div>'; return; }
  box.innerHTML=arr.map(function(c){
   var urg=c.urgente?' urg':'';
-  var chip=c.urgente?'<span class="urgchip">URGENTE</span>':'';
+  var chip=c.urgente?'<span class="urgchip">URGENTE</span>':(c.venta?'<span class="vtachip">TRANSFER.</span>':'');
   return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
@@ -17443,7 +17471,7 @@ function renderConv(c){
  }).join('');
  conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
   +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>':'')+'</div>'
-  +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
+  +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'<button class="okbtn" onclick="resolverUrg()" title="Sacar el urgente: ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button></div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
   +'<div class="emoji-pop" id="emojiPop"></div>'
@@ -17556,6 +17584,14 @@ function sendTpl(name,lang,nvars){
  });
 }
 function closeOv(){ document.getElementById('ov').classList.remove('on'); }
+// ── Sacar el URGENTE cuando atención ya lo resolvió ──
+function resolverUrg(){
+ if(!SEL) return;
+ post('/wa-resolver',{wa_id:SEL}).then(function(r){
+  if(!r.ok){ alert('No se pudo sacar el urgente: '+(r.msg||'error')); return; }
+  loadChats();
+ });
+}
 // ── Cargar en Shopify el pedido cerrado por transferencia ──
 function openPedido(){
  if(!SEL){ alert('Elegí un chat primero'); return; }
