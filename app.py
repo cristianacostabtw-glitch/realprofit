@@ -11360,7 +11360,57 @@ def desconectar_meta():
 # ==================== SUBIR CREATIVOS (Meta Ads) ====================
 _ADS_API = "https://graph.facebook.com/v23.0"
 _ADS_JOBS = {}
-_ADS_UPLOADS = {}   # upload_id -> carpeta temporal con los videos que subió el usuario
+_ADS_UPLOADS = {}   # upload_id -> carpeta con los creativos subidos (cache en memoria)
+# Las subidas van al DISCO PERSISTENTE (/var/data), NO a /tmp. Antes, un deploy o un reciclado de
+# worker borraba /tmp Y vaciaba este dict → "no encontré los videos que subiste" con los archivos
+# ya cargados y la config llena. Pasó el 16/09 a las 00:17, justo después de un deploy.
+_ADS_UPDIR = DATA_DIR / "ads_uploads"          # carpeta madre de todas las subidas
+_ADS_UPIDX = DATA_DIR / "ads_uploads.json"     # {upload_id: {"dir":…, "ts":…, "email":…}}
+_ADS_UP_TTL = 24 * 3600                        # una subida vive 24 h; después se purga sola
+
+
+def _ads_up_idx_load() -> dict:
+    try:
+        return json.loads(_ADS_UPIDX.read_text("utf-8"))
+    except Exception:
+        return {}
+
+
+def _ads_up_idx_save(d: dict) -> None:
+    try:
+        _ADS_UPIDX.write_text(json.dumps(d), "utf-8")
+    except Exception:
+        pass
+
+
+def _ads_up_dir(up_id: str):
+    """Carpeta de una subida. Mira la memoria y, si no está (worker nuevo o reinicio), el disco."""
+    d = _ADS_UPLOADS.get(up_id)
+    if d and _os.path.isdir(d):
+        return d
+    d = (_ads_up_idx_load().get(up_id) or {}).get("dir")
+    if d and _os.path.isdir(d):
+        _ADS_UPLOADS[up_id] = d
+        return d
+    return None
+
+
+def _ads_up_purga(borrar_id: str = "") -> None:
+    """Borra la subida indicada y las vencidas. SIN esto el disco (1 GB, compartido con tokens,
+    chats y usuarios) se llena solo y se rompe toda la app, no solo los ads."""
+    import shutil as _sh, time as _t
+    idx = _ads_up_idx_load()
+    ahora = _t.time()
+    for k in list(idx.keys()):
+        it = idx.get(k) or {}
+        if k == borrar_id or (ahora - float(it.get("ts") or 0)) > _ADS_UP_TTL:
+            try:
+                _sh.rmtree(it.get("dir") or "", ignore_errors=True)
+            except Exception:
+                pass
+            idx.pop(k, None)
+            _ADS_UPLOADS.pop(k, None)
+    _ads_up_idx_save(idx)
 # Subida de video a Meta: cuanto se manda por vez. Meta suele pedir el archivo ENTERO de una;
 # leerlo entero y ademas armar el cuerpo multipart = 2/3 copias del video en RAM. Con 2 videos
 # a la vez eso volteaba el server (medido: 284MB -> 1267MB en 2 min -> SIGKILL).
@@ -12497,7 +12547,7 @@ def _ads_run(job, params):
         up_id = (params.get("upload_id") or "").strip()
         if up_id:
             st["msg"] = "Tomando tus videos…"; _job_put(job, st)
-            updir = _ADS_UPLOADS.get(up_id)
+            updir = _ads_up_dir(up_id)
             rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)) if (updir and _os.path.isdir(updir)) else []
             if not rutas:
                 raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
@@ -12950,7 +13000,9 @@ def pf_ads_subir():
     if not files:
         return jsonify({"ok": False, "msg": "elegí al menos un video"}), 400
     up_id = uuid.uuid4().hex[:12]
-    d = tempfile.mkdtemp(prefix="adsup_")
+    _ads_up_purga()                                   # limpia las subidas vencidas antes de crear otra
+    d = str(_ADS_UPDIR / up_id)                       # DISCO persistente: sobrevive deploys y reinicios
+    _os.makedirs(d, exist_ok=True)
     EXT = (".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")
 
     def _destino_unico(base):
@@ -13001,6 +13053,9 @@ def pf_ads_subir():
         return jsonify({"ok": False, "msg": "no encontré videos ni fotos (.mp4/.mov/.jpg/.png), ni sueltos ni dentro del zip"}), 400
     vids.sort(key=lambda v: v["name"])
     _ADS_UPLOADS[up_id] = d
+    _idx = _ads_up_idx_load()                         # y al disco, para que lo vea cualquier worker
+    _idx[up_id] = {"dir": d, "ts": __import__("time").time(), "email": _user_actual() or ""}
+    _ads_up_idx_save(_idx)
     return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
 
 
