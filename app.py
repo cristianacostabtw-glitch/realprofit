@@ -16647,6 +16647,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # más acá — lo resuelve ella. Es SOLO por chat: sigue respondiendo todos los demás.
     # No cuentan como "persona" ni los mensajes del propio bot ni las plantillas automáticas
     # (seguimiento de despacho, carritos), que salen solas y no son atención real.
+    _mudo = False                       # hay humano atendiendo: el bot MIRA pero no habla
     _last_out = None
     for m in reversed(msgs):
         if m.get("dir") == "out":
@@ -16656,7 +16657,16 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
         conv["bot_humano"] = True
         conv.pop("bot_nota", None)      # lo tomó una persona → se apaga la marca de urgente
         _wa_save_chats(chats)
-        return
+        # ANTES acá había un `return` seco: el bot se iba del chat para siempre. El problema es que
+        # tampoco MIRABA, y si el cliente mandaba el comprobante en un chat que venía atendiendo una
+        # persona, nadie lo evaluaba y la transferencia no se marcaba nunca (16/09, chat
+        # "Corrientes": PDF a las 16:34, datos a las 16:38, y quedó sin marca).
+        # Ahora sigue de largo SOLO si el último entrante trae un adjunto que puede ser comprobante:
+        # lo evalúa, marca la transferencia y NO responde nada. Si no hay adjunto se va como antes
+        # (no tiene sentido gastar una llamada al cerebro para no contestar).
+        if last_in.get("type") not in ("image", "document"):
+            return
+        _mudo = True
 
     lin_id = last_in.get("id") or ""
     if lin_id and conv.get("bot_last_in") == lin_id:
@@ -16734,7 +16744,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                                "operacion": str(_comp.get("operacion") or ""),
                                "ts": _wa_now()}
 
-    if d.get("responder") and (d.get("mensaje") or "").strip():
+    if (not _mudo) and d.get("responder") and (d.get("mensaje") or "").strip():
         msg = d["mensaje"].strip()
         if conf.get("bot_mode", "auto") == "draft":
             conv["bot_draft"] = msg  # deja el borrador listo para que el humano lo mande
@@ -16751,7 +16761,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                 conv["updated"] = _wa_now(); conv.pop("bot_nota", None)
             else:
                 conv["bot_nota"] = "⚠️ El bot quiso responder pero falló el envío: " + (err or "?")
-    elif d.get("escalar"):
+    elif (not _mudo) and d.get("escalar"):
         conv["bot_nota"] = "⚠️ El bot lo derivó a vos" + (": " + d["motivo"] if d.get("motivo") else "")
     _wa_save_chats(chats)
 
@@ -17157,7 +17167,8 @@ _WA_PAGE = """<!doctype html>
  .deriv{background:#2e1719;color:#ff9b9b;border-bottom:1px solid #5a2a2e;padding:9px 18px;font-size:12.5px;font-weight:700}
  .pedbtn{margin-left:auto;background:var(--teal);color:#062d23;border:0;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
  .pedbtn:hover{filter:brightness(1.08)}
- .vtachip{background:#0b5d43;color:#7ff0c4;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle}
+ .vtachip{background:#0b5d43;color:#7ff0c4;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
+ .chat.vta{border-left:3px solid #0b5d43;background:rgba(11,93,67,.10)}
  .okbtn{margin-left:10px;background:#3a1f22;color:#ffc9c9;border:1px solid #7a3a3f;border-radius:7px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
  .okbtn:hover{background:#4d2a2e}
  .bwrap{display:flex;flex-direction:column;gap:10px}
@@ -17433,8 +17444,10 @@ function renderList(){
  var arr=CHATS.filter(function(c){ return !q || (c.name||'').toLowerCase().indexOf(q)>=0 || (c.wa_id||'').indexOf(q)>=0; });
  if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.</div>'; return; }
  box.innerHTML=arr.map(function(c){
-  var urg=c.urgente?' urg':'';
-  var chip=c.urgente?'<span class="urgchip">URGENTE</span>':(c.venta?'<span class="vtachip">TRANSFER.</span>':'');
+  // La TRANSFERENCIA A CARGAR gana sobre el URGENTE: si el bot ya validó el comprobante y están
+  // los datos, ese chat no es un reclamo esperando atención, es una venta esperando que la carguen.
+  var urg=c.venta?' vta':(c.urgente?' urg':'');
+  var chip=c.venta?'<span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?'<span class="urgchip">URGENTE</span>':'');
   return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
@@ -17469,11 +17482,11 @@ function renderConv(c){
   }
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
- conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
+ conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.venta?' <span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':''))+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
   +'<div style="flex:1"></div>'
-  +(c.urgente?'<button class="okbtn" onclick="resolverUrg()" title="Sacar el URGENTE: este caso ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button>':'')
+  +((c.urgente&&!c.venta)?'<button class="okbtn" onclick="resolverUrg()" title="Sacar el URGENTE: este caso ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button>':'')
   +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>':'')+'</div>'
-  +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
+  +((c.urgente&&!c.venta)?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
   +'<div class="emoji-pop" id="emojiPop"></div>'

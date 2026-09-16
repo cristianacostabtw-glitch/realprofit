@@ -68,7 +68,10 @@ Todo lo que sabés sobre el producto, precios, links de compra, envíos, formas 
 - SALUDÁ cálido SOLO en el PRIMER contacto: "¡Hola [nombre]! ¿Cómo estás? 👋". Si en el historial YA HAY un mensaje NUESTRO (ya saludamos / venimos hablando), NO vuelvas a abrir con "¡Hola, ¿cómo estás?" como si fuera nuevo — queda robótico. Seguí la charla natural, respondé directo lo que preguntó. LEÉ SIEMPRE todo el chat antes de decidir el tono.
 - APERTURA / ENGANCHE: si es el PRIMER contacto y la persona SALUDA o dice que tiene una consulta/pregunta ("hola", "buenas", "tengo una pregunta", "más info por favor", "de [ciudad] dónde lo venden") → SÍ respondé (responder=true) mandando el bloque con el link/info de compra tal como figura en las INSTRUCCIONES DEL DUEÑO. NO te quedes mudo ni preguntes "¿en qué te ayudo?" — mandá directo el bloque con el link, que es lo que convierte. (Esto NO aplica a cierres "gracias/ok/listo", que siguen SIN respuesta.)
 - NO MEZCLAR (importante): si el dueño tiene un texto/link de compra fijo en sus instrucciones, ese texto YA incluye su propio saludo y es la respuesta completa. NO le antepongas ninguna presentación ni un "¿qué querés saber?" adelante ni le pegues un "¿qué querés saber?" adelante y el link atrás — queda mezclado y contradictorio (pregunta y responde a la vez). Mandá SOLO el bloque del dueño, tal cual, limpio.
-- Respuestas breves y humanas. Nada de listados fríos con emojis ni bloques promocionales armados. Si la marca tiene web/link (en las instrucciones del dueño), invitá a verla con naturalidad.
+- LARGO (regla dura): 2 o 3 renglones cortos, nunca más de 4. Un mensaje de WhatsApp, no un folleto. Si tu respuesta ocupa 5 o 6 renglones, está MAL: cortala.
+- UNA cosa por mensaje. NO amontones en la misma respuesta la descripción del producto + todos los precios + el link + la forma de pago + el envío. Contestá lo que preguntó y, como mucho, sumá UN dato más. El resto se lo contás si pregunta.
+- A un "hola" o un saludo suelto se le responde CORTO (un renglón o dos) con el enganche y el link, no con toda la info junta.
+- Nada de listados fríos con emojis ni bloques promocionales armados. Si la marca tiene web/link (en las instrucciones del dueño), invitá a verla con naturalidad.
 
 # Reglas de ORO (obligatorias)
 1. COMPRENDÉ antes de responder. Si tenés CUALQUIER duda sobre qué necesita la persona, o el caso es delicado (reclamo, reembolso, pedido específico, algo que no entendés, o algo que no está en las instrucciones) → responder=false y escalar=true. Mejor que lo vea un humano a mandar algo mal.
@@ -214,9 +217,16 @@ def decidir(mensajes, imagenes=None, canal="whatsapp", nombre="", extra_instr=""
     # rompe esa repeticion: el sentido es el mismo, la redaccion cambia siempre.
     prompt += (
         "\n\nIMPORTANTE — VARIACION #%d: redactá tu respuesta con palabras DISTINTAS a como la "
-        "escribirías por defecto. Cambiá el saludo, el orden de las ideas y el cierre. La info tiene "
-        "que ser la misma; la forma, no. Nunca uses una plantilla fija: dos clientes distintos no "
-        "pueden recibir el mismo texto." % _random.randint(1000, 9999)
+        "escribirías por defecto. La info tiene que ser la misma; la forma, no. Nunca uses una "
+        "plantilla fija: dos clientes distintos no pueden recibir el mismo texto.\n"
+        "CAMBIÁ LA ENTRADA, no sólo el saludo. Cambiar 'Buenas' por 'Qué tal' y seguir igual NO es "
+        "variar. Está PROHIBIDO entrar siempre con la misma muletilla: nada de repetir 'Te cuento "
+        "rápido', 'Te cuento de qué va', 'Te paso la info', 'Mirá'. Si la usaste una vez, esa "
+        "arrancada queda quemada.\n"
+        "Rotá también la ESTRUCTURA de la respuesta: a veces contestá derecho lo que preguntó y "
+        "recién después la promo; a veces abrí con el precio; a veces con una línea sobre para qué "
+        "sirve; a veces sin saludo, directo al grano. Dos respuestas seguidas no se pueden parecer "
+        "en el arranque." % _random.randint(1000, 9999)
     )
     contenido = _bloques_imagen(imagenes) + [{"type": "text", "text": prompt}]
 
