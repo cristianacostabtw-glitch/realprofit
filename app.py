@@ -16659,152 +16659,202 @@ _WA_PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WhatsApp — RealProfit</title>
 <style>
- :root{--wa:#128C7E;--wa2:#075E54;--g:#25D366;--bg:#ECE5DD;--in:#fff;--out:#DCF8C6;--ink:#111b21;--muted:#667781;--line:#e9edef}
+ :root{--bg:#0e1013;--pan:#17191d;--pan2:#212529;--pan3:#282d33;--rail:#0b0d0f;--line:#2b3138;--ink:#e8ebee;--mut:#8b949e;--mut2:#6b7681;--out:#4b4ddb;--outink:#eef0ff;--g:#25D366;--teal:#00a884;--salmon:#e2725b;--wa:#00a884;--wa2:#008f6f}
  *{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}
- body{margin:0;height:100vh;background:#d1d7db;color:var(--ink);overflow:hidden}
- a{color:var(--wa2)}
- .top{height:56px;background:var(--wa2);color:#fff;display:flex;align-items:center;gap:10px;padding:0 14px;flex-wrap:nowrap;overflow-x:auto}
+ body{margin:0;height:100vh;background:var(--bg);color:var(--ink);overflow:hidden}
+ a{color:#8ab4ff}
+ ::-webkit-scrollbar{width:9px;height:9px}
+ ::-webkit-scrollbar-thumb{background:#333a42;border-radius:6px}
+ ::-webkit-scrollbar-track{background:transparent}
+ .top{height:56px;background:var(--rail);color:var(--ink);display:flex;align-items:center;gap:10px;padding:0 14px;flex-wrap:nowrap;overflow-x:auto;border-bottom:1px solid var(--line)}
  .top::-webkit-scrollbar{display:none}
- .top .lg{display:flex;align-items:center;gap:9px;font-weight:700;font-size:16px;white-space:nowrap;flex:none}
- .top .lg svg{width:22px;height:22px}
- .top .num{font-size:13px;opacity:.9;white-space:nowrap;flex:none}
+ .top .lg{display:flex;align-items:center;gap:9px;font-weight:700;font-size:15.5px;white-space:nowrap;flex:none;letter-spacing:.2px}
+ .top .lg svg{width:21px;height:21px;fill:var(--g)}
+ .top .num{font-size:13px;white-space:nowrap;flex:none;color:var(--mut)}
  .top .spacer{margin-left:auto}
- .navtabs{display:flex;gap:2px;background:rgba(0,0,0,.18);border-radius:11px;padding:3px;flex:none}
- .top .tab{background:transparent;color:#fff;border:0;border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .12s}
- .top .tab:hover{background:rgba(255,255,255,.14)}
- .top .tab.on{background:#fff;color:var(--wa2)}
- .top .util{background:rgba(255,255,255,.14);color:#fff;border:0;border-radius:9px;padding:7px 12px;font-size:13px;cursor:pointer;white-space:nowrap;flex:none}
- .top .util:hover{background:rgba(255,255,255,.28)}
- .top .back{background:rgba(255,255,255,.22);color:#fff;border:0;border-radius:9px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex:none}
- .top .back:hover{background:rgba(255,255,255,.34)}
+ .navtabs{display:flex;gap:2px;background:var(--pan2);border-radius:11px;padding:3px;flex:none}
+ .top .tab{background:transparent;color:var(--mut);border:0;border-radius:8px;padding:7px 13px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
+ .top .tab:hover{background:var(--pan3);color:var(--ink)}
+ .top .tab.on{background:var(--out);color:#fff}
+ .top .util{background:var(--pan2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font-size:13px;cursor:pointer;white-space:nowrap;flex:none;transition:background .12s}
+ .top .util:hover{background:var(--pan3)}
+ .top .back{background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex:none}
+ .top .back:hover{background:var(--pan2);color:var(--ink)}
  .wrap{height:calc(100vh - 56px);display:flex}
- .connect{max-width:540px;margin:4vh auto;background:#fff;border-radius:14px;padding:26px;box-shadow:0 12px 44px rgba(0,0,0,.18);max-height:88vh;overflow:auto}
+ .connect{max-width:540px;margin:4vh auto;background:var(--pan);border:1px solid var(--line);border-radius:14px;padding:26px;box-shadow:0 12px 44px rgba(0,0,0,.5);max-height:88vh;overflow:auto}
  .connect h2{margin:0 0 3px;font-size:21px}
- .connect .sub{color:var(--muted);font-size:13px;margin:0 0 18px}
+ .connect .sub{color:var(--mut);font-size:13px;margin:0 0 18px}
  .fld{margin-bottom:13px}
- .fld label{display:block;font-size:12px;font-weight:600;color:#3b4a54;margin-bottom:5px}
- .fld input{width:100%;padding:11px 12px;border:1px solid #d0d7de;border-radius:9px;font-size:14px}
- .fld small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
- .btn{background:var(--wa);color:#fff;border:0;border-radius:9px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;width:100%}
- .btn:hover{background:var(--wa2)}
- .btn.sec{background:#eef1f2;color:#3b4a54;margin-top:8px}
- .btn.dng{background:#fdeaea;color:#c0392b}
+ .fld label{display:block;font-size:12px;font-weight:600;color:var(--ink);margin-bottom:5px}
+ .fld input,.fld select,.fld textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;background:var(--pan2);color:var(--ink)}
+ .fld input::placeholder,.fld textarea::placeholder{color:var(--mut2)}
+ .fld small{display:block;color:var(--mut);font-size:11px;margin-top:3px}
+ .btn{background:var(--out);color:#fff;border:0;border-radius:9px;padding:12px 16px;font-size:14px;font-weight:600;cursor:pointer;width:100%}
+ .btn:hover{filter:brightness(1.1)}
+ .btn.sec{background:var(--pan3);color:var(--ink)}
+ .btn.dng{background:#3a1f22;color:#ff8f8f}
  .brow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
  .b{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;border-radius:11px;padding:10px 15px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1;transition:transform .06s,background .15s,box-shadow .15s,filter .15s;white-space:nowrap}
  .b:active{transform:translateY(1px)}
- .b.p{background:var(--wa);color:#fff;box-shadow:0 7px 16px -9px rgba(18,140,126,.75)}
- .b.p:hover{background:var(--wa2)}
- .b.g{background:#fff;color:#0a7d3c;border-color:#bbf7d0}
- .b.g:hover{background:#f0fdf4;border-color:#86efac}
- .b.ai{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;box-shadow:0 7px 16px -9px rgba(124,58,237,.75)}
- .b.ai:hover{filter:brightness(1.07)}
- .swch{position:relative;width:52px;height:30px;border-radius:16px;border:0;cursor:pointer;background:#cbd5e1;transition:background .2s;flex:none;padding:0}
- .swch::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.25);transition:left .2s}
- .swch.on{background:var(--g)}
+ .b.p{background:var(--out);color:#fff;box-shadow:0 7px 16px -9px rgba(75,77,219,.9)}
+ .b.p:hover{filter:brightness(1.12)}
+ .b.g{background:var(--pan2);color:var(--g);border-color:#2f4a3a}
+ .b.g:hover{background:var(--pan3)}
+ .b.ai{background:linear-gradient(135deg,#6d3aed,#a855f7);color:#fff;box-shadow:0 7px 16px -9px rgba(124,58,237,.9)}
+ .b.ai:hover{filter:brightness(1.1)}
+ .swch{position:relative;width:52px;height:30px;border-radius:16px;border:0;cursor:pointer;background:#3a4149;transition:background .2s;flex:none;padding:0}
+ .swch::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 5px rgba(0,0,0,.4);transition:left .2s}
+ .swch.on{background:var(--teal)}
  .swch.on::after{left:25px}
- .hook{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px;margin-top:16px;font-size:13px}
- .hook b{color:#0a7d3c}
+ .hook{background:#14241e;border:1px solid #235141;border-radius:10px;padding:14px;margin-top:16px;font-size:13px;color:var(--ink)}
+ .hook b{color:var(--g)}
  .cprow{display:flex;align-items:center;gap:8px;margin:8px 0}
- .cprow code{background:#062e27;color:#c6f6d5;padding:8px 9px;border-radius:6px;font-size:12px;flex:1;overflow:auto;white-space:nowrap}
- .cprow button{background:var(--wa);color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;cursor:pointer;white-space:nowrap}
- ol.steps{font-size:13px;color:#3b4a54;padding-left:18px;line-height:1.6;margin:10px 0 0}
+ .cprow code{background:#0b0f0d;color:#8ff0bd;padding:8px 9px;border-radius:6px;font-size:12px;flex:1;overflow:auto;white-space:nowrap;border:1px solid #1e3a30}
+ .cprow button{background:var(--out);color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;cursor:pointer;white-space:nowrap}
+ ol.steps{font-size:13px;color:var(--mut);padding-left:18px;line-height:1.6;margin:10px 0 0}
  .msgline{font-size:13px;margin:10px 0;padding:9px 11px;border-radius:8px}
- .msgok{background:#e7f6ec;color:#0a7d3c}.msgbad{background:#fdeaea;color:#c0392b}
- .list{width:340px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:300px}
- .search{padding:8px 12px;border-bottom:1px solid var(--line)}
- .search input{width:100%;padding:9px 12px;border:0;background:#f0f2f5;border-radius:8px;font-size:13px}
+ .msgok{background:#13291f;color:#6ee7a8;border:1px solid #245943}
+ .msgbad{background:#2e1719;color:#ff9b9b;border:1px solid #5a2a2e}
+ .list{width:352px;background:var(--pan);border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:312px}
+ .search{padding:10px 12px;border-bottom:1px solid var(--line)}
+ .search input{width:100%;padding:10px 13px;border:1px solid var(--line);background:var(--pan2);color:var(--ink);border-radius:9px;font-size:13px}
+ .search input::placeholder{color:var(--mut2)}
  .chats{flex:1;overflow-y:auto}
- .chat{display:flex;gap:12px;padding:11px 14px;cursor:pointer;border-bottom:1px solid #f2f4f5}
- .chat:hover,.chat.sel{background:#f0f2f5}
- .av{border-radius:50%;background:var(--wa);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none}
- .chat .av{width:46px;height:46px;font-size:17px}
+ .chat{display:flex;gap:12px;padding:11px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background .1s}
+ .chat:hover{background:var(--pan2)}
+ .chat.sel{background:var(--pan3)}
+ .av{border-radius:50%;background:linear-gradient(135deg,#3f6fb5,#2f8f7a);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none}
+ .chat .av{width:44px;height:44px;font-size:16px}
  .chat .info{flex:1;min-width:0}
- .chat .nm{font-weight:600;font-size:14px;display:flex;justify-content:space-between;gap:6px}
- .chat .nm .t{font-weight:400;font-size:11px;color:var(--muted);flex:none}
- .chat .lt{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
- .conv{flex:1;display:flex;flex-direction:column;background:var(--bg);background-image:linear-gradient(rgba(229,221,213,.6),rgba(229,221,213,.6))}
- .chd{height:56px;background:#f0f2f5;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 16px}
+ .chat .nm{font-weight:600;font-size:14px;display:flex;justify-content:space-between;gap:6px;color:var(--ink)}
+ .chat .nm .t{font-weight:400;font-size:11px;color:var(--mut2);flex:none}
+ .chat .lt{color:var(--mut);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+ .conv{flex:1;display:flex;flex-direction:column;background:var(--bg)}
+ .chd{height:60px;background:var(--pan);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding:0 18px}
  .chd .av{width:38px;height:38px;font-size:15px}
- .chd .nm{font-weight:600;font-size:15px}
- .chd .st{font-size:12px;color:var(--muted)}
- .msgs{flex:1;overflow-y:auto;padding:16px 7%;display:flex;flex-direction:column;gap:3px}
- .b{max-width:66%;padding:6px 9px 5px;border-radius:8px;font-size:14px;line-height:1.35;box-shadow:0 1px .5px rgba(11,20,26,.13);word-wrap:break-word;white-space:pre-wrap}
- .b .mt{font-size:10px;color:var(--muted);float:right;margin:6px 0 -3px 12px}
- .b.in{background:var(--in);align-self:flex-start;border-top-left-radius:2px}
- .b.out{background:var(--out);align-self:flex-end;border-top-right-radius:2px}
- .win{background:#fff8e1;border-top:1px solid #ffe082;color:#8a6d00;font-size:12px;padding:8px 16px;text-align:center}
- .win a{color:#8a6d00;font-weight:700;cursor:pointer}
- .compose{padding:9px 16px;background:#f0f2f5;display:flex;gap:9px;align-items:center}
- .compose .tpl{background:#fff;border:1px solid #d0d7de;border-radius:22px;height:44px;padding:0 15px;cursor:pointer;font-size:13px;font-weight:600;color:var(--wa2)}
- .compose input{flex:1;padding:11px 15px;border:0;border-radius:22px;font-size:14px}
- .compose .snd{width:46px;height:46px;border-radius:50%;background:var(--wa);color:#fff;border:0;cursor:pointer;font-size:20px}
- .compose .snd:hover{background:var(--wa2)}
- .empty{margin:auto;color:var(--muted);text-align:center;padding:40px}
+ .chd .nm{font-weight:600;font-size:15px;color:var(--ink)}
+ .chd .st{font-size:12px;color:var(--mut)}
+ .msgs{flex:1;overflow-y:auto;padding:20px 7%;display:flex;flex-direction:column;gap:5px}
+ .b{max-width:66%;padding:9px 12px 7px;border-radius:12px;font-size:14px;line-height:1.45;word-wrap:break-word;white-space:pre-wrap}
+ .b .mt{font-size:10px;color:var(--mut2);float:right;margin:6px 0 -3px 12px}
+ .b.in{background:var(--pan2);color:var(--ink);align-self:flex-start;border-bottom-left-radius:4px}
+ .b.out{background:var(--out);color:var(--outink);align-self:flex-end;border-bottom-right-radius:4px}
+ .b.out .mt{color:rgba(255,255,255,.6)}
+ .win{background:#2a2313;border-top:1px solid #5a4a1e;color:#e8c96a;font-size:12px;padding:9px 16px;text-align:center}
+ .win a{color:#f0d78a;font-weight:700;cursor:pointer}
+ .compose{padding:12px 16px;background:var(--pan);border-top:1px solid var(--line);display:flex;gap:9px;align-items:center}
+ .compose .tpl{background:var(--pan2);border:1px solid var(--line);border-radius:22px;height:44px;padding:0 16px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink)}
+ .compose .tpl:hover{background:var(--pan3)}
+ .compose input{flex:1;padding:12px 16px;border:1px solid var(--line);background:var(--pan2);color:var(--ink);border-radius:22px;font-size:14px}
+ .compose input::placeholder{color:var(--mut2)}
+ .compose .snd{width:46px;height:46px;border-radius:50%;background:var(--salmon);color:#fff;border:0;cursor:pointer;font-size:19px;flex:none}
+ .compose .snd:hover{filter:brightness(1.1)}
+ .empty{margin:auto;color:var(--mut);text-align:center;padding:40px}
  #conv{position:relative}
- .b.media{padding:4px 4px 5px}
- .b.media img{max-width:260px;border-radius:6px;display:block;cursor:pointer}
+ .b.media{padding:5px 5px 6px}
+ .b.media img{max-width:260px;border-radius:9px;display:block;cursor:pointer}
  .voice{display:flex;align-items:center;gap:11px;min-width:236px;padding:3px 2px}
- .voice .vplay{background:0;border:0;cursor:pointer;flex:none;color:#54656f;padding:0;display:flex}
+ .voice .vplay{background:0;border:0;cursor:pointer;flex:none;color:var(--mut);padding:0;display:flex}
  .voice .vplay svg{width:27px;height:27px;display:block}
  .voice .vmid{flex:1;min-width:90px}
  .voice .vwave{position:relative;height:24px;display:flex;align-items:center;gap:2px;cursor:pointer}
- .voice .vwave i{flex:1;background:#b6c4bd;border-radius:2px;min-width:1px}
- .voice .vwave .dot{position:absolute;top:50%;left:3%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:#4fc3f7;box-shadow:0 0 0 2.5px rgba(255,255,255,.9);z-index:2}
- .voice .vdur{font-size:11px;color:var(--muted);margin-top:4px}
+ .voice .vwave i{flex:1;background:#4a535c;border-radius:2px;min-width:1px}
+ .voice .vwave .dot{position:absolute;top:50%;left:3%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:#53bdeb;box-shadow:0 0 0 2.5px rgba(0,0,0,.35);z-index:2}
+ .voice .vdur{font-size:11px;color:var(--mut2);margin-top:4px}
  .voice .vava{width:46px;height:46px;border-radius:50%;position:relative;flex:none;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px}
- .voice .vava .mic{position:absolute;left:-3px;bottom:-3px;width:20px;height:20px;border-radius:50%;background:#4fc3f7;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
- .b.out .voice .vwave i{background:#a3c7ac}
+ .voice .vava .mic{position:absolute;left:-3px;bottom:-3px;width:20px;height:20px;border-radius:50%;background:#53bdeb;display:flex;align-items:center;justify-content:center;border:2px solid var(--pan2)}
+ .b.out .voice .vwave i{background:rgba(255,255,255,.45)}
+ .b.out .voice .vdur{color:rgba(255,255,255,.6)}
+ .b.out .voice .vplay{color:#fff}
  .b.out .voice .vava .mic{border-color:var(--out)}
  .dt{display:inline-flex;vertical-align:-1px}
  .dt svg{width:13px;height:11px}
  .dt svg+svg{margin-left:-7px}
  .b .cap{margin-top:4px;padding:0 3px;white-space:pre-wrap}
- .doc{display:flex;align-items:center;gap:10px;background:rgba(11,20,26,.05);border-radius:8px;padding:9px 11px;min-width:190px;text-decoration:none;color:inherit}
- .doc .ic{width:34px;height:34px;border-radius:7px;background:#e74c3c;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
+ .doc{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.06);border-radius:9px;padding:9px 11px;min-width:190px;text-decoration:none;color:inherit}
+ .doc .ic{width:34px;height:34px;border-radius:7px;background:#c0392b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
  .doc .fn{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block;max-width:180px}
- .doc .fs{font-size:11px;color:var(--muted)}
- .compose .att{background:0;border:0;cursor:pointer;font-size:22px;color:#54656f;padding:0 2px;line-height:1}
- .emoji-pop{position:absolute;bottom:64px;left:14px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.2);padding:10px;display:none;grid-template-columns:repeat(8,1fr);gap:3px;z-index:20}
+ .doc .fs{font-size:11px;color:var(--mut)}
+ .compose .att{background:0;border:0;cursor:pointer;font-size:21px;color:var(--mut);padding:0 2px;line-height:1}
+ .compose .att:hover{color:var(--ink)}
+ .emoji-pop{position:absolute;bottom:72px;left:14px;background:var(--pan2);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.6);padding:10px;display:none;grid-template-columns:repeat(8,1fr);gap:3px;z-index:20}
  .emoji-pop.on{display:grid}
  .emoji-pop span{font-size:20px;cursor:pointer;padding:3px;border-radius:6px;text-align:center}
- .emoji-pop span:hover{background:#f0f2f5}
- .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.86);display:none;align-items:center;justify-content:center;z-index:80;cursor:zoom-out}
+ .emoji-pop span:hover{background:var(--pan3)}
+ .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:80;cursor:zoom-out}
  .lightbox.on{display:flex}
  .lightbox img{max-width:92vw;max-height:92vh;border-radius:8px}
- .ov{position:fixed;inset:0;background:rgba(11,20,26,.5);display:none;align-items:center;justify-content:center;z-index:60}
+ .ov{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:60}
  .ov.on{display:flex}
- .modal{background:#fff;border-radius:14px;width:min(600px,94vw);max-height:84vh;overflow:auto;padding:20px}
+ .modal{background:var(--pan);border:1px solid var(--line);border-radius:14px;width:min(600px,94vw);max-height:84vh;overflow:auto;padding:22px;color:var(--ink);box-shadow:0 24px 70px rgba(0,0,0,.6)}
  .modal .mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
  .modal h3{margin:0;font-size:18px}
- .modal .x{cursor:pointer;font-size:22px;color:var(--muted);border:0;background:0}
- .tpl-item{border:1px solid var(--line);border-radius:10px;padding:12px;margin:11px 0}
+ .modal .x{cursor:pointer;font-size:22px;color:var(--mut);border:0;background:0}
+ .modal input,.modal select,.modal textarea{background:var(--pan2);color:var(--ink);border:1px solid var(--line)}
+ .modal input::placeholder,.modal textarea::placeholder{color:var(--mut2)}
+ .tpl-item{border:1px solid var(--line);border-radius:11px;padding:13px;margin:11px 0;background:var(--pan2)}
  .tpl-item .h{display:flex;justify-content:space-between;align-items:center;gap:8px}
  .tpl-item .nm{font-weight:600}
- .tpl-item .bd{color:#3b4a54;font-size:13px;margin:7px 0;white-space:pre-wrap}
- .badge{font-size:11px;padding:2px 9px;border-radius:20px;background:#e7f6ec;color:#0a7d3c;white-space:nowrap}
- .badge.no{background:#fdeaea;color:#c0392b}
- .tpl-item button{background:var(--wa);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
- .tpl-item button:disabled{background:#cbd5d8;cursor:not-allowed}
+ .tpl-item .bd{color:var(--mut);font-size:13px;margin:7px 0;white-space:pre-wrap}
+ .badge{font-size:11px;padding:2px 9px;border-radius:20px;background:#13291f;color:#6ee7a8;white-space:nowrap}
+ .badge.no{background:#2e1719;color:#ff9b9b}
+ .tpl-item button{background:var(--out);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
+ .tpl-item button:disabled{background:#3a4149;color:var(--mut2);cursor:not-allowed}
  @media(max-width:820px){.list{width:100%}.conv{display:none}.list.hide{display:none}.conv.show{display:flex}}
- .lock{display:none;position:fixed;inset:56px 0 0 0;z-index:30;align-items:flex-start;justify-content:center;overflow:auto;background:rgba(6,20,14,.36)}
+ .lock{display:none;position:fixed;inset:56px 0 0 0;z-index:30;align-items:flex-start;justify-content:center;overflow:auto;background:rgba(0,0,0,.6)}
  body.locked .lock{display:flex}
- body.locked #app{filter:blur(7px) brightness(.82);pointer-events:none;user-select:none}
+ body.locked #app{filter:blur(7px) brightness(.5);pointer-events:none;user-select:none}
  body.locked #num{opacity:.45}
- .lockcard{background:#fff;border-radius:18px;padding:30px 28px;max-width:468px;width:92%;margin:min(6vh,56px) 0;box-shadow:0 24px 70px rgba(0,0,0,.34)}
- .lockbadge{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#25D366,#0a7d3c);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 8px 22px rgba(37,211,102,.35)}
+ .lockcard{background:var(--pan);border:1px solid var(--line);border-radius:18px;padding:30px 28px;max-width:468px;width:92%;margin:min(6vh,56px) 0;box-shadow:0 24px 70px rgba(0,0,0,.7);color:var(--ink)}
+ .lockbadge{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--out),#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 8px 22px rgba(75,77,219,.45)}
  .lockcard h2{margin:0 0 5px;font-size:23px}
+ .bwrap{display:flex;flex-direction:column;gap:10px}
+ .brow2{border:1px solid var(--line);border-radius:12px;background:var(--pan2);overflow:hidden}
+ .brow2.on{border-color:var(--out)}
+ .bhead{display:flex;align-items:center;gap:13px;padding:14px 15px;cursor:pointer}
+ .bhead:hover{background:var(--pan3)}
+ .bico{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+ .btit{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+ .btit b{font-size:14.5px;color:var(--ink)}
+ .btit span{font-size:12.5px;color:var(--mut)}
+ .bchev{color:var(--mut2);font-size:18px;margin-left:10px;flex:none}
+ .bchip{background:var(--pan3);color:var(--mut);border-radius:20px;padding:3px 11px;font-size:11px;font-weight:700;white-space:nowrap}
+ .bchip.on{background:#2b2f7a;color:#c3c6ff;letter-spacing:.4px}
+ .bbody{display:none;padding:4px 15px 16px;border-top:1px solid var(--line)}
+ .bbody.on{display:block}
+ .bsub{font-size:12.5px;color:var(--mut);margin:8px 0}
+ .bcard{border:1px solid var(--line);border-radius:11px;background:var(--pan2);padding:13px;margin:10px 0}
+ .bcard>b{font-size:14px;display:block}
+ .browsp{display:flex;align-items:center;justify-content:space-between;gap:12px}
+ .browsp span{display:block;font-size:12.5px;color:var(--mut)}
+ .bopts{display:flex;gap:9px;flex-wrap:wrap}
+ .bopt{flex:1;min-width:170px;border:1px solid var(--line);border-radius:11px;padding:12px;cursor:pointer;display:flex;gap:9px;align-items:flex-start;background:var(--pan2)}
+ .bopt.on{border-color:var(--out);background:#20224a}
+ .bopt b{display:block;font-size:13.5px;margin-bottom:3px}
+ .bopt span{display:block;font-size:12px;color:var(--mut);line-height:1.4}
+ .bradio{width:15px;height:15px;border-radius:50%;border:2px solid var(--mut2);flex:none;margin-top:2px}
+ .bopt.on .bradio{border-color:var(--out);background:radial-gradient(circle,var(--out) 45%,transparent 47%)}
+ .bquick{font-size:12px;color:var(--mut);display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:8px 0}
+ .bquick button{background:var(--pan3);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer}
+ .bquick button:hover{border-color:var(--out)}
+ .bseg{display:inline-flex;gap:3px;background:var(--pan3);border-radius:10px;padding:3px;margin-top:9px}
+ .bseg button{background:transparent;border:0;color:var(--mut);border-radius:8px;padding:8px 15px;font-size:13px;font-weight:600;cursor:pointer}
+ .bseg button.on{background:var(--out);color:#fff}
+ .bfoot{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+ .bfoot .bsub{margin-right:auto}
+ .b.sec2{background:var(--pan3);color:var(--ink)}
+ .b.sec2:hover{background:var(--line)}
+ #botbox textarea,#botbox input,#botbox select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--pan2);color:var(--ink);font-size:13.5px;font-family:inherit}
+ #modal textarea,#modal input,#modal select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--pan2);color:var(--ink);font-size:13.5px;font-family:inherit}
 </style></head>
 <body>
 <div class="top">
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
- <div id="wechan" style="display:inline-flex;gap:3px;margin-left:10px;background:rgba(255,255,255,.14);border-radius:11px;padding:3px;flex:none">
-  <button id="chWeb" onclick="showWeb()" title="WhatsApp Web (QR)" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:#25D366;color:#fff">&#127760; Web</button>
-  <button id="chApi" onclick="showApi()" title="API oficial (Cloud)" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:transparent;color:#dff5e6">&#128241; API</button>
+ <div id="wechan" style="display:inline-flex;gap:3px;margin-left:10px;background:var(--pan2);border:1px solid var(--line);border-radius:11px;padding:3px;flex:none">
+  <button id="chApi" onclick="showApi()" title="API oficial (Cloud)" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:var(--teal);color:#fff">&#128241; API</button>
  </div>
  <div class="navtabs" id="navtabs">
   <button id="bChats" class="tab" style="display:none" onclick="waTab('chats')">&#128172; Chats</button>
-  <button id="bTransf" class="tab" style="display:none" onclick="waTab('transfers')">&#128179; Transferencias</button>
-  <button id="bCarr" class="tab" style="display:none" onclick="waTab('carritos')">&#128722; Carritos</button>
  </div>
  <span class="spacer"></span>
  <span class="num" id="num"></span>
@@ -16815,7 +16865,7 @@ _WA_PAGE = """<!doctype html>
  <button class="back" onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
-<div id="panel" style="display:none;position:absolute;inset:56px 0 0 0;background:#eef2f5;overflow:auto;padding:22px;z-index:5"></div>
+<div id="panel" style="display:none;position:absolute;inset:56px 0 0 0;background:var(--bg);overflow:auto;padding:22px;z-index:5"></div>
 <div class="lock" id="lock"><div class="lockcard" id="lockcard"></div></div>
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 <div class="lightbox" id="lb" onclick="this.classList.remove('on')"><img alt=""></div>
@@ -16824,9 +16874,9 @@ var EST=null, CHATS=[], SEL=null, POLL=null, BOTON=false;
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 // Si algo se rompe al arrancar, en vez de dejar "Cargando…" mudo, mostramos el error REAL en pantalla.
 function _showErr(msg,where){ try{ var a=document.getElementById('app'); if(!a) return; if(!/Cargando/.test(a.textContent)) return;
- a.innerHTML='<div style="max-width:640px;margin:40px auto;padding:18px;background:#fdeaea;border:1px solid #f5c2c2;border-radius:12px;color:#8a1f1f;font-family:system-ui">'
+ a.innerHTML='<div style="max-width:640px;margin:40px auto;padding:18px;background:#2e1719;border:1px solid #5a2a2e;border-radius:12px;color:#ff9b9b;font-family:system-ui">'
   +'<b>&#9888; Se rompi&oacute; la pantalla</b><br><span style="font-size:12.5px;word-break:break-word">'+esc((msg||'error')+(where?(' @ '+where):''))+'</span><br>'
-  +'<button onclick="location.reload(true)" style="margin-top:12px;background:#25D366;color:#fff;border:0;border-radius:9px;padding:9px 16px;font-weight:700;cursor:pointer">Recargar</button></div>'; }catch(e){} }
+  +'<button onclick="location.reload(true)" style="margin-top:12px;background:var(--teal);color:#fff;border:0;border-radius:9px;padding:9px 16px;font-weight:700;cursor:pointer">Recargar</button></div>'; }catch(e){} }
 window.onerror=function(m,src,ln){ _showErr(''+m, ((src||'').split('/').pop())+(ln?(':'+ln):'')); };
 window.onunhandledrejection=function(ev){ var r=ev&&ev.reason; _showErr((r&&(r.message||r))||'promesa rechazada',''); };
 function hhmm(ts){ if(!ts)return''; var p=(''+ts).split(' ')[1]||''; return p.slice(0,5); }
@@ -16836,61 +16886,38 @@ function post(u,o){ return fetch(u,{method:'POST',headers:{'Content-Type':'appli
 function get(u){ return fetch(u).then(function(r){return r.json();}); }
 
 function boot(){ get('/wa-estado').then(function(s){ EST=s; renderApp(); if(s&&s.conectado){ unlock(); _chanPaint('api'); return; }
-  // API NO conectada: si el WhatsApp Web (QR) ya está conectado (o el servicio está despertando),
-  // abrimos directo el chat Web en vez de bloquear con el candado "Conectá tu WhatsApp".
-  try{ var _p=document.getElementById('panel'); if(_p){ _p.style.display='block'; _p.innerHTML='<div style="max-width:720px;margin:44px auto;text-align:center;color:#667">&#128994; Abriendo WhatsApp Web&#8230;<br><span style="font-size:12px;color:#8a97a8">si el servicio estuvo inactivo tarda unos segundos en despertar</span></div>'; } }catch(e){}
-  get('/wa-web-status').then(function(w){ if(w && (w.ok===false || w.status==='connected')){ _chanPaint('web'); waTab('web'); } else { _chanPaint('api'); lockScreen(); } }).catch(function(){ _chanPaint('api'); lockScreen(); });
+  // Solo API oficial (Cloud). Sin la API conectada → candado con el form de conexión.
+  _chanPaint('api'); lockScreen();
 }); }
 function unlock(){ document.body.classList.remove('locked'); }
 // Interruptor Web <-> API (siempre visible arriba). NO desconecta nada: solo cambia la vista.
 // La API guarda su token y el Web su sesión (disco) → saltar de una a otra no apaga ninguna.
-function _chanPaint(which){ var w=document.getElementById('chWeb'), a=document.getElementById('chApi');
-  if(w){ w.style.background=(which==='web')?'#25D366':'transparent'; w.style.color=(which==='web')?'#fff':'#dff5e6'; }
-  if(a){ a.style.background=(which==='api')?'#25D366':'transparent'; a.style.color=(which==='api')?'#fff':'#dff5e6'; }
-  // Las secciones (Chats/Transferencias/Carritos) son de la API → solo se muestran en el canal API conectado.
-  var nt=document.getElementById('navtabs'); if(nt) nt.style.display=(which==='api' && EST && EST.conectado)?'flex':'none';
-  _setHeaderNum(which); }
-var WEBNUM='';   // número/nombre del WhatsApp Web (QR) — para mostrar el número CORRECTO por pestaña
-// El encabezado muestra el número de la PESTAÑA activa: Web = número del QR, API = número de la Cloud API.
-// (Antes mostraba siempre el del API → parecía que se "mezclaban" los dos canales.)
+function _chanPaint(which){ var a=document.getElementById('chApi');
+  if(a){ a.style.background="var(--out)"; a.style.color="#fff"; }
+  // Las secciones (Chats/Transferencias/Carritos) son de la API → solo con la API conectada.
+  var nt=document.getElementById('navtabs'); if(nt) nt.style.display=(EST && EST.conectado)?'flex':'none';
+  _setHeaderNum('api'); }
+// Canal único: API oficial (Cloud). El WhatsApp Web (QR) se quitó de esta pantalla.
 function _setHeaderNum(which){ var el=document.getElementById('num'); if(!el)return;
   var pill=function(txt,bg){ return '<span style="background:'+bg+';color:#fff;border-radius:7px;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:8px;vertical-align:middle">'+txt+'</span>'; };
-  if(which==='web'){ el.innerHTML=pill('&#127760; WEB · QR','#128C7E')+'<b style="color:#eaf7ef;font-weight:700">'+esc(WEBNUM||'sin conectar')+'</b>'; }
-  else { el.innerHTML=pill('&#128241; API OFICIAL','#0a7d3c')+'<b style="color:#eaf7ef;font-weight:700">'+((EST&&EST.numero)?esc(EST.numero):'sin conectar')+'</b>'; } }
-function showWeb(){ _chanPaint('web'); document.body.classList.remove('locked'); waTab('web'); }
+  el.innerHTML=pill("&#128241; API OFICIAL","var(--out)")+'<b style="color:var(--ink);font-weight:700">'+((EST&&EST.numero)?esc(EST.numero):'sin conectar')+'</b>'; }
 function showApi(){ _chanPaint('api');
   if(EST&&EST.conectado){ document.body.classList.remove('locked'); waTab('chats'); }   // API ya conectada → sus chats
   else { LOCKTAB='api'; lockScreen(); } }                                                // no conectada → form de conexión
 function lockScreen(){ if(POLL){clearInterval(POLL);POLL=null;} document.body.classList.add('locked'); renderLockForm(); }
 function renderConnect(){ lockScreen(); }
 var LOCKTAB='api';
-function lockTab(t){ LOCKTAB=t; renderLockForm(); }
-function goWeb(){ waTab('web'); }
+function lockTab(t){ LOCKTAB='api'; renderLockForm(); }
 function renderLockForm(){
  var e=EST||{};
- var on='background:#25D366;color:#fff', off='background:#eef2f4;color:#334';
- var tabs='<div style="display:flex;gap:8px;margin-bottom:18px">'
-  +'<button onclick="lockTab(\\'api\\')" style="flex:1;border:0;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;'+(LOCKTAB==='api'?on:off)+'">&#128241; API oficial</button>'
-  +'<button onclick="lockTab(\\'web\\')" style="flex:1;border:0;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;'+(LOCKTAB==='web'?on:off)+'">&#127760; WhatsApp Web (QR)</button></div>';
- if(LOCKTAB==='web'){
-  document.getElementById('lockcard').innerHTML=
-   '<div class="lockbadge" style="background:#25D366"><svg viewBox="0 0 24 24" fill="#fff" width="30" height="30"><path d="M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm-3 8V7a3 3 0 016 0v3H9z"/></svg></div>'
-   +'<h2>Conectá por WhatsApp Web</h2>'
-   +'<div class="sub">Escaneás un QR con tu celular (como WhatsApp Web en la compu). Ideal para que el <b>bot conteste fuera de horario</b>. No necesitás la API.</div>'
-   +tabs
-   +'<button class="btn" onclick="goWeb()" style="background:#25D366">&#127760; Conectar WhatsApp Web (QR)</button>'
-   +'<div style="margin-top:12px;font-size:12px;color:#94a3b8;text-align:center">Es una conexión no oficial. Para envíos masivos usá la API.</div>';
-  return;
- }
  document.getElementById('lockcard').innerHTML=
   '<div class="lockbadge"><svg viewBox="0 0 24 24" fill="#fff" width="30" height="30"><path d="M12 2a5 5 0 00-5 5v3H6a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2v-8a2 2 0 00-2-2h-1V7a5 5 0 00-5-5zm-3 8V7a3 3 0 016 0v3H9z"/></svg></div>'
   +'<h2>Conectá tu WhatsApp</h2>'
   +'<div class="sub">Vinculá tu número de la Cloud API para <b>desbloquear</b> el chat, las plantillas y los envíos. Sin QR, sin baneo.</div>'
-  +tabs
   +'<div class="fld"><label>Phone number ID</label><input id="f_pid" value="'+esc(e.phone_id||'')+'" placeholder="Ej: 123456789012345"><small>WhatsApp → API Setup, es el ID del número (no el número).</small></div>'
   +'<div class="fld"><label>Token permanente</label><input id="f_tok" value="" placeholder="EAAG..."><small>Token de la app de WhatsApp (permanente/de sistema).</small></div>'
-  +'<div class="fld"><label>WABA ID <span style="color:#94a3b8">(para plantillas)</span></label><input id="f_waba" value="'+esc(e.waba_id||'')+'" placeholder="ID de la WhatsApp Business Account"></div>'
-  +'<div class="fld"><label>Reenviar entrantes al bot <span style="color:#94a3b8">(opcional)</span></label><input id="f_fwd" value="'+esc(e.forward_url||'')+'" placeholder="https://.../wpp-webhook del METAFY"><small>Para no cortar el auto-respondedor: pegá la URL del webhook actual del bot.</small></div>'
+  +'<div class="fld"><label>WABA ID <span style="color:var(--mut2)">(para plantillas)</span></label><input id="f_waba" value="'+esc(e.waba_id||'')+'" placeholder="ID de la WhatsApp Business Account"></div>'
+  +'<div class="fld"><label>Reenviar entrantes al bot <span style="color:var(--mut2)">(opcional)</span></label><input id="f_fwd" value="'+esc(e.forward_url||'')+'" placeholder="https://.../wpp-webhook del METAFY"><small>Para no cortar el auto-respondedor: pegá la URL del webhook actual del bot.</small></div>'
   +'<button class="btn" onclick="doConnect()">&#128275; Conectar y desbloquear</button>'
   +'<div id="cmsg"></div><div id="chook"></div>';
 }
@@ -16923,7 +16950,7 @@ function renderApp(){
  var conn=!!(EST&&EST.conectado);
  var v=function(id,show){ var el=document.getElementById(id); if(el) el.style.display=show?'':'none'; };
  v('bBot',true);                                          // Bot: siempre disponible (Web y API)
- v('bChats',conn); v('bTransf',conn); v('bCarr',conn);    // secciones de la Cloud API
+ v('bChats',conn);                                        // unica seccion: Chats (Cloud API)
  v('bTpl',conn); v('bCfg',conn);
  // marca "Chats" como sección activa por defecto (el #app ya muestra los chats)
  var _bc=document.getElementById('bChats'); if(_bc) _bc.classList.toggle('on',conn);
@@ -16937,189 +16964,30 @@ function renderApp(){
 }
 // ───── Pestañas Transferencias / Carritos ─────
 var TAB='chats', TDATA=[], TSEL={};
-function waTab(t){ TAB=t; var p=document.getElementById('panel');
- // Sincroniza canal + número con la pestaña: Chats/Transferencias/Carritos = API · Web = Web (QR).
- try{ _chanPaint(t==='web'?'web':'api'); }catch(e){}
- [['bChats','chats'],['bTransf','transfers'],['bCarr','carritos']].forEach(function(x){ var el=document.getElementById(x[0]); if(el) el.classList.toggle('on',x[1]===t); });
- if(WEBPOLL){ clearInterval(WEBPOLL); WEBPOLL=null; }
- // La pestaña WEB (QR) NO necesita la Cloud API → destraba y muestra el panel.
- if(t==='web'){ document.body.classList.remove('locked'); p.style.display='block'; p.innerHTML='<div style="max-width:720px;margin:0 auto;color:#334">Cargando…</div>'; TSEL={}; loadWeb(); return; }
- // El resto (Chats/Transferencias/Carritos) sí necesita la Cloud API conectada.
+function waTab(t){ if(t==='web') t='chats'; TAB=t; var p=document.getElementById('panel');
+ try{ _chanPaint('api'); }catch(e){}
+ var _bc=document.getElementById('bChats'); if(_bc) _bc.classList.add('on');
+ // Unica seccion: Chats. Necesita la Cloud API conectada.
  if(!(EST&&EST.conectado)){ p.style.display='none'; LOCKTAB='api'; lockScreen(); return; }
- if(t==='chats'){ p.style.display='none'; return; }
- p.style.display='block'; p.innerHTML='<div style="max-width:940px;margin:0 auto;color:#334">Cargando…</div>';
- TSEL={}; if(t==='transfers') loadTransfers(); else loadCarritos();
+ p.style.display='none';
 }
 
-// ───── Pestaña WhatsApp WEB (Baileys / QR) ─────
-var WEBPOLL=null;
-function webBox(inner){ return '<div style="max-width:720px;margin:0 auto">'
-  +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#127760; WhatsApp Web</h2><span style="color:#667">escaneás el QR con tu celular</span></div>'
-  +'<div style="color:#556;font-size:13px;margin-bottom:16px">Conectás tu WhatsApp escaneando un QR (como WhatsApp Web en la compu). Queda vinculado 24/7. Sirve para que el <b>bot</b> conteste fuera de horario. Aislado por cuenta.</div>'
-  +inner+'</div>'; }
-function loadWeb(intento){ intento=intento||0; var p=document.getElementById('panel');
-  if(!intento) p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">Consultando estado…</div>');
-  get('/wa-web-status').then(function(s){
-    // Puente caído / servicio dormido (ok:false) → REINTENTO mientras despierta (Render free se apaga).
-    // Solo si el servicio RESPONDE y dice desconectado, mostramos "Conectá".
-    if(s && s.ok===false && intento<6){
-      p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">Despertando el servicio de WhatsApp… ('+(intento+1)+'/6)<br><span style="font-size:12px;color:#8a97a8">tarda unos segundos si estuvo inactivo</span></div>');
-      setTimeout(function(){ if(TAB==='web') loadWeb(intento+1); }, 4000); return;
-    }
-    renderWeb(s);
-  }).catch(function(){ if(intento<6){ setTimeout(function(){ if(TAB==='web') loadWeb(intento+1); }, 4000); } else renderWeb({ok:false}); });
-}
-function renderWeb(s){ if(TAB!=='web')return; var p=document.getElementById('panel');
-  var st=(s&&s.status)||'disconnected';
-  if(s&&s.msg&&!s.ok){ p.innerHTML=webBox('<div style="background:#fdeaea;color:#c0392b;padding:14px;border-radius:10px">'+esc(s.msg)+'</div>'); return; }
-  if(st==='connected'){ webLoadChats(s); return; }
-  if(st==='qr'){ webShowQr(); return; }
-  // desconectado / conectando → botón conectar
-  var extra=(st==='connecting')?'<div style="color:#667;font-size:13px;margin-top:10px">Conectando… si no aparece el QR en unos segundos, tocá Conectar de nuevo.</div>':'';
-  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:30px;text-align:center">'
-    +'<div style="font-size:15px;color:#243;margin-bottom:16px">Todavía no está conectado.</div>'
-    +'<button onclick="webConnect()" style="background:#25D366;color:#fff;border:0;border-radius:10px;padding:13px 26px;font-weight:700;font-size:15px;cursor:pointer">Conectar WhatsApp Web</button>'
-    +extra+'</div>');
-}
-function webConnect(){ var p=document.getElementById('panel');
-  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:30px;text-align:center;color:#667">Generando QR… esperá unos segundos.</div>');
-  post('/wa-web-connect',{}).then(function(r){
-    if(r&&r.qr){ webShowQr(r.qr); }
-    else if(r&&r.status==='connected'){ webLoadChats(r); }
-    else { webPollQr(); }
-  }).catch(function(){ renderWeb({ok:false,msg:'No se pudo conectar con el servicio Web.'}); });
-}
-function webShowQr(qr){ if(TAB!=='web')return; var p=document.getElementById('panel');
-  var img=qr?'<img src="'+qr+'" style="width:280px;height:280px;border-radius:8px">':'<div style="width:280px;height:280px;display:flex;align-items:center;justify-content:center;color:#999">cargando QR…</div>';
-  p.innerHTML=webBox('<div style="background:#fff;border-radius:12px;padding:26px;text-align:center">'
-    +'<div style="font-size:15px;color:#243;margin-bottom:16px;font-weight:600">Escaneá este código con tu WhatsApp</div>'
-    +'<div style="display:inline-block;padding:10px;background:#fff;border:1px solid #e3e8ec;border-radius:12px">'+img+'</div>'
-    +'<ol style="text-align:left;max-width:380px;margin:18px auto 0;color:#556;font-size:13px;line-height:1.7"><li>Abrí <b>WhatsApp</b> en tu celular.</li><li>Andá a <b>Ajustes &#8594; Dispositivos vinculados</b>.</li><li>Tocá <b>Vincular un dispositivo</b> y escaneá.</li></ol>'
-    +'<div id="webqrmsg" style="color:#667;font-size:13px;margin-top:14px">Esperando que escanees…</div></div>');
-  if(!qr) webPollQr(); else webPollStatus();
-}
-function webPollQr(){ if(WEBPOLL)clearInterval(WEBPOLL);
-  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;}
-    get('/wa-web-qr').then(function(r){ if(r&&r.status==='connected'){ clearInterval(WEBPOLL); loadWeb(); }
-      else if(r&&r.qr){ var im=document.querySelector('#panel img'); if(im){ im.src=r.qr; } else { webShowQr(r.qr); } } });
-  },2500);
-}
-function webPollStatus(){ if(WEBPOLL)clearInterval(WEBPOLL);
-  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;}
-    get('/wa-web-status').then(function(s){ if(s&&s.status==='connected'){ clearInterval(WEBPOLL); loadWeb(); }
-      else if(s&&s.status==='qr'){ get('/wa-web-qr').then(function(r){ var im=document.querySelector('#panel img'); if(r&&r.qr&&im)im.src=r.qr; }); } });
-  },2500);
-}
-var WEBCHAT=null, WEBMPOLL=null, _wtick=0, _webMsgCount=-1;
-function webHora(ts){ try{ if(!ts)return''; var d=new Date(ts*1000); return d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
-// Formatea el teléfono: +54 9 11 xxxx-xxxx (celular AR) o +54 area xxxx-xxxx. Si no es un teléfono real
-// (LID largo de WhatsApp), lo deja tal cual. NO inventa: solo agrupa dígitos para que se lea bien.
-function webFmtTel(x){ x=String(x||'').trim(); if(x.indexOf('@')>=0) x=x.split('@')[0];
-  var d=x.replace(/\\D/g,'');
-  if(/^54/.test(d) && (d.length===12||d.length===13)){
-    var r=d.slice(2); if(r[0]==='9') r=r.slice(1);   // r = área+número
-    if(r.length===10){ var area=(r.slice(0,2)==='11')?r.slice(0,2):r.slice(0,3); var n=r.slice(area.length);
-      return '+54 9 '+area+' '+n.slice(0,n.length-4)+'-'+n.slice(-4); }
-    return '+54 9 '+r;
-  }
-  if(d.length>=8 && d.length<=13) return '+'+d;      // otro país
-  return x;                                          // LID / no-teléfono → tal cual
-}
-// Tilde de estado del mensaje propio: ✓ enviado · ✓✓ entregado · ✓✓ azul leído. ack indefinido → ✓.
-function webTick(m){ if(!m||!m.fromMe) return '';
-  var a=m.ack; var dbl='&#10003;&#10003;', sgl='&#10003;';
-  if(a>=4) return '<span style="color:#53bdeb;font-size:12px;margin-left:3px">'+dbl+'</span>';
-  if(a===3) return '<span style="color:#8696a0;font-size:12px;margin-left:3px">'+dbl+'</span>';
-  return '<span style="color:#8696a0;font-size:12px;margin-left:3px">'+sgl+'</span>';
-}
-function webLoadChats(s){ if(TAB!=='web')return; var p=document.getElementById('panel'); WEBCHAT=null; _webMsgCount=-1;
-  var me=(s&&s.me&&s.me.name)?esc(s.me.name):'';
-  // Número REAL del WhatsApp Web (del id de la sesión, ej "5491123460702:12@...") → header correcto por pestaña.
-  try{ var mid=(s&&s.me&&s.me.id)?String(s.me.id).split(':')[0].split('@')[0]:''; var mnm=(s&&s.me&&s.me.name)||'';
-       WEBNUM = (mid?webFmtTel(mid):'') + (mnm?((mid?' · ':'')+mnm):''); if(TAB==='web') _setHeaderNum('web'); }catch(e){}
-  p.style.padding='0'; p.style.maxWidth='none'; p.style.display='block';
-  p.innerHTML='<div style="height:calc(100vh - 52px);display:flex;background:#fff;overflow:hidden">'
-    +'<div style="width:340px;min-width:340px;border-right:1px solid #e9edef;display:flex;flex-direction:column;background:#fff">'
-      +'<div style="padding:12px 14px;background:#f0f2f5;display:flex;align-items:center;justify-content:space-between"><div style="font-weight:700;color:#111b21;font-size:14px">&#10003; '+me+'</div><button onclick="webLogout()" style="background:none;border:0;color:#c0392b;font-size:12px;font-weight:600;cursor:pointer">Desconectar</button></div>'
-      +'<div id="webchats" style="flex:1;overflow-y:auto"><div style="padding:24px;text-align:center;color:#667">Trayendo chats&#8230;</div></div>'
-    +'</div>'
-    +'<div id="webconv" style="flex:1;display:flex;flex-direction:column;background:#efeae2"><div style="flex:1;display:flex;align-items:center;justify-content:center;color:#8696a0">&#128172; Eleg&iacute; una conversaci&oacute;n para ver los mensajes y responder</div></div>'
-  +'</div>';
-  webRenderList();
-  if(WEBPOLL)clearInterval(WEBPOLL);
-  WEBPOLL=setInterval(function(){ if(TAB!=='web'){clearInterval(WEBPOLL);return;} _wtick++; if(WEBCHAT) webLoadMsgs(false); if(_wtick%6===0) webRenderList(); }, 2500);
-}
-function webRenderList(){ get('/wa-web-chats?limit=80').then(function(r){ var box=document.getElementById('webchats'); if(!box)return;
-  var cs=(r&&r.chats)||[];
-  if(!cs.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:#667;font-size:13px">Sin chats todav&iacute;a. Apenas te escriban aparecen.</div>'; return; }
-  box.innerHTML=cs.map(function(c){ var av=c.photo?('<img src="'+esc(c.photo)+'" style="width:44px;height:44px;border-radius:50%;object-fit:cover">'):('<div style="width:44px;height:44px;border-radius:50%;background:#cdd5d9;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px">&#128100;</div>');
-    // "Falta responder": badge SOLO si el último mensaje es del cliente (no nuestro).
-    // Si el último es nuestro (ya contestaste) → sin badge. Datos viejos (lastFromMe indefinido) → cae a unread.
-    var falta=(c.unread>0) && (c.lastFromMe!==true);   // hay sin abrir Y el último NO fue mío
-    var un=falta?('<span style="background:#25D366;color:#fff;border-radius:11px;padding:0 6px;font-size:11px;font-weight:700;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center">'+(c.unread>0?c.unread:'')+'</span>'):'';
-    var sel=(WEBCHAT&&WEBCHAT.id===c.id)?';background:#f0f2f5':'';
-    var _esG=String(c.id||'').indexOf('@g.us')>=0; var _rot=_esG?(c.name||c.tel||''):(c.tel||c.name||'');
-    return '<div class="wl-row" data-id="'+esc(c.id)+'" data-name="'+esc(_rot)+'" onclick="webRowClick(this)" style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f5;cursor:pointer'+sel+'">'+av
-      +'<div style="flex:1;min-width:0"><div style="font-weight:600;color:#111b21;font-size:14px">'+esc(_esG?_rot:webFmtTel(_rot))+(_esG?' <span style="font-size:10px;color:#8696a0;font-weight:600">GRUPO</span>':'')+'</div><div style="color:#667;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.last||'')+'</div></div>'+un+'</div>';
-  }).join('');
-  }).catch(function(){ var box=document.getElementById('webchats'); if(box&&!box.querySelector('.wl-row'))box.innerHTML='<div style="padding:24px;text-align:center;color:#c0392b">No se pudieron traer los chats.</div>'; });
-}
-function webRowClick(el){ webOpenChat(el.getAttribute('data-id'), el.getAttribute('data-name')); }
-function webOpenChat(id,name){ WEBCHAT={id:id,name:name}; _webMsgCount=-1;
-  var rows=document.querySelectorAll('#webchats .wl-row'); for(var i=0;i<rows.length;i++){ rows[i].style.background=(rows[i].getAttribute('data-id')===id)?'#f0f2f5':''; }
-  var conv=document.getElementById('webconv'); if(!conv)return;
-  conv.innerHTML='<div style="padding:12px 16px;background:#f0f2f5;font-weight:700;color:#111b21;border-bottom:1px solid #e9edef">'+esc(webFmtTel(name||id.split('@')[0]))+'</div>'
-    +'<div id="webmsgs" style="flex:1;overflow-y:auto;padding:14px 16px;background:#efeae2"><div style="text-align:center;color:#8696a0;padding:20px">Cargando&#8230;</div></div>'
-    +'<div style="padding:10px 14px;background:#f0f2f5;display:flex;gap:8px;align-items:flex-end"><textarea id="webinput" rows="1" placeholder="Escrib&iacute; un mensaje&#8230;" style="flex:1;border:1px solid #d1d7db;border-radius:20px;padding:9px 14px;font-size:13.5px;resize:none;max-height:100px;outline:none;font-family:inherit;background:#fff"></textarea><button onclick="webSend()" style="background:#00a884;border:0;color:#fff;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:17px;flex-shrink:0">&#10148;</button></div>';
-  var inp=document.getElementById('webinput'); if(inp){ inp.addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); webSend(); } }); inp.addEventListener('input',function(){ this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,100)+'px'; }); inp.focus(); }
-  webLoadMsgs(true);
-}
-function webLoadMsgs(force){ if(!WEBCHAT)return; var cid=WEBCHAT.id;
-  fetch('/wa-web-mensajes?chat='+encodeURIComponent(cid)).then(function(r){return r.json();}).then(function(j){
-    if(!WEBCHAT||WEBCHAT.id!==cid)return; var box=document.getElementById('webmsgs'); if(!box)return;
-    var ms=(j&&j.messages)||[];
-    if(force!==true && ms.length===_webMsgCount) return;   // sin cambios → no re-render en el poll
-    _webMsgCount=ms.length;
-    if(!ms.length){ box.innerHTML='<div style="text-align:center;color:#8696a0;padding:20px;font-size:13px">Sin mensajes guardados de esta conversaci&oacute;n todav&iacute;a. Los nuevos aparecen ac&aacute;.</div>'; return; }
-    box.innerHTML=ms.map(function(m){ var mine=m.fromMe;
-      return '<div style="display:flex;justify-content:'+(mine?'flex-end':'flex-start')+';margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:'+(mine?'#d9fdd3':'#fff')+';color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+webBody(m)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(m.ts)+webTick(m)+'</div></div></div>';
-    }).join('');
-    box.scrollTop=box.scrollHeight;
-  }).catch(function(){});
-}
-var _WPH=['📷 Foto','🎥 Video','🎤 Audio','🎞️ GIF','📄 Documento'];
-function webBody(m){
-  if(m && m.media){ var src='/wa-web-media?id='+encodeURIComponent(m.media);
-    var cap=(m.text && _WPH.indexOf(m.text)<0)?('<div style="margin-top:4px">'+esc(m.text)+'</div>'):'';
-    if(m.kind==='image'||m.kind==='sticker') return '<img src="'+src+'" loading="lazy" style="max-width:240px;max-height:300px;border-radius:6px;display:block;cursor:pointer" onclick="window.open(this.src)">'+cap;
-    if(m.kind==='video'||m.kind==='gif') return '<video src="'+src+'" controls '+(m.kind==='gif'?'autoplay loop muted':'')+' style="max-width:240px;border-radius:6px;display:block"></video>'+cap;
-    if(m.kind==='audio') return '<audio src="'+src+'" controls style="max-width:230px;display:block"></audio>';
-    return '<a href="'+src+'" target="_blank" style="color:#027eb5;text-decoration:none">&#128196; '+esc(m.text||'Documento')+'</a>';
-  }
-  return esc((m&&m.text)||'');
-}
-function webSend(){ var i=document.getElementById('webinput'); if(!i||!WEBCHAT)return; var t=(i.value||'').trim(); if(!t)return; i.value=''; i.style.height='auto';
-  var box=document.getElementById('webmsgs'); if(box){ if(box.querySelector('div')&&box.textContent.indexOf('Sin mensajes')>=0)box.innerHTML=''; box.insertAdjacentHTML('beforeend','<div style="display:flex;justify-content:flex-end;margin:3px 0"><div style="max-width:72%;padding:6px 9px;border-radius:8px;font-size:13.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word;background:#d9fdd3;color:#111b21;box-shadow:0 1px .5px rgba(0,0,0,.13)">'+esc(t)+'<div style="font-size:10px;color:#667781;text-align:right;margin-top:2px">'+webHora(Math.floor(Date.now()/1000))+'</div></div></div>'); box.scrollTop=box.scrollHeight; _webMsgCount++; }
-  fetch('/wa-web-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:WEBCHAT.id,text:t})}).then(function(r){return r.json();}).then(function(j){ if(j&&!j.ok){ if(box)box.insertAdjacentHTML('beforeend','<div style="text-align:right;color:#c0392b;font-size:11px;margin:2px 0">no se pudo enviar</div>'); } setTimeout(function(){webLoadMsgs(true);},800); }).catch(function(){});
-}
-function webLogout(){ if(!confirm('¿Desconectar el WhatsApp Web de esta cuenta? Vas a tener que escanear el QR de nuevo.'))return;
-  post('/wa-web-logout',{}).then(function(){ loadWeb(); }); }
 function _money(v){ v=Math.round(Number(v)||0); return '$'+v.toLocaleString('es-AR'); }
 function _tel10(k){ return String(k||''); }
-function loadTransfers(){ get('/wa-transfers').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#c0392b">No se pudo cargar.</div>'; return; }
+function loadTransfers(){ get('/wa-transfers').then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:0 auto;color:#ff9b9b">No se pudo cargar.</div>'; return; }
  TDATA=r.items||[]; window._WACBU=r.cbu; window._WATIT=r.titular; renderTransfers(r); }); }
 function renderTransfers(r){ var pend=TDATA.filter(function(o){return !o.enviado;});
  var rows=pend.map(function(o){ var ck='<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
-  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px;font-weight:700">#'+esc(o.num)+'</td><td style="padding:9px 8px">'+esc(o.nombre)+'</td><td style="padding:9px 8px;color:#667">'+esc(o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+esc(o.fecha)+'</td></tr>'; }).join('');
+  return '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px;font-weight:700">#'+esc(o.num)+'</td><td style="padding:9px 8px">'+esc(o.nombre)+'</td><td style="padding:9px 8px;color:var(--mut)">'+esc(o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:var(--mut2);font-size:12px">'+esc(o.fecha)+'</td></tr>'; }).join('');
  var head='<div style="max-width:940px;margin:0 auto">'
-  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128179; Transferencias</h2><span style="color:#667">pedidos pendientes de pago</span></div>'
-  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Les manda el CBU por WhatsApp (plantilla <b>datos_transferencia</b>). CBU: <b>'+esc(r.cbu)+'</b> · '+esc(r.titular)+'. Ya enviados se ocultan.</div>';
- if(!r.wpp_on) head+='<div style="background:#fdeaea;color:#c0392b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
- if(!pend.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay pedidos pendientes sin avisar. &#9989;</div></div>'; return; }
- head+='<div style="display:flex;gap:10px;margin-bottom:12px"><button onclick="sendTransfers(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar CBU a los '+pend.length+'</button>'
-  +'<button onclick="sendTransfers(true)" style="background:#e8eef0;color:#243;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:var(--ink)">&#128179; Transferencias</h2><span style="color:var(--mut)">pedidos pendientes de pago</span></div>'
+  +'<div style="color:var(--mut);font-size:13px;margin-bottom:12px">Les manda el CBU por WhatsApp (plantilla <b>datos_transferencia</b>). CBU: <b>'+esc(r.cbu)+'</b> · '+esc(r.titular)+'. Ya enviados se ocultan.</div>';
+ if(!r.wpp_on) head+='<div style="background:#2e1719;color:#ff9b9b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
+ if(!pend.length){ document.getElementById('panel').innerHTML=head+'<div style="background:var(--pan);border-radius:12px;padding:26px;text-align:center;color:var(--mut)">No hay pedidos pendientes sin avisar. &#9989;</div></div>'; return; }
+ head+='<div style="display:flex;gap:10px;margin-bottom:12px"><button onclick="sendTransfers(false)" style="background:var(--out);color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar CBU a los '+pend.length+'</button>'
+  +'<button onclick="sendTransfers(true)" style="background:var(--pan3);color:var(--ink);border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
   +'<span id="tmsg" style="align-self:center;font-weight:700"></span></div>'
-  +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Pedido</th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Fecha</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  +'<div style="background:var(--pan);border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:var(--mut2);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Pedido</th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Fecha</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
  document.getElementById('panel').innerHTML=head;
 }
 function sendTransfers(soloTildados){ var tels=soloTildados?Object.keys(TSEL).filter(function(k){return TSEL[k];}):[];
@@ -17127,28 +16995,28 @@ function sendTransfers(soloTildados){ var tels=soloTildados?Object.keys(TSEL).fi
  var msg=document.getElementById('tmsg'); if(msg){ msg.style.color='#556'; msg.textContent='Enviando…'; }
  fetch('/wa-transfers-enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tels:tels,cbu:window._WACBU,titular:window._WATIT})}).then(function(r){return r.json();}).then(function(j){
   if(!j.ok){ if(msg){msg.style.color='#c0392b';msg.textContent=j.msg||'error';} return; }
-  if(msg){ msg.style.color='#0a7d3c'; msg.textContent='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.innerHTML=msg.textContent; }
+  if(msg){ msg.style.color="#6ee7a8"; msg.textContent='&#9989; '+j.enviados+' enviados'+(j.saltados?(' · '+j.saltados+' ya estaban'):'')+(j.fallaron?(' · '+j.fallaron+' fallaron'):''); msg.innerHTML=msg.textContent; }
   loadTransfers();
  }); }
-function loadCarritos(refresh){ get('/wa-carritos?dias=14'+(refresh?'&refresh=1':'')).then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:20px auto;padding:14px;background:#fdeaea;border:1px solid #f5c2c2;border-radius:10px;color:#8a1f1f;font-size:13px"><b>No se pudo cargar los carritos.</b><br><span style="word-break:break-word">'+esc((r&&r.err)||'sin detalle')+'</span></div>'; return; }
+function loadCarritos(refresh){ get('/wa-carritos?dias=14'+(refresh?'&refresh=1':'')).then(function(r){ if(!r||!r.ok){ document.getElementById('panel').innerHTML='<div style="max-width:940px;margin:20px auto;padding:14px;background:#2e1719;border:1px solid #5a2a2e;border-radius:10px;color:#ff9b9b;font-size:13px"><b>No se pudo cargar los carritos.</b><br><span style="word-break:break-word">'+esc((r&&r.err)||'sin detalle')+'</span></div>'; return; }
  TDATA=r.items||[]; renderCarritos(r); }); }
-function _cbadge(t){ if(t==='shopify') return '<span style="background:#e7f6ec;color:#0a7d3c;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Shopify</span>';
-  if(t==='tn') return '<span style="background:#e8f0fe;color:#1a56db;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Tiendanube</span>'; return ''; }
+function _cbadge(t){ if(t==='shopify') return '<span style="background:#13291f;color:#6ee7a8;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Shopify</span>';
+  if(t==='tn') return '<span style="background:#16233d;color:#1a56db;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:800;margin-left:7px;vertical-align:middle">Tiendanube</span>'; return ''; }
 function renderCarritos(r){ var rows=TDATA.map(function(o){
   var ck='<input type=checkbox '+(TSEL[o.tel]?'checked':'')+' onchange="TSEL[\\''+o.tel+'\\']=this.checked">';
-  return '<tr style="border-top:1px solid #e3e8ec"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+_cbadge(o.tienda)+'</td><td style="padding:9px 8px;color:#667">'+esc((typeof webFmtTel==='function')?webFmtTel(o.tel):o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:#8a94a0;font-size:12px">'+o.dias+'d</td></tr>'; }).join('');
+  return '<tr style="border-top:1px solid var(--line)"><td style="padding:9px 8px">'+ck+'</td><td style="padding:9px 8px">'+esc(o.nombre)+_cbadge(o.tienda)+'</td><td style="padding:9px 8px;color:var(--mut)">'+esc((typeof webFmtTel==='function')?webFmtTel(o.tel):o.tel)+'</td><td style="padding:9px 8px;text-align:right;font-weight:700">'+_money(o.total)+'</td><td style="padding:9px 8px;color:var(--mut2);font-size:12px">'+o.dias+'d</td></tr>'; }).join('');
  var n=TDATA.length;
  var meta=[n+' sin contactar']; if(r.n_shopify) meta.push(r.n_shopify+' Shopify'); if(r.n_tn) meta.push(r.n_tn+' Tiendanube');
  var head='<div style="max-width:980px;margin:0 auto">'
-  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:#111b21">&#128722; Carritos abandonados</h2><span style="color:#667">&#8804; '+r.dias+' días · '+meta.join(' · ')+'</span></div>'
-  +'<div style="color:#556;font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> — el link ya lleva el cupón <b>'+(r.cupon||'')+'</b> aplicado (10% OFF). <b>Solo carritos NO enviados</b> y con teléfono — al mandarlos <b>desaparecen de la lista</b>. No reenvía. Excluye a los que ya compraron.</div>';
- if(!r.wpp_on) head+='<div style="background:#fdeaea;color:#c0392b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
- if(!TDATA.length){ document.getElementById('panel').innerHTML=head+'<div style="background:#fff;border-radius:12px;padding:26px;text-align:center;color:#667">No hay carritos. &#9989;</div></div>'; return; }
+  +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px"><h2 style="margin:0;font-size:20px;color:var(--ink)">&#128722; Carritos abandonados</h2><span style="color:var(--mut)">&#8804; '+r.dias+' días · '+meta.join(' · ')+'</span></div>'
+  +'<div style="color:var(--mut);font-size:13px;margin-bottom:12px">Plantilla <b>carrito_abandonado</b> — el link ya lleva el cupón <b>'+(r.cupon||'')+'</b> aplicado (10% OFF). <b>Solo carritos NO enviados</b> y con teléfono — al mandarlos <b>desaparecen de la lista</b>. No reenvía. Excluye a los que ya compraron.</div>';
+ if(!r.wpp_on) head+='<div style="background:#2e1719;color:#ff9b9b;padding:10px 12px;border-radius:10px;margin-bottom:12px">WhatsApp no conectado en esta cuenta.</div>';
+ if(!TDATA.length){ document.getElementById('panel').innerHTML=head+'<div style="background:var(--pan);border-radius:12px;padding:26px;text-align:center;color:var(--mut)">No hay carritos. &#9989;</div></div>'; return; }
  head+='<div style="display:flex;gap:10px;margin-bottom:12px">'
-  +'<button onclick="sendCarritos(false)" style="background:#128C7E;color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar a los '+n+'</button>'
-  +'<button onclick="sendCarritos(true)" style="background:#e8eef0;color:#243;border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
+  +'<button onclick="sendCarritos(false)" style="background:var(--out);color:#fff;border:0;border-radius:10px;padding:11px 20px;font-weight:700;cursor:pointer">Enviar a los '+n+'</button>'
+  +'<button onclick="sendCarritos(true)" style="background:var(--pan3);color:var(--ink);border:0;border-radius:10px;padding:11px 18px;font-weight:600;cursor:pointer">Enviar solo tildados</button>'
   +'<span id="cmsg2" style="align-self:center;font-weight:700"></span></div>'
-  +'<div style="background:#fff;border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:#8a94a0;font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Antigüedad</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  +'<div style="background:var(--pan);border-radius:12px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr style="color:var(--mut2);font-size:11px;text-transform:uppercase;letter-spacing:.5px"><th></th><th style="text-align:left;padding:9px 8px">Cliente</th><th style="text-align:left;padding:9px 8px">Teléfono</th><th style="text-align:right;padding:9px 8px">Total</th><th style="text-align:left;padding:9px 8px">Antigüedad</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
  document.getElementById('panel').innerHTML=head;
 }
 function sendCarritos(soloTildados){
@@ -17172,13 +17040,13 @@ function sendCarritos(soloTildados){
 }
 function _carrBar(done,total,env,fail){ var box=document.getElementById('cmsg2'); if(!box)return;
  var pct=total?Math.round(done/total*100):0;
- var extra=fail?(' &middot; <span style="color:#c0392b">&#10007; '+fail+'</span>'):'';
+ var extra=fail?(' &middot; <span style="color:#ff9b9b">&#10007; '+fail+'</span>'):'';
  box.style.fontWeight='400';
- box.innerHTML='<div style="min-width:340px;display:inline-block;vertical-align:middle;text-align:left"><div style="display:flex;justify-content:space-between;font-size:12px;color:#334;margin-bottom:4px"><span>Enviando <b>'+done+' / '+total+'</b> &middot; '+pct+'%</span><span style="color:#0a7d3c;font-weight:700">&#9989; '+env+extra+'</span></div><div style="height:10px;background:#e3e8ec;border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#128C7E,#25D366);transition:width .3s;border-radius:6px"></div></div></div>';
+ box.innerHTML='<div style="min-width:340px;display:inline-block;vertical-align:middle;text-align:left"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink);margin-bottom:4px"><span>Enviando <b>'+done+' / '+total+'</b> &middot; '+pct+'%</span><span style="color:#6ee7a8;font-weight:700">&#9989; '+env+extra+'</span></div><div style="height:10px;background:var(--pan3);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#128C7E,#25D366);transition:width .3s;border-radius:6px"></div></div></div>';
 }
 function _carrBarDone(env,salt,fail){ var box=document.getElementById('cmsg2'); if(!box)return;
- var x=fail?(' &middot; <span style="color:#c0392b">'+fail+' fallaron</span>'):'';
- box.innerHTML='<span style="color:#0a7d3c;font-weight:800">&#9989; Listo &middot; '+env+' enviados'+(salt?(' &middot; '+salt+' ya estaban'):'')+x+'</span>';
+ var x=fail?(' &middot; <span style="color:#ff9b9b">'+fail+' fallaron</span>'):'';
+ box.innerHTML='<span style="color:#6ee7a8;font-weight:800">&#9989; Listo &middot; '+env+' enviados'+(salt?(' &middot; '+salt+' ya estaban'):'')+x+'</span>';
 }
 var _lastMsgN=-1, _lastMsgId='', _lastSig='';
 function loadChats(){
@@ -17204,7 +17072,7 @@ function renderList(){
   return '<div class="chat'+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
-   +'<div class="lt">'+esc(c.last||'')+(c.unread>0?'<span style="float:right;background:#25D366;color:#fff;border-radius:11px;min-width:20px;height:20px;line-height:20px;text-align:center;font-size:12px;font-weight:700;padding:0 6px">'+c.unread+'</span>':'')+'</div></div></div>';
+   +'<div class="lt">'+esc(c.last||'')+(c.unread>0?'<span style="float:right;background:var(--teal);color:#fff;border-radius:11px;min-width:20px;height:20px;line-height:20px;text-align:center;font-size:12px;font-weight:700;padding:0 6px">'+c.unread+'</span>':'')+'</div></div></div>';
  }).join('');
 }
 function openChat(wid){ SEL=wid; var c=CHATS.filter(function(x){return x.wa_id==wid;})[0]; if(c){ c.unread=0; try{post('/wa-leido',{wa_id:wid});}catch(e){} renderConv(c); var _ms=c.messages||[]; _lastMsgN=_ms.length; _lastMsgId=_ms.length?(_ms[_ms.length-1].id||_ms[_ms.length-1].ts||''):''; } renderList(); updateTitle(); }
@@ -17267,7 +17135,7 @@ function previewMedia(inp){
  var md=document.getElementById('modal');
  md.innerHTML='<div class="mh"><h3>Enviar archivo</h3><button class="x" onclick="cancelMedia()">&times;</button></div>'
   +'<div style="margin:12px 0">'+body+'</div>'
-  +'<input id="mcap" placeholder="Agregá un mensaje (opcional)" value="'+esc(cap)+'" style="width:100%;padding:12px 14px;border:1px solid #d0d7de;border-radius:10px;font-size:14px" onkeydown="if(event.key===\\'Enter\\')confirmMedia()">'
+  +'<input id="mcap" placeholder="Agregá un mensaje (opcional)" value="'+esc(cap)+'" style="width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px" onkeydown="if(event.key===\\'Enter\\')confirmMedia()">'
   +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px"><button class="btn sec" style="width:auto" onclick="cancelMedia()">Cancelar</button><button class="btn" style="width:auto" onclick="confirmMedia()">Enviar</button></div>';
  document.getElementById('ov').classList.add('on'); inp.value='';
 }
@@ -17324,14 +17192,14 @@ function openTpl(){
  ov.classList.add('on');
  get('/wa-plantillas').then(function(r){
   var box=document.getElementById('tpls');
-  var link='<div style="font-size:12px;color:#667781;margin-top:6px">¿Crear una nueva? Se hacen en <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank">el Administrador de WhatsApp de Meta</a> (necesitan aprobación).</div>';
+  var link='<div style="font-size:12px;color:var(--mut);margin-top:6px">¿Crear una nueva? Se hacen en <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank">el Administrador de WhatsApp de Meta</a> (necesitan aprobación).</div>';
   if(!r.ok){ box.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'+link; return; }
   var ts=r.templates||[];
   if(!ts.length){ box.innerHTML='<div class="empty" style="font-size:13px">No hay plantillas todavía.</div>'+link; return; }
   box.innerHTML=ts.map(function(t){
    var ok=(t.status||'').toUpperCase()=='APPROVED';
    var can=ok&&SEL;
-   return '<div class="tpl-item"><div class="h"><span class="nm">'+esc(t.name)+' <span style="color:#94a3b8;font-weight:400;font-size:12px">'+esc(t.lang||'')+'</span></span>'
+   return '<div class="tpl-item"><div class="h"><span class="nm">'+esc(t.name)+' <span style="color:var(--mut2);font-weight:400;font-size:12px">'+esc(t.lang||'')+'</span></span>'
     +'<span class="badge'+(ok?'':' no')+'">'+esc(t.status||'')+'</span></div>'
     +'<div class="bd">'+esc(t.body||'')+'</div>'
     +'<button '+(can?'':'disabled')+' onclick="sendTpl(\\''+t.name+'\\',\\''+(t.lang||'es')+'\\','+t.nvars+')">'+(SEL?'Enviar a este chat':'Elegí un chat primero')+'</button></div>';
@@ -17359,48 +17227,172 @@ function openBot(){
 }
 function renderBot(c){
  var box=document.getElementById('botbox'); if(!box)return;
- BOTON=!!c.bot;
+ BOTON=!!c.bot; BCFG=c||{};
  var warn='';
- if(!c.key_ok){ warn='<div class="msgline msgbad" style="margin-bottom:10px">&#9888; Falta la ANTHROPIC_API_KEY en el servidor (Render &#8594; Environment). Hasta cargarla, el bot no puede pensar.</div>'; }
+ if(!c.key_ok){ warn='<div class="msgline msgbad" style="margin-bottom:12px">&#9888; Falta la ANTHROPIC_API_KEY en el servidor (Render &#8594; Environment). Hasta cargarla, el bot no puede pensar.</div>'; }
+ var chip=function(t,on){ return '<span class="bchip'+(on?' on':'')+'">'+esc(t)+'</span>'; };
+ var fila=function(id,ico,col,tit,sub,val,cuerpo){
+  return '<div class="brow2" id="row_'+id+'">'
+   +'<div class="bhead" onclick="botRow(\\''+id+'\\')">'
+     +'<div class="bico" style="background:'+col+'">'+ico+'</div>'
+     +'<div class="btit"><b>'+esc(tit)+'</b><span>'+esc(sub)+'</span></div>'
+     +val+'<span class="bchev" id="chev_'+id+'">&#8250;</span>'
+   +'</div><div class="bbody" id="body_'+id+'">'+cuerpo+'</div></div>';
+ };
+ var est=(c.estilo||'resolutivo');
+ var opt=function(v,t,d){ return '<label class="bopt'+(est===v?' on':'')+'" onclick="botEstilo(\\''+v+'\\')">'
+   +'<span class="bradio"></span><div><b>'+t+'</b><span>'+d+'</span></div></label>'; };
+
  box.innerHTML=warn
-  +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
-  +'<label style="font-weight:700">Auto-respondedor</label>'
-  +'<button id="botTgl" type="button" onclick="toggleBot()" class="swch'+(BOTON?' on':'')+'" title="Encender / apagar el bot"></button>'
-  +'<span id="botTglTxt" style="font-size:12px;color:#667781">'+(BOTON?'está respondiendo solo':'apagado, no responde')+'</span></div>'
-  +'<div class="fld" style="margin-bottom:10px"><label>Marca / nombre de la tienda</label><input id="botMarca" value="'+esc(c.marca||'')+'" placeholder="Ej: VisionPure" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><small style="color:#667781">Con este nombre se presenta el bot. Cada cuenta el suyo, no se mezcla.</small></div>'
-  +'<div class="fld" style="margin-bottom:10px"><label>Modo</label><select id="botMode" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="auto"'+(c.mode!='draft'?' selected':'')+'>Auto-enviar (responde solo)</option><option value="draft"'+(c.mode=='draft'?' selected':'')+'>Borrador (lo escribe, lo mandás vos)</option></select></div>'
-  +'<div class="fld" style="margin-bottom:10px"><label>¿En qué WhatsApp responde?</label><select id="botCanal" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="api"'+(c.canal=='api'||!c.canal?' selected':'')+'>API oficial (el número de arriba)</option><option value="web"'+(c.canal=='web'?' selected':'')+'>WhatsApp Web (el del QR)</option><option value="ambos"'+(c.canal=='ambos'?' selected':'')+'>Los dos</option></select></div>'
-  +'<div class="fld" style="margin-bottom:10px"><label>¿Cuándo responde?</label><select id="botSched" onchange="schedUI()" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px"><option value="24h"'+(c.sched!='franja'?' selected':'')+'>24 horas (siempre)</option><option value="franja"'+(c.sched=='franja'?' selected':'')+'>Solo en un horario (cuando no atendés vos)</option></select>'
-  +'<div id="schedBox" style="display:'+(c.sched=='franja'?'flex':'none')+';gap:8px;align-items:center;margin-top:8px"><span style="font-size:13px;color:#667781">Responde de</span><input id="botDesde" type="time" value="'+esc(c.desde||'20:00')+'" style="padding:6px;border:1px solid var(--line);border-radius:8px"><span style="font-size:13px;color:#667781">a</span><input id="botHasta" type="time" value="'+esc(c.hasta||'09:00')+'" style="padding:6px;border:1px solid var(--line);border-radius:8px"><span style="font-size:12px;color:#667781">(hora Argentina)</span></div></div>'
-  +'<div class="fld"><label>Instrucciones para el bot (su cerebro)</label>'
-  +'<textarea id="botInstr" rows="6" style="width:100%;font-family:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="Escribile indicaciones para que se entiendan. Ej: si preguntan por envío a Córdoba, decí 3-5 días. No ofrezcas descuentos. Si mandan un audio, avisá que ya lo escuchás.">'+esc(c.instr||'')+'</textarea>'
-  +'<small style="color:#667781">Poné acá TODO lo de tu marca: qué vendés, precios, link de compra, envíos, formas de pago, promos y cómo se usa. El bot SOLO sabe lo que escribas acá (no inventa).</small></div>'
-  +'<div class="fld" style="margin:12px 0"><label>Aprender de charlas reales <span style="color:#94a3b8;font-weight:400">(opcional, muy potente)</span></label>'
-  +'<div style="font-size:12px;color:#667781;margin:2px 0 6px">Subí un export de chats de WhatsApp (.txt). El bot aprende tu <b>tono</b>, tus respuestas t&iacute;picas y sobre todo <b>qu&eacute; deriv&aacute;s a humano</b>.'+(c.ejemplos_n?' <span style="color:#128C7E;font-weight:700">&#10003; '+c.ejemplos_n+' charlas aprendidas</span>':'')+'</div>'
-  +'<input type="file" id="botLearnFile" accept=".txt" style="display:none" onchange="aprenderChats(this)">'
-  +'<button type="button" class="b ai" onclick="pickLearn()">&#10024; Subir chats para aprender</button>'
-  +'<div id="botLearnMsg" style="margin-top:8px"></div></div>'
-  +'<div style="font-weight:700;margin:14px 0 4px;font-size:13px">Datos de pago (para leer comprobantes) <span style="color:#94a3b8;font-weight:400">opcional</span></div>'
-  +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-  +'<input id="botPagTit" value="'+esc(c.pago_titular||'')+'" placeholder="Titular de la cuenta" style="flex:1;min-width:150px;padding:8px;border:1px solid var(--line);border-radius:8px">'
-  +'<input id="botPagAli" value="'+esc(c.pago_alias||'')+'" placeholder="Alias" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px">'
-  +'<input id="botPagCuit" value="'+esc(c.pago_cuit||'')+'" placeholder="CUIT" style="flex:1;min-width:110px;padding:8px;border:1px solid var(--line);border-radius:8px"></div>'
-  +'<small style="color:#667781">Si los cargás, el bot valida el comprobante contra estos datos. Si no, deja las transferencias para que las confirmes vos.</small>'
-  +'<div class="brow" style="margin-top:14px"><button type="button" class="b p" onclick="saveBot()">&#128190; Guardar</button>'
-  +'<button type="button" class="b g" onclick="presetVP()" title="Rellena marca, cerebro y datos de pago de VisionPure">&#9889; Preset VisionPure</button>'
-  +'<button type="button" class="b g" onclick="presetNX()" title="Rellena marca y cerebro de NoxaLab (con la regla del link de precio)">&#9889; Preset NoxaLab</button></div>'
-  +'<div id="botMsg" style="margin-top:8px"></div>'
-  +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
-  +'<div style="font-weight:700;margin-bottom:4px">&#129514; Probador (no manda nada)</div>'
-  +'<div style="font-size:12px;color:#667781;margin-bottom:6px">Escribí un mensaje como si fueras un cliente y mirá qué contestaría.</div>'
-  +'<input id="botTest" placeholder="ej: hola, cuánto sale? es para mi mamá" style="width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px">'
-  +'<button type="button" class="b p" onclick="probarBot()">&#129514; Probar</button>'
-  +'<div id="botTestOut" style="margin-top:10px"></div>';
+ +'<div class="bcard" style="margin:0 0 12px"><div class="browsp">'
+ +'<div><b>Auto-respondedor</b><span id="botTglTxt">'+(BOTON?'está respondiendo solo':'apagado, no responde')+'</span></div>'
+ +'<button id="botTgl" type="button" onclick="toggleBot()" class="swch'+(BOTON?' on':'')+'" title="Encender / apagar el bot"></button>'
+ +'</div></div>'
+ +'<div class="bwrap">'
+ // ── 1) Quien es
+ +fila('quien','&#129302;','#3b3fb8','Quién es','Lo que ven tus clientes cuando responde',
+    chip(c.nombre||c.marca||'sin nombre',false),
+    '<div class="fld"><label>Nombre del bot</label><input id="botNombre" value="'+esc(c.nombre||'')+'" placeholder="Ej: NoxaLab NX"><small>Aparece como remitente en WhatsApp.</small></div>'
+   +'<div class="fld"><label>Nombre de la marca</label><input id="botMarca" value="'+esc(c.marca||'')+'" placeholder="Ej: NoxaLab"><small>Se usa en los saludos y para darle contexto al bot.</small></div>')
+ // ── 2) Identidad de marca (el cerebro)
+ +fila('marca','&#128070;','#2f4ab8','Identidad de marca','Cómo presenta tu marca, qué remarca y qué nunca dice',
+    chip('EL CEREBRO DE TODO',true),
+    '<div class="fld"><label>Resumen de identidad de marca</label>'
+   +'<textarea id="botInstr" rows="9" placeholder="Qué vendés, precios, link de compra, envíos, formas de pago, promos y cómo se usa. El bot SOLO sabe lo que escribas acá (no inventa).">'+esc(c.instr||'')+'</textarea>'
+   +'<small><span id="botInstrN">'+((c.instr||'').length)+'</span> caracteres</small></div>'
+   +'<div class="brow"><button type="button" class="b g" onclick="presetVP()">&#9889; Preset VisionPure</button>'
+   +'<button type="button" class="b g" onclick="presetNX()">&#9889; Preset NoxaLab</button></div>')
+ // ── 3) Forma de responder
+ +fila('forma','&#128172;','#2f6ab8','Forma de responder','Cuánto desarrolla la respuesta, más allá del tono',
+    chip(est.charAt(0).toUpperCase()+est.slice(1),false),
+    '<div class="bcard"><div class="browsp"><div><b>Humanizar respuestas</b><span>Hace que el bot suene más natural y vendedor.</span></div>'
+   +'<button id="botHum" type="button" onclick="botHum()" class="swch'+(c.humanizar!==false?' on':'')+'"></button></div></div>'
+   +'<div class="bsub">Elegí cuánto desarrolla la respuesta y si cierra apenas resuelve o sigue la conversación.</div>'
+   +'<div class="bopts">'
+   +opt('resolutivo','Resolutivo','Responde claro y suma el próximo paso cuando realmente ayuda.')
+   +opt('directo','Directo','Da la respuesta completa más corta y no ofrece cosas extra.')
+   +opt('conversacional','Conversacional','Responde de forma más natural y puede seguir sobre la necesidad actual.')
+   +'</div>'
+   +'<div class="fld" style="margin-top:12px"><label>Modo de envío</label>'
+   +'<select id="botMode"><option value="auto"'+(c.mode!='draft'?' selected':'')+'>Auto-enviar (responde solo)</option>'
+   +'<option value="draft"'+(c.mode=='draft'?' selected':'')+'>Borrador (lo escribe, lo mandás vos)</option></select></div>')
+ // ── 4) Momentos clave
+ +fila('momentos','&#128488;','#b8952f','Momentos clave','Mensaje de derivación · Horario de atención',
+    chip((c.handoff_msg?1:0)+((c.sched=='franja')?1:0)+' de 2 escritos',false),
+    '<div class="fld"><label>Transferencia a humano</label>'
+   +'<div class="bsub">Lo que dice el bot cuando deriva al equipo.</div>'
+   +'<div class="bquick">Plantillas rápidas:'
+     +'<button type="button" onclick="botTpl(0)">Cordial</button>'
+     +'<button type="button" onclick="botTpl(1)">Con disculpas</button>'
+     +'<button type="button" onclick="botTpl(2)">Cercano + emojis</button></div>'
+   +'<textarea id="botHandoff" rows="3" maxlength="500" placeholder="Dejame pasarte con alguien del equipo…">'+esc(c.handoff_msg||'')+'</textarea></div>'
+   +'<div class="fld"><label>¿Cuándo responde?</label>'
+   +'<select id="botSched" onchange="schedUI()"><option value="24h"'+(c.sched!='franja'?' selected':'')+'>24 horas (siempre)</option>'
+   +'<option value="franja"'+(c.sched=='franja'?' selected':'')+'>Solo en un horario (cuando no atendés vos)</option></select>'
+   +'<div id="schedBox" style="display:'+(c.sched=='franja'?'flex':'none')+';gap:8px;align-items:center;margin-top:10px">'
+   +'<span class="bsub" style="margin:0">Responde de</span><input id="botDesde" type="time" value="'+esc(c.desde||'20:00')+'" style="width:auto">'
+   +'<span class="bsub" style="margin:0">a</span><input id="botHasta" type="time" value="'+esc(c.hasta||'09:00')+'" style="width:auto">'
+   +'<span class="bsub" style="margin:0">(hora Argentina)</span></div></div>')
+ // ── 5) Derivacion a una persona
+ +fila('deriva','&#128100;','#2f8f7a','Derivación a una persona',(c.handoff_rules||[]).length+' condiciones configuradas',
+    chip((c.handoff_rules||[]).length+' situaciones',false),
+    '<div class="bsub">Sumá situaciones concretas en las que una persona debe revisar, decidir o coordinar el caso. Una por línea.</div>'
+   +'<textarea id="botRules" rows="7" placeholder="El cliente pide hablar con una persona.&#10;Hay un reclamo por un producto dañado o faltante.">'+esc((c.handoff_rules||[]).join('\\n'))+'</textarea>'
+   +'<div class="bquick" style="margin-top:8px">Sugerencias:'
+     +'<button type="button" onclick="botAddRule(\\'El cliente pide explícitamente hablar con una persona del equipo.\\')">Pide un humano</button>'
+     +'<button type="button" onclick="botAddRule(\\'Hay un reclamo por un producto incorrecto, faltante o dañado.\\')">Reclamo</button>'
+     +'<button type="button" onclick="botAddRule(\\'Hay que validar un pago, cambiar, cancelar o reembolsar un pedido.\\')">Pagos y pedidos</button></div>')
+ +'</div>'
+ // ── pie
+ +'<div class="bfoot"><span class="bsub" style="margin:0">Los cambios se guardan con el botón.</span>'
+ +'<button type="button" class="b sec2" onclick="openAdv()">&#9881;&#65039; Ajustes avanzados</button>'
+ +'<button type="button" class="b p" onclick="saveBot()">&#128190; Guardar</button></div>'
+ +'<div id="botMsg"></div>'
+ // ── probador
+ +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
+ +'<div style="font-weight:700;margin-bottom:4px">&#129514; Probador <span style="color:var(--mut2);font-weight:400;font-size:12px">(no manda nada)</span></div>'
+ +'<div class="bsub">Escribí un mensaje como si fueras un cliente y mirá qué contestaría.</div>'
+ +'<input id="botTest" placeholder="ej: hola, cuánto sale?" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--pan2);color:var(--ink);margin-bottom:8px">'
+ +'<button type="button" class="b p" onclick="probarBot()">&#129514; Probar</button>'
+ +'<div id="botTestOut" style="margin-top:10px"></div>';
+ var ti=document.getElementById('botInstr');
+ if(ti) ti.addEventListener('input',function(){ var n=document.getElementById('botInstrN'); if(n)n.textContent=this.value.length; });
+}
+var BCFG={}, BEST='resolutivo', BHUM=true;
+function botRow(id){
+ var b=document.getElementById('body_'+id), r=document.getElementById('row_'+id), ch=document.getElementById('chev_'+id);
+ if(!b)return; var on=b.classList.toggle('on');
+ if(r) r.classList.toggle('on',on); if(ch) ch.innerHTML=on?'&#8743;':'&#8250;';
+}
+function botEstilo(v){ BEST=v;
+ var ls=document.querySelectorAll('.bopt'); for(var i=0;i<ls.length;i++) ls[i].classList.remove('on');
+ var ev=window.event&&window.event.currentTarget; if(ev) ev.classList.add('on');
+}
+function botHum(){ BHUM=!BHUM; var b=document.getElementById('botHum'); if(b)b.classList.toggle('on',BHUM); }
+var _BTPL=['Tu consulta quedó derivada al equipo para que continúe la atención.',
+ 'Disculpame, no pude resolver esta consulta. Tu caso quedó derivado al equipo para que continúe la atención.',
+ '¡Gracias por tu paciencia! 🙌 Tu consulta quedó derivada al equipo para que continúe la atención.'];
+function botTpl(i){ var t=document.getElementById('botHandoff'); if(t){ t.value=_BTPL[i]||''; t.focus(); } }
+function botAddRule(txt){ var t=document.getElementById('botRules'); if(!t)return;
+ var v=(t.value||'').trim(); if(v.indexOf(txt)>=0) return; t.value=(v?v+'\\n':'')+txt; }
+function openAdv(){
+ var c=BCFG||{};
+ var md=document.getElementById('modal');
+ md.innerHTML='<div class="mh"><h3>&#9881;&#65039; Ajustes avanzados</h3><button class="x" onclick="openBot()">&times;</button></div>'
+ +'<div class="bsub">Cosas que casi nunca hay que tocar. Si no sabés qué hacen, dejalas como están.</div>'
+ +'<div class="bcard"><b>Creatividad</b><span class="bsub">Qué tan creativas o restrictivas son las respuestas.</span>'
+ +'<div style="display:flex;align-items:center;gap:10px;margin:10px 0"><input id="botTemp" type="range" min="0" max="1" step="0.1" value="'+(c.temp!=null?c.temp:0.6)+'" style="flex:1" oninput="document.getElementById(\\'tempN\\').textContent=this.value">'
+ +'<span id="tempN" class="bchip on">'+(c.temp!=null?c.temp:0.6)+'</span></div></div>'
+ +'<div class="bcard"><b>Demora de respuesta</b><span class="bsub">Sumá una pequeña espera antes de responder para que se sienta más natural.</span>'
+ +'<div class="bseg" id="segDem">'
+ +'<button type="button" class="'+((c.demora||'instant')=='instant'?'on':'')+'" onclick="segPick(this,\\'botDemora\\',\\'instant\\')">Instantáneo</button>'
+ +'<button type="button" class="'+(c.demora=='fija'?'on':'')+'" onclick="segPick(this,\\'botDemora\\',\\'fija\\')">Fija</button>'
+ +'<button type="button" class="'+(c.demora=='aleatoria'?'on':'')+'" onclick="segPick(this,\\'botDemora\\',\\'aleatoria\\')">Aleatoria</button>'
+ +'</div><input type="hidden" id="botDemora" value="'+esc(c.demora||'instant')+'"></div>'
+ +'<div class="bcard"><b>Excepciones</b><span class="bsub">Conversaciones a las que el bot nunca debería responder solo.</span>'
+ +'<div class="browsp" style="margin-top:10px"><div><b style="font-weight:600">Ignorar grupos de WhatsApp</b></div>'
+ +'<button id="botGrp" type="button" onclick="this.classList.toggle(\\'on\\')" class="swch'+(c.ignora_grupos?' on':'')+'"></button></div>'
+ +'<div class="fld" style="margin-top:10px"><label>Contactos excluidos</label>'
+ +'<textarea id="botExcl" rows="2" placeholder="+5491155555555, uno por línea o separados por coma">'+esc((c.excluidos||[]).join('\\n'))+'</textarea></div></div>'
+ +'<div class="bcard"><b>Instrucciones internas</b><span class="bsub">Se le suma al bot en cada respuesta. Solo para reglas que no entran en la identidad de marca.</span>'
+ +'<textarea id="botInstrInt" rows="3" maxlength="2000" style="margin-top:8px">'+esc(c.instr_int||'')+'</textarea></div>'
+ +'<div class="bcard"><b>Cómo debería responder</b><span class="bsub">Pautas que sigue en cada respuesta. Una por línea.</span>'
+ +'<textarea id="botReglasSi" rows="3" style="margin-top:8px" placeholder="Responder siempre en el mismo idioma que el cliente.">'+esc((c.reglas_si||[]).join('\\n'))+'</textarea></div>'
+ +'<div class="bcard"><b>Qué nunca debería hacer</b><span class="bsub">Límites duros — el bot se va a negar a cruzarlos.</span>'
+ +'<textarea id="botReglasNo" rows="3" style="margin-top:8px" placeholder="No prometer descuentos que no estén publicados.">'+esc((c.reglas_no||[]).join('\\n'))+'</textarea></div>'
+ +'<div class="bcard"><b>¿En qué WhatsApp responde?</b>'
+ +'<select id="botCanal" style="margin-top:8px"><option value="api"'+(c.canal=='api'||!c.canal?' selected':'')+'>API oficial (el número de arriba)</option>'
+ +'<option value="ambos"'+(c.canal=='ambos'?' selected':'')+'>Todos los canales</option></select></div>'
+ +'<div class="bcard"><b>Datos de pago</b><span class="bsub">Si los cargás, el bot valida el comprobante contra estos datos.</span>'
+ +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+ +'<input id="botPagTit" value="'+esc(c.pago_titular||'')+'" placeholder="Titular" style="flex:1;min-width:140px">'
+ +'<input id="botPagAli" value="'+esc(c.pago_alias||'')+'" placeholder="Alias" style="flex:1;min-width:110px">'
+ +'<input id="botPagCuit" value="'+esc(c.pago_cuit||'')+'" placeholder="CUIT" style="flex:1;min-width:110px"></div></div>'
+ +'<div class="bcard"><b>Aprender de charlas reales</b><span class="bsub">Subí un export de chats (.txt). Aprende tu tono y qué derivás a humano.'
+ +(c.ejemplos_n?' <b style="color:var(--g)">&#10003; '+c.ejemplos_n+' aprendidas</b>':'')+'</span>'
+ +'<input type="file" id="botLearnFile" accept=".txt" style="display:none" onchange="aprenderChats(this)">'
+ +'<button type="button" class="b ai" style="margin-top:8px" onclick="pickLearn()">&#10024; Subir chats</button>'
+ +'<div id="botLearnMsg" style="margin-top:8px"></div></div>'
+ +'<div class="bfoot"><button type="button" class="b sec2" onclick="openBot()">&#8592; Volver</button>'
+ +'<button type="button" class="b p" onclick="saveAdv()">&#128190; Guardar avanzados</button></div>'
+ +'<div id="botMsg"></div>';
+}
+function segPick(el,hid,v){ var p=el.parentNode.querySelectorAll('button'); for(var i=0;i<p.length;i++)p[i].classList.remove('on');
+ el.classList.add('on'); var h=document.getElementById(hid); if(h)h.value=v; }
+function saveAdv(){
+ var g=document.getElementById('botGrp');
+ post('/wa-bot-config',{temp:val('botTemp'),demora:val('botDemora'),
+  ignora_grupos:(g&&g.classList.contains('on'))?'1':'0',excluidos:val('botExcl'),
+  instr_int:val('botInstrInt'),reglas_si:val('botReglasSi'),reglas_no:val('botReglasNo'),
+  canal:val('botCanal'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit')}).then(function(r){
+  var m=document.getElementById('botMsg');
+  if(m) m.innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
+ });
 }
 function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); if(b)b.classList.toggle('on',BOTON); var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; syncBotTop(); }
 function schedUI(){ var b=document.getElementById('schedBox'); if(b) b.style.display=(val('botSched')=='franja')?'flex':'none'; }
 function saveBot(){
- post('/wa-bot-config',{bot:BOTON?'1':'0',mode:val('botMode'),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),marca:val('botMarca'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit'),instr:document.getElementById('botInstr').value}).then(function(r){
+ post('/wa-bot-config',{bot:BOTON?"1":"0",mode:val("botMode"),nombre:val("botNombre"),estilo:BEST,humanizar:(BHUM?"1":"0"),handoff_msg:val("botHandoff"),handoff_rules:val("botRules"),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),marca:val('botMarca'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit'),instr:document.getElementById('botInstr').value}).then(function(r){
   document.getElementById('botMsg').innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado'+(r.bot?' &#8212; bot ENCENDIDO':' &#8212; bot apagado')+'</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
   syncBotTop();
  });
@@ -17437,18 +17429,18 @@ function presetNX(){
   var mm=document.getElementById('botMsg'); if(mm) mm.innerHTML='<div class="msgline msgok">Preset NoxaLab cargado. Completá los [COMPLETAR] y tocá Guardar.</div>';
 }
 // Toggle rápido del bot arriba (al lado del número)
-function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?'#25D366':'rgba(255,255,255,.32)'; t.title=BOTON?'Bot ENCENDIDO — responde solo. Tocá para apagar.':'Bot APAGADO — no responde. Tocá para encender.'; t.innerHTML='&#129302; Bot: '+(BOTON?'ON':'OFF'); }
+function syncBotTop(){ var t=document.getElementById('botTop'); if(!t)return; t.style.display='inline-flex'; t.style.background=BOTON?"var(--teal)":"var(--pan3)"; t.title=BOTON?'Bot ENCENDIDO — responde solo. Tocá para apagar.':'Bot APAGADO — no responde. Tocá para encender.'; t.innerHTML='&#129302; Bot: '+(BOTON?'ON':'OFF'); }
 function botTopToggle(){ post('/wa-bot-config',{bot:BOTON?'0':'1'}).then(function(r){ if(r.ok){ BOTON=!!r.bot; syncBotTop(); } }); }
 function loadBotTop(){ get('/wa-bot-config').then(function(c){ if(c&&c.ok){ BOTON=!!c.bot; syncBotTop(); } }); }
 function pickLearn(){ var e=document.getElementById('botLearnFile'); if(e) e.click(); }
 function aprenderChats(inp){
  var f=inp.files&&inp.files[0]; if(!f)return;
- var msg=document.getElementById('botLearnMsg'); msg.innerHTML='<div style="color:#7c3aed;font-size:12.5px">&#9203; Leyendo y aprendiendo de las charlas&#8230; (puede tardar unos segundos)</div>';
+ var msg=document.getElementById('botLearnMsg'); msg.innerHTML='<div style="color:#c4a6ff;font-size:12.5px">&#9203; Leyendo y aprendiendo de las charlas&#8230; (puede tardar unos segundos)</div>';
  var fd=new FormData(); fd.append('file',f);
  fetch('/wa-bot-aprender',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(r){
   if(!r||!r.ok){ msg.innerHTML='<div class="msgline msgbad">'+esc((r&&r.msg)||'error')+'</div>'; return; }
   msg.innerHTML='<div class="msgline msgok">&#10003; Aprendi&oacute; de '+r.pares+' charlas. Ya lo usa el bot (y el Probador).</div>'
-    +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#667781">Ver lo que aprendi&oacute;</summary><pre style="white-space:pre-wrap;font-size:11.5px;background:#f7faf9;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px">'+esc(r.resumen||'')+'</pre></details>';
+    +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--mut)">Ver lo que aprendi&oacute;</summary><pre style="white-space:pre-wrap;font-size:11.5px;background:var(--pan2);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px">'+esc(r.resumen||'')+'</pre></details>';
  }).catch(function(){ msg.innerHTML='<div class="msgline msgbad">Error subiendo el archivo.</div>'; }); inp.value='';
 }
 function probarBot(){
@@ -17457,11 +17449,11 @@ function probarBot(){
  post('/wa-bot-probar',{text:t}).then(function(r){
   if(!r.ok){ out.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'; return; }
   var d=r.d||{};
-  var head=d.responder?'<span style="color:#128C7E;font-weight:700">&#10003; Responder&#237;a</span>':(d.escalar?'<span style="color:#c0392b;font-weight:700">&#9888; Te lo derivar&#237;a</span>':'<span style="color:#667781;font-weight:700">&#8212; No responder&#237;a</span>');
-  out.innerHTML='<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:#f7faf9">'
-   +'<div style="margin-bottom:6px">'+head+' <span style="font-size:11px;color:#667781">('+esc(d.categoria||'')+')</span></div>'
+  var head=d.responder?'<span style="color:var(--teal);font-weight:700">&#10003; Responder&#237;a</span>':(d.escalar?'<span style="color:#ff9b9b;font-weight:700">&#9888; Te lo derivar&#237;a</span>':'<span style="color:var(--mut);font-weight:700">&#8212; No responder&#237;a</span>');
+  out.innerHTML='<div style="border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--pan2)">'
+   +'<div style="margin-bottom:6px">'+head+' <span style="font-size:11px;color:var(--mut)">('+esc(d.categoria||'')+')</span></div>'
    +(d.mensaje?'<div style="background:var(--out);border-radius:8px;padding:8px;white-space:pre-wrap;font-size:13px">'+esc(d.mensaje)+'</div>':'')
-   +(d.motivo?'<div style="font-size:11px;color:#667781;margin-top:6px"><b>Por qu&#233;:</b> '+esc(d.motivo)+'</div>':'')
+   +(d.motivo?'<div style="font-size:11px;color:var(--mut);margin-top:6px"><b>Por qu&#233;:</b> '+esc(d.motivo)+'</div>':'')
    +'</div>';
  });
 }
@@ -18694,6 +18686,18 @@ def wa_bot_config_get():
                     "sched": c.get("bot_sched", "24h"),
                     "desde": c.get("bot_desde", "20:00"), "hasta": c.get("bot_hasta", "09:00"),
                     "marca": c.get("bot_marca", ""),
+                    "nombre": c.get("bot_nombre", ""),
+                    "estilo": c.get("bot_estilo", "resolutivo"),
+                    "humanizar": bool(c.get("bot_humanizar", True)),
+                    "handoff_msg": c.get("bot_handoff_msg", ""),
+                    "handoff_rules": c.get("bot_handoff_rules", []),
+                    "reglas_si": c.get("bot_reglas_si", []),
+                    "reglas_no": c.get("bot_reglas_no", []),
+                    "instr_int": c.get("bot_instr_int", ""),
+                    "temp": c.get("bot_temp", 0.6),
+                    "demora": c.get("bot_demora", "instant"),
+                    "ignora_grupos": bool(c.get("bot_ignora_grupos", False)),
+                    "excluidos": c.get("bot_excluidos", []),
                     "pago_titular": c.get("bot_pago_titular", ""),
                     "pago_alias": c.get("bot_pago_alias", ""),
                     "pago_cuit": c.get("bot_pago_cuit", ""),
@@ -18739,6 +18743,40 @@ def wa_bot_config_set():
         c["bot_desde"] = _hhmm(request.form.get("desde"), "20:00")
     if "hasta" in request.form:
         c["bot_hasta"] = _hhmm(request.form.get("hasta"), "09:00")
+    # ── Campos de la pantalla nueva (estilo Capitan) ──
+    if "nombre" in request.form:
+        c["bot_nombre"] = (request.form.get("nombre") or "")[:60]
+    if "estilo" in request.form:
+        v = request.form.get("estilo")
+        c["bot_estilo"] = v if v in ("resolutivo", "directo", "conversacional") else "resolutivo"
+    if "humanizar" in request.form:
+        c["bot_humanizar"] = request.form.get("humanizar") in ("1", "true", "on", "True")
+    if "handoff_msg" in request.form:
+        c["bot_handoff_msg"] = (request.form.get("handoff_msg") or "")[:500]
+    if "handoff_rules" in request.form:
+        _rs = [l.strip() for l in (request.form.get("handoff_rules") or "").split("\n") if l.strip()]
+        c["bot_handoff_rules"] = _rs[:20]
+    if "reglas_si" in request.form:
+        _rs = [l.strip() for l in (request.form.get("reglas_si") or "").split("\n") if l.strip()]
+        c["bot_reglas_si"] = _rs[:20]
+    if "reglas_no" in request.form:
+        _rs = [l.strip() for l in (request.form.get("reglas_no") or "").split("\n") if l.strip()]
+        c["bot_reglas_no"] = _rs[:20]
+    if "instr_int" in request.form:
+        c["bot_instr_int"] = (request.form.get("instr_int") or "")[:2000]
+    if "temp" in request.form:
+        try:
+            c["bot_temp"] = max(0.0, min(1.0, float(request.form.get("temp") or 0.6)))
+        except Exception:
+            c["bot_temp"] = 0.6
+    if "demora" in request.form:
+        v = request.form.get("demora")
+        c["bot_demora"] = v if v in ("instant", "fija", "aleatoria") else "instant"
+    if "ignora_grupos" in request.form:
+        c["bot_ignora_grupos"] = request.form.get("ignora_grupos") in ("1", "true", "on", "True")
+    if "excluidos" in request.form:
+        _ex = [l.strip() for l in (request.form.get("excluidos") or "").replace(",", "\n").split("\n") if l.strip()]
+        c["bot_excluidos"] = _ex[:100]
     _wa_save_tokens(toks)
     return jsonify({"ok": True, "bot": bool(c.get("bot")), "mode": c.get("bot_mode", "auto"),
                     "canal": c.get("bot_canal", "api"), "activo_ahora": _bot_activo_ahora(c)})
