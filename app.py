@@ -17470,8 +17470,10 @@ function renderConv(c){
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
  conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
+  +'<div style="flex:1"></div>'
+  +(c.urgente?'<button class="okbtn" onclick="resolverUrg()" title="Sacar el URGENTE: este caso ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button>':'')
   +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>':'')+'</div>'
-  +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'<button class="okbtn" onclick="resolverUrg()" title="Sacar el urgente: ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button></div>':'')
+  +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
   +'<div class="emoji-pop" id="emojiPop"></div>'
@@ -17839,13 +17841,15 @@ function presetVP(){
   var mm=document.getElementById('botMsg'); if(mm) mm.innerHTML='<div class="msgline msgok">Preset cargado. Revisá y tocá Guardar.</div>';
 }
 var _NX_INSTR=`Qué vendemos: NoxaLab® Complejo de NAD+ 7 en 1 en polvo. Bienestar masculino en una sola fórmula (energía + rendimiento sexual + próstata). La fórmula trabaja en 3 puntos: NAD+, CoQ10 y cafeína acompañan la energía y el rendimiento; otros componentes favorecen la circulación (importante para la erección); el saw palmetto está orientado a la salud prostática y urinaria.
-Precio: $49.990 la unidad.
-REGLA CLAVE — si el cliente pregunta el PRECIO, cómo COMPRAR, por la WEB, ayuda para hacer la compra, promos, "cuánto sale", "más info", "de [ciudad] dónde lo venden", o simplemente saluda/dice que tiene una consulta: respondé con este texto EXACTO y NADA MÁS. NO le agregues ningún saludo ni presentación adelante (nada de "¡Hola! Soy el asistente virtual de NoxaLab, contame qué querés saber") — este texto YA es el saludo y la respuesta completa, mandalo tal cual, solo. El código del link es BOT5 a propósito (mide cuántas ventas cierra el bot) — usá SIEMPRE BOT5, NUNCA otro código como BENEFICIO5 aunque lo veas en ejemplos viejos:
+Precios (SOLO estos tres packs): 1 pote $49.990 = 2 meses · 2 potes $59.990 = 4 meses · 3 potes $74.990 = 6 meses. Cada pote trae 60 porciones. Si quiere más de 3 potes, que lo haga por la web.
+REGLA CLAVE — si el cliente pregunta el PRECIO, cómo COMPRAR, por la WEB, ayuda para hacer la compra, promos, "cuánto sale", "más info", "de [ciudad] dónde lo venden", o simplemente saluda/dice que tiene una consulta: contestá con el link y las promos, SIN presentarte (no digas quién sos ni "en qué te puedo ayudar": entrá directo). Variá la apertura, no arranques siempre igual. El código del link es BOT5 a propósito (mide cuántas ventas cierra el bot) — usá SIEMPRE BOT5, NUNCA otro código como BENEFICIO5 aunque lo veas en ejemplos viejos:
 "Buenas! ¿Qué tal? En nuestra página podés ver toda la info, precios y promos. Hacemos envíos a todo el país por Andreani! https://noxalaboficial.com/discount/BOT5?redirect=/products/noxalab
 *ENTRANDO POR ESTE LINK TENÉS 5% OFF ADICIONAL*"
-Pago (solo si preguntan): transferencia (5% OFF) o tarjeta por la web. Para transferencia pasás el alias y confirmás con el comprobante. Alias/CBU: [COMPLETAR].
-Envío (solo si preguntan): Andreani a todo el país. [COMPLETAR: gratis o costo + demora en días].
-Cómo se toma (solo si preguntan): [COMPLETAR: ej 1 medida al día en agua].
+Pago (solo si preguntan): tarjeta o débito por la web en 3 a 6 cuotas sin interés, o transferencia cerrada por acá. Transferencia: alias noxalab, a nombre de LEONEL BARAN. Pedile el comprobante junto con nombre y apellido, DNI (obligatorio), teléfono, email y dirección completa con código postal. Mirá el comprobante de verdad antes de confirmar: que sea una transferencia hecha (no captura de saldo, ni programada, ni rechazada), que el monto cierre y que el destinatario seamos nosotros.
+Envío (solo si preguntan): Andreani a todo el país. Por la WEB: a sucursal gratis, a domicilio $1.990 aparte. Cerrando por TRANSFERENCIA: envío gratis directo al domicilio (ese es el gancho para cerrar, no el descuento). No hay contrareembolso ni pago al recibir.
+Mercado Libre: SÍ tenemos tienda oficial. Si preguntan, pasá este listado y ningún otro link de ML: https://listado.mercadolibre.com.ar/_CustId_509185842
+Cómo se toma (solo si preguntan): 1 medida por día en agua o jugo (el pote trae la medida). No es una pastilla para el momento: funciona con la toma diaria y constante.
+Garantía: 30 días con devolución del dinero.
 Salud: hablá en clave de bienestar ("acompaña", "favorece", "muchos notan"). NUNCA digas que cura enfermedades ni des indicaciones médicas.
 Derivar a humano: reclamos, "no me funcionó", pedidos ya despachados / seguimiento, y temas de salud delicados (enfermedad, medicación).`;
 function presetNX(){
