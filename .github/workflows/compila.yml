@@ -16,12 +16,11 @@ jobs:
         run: |
           python - <<'PY'
           import ast, collections, sys
-          src = open('app.py', encoding='utf-8').read()
-          tree = ast.parse(src)
-          print("AST OK — el archivo arranca")
+          tree = ast.parse(open('app.py', encoding='utf-8').read())
+          print("AST OK")
           fns = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
           dup = [k for k, v in collections.Counter(fns).items() if v > 1]
-          print("funciones top-level duplicadas:", dup or "ninguna")
+          print("funciones duplicadas:", dup or "ninguna")
           if dup: sys.exit(1)
           rutas = []
           for n in ast.walk(tree):
@@ -34,3 +33,13 @@ jobs:
           print("rutas duplicadas:", dupr or "ninguna")
           if dupr: sys.exit(1)
           PY
+      - name: nombres indefinidos (lo que py_compile NO ve)
+        run: |
+          pip install --quiet pyflakes
+          pyflakes app.py > /tmp/pf.txt 2>&1 || true
+          if grep -q "undefined name" /tmp/pf.txt; then
+            echo "NOMBRES INDEFINIDOS — esto reventaria en ejecucion:"
+            grep "undefined name" /tmp/pf.txt
+            exit 1
+          fi
+          echo "OK: sin nombres indefinidos"

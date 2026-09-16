@@ -11371,14 +11371,14 @@ _ADS_UP_TTL = 24 * 3600                        # una subida vive 24 h; después 
 
 def _ads_up_idx_load() -> dict:
     try:
-        return json.loads(_ADS_UPIDX.read_text("utf-8"))
+        return _json.loads(_ADS_UPIDX.read_text("utf-8"))
     except Exception:
         return {}
 
 
 def _ads_up_idx_save(d: dict) -> None:
     try:
-        _ADS_UPIDX.write_text(json.dumps(d), "utf-8")
+        _ADS_UPIDX.write_text(_json.dumps(d), "utf-8")
     except Exception:
         pass
 
