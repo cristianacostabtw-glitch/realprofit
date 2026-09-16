@@ -16624,6 +16624,21 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             last_in = m; break
     if not last_in:
         return
+    # ATENCIÓN HUMANA MANDA: si en ESTA conversación ya contestó una persona, el bot no se mete
+    # más acá — lo resuelve ella. Es SOLO por chat: sigue respondiendo todos los demás.
+    # No cuentan como "persona" ni los mensajes del propio bot ni las plantillas automáticas
+    # (seguimiento de despacho, carritos), que salen solas y no son atención real.
+    _last_out = None
+    for m in reversed(msgs):
+        if m.get("dir") == "out":
+            _last_out = m
+            break
+    if _last_out and _last_out.get("by") != "bot" and _last_out.get("type") != "template":
+        conv["bot_humano"] = True
+        conv.pop("bot_nota", None)      # lo tomó una persona → se apaga la marca de urgente
+        _wa_save_chats(chats)
+        return
+
     lin_id = last_in.get("id") or ""
     if lin_id and conv.get("bot_last_in") == lin_id:
         return  # ya lo procesamos (re-entrega de Meta o segundo webhook)
@@ -16864,6 +16879,10 @@ _WA_PAGE = """<!doctype html>
  .lockcard{background:var(--pan);border:1px solid var(--line);border-radius:18px;padding:30px 28px;max-width:468px;width:92%;margin:min(6vh,56px) 0;box-shadow:0 24px 70px rgba(0,0,0,.7);color:var(--ink)}
  .lockbadge{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--out),#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 8px 22px rgba(75,77,219,.45)}
  .lockcard h2{margin:0 0 5px;font-size:23px}
+ .urgchip{background:#b3261e;color:#fff;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
+ .chat.urg{border-left:3px solid #b3261e;background:rgba(179,38,30,.08)}
+ .chat.urg:hover{background:rgba(179,38,30,.15)}
+ .deriv{background:#2e1719;color:#ff9b9b;border-bottom:1px solid #5a2a2e;padding:9px 18px;font-size:12.5px;font-weight:700}
  .bwrap{display:flex;flex-direction:column;gap:10px}
  .brow2{border:1px solid var(--line);border-radius:12px;background:var(--pan2);overflow:hidden}
  .brow2.on{border-color:var(--out)}
@@ -17105,7 +17124,11 @@ function _carrBarDone(env,salt,fail){ var box=document.getElementById('cmsg2'); 
  box.innerHTML='<span style="color:#6ee7a8;font-weight:800">&#9989; Listo &middot; '+env+' enviados'+(salt?(' &middot; '+salt+' ya estaban'):'')+x+'</span>';
 }
 var _lastMsgN=-1, _lastMsgId='', _lastSig='';
+var _btick=0;
 function loadChats(){
+ // refresco el estado del boton Bot cada ~30s: si no, la pantalla quedaba mostrando OFF
+ // aunque el bot estuviera encendido (se pintaba una sola vez, al abrir).
+ if((_btick++ % 8)===0){ try{ loadBotTop(); }catch(e){} }
  get('/wa-chats').then(function(r){
   if(!r.ok)return; CHATS=r.chats||[]; renderList(); updateTitle();
   if(SEL){ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0];
@@ -17125,9 +17148,11 @@ function renderList(){
  var arr=CHATS.filter(function(c){ return !q || (c.name||'').toLowerCase().indexOf(q)>=0 || (c.wa_id||'').indexOf(q)>=0; });
  if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.</div>'; return; }
  box.innerHTML=arr.map(function(c){
-  return '<div class="chat'+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
+  var urg=c.urgente?' urg':'';
+  var chip=c.urgente?'<span class="urgchip">URGENTE</span>':'';
+  return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
-   +'<div class="nm"><span>'+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
+   +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
    +'<div class="lt">'+esc(c.last||'')+(c.unread>0?'<span style="float:right;background:var(--teal);color:#fff;border-radius:11px;min-width:20px;height:20px;line-height:20px;text-align:center;font-size:12px;font-weight:700;padding:0 6px">'+c.unread+'</span>':'')+'</div></div></div>';
  }).join('');
 }
@@ -17159,7 +17184,8 @@ function renderConv(c){
   }
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
- conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+'</div><div class="st">'+esc(c.wa_id)+'</div></div></div>'
+ conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div></div>'
+  +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
   +'<div class="emoji-pop" id="emojiPop"></div>'
@@ -18701,6 +18727,11 @@ def wa_webhook():
     return jsonify({"ok": True})
 
 
+def _inv_ts(s):
+    """Clave para ordenar por fecha DESCENDENTE dentro de un sort ascendente."""
+    return tuple(-ord(c) for c in (s or ""))
+
+
 @app.get("/wa-chats")
 def wa_chats():
     email = _user_actual()
@@ -18719,11 +18750,20 @@ def wa_chats():
         if not apimsgs:
             continue
         last = apimsgs[-1]
+        # Marca de DERIVACIÓN: el bot avisa que lo pasa a una persona (bot_nota) y con qué
+        # categoría (reclamo, precio…). Sin esto la pantalla no tenía cómo saberlo.
+        _nota = conv.get("bot_nota", "") or ""
+        _hum = bool(conv.get("bot_humano"))
+        _urg = (("deriv" in _nota.lower()) or (conv.get("bot_cat") or "") == "reclamo") and not _hum
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
                     "unread": conv.get("unread", 0),
+                    "nota": _nota, "cat": conv.get("bot_cat", "") or "",
+                    "motivo": conv.get("bot_motivo", "") or "",
+                    "humano": _hum, "urgente": bool(_urg),
                     "messages": apimsgs[-300:]})
-    out.sort(key=lambda x: x.get("ts", ""), reverse=True)
+    # Los derivados primero (que el de atención los vea arriba), después por fecha.
+    out.sort(key=lambda x: (0 if x.get("urgente") else 1, _inv_ts(x.get("ts", ""))))
     return jsonify({"ok": True, "chats": out})
 
 
