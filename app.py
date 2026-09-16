@@ -16727,7 +16727,8 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # se marca el chat, y esa marca es LA que hace aparecer el botón "Cargar pedido" en /wa.
     # Se borra sola cuando el pedido se crea, así el botón desaparece de ese chat.
     _comp = d.get("comprobante") or {}
-    if d.get("es_comprobante") and _comp.get("titular_ok") and not conv.get("pedido_shopify"):
+    if (d.get("es_comprobante") and _comp.get("titular_ok") and not conv.get("pedido_shopify")
+            and not _wa_es_checkout(_comp.get("monto"))):
         conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
                                "fecha": str(_comp.get("fecha") or ""),
                                "operacion": str(_comp.get("operacion") or ""),
@@ -16768,6 +16769,37 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
 _WA_PROD_NAD = 9490859393212          # NoxaLab(R) Complejo de NAD+ 7 en 1 en Polvo (el que usan las ventas reales)
 _WA_PRECIO_PACK = {1: 49990.0, 2: 59990.0, 3: 74990.0}   # verificado contra los pedidos del dia
 
+
+def _wa_monto_num(monto):
+    """'$ 56.990,50' / '56990.5' / '56.990' -> 56990.0 (pesos enteros). None si no se entiende.
+    Ojo con los centavos: vienen con coma o con punto segun quien escriba el comprobante."""
+    d = "".join(ch for ch in str(monto or "") if ch.isdigit() or ch in ".,")
+    if not d:
+        return None
+    m = _re_and.search(r"[.,](\d{1,2})$", d)      # eso de atras son centavos, no miles
+    if m:
+        d = d[:m.start()]
+    ent = "".join(ch for ch in d if ch.isdigit())
+    try:
+        return float(ent) if ent else None
+    except Exception:
+        return None
+
+
+def _wa_es_checkout(monto) -> bool:
+    """¿El comprobante es una COMPRA POR LA WEB y no una transferencia cerrada por WhatsApp?
+    La huella es el DESCUENTO: el checkout se paga con BOT5 (5% OFF) y la transferencia se cierra
+    al precio de LISTA. $56.990,50 = $59.990 menos 5%.
+    Importa mucho: esa compra YA tiene su pedido creado por Shopify, así que marcarla como
+    "pendiente de cargar" termina en un pedido DUPLICADO y pagado en la tienda.
+    (Lo marcó Cristian el 16/09/2026, con un comprobante de Mercado Pago por $56.990,50 que decía
+    "Comprobante de Compra en NoxaLab": "transferencia es cuando te brinda los datos también y
+    tiene el valor sin descuento, eso es compra de checkout".)"""
+    v = _wa_monto_num(monto)
+    if not v:
+        return False
+    return any(abs(v - round(p * 0.95)) <= 2 for p in _WA_PRECIO_PACK.values())
+
 _WA_PED_SIS = (
     "Leés una conversación de WhatsApp donde YA se cerró una venta por transferencia y extraés los "
     "datos del pedido. Respondés UNICAMENTE un JSON válido, sin texto alrededor y sin markdown.\n"
@@ -16781,6 +16813,12 @@ _WA_PED_SIS = (
     "- sucursal: solo si tipo es sucursal, el nombre del punto tal cual lo dijeron.\n"
     "- total: el monto que transfirió, si figura en el chat; si no, null.\n"
     "- dni y tel: solo dígitos (el teléfono sin +54 ni el 9).\n"
+    "- nombre: SIEMPRE el del CLIENTE. NUNCA el destinatario ni el titular que figura en el "
+    "comprobante: ese somos nosotros (pasó: puso 'Leonel Baran', que es nuestro titular).\n"
+    "- Si un dato no lo dio el cliente sino que lo dedujimos o completamos nosotros en el chat "
+    "(típico: el código postal), igual ponelo, pero nombralo en 'faltan' para que se revise.\n"
+    "- Si el comprobante dice 'Compra en' / es un pago hecho por la WEB y no una transferencia, "
+    "poné 'compra_web' en faltan: ese pedido ya existe y no hay que cargarlo de nuevo.\n"
     "- faltan: lista de los campos que NO se dijeron en el chat.\n"
     "NO inventes ningún dato: lo que no esté en la conversación va vacío y se nombra en 'faltan'."
 )
@@ -17148,7 +17186,8 @@ _WA_PAGE = """<!doctype html>
  <button id="bBot" class="util" style="display:none" onclick="openBot()" title="Configurar el bot (respuestas automáticas)">&#9881;&#65039; Config bot</button>
  <button id="bTpl" class="util" style="display:none" onclick="openTpl()" title="Plantillas de WhatsApp aprobadas">&#128196; Plantillas</button>
  <button id="bCfg" class="util" style="display:none" onclick="doDisc()" title="Desconectar la API oficial de esta cuenta">Desconectar API</button>
- <button class="back" onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
+ <button id="bBack" class="back" onclick="if(window.self!==window.top){window.parent.rpWa&&window.parent.rpWa(false)}else{location.href='/'}">&#8592; RealProfit</button>
+ <button id="bSalir" class="back" onclick="location.href='/logout'" title="Cerrar la sesión">Cerrar sesión</button>
 </div>
 <div id="app" class="wrap"><div class="empty">Cargando…</div></div>
 <div id="panel" style="display:none;position:absolute;inset:56px 0 0 0;background:var(--bg);overflow:auto;padding:22px;z-index:5"></div>
@@ -17171,7 +17210,14 @@ function form(o){ return Object.keys(o).map(function(k){return encodeURIComponen
 function post(u,o){ return fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:form(o||{})}).then(function(r){return r.json();}); }
 function get(u){ return fetch(u).then(function(r){return r.json();}); }
 
-function boot(){ get('/wa-estado').then(function(s){ EST=s; renderApp(); if(s&&s.conectado){ unlock(); _chanPaint('api'); return; }
+function boot(){ get('/wa-estado').then(function(s){ EST=s;
+  // Al que entra SOLO a WhatsApp le sacamos "← RealProfit": la raíz lo devuelve acá (loop).
+  try{
+   var _b=document.getElementById('bBack'), _x=document.getElementById('bSalir');
+   if(_b && s && s.rol && s.rol!='admin') _b.style.display='none';
+   if(_x && s && s.quien) _x.title='Cerrar la sesión de '+s.quien;
+  }catch(e){}
+  renderApp(); if(s&&s.conectado){ unlock(); _chanPaint('api'); return; }
   // Solo API oficial (Cloud). Sin la API conectada → candado con el form de conexión.
   _chanPaint('api'); lockScreen();
 }); }
@@ -18641,9 +18687,13 @@ def wa_estado():
         return jsonify({"ok": False})
     c = _wa_conf(email) or {}
     base = request.host_url.rstrip("/")
+    # El rol y el mail van para la barra de arriba: el que entra SOLO a WhatsApp no tiene que ver
+    # el botón "← RealProfit" (la raíz lo redirige de vuelta acá, o sea que para él es un loop),
+    # y necesita sí o sí el de cerrar sesión, porque nunca pasa por el dashboard donde estaba.
     return jsonify({"ok": True, "conectado": bool(c.get("token") and c.get("phone_id")),
                     "phone_id": c.get("phone_id", ""), "waba_id": c.get("waba_id", ""),
                     "numero": c.get("numero", ""), "forward_url": c.get("forward_url", ""),
+                    "rol": _mi_rol(), "quien": session.get("quien") or email,
                     "webhook_url": base + "/wa-webhook", "verify_token": c.get("verify_token", "")})
 
 
@@ -19030,7 +19080,11 @@ def wa_chats():
         # cuando valida el comprobante (ver _wa_bot_run), no se adivina acá: antes yo la deducía por
         # palabras sueltas del chat y el botón terminaba saliendo donde no había ninguna venta.
         # Una vez creado el pedido la marca se borra -> el botón desaparece de ese chat.
-        _vta = bool(conv.get("pend_pedido")) and not conv.get("pedido_shopify")
+        # Se revalida ACÁ además de al marcar: así una marca vieja o mal puesta (típico: una compra
+        # de checkout, que ya tiene su pedido hecho por Shopify) deja de mostrar el botón sola, sin
+        # tener que salir a corregir wa_chats.json a mano.
+        _vta = (bool(conv.get("pend_pedido")) and not conv.get("pedido_shopify")
+                and not _wa_es_checkout((conv.get("pend_pedido") or {}).get("monto")))
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
                     "unread": conv.get("unread", 0),
