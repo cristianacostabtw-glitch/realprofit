@@ -9888,7 +9888,10 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
     if not c:
         return {"ok": False, "msg": "WhatsApp no conectado", "enviados": 0}
     wpp_env = _wa_seg_all().get(email, {})
-    chats = _wa_chats_all()
+    # OJO: acá NO se lee wa_chats. Antes se leía una foto de los chats en este punto, se mandaban
+    # las plantillas (8 hilos, minutos) y recién al final se guardaba ESA foto vieja: todo lo que
+    # entraba mientras tanto quedaba pisado. El 16/09/2026 un envío de 172 seguimientos borró
+    # 1.751 chats así. Ahora se lee AL FINAL, justo antes de escribir (ver más abajo).
     env = salt = fail = 0
     errores = []
     marcar = []
@@ -9942,6 +9945,8 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
     with _TPE(max_workers=8) as _ex:
         resultados = list(_ex.map(_mandar, tareas))
 
+    # Primero se resuelve QUÉ salió bien, sin tocar el archivo de chats todavía.
+    anotar = []
     for t, r, j, err in resultados:
         num, wa, n, link, name, params, combo_tpl, p, _snd = t
         if err:
@@ -9950,14 +9955,22 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
             fail += 1; errores.append({"num": num, "msg": (j.get("error") or {}).get("message", "error")[:80]}); continue
         mid = (j.get("messages") or [{}])[0].get("id", "")
         disp = _wa_tpl_render(_wa_tpl_body(c, name), params) or ("📦 Seguimiento de tu pedido #%s: %s" % (num, link))
-        conv = chats.setdefault(email, {}).setdefault(wa, {"name": p.get("nombre") or wa, "messages": []})
-        conv["messages"].append({"dir": "out", "text": disp, "ts": _wa_now(),
-                                 "type": "template", "id": mid, "status": "sent"})
-        conv["updated"] = _wa_now()
+        anotar.append((wa, p.get("nombre") or wa, disp, mid))
         marcar.append(num)
         env += 1
     _wa_seg_marcar_varios(email, marcar)
-    _wa_save_chats(chats)
+    # RECIÉN ACÁ se lee el archivo, ya con los envíos hechos, y se le AGREGAN los mensajes nuevos.
+    # Leerlo al final (y no al principio) es lo que evita pisar todo lo que entró mientras se
+    # mandaban las plantillas. Si no hay nada que anotar, no se escribe: un envío que no mandó
+    # nada no tiene por qué tocar el archivo.
+    if anotar:
+        chats = _wa_chats_all()
+        for wa, nombre, disp, mid in anotar:
+            conv = chats.setdefault(email, {}).setdefault(wa, {"name": nombre, "messages": []})
+            conv["messages"].append({"dir": "out", "text": disp, "ts": _wa_now(),
+                                     "type": "template", "id": mid, "status": "sent"})
+            conv["updated"] = _wa_now()
+        _wa_save_chats(chats)
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
@@ -13399,12 +13412,22 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         r = blob["raw"]
         fact = r.get("facturado", 0.0)
         ordenes = r.get("ordenes", 0)
+        # CPA: el gasto es de META, y Meta trae ventas a la TIENDA. Las de Mercado Libre llegan por
+        # el trafico propio del marketplace, no por los anuncios, asi que meterlas en el divisor
+        # bajaba el CPA de mentira. El 16/09/2026 mostraba $19.033 dividiendo por 193 ventas,
+        # cuando el CPA real de lo que compra la publicidad era $27.210 (dividiendo por las 135 de
+        # la tienda). Se divide SOLO por las ventas de la tienda conectada.
+        _meli_v = int(r.get("meli_ventas", 0) or 0)
+        ordenes_web = ordenes - _meli_v
+        if ordenes_web < 0:
+            ordenes_web = 0
+        r["ordenes_web"] = ordenes_web          # para poder mostrarlo/auditarlo
         r["publi_ars"] = round(spend, 2)
         r["publi_cuenta"] = round(spend, 2)
         r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
         r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
         r["roas"] = round(fact / spend, 2) if spend else 0.0
-        r["cpa"] = round(spend / ordenes, 2) if ordenes else 0.0
+        r["cpa"] = round(spend / ordenes_web, 2) if ordenes_web else 0.0
         r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
         r["tot_ganancia"] = r["ganancia"]
         r["tot_margen"] = r["margen"]
