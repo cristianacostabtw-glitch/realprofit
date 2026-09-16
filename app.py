@@ -16519,6 +16519,7 @@ def _wa_web_media_bytes(email, media_id, intentos=12):
     """Baja del puente el archivo de un medio del canal WEB -> (bytes, mime) o (None, "").
     Reintenta: el puente avisa del mensaje y guarda el archivo en paralelo, asi que el primer
     intento puede llegar antes de que termine de escribirlo."""
+    import time as _t          # faltaba: el _t.sleep del reintento tiraba NameError (bug preexistente)
     if not (media_id and WA_WEB_URL and WA_WEB_SECRET):
         return None, ""
     for i in range(intentos):
