@@ -16489,12 +16489,50 @@ def _wa_chats_all():
     try:
         return _json.loads(WA_CHATS.read_text(encoding="utf-8"))
     except Exception:
-        return {}
+        # NUNCA devolver {} a la ligera: el que llama despues hace _wa_save_chats(), y eso REESCRIBE
+        # el archivo entero. O sea que una sola lectura fallida borra TODO el historial.
+        # Paso el 16/09/2026: quedaron 18 chats de 1.769. Antes de rendirse, la copia de seguridad.
+        try:
+            return _json.loads(WA_CHATS.with_suffix(".bak").read_text(encoding="utf-8"))
+        except Exception:
+            return {}
 
 
 def _wa_save_chats(d):
+    """Guarda los chats. OJO: REESCRIBE el archivo entero, asi que escribir un dict vacio o
+    recortado BORRA el historial. El 16/09/2026 se perdieron 1.751 chats exactamente asi: una
+    lectura fallo, _wa_chats_all() devolvio {}, el codigo siguio como si no hubiera nada y el
+    guardado siguiente escribio esa nada encima. Tres defensas:
+      1) si lo que se va a escribir tiene MUCHOS menos chats que lo que ya hay, no se escribe
+         (eso no es un guardado normal: es una lectura que fallo);
+      2) se deja copia en wa_chats.bak, que es de donde lee _wa_chats_all() si el principal falla;
+      3) la escritura es atomica (tmp + replace), para que un reinicio no deje el archivo a medias
+         y la proxima lectura no falle."""
     try:
-        WA_CHATS.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        nuevo = sum(len(v or {}) for v in (d or {}).values())
+        act, viejo = None, 0
+        try:
+            act = _json.loads(WA_CHATS.read_text(encoding="utf-8"))
+            viejo = sum(len(v or {}) for v in (act or {}).values())
+        except Exception:
+            act = None
+        if viejo >= 20 and nuevo < viejo * 0.6:
+            try:                        # queda a mano para mirarlo, pero NO pisa el bueno
+                (WA_CHATS.parent / "wa_chats.RECHAZADO.json").write_text(
+                    _json.dumps({"nuevo": nuevo, "viejo": viejo, "datos": d}, ensure_ascii=False),
+                    encoding="utf-8")
+            except Exception:
+                pass
+            return
+        if act is not None and viejo:
+            try:
+                WA_CHATS.with_suffix(".bak").write_text(
+                    _json.dumps(act, ensure_ascii=False), encoding="utf-8")
+            except Exception:
+                pass
+        tmp = WA_CHATS.with_suffix(".tmp")
+        tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(WA_CHATS)
     except Exception:
         pass
 
