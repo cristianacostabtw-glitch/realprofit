@@ -3833,6 +3833,28 @@ ENVIO_ZONAS = {
 ENVIO_DOMICILIO = 7805
 ENVIO_SUCURSAL = 5539
 
+# === Costo de envío REAL de REDCHAT (la logística que reemplazó a Envialo) ===
+# Leído el 16/09/2026 de los 442 envíos reales de la cuenta (app.redchat.com.ar → Envíos),
+# no de una muestra: se recorrieron las 9 páginas completas.
+# OJO 1 — HUBO AUMENTO EL 15/09: hasta el 14 regía una lista con cada valor $53 MÁS BARATO
+# (el 14: 79 envíos viejos y 0 nuevos; el 16: 131 nuevos y 0 viejos). Por eso se corta por fecha
+# y no se toca el histórico.
+# OJO 2 — RETIRO Y DOMICILIO NO AGRUPAN IGUAL. En RETIRO la banda cara es SÓLO Salta: la
+# Patagonia paga como Cuyo (Trelew, Pto Madryn, Comodoro y Río Gallegos: $6.979, igual que
+# Mendoza). En DOMICILIO la banda cara SÍ abarca Santa Cruz y Tierra del Fuego (Río Gallegos y
+# Ushuaia: $10.603). Aplicar el mismo mapa a las dos modalidades cobraba de más la Patagonia.
+# NO MODELADO a propósito: un recargo puntual de $10.634 que aparece en 3 envíos a domicilio
+# (Pilar, Villa Gesell y General Villegas) — son 3 provincias distintas, así que es por dirección,
+# no por zona. Y Jujuy: no hubo ni un envío en los 442, así que queda en la banda de Cuyo en vez
+# de inventarle el precio de Salta.
+ENVIO_ZONAS_RC = {
+    "amba":    {"sucursal": 5144, "domicilio": 8074},
+    "centro":  {"sucursal": 6356, "domicilio": 9264},
+    "cuyo":    {"sucursal": 6979, "domicilio": 10108},
+    "extremo": {"sucursal": 7286, "domicilio": 10603},
+}
+ENVIO_RC_DESDE = "2026-09-15"   # desde este día (00:00) rige la lista de Redchat
+
 _ENV_ACC = str.maketrans("áéíóúüàèìòùÁÉÍÓÚÜÑñ", "aeiouuaeiouAEIOUUNn")
 def _env_norm(s):
     return str(s or "").translate(_ENV_ACC).lower().strip()
@@ -3920,11 +3942,24 @@ def _envio_suc(o) -> bool:
     return _txt_es_sucursal(txt)
 
 def _envio_costo(o) -> int:
-    """Costo de envío REAL por zona Andreani (cuenta VisionPure, con descuento), según
-    provincia/CP del pedido y si es a sucursal o domicilio. Cubre Shopify y Tiendanube.
-    Fallback cuando el pedido todavía no está en Envialo (costo real)."""
-    z = ENVIO_ZONAS.get(_envio_zona(o)) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
-    return z["sucursal"] if _envio_suc(o) else z["domicilio"]
+    """Costo de envío del pedido, según provincia/CP y si va a sucursal o domicilio.
+    DESDE EL 15/09/2026 usa la tabla de REDCHAT (la logística que reemplazó a Envialo, que cerró:
+    su API devuelve 403 ENVIALO_LOCKED_DOWN). Antes de esa fecha sigue la vieja de Andreani, para
+    no reescribir el histórico. Cubre Shopify y Tiendanube (las dos traen created_at)."""
+    suc = _envio_suc(o)
+    z = _envio_zona(o)
+    fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
+    if fecha >= ENVIO_RC_DESDE:
+        # En RETIRO la Patagonia paga como Cuyo; sólo Salta/Jujuy quedan en la banda cara.
+        # (Verificado: Trelew, Pto Madryn, Comodoro y Río Gallegos a $6.979, no a $7.286.)
+        if suc and z == "extremo":
+            _p = _env_norm(_prov_cp(o)[0])
+            if "salta" not in _p and "jujuy" not in _p:
+                z = "cuyo"
+        t = ENVIO_ZONAS_RC.get(z) or ENVIO_ZONAS_RC["centro"]
+        return t["sucursal"] if suc else t["domicilio"]
+    z2 = ENVIO_ZONAS.get(z) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
+    return z2["sucursal"] if suc else z2["domicilio"]
 
 
 ENVIALO_BASE = "https://www.envialo.com.ar/api/v1"
