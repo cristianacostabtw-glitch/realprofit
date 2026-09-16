@@ -16744,6 +16744,175 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     _wa_save_chats(chats)
 
 
+# ---------------- Transferencia cerrada por WhatsApp -> pedido REAL en Shopify ----------------
+# Antes, cuando se cerraba una venta por transferencia, el pedido NO existia en ningun lado: el bot
+# juntaba nombre/DNI/direccion, decia "queda en despacho" y todo moria en el chat. Estos dos
+# endpoints lo convierten en una orden de Shopify con la MISMA forma que lee Despachos
+# (ver el armado de _despachos_shopify), porque si un solo campo va en otro lugar el pedido
+# aparece incompleto o mal clasificado:
+#   - DNI            -> note_attributes (asi lo busca _dni_de)
+#   - sucursal/domic -> title de shipping_lines (asi lo clasifica _txt_es_sucursal: palabra entera)
+#   - pagado         -> transactions kind=sale; si no queda "paid", Despachos lo IGNORA
+# Nada se crea solo: el bot no toca esto. El de atencion revisa los datos y aprieta el boton.
+_WA_PROD_NAD = 9490859393212          # NoxaLab(R) Complejo de NAD+ 7 en 1 en Polvo (el que usan las ventas reales)
+_WA_PRECIO_PACK = {1: 49990.0, 2: 59990.0, 3: 74990.0}   # verificado contra los pedidos del dia
+
+_WA_PED_SIS = (
+    "Leés una conversación de WhatsApp donde YA se cerró una venta por transferencia y extraés los "
+    "datos del pedido. Respondés UNICAMENTE un JSON válido, sin texto alrededor y sin markdown.\n"
+    "Campos exactos:\n"
+    '{"nombre":"","dni":"","tel":"","email":"","calle":"","numero":"","extra":"","localidad":"",'
+    '"provincia":"","cp":"","tipo":"domicilio","sucursal":"","potes":0,"total":null,"faltan":[]}\n'
+    "Reglas:\n"
+    "- potes: cantidad de potes acordada (normalmente 1, 2 o 3).\n"
+    "- tipo: 'sucursal' si acordaron retirar por sucursal o punto Andreani; 'domicilio' si va a la "
+    "casa o al trabajo.\n"
+    "- sucursal: solo si tipo es sucursal, el nombre del punto tal cual lo dijeron.\n"
+    "- total: el monto que transfirió, si figura en el chat; si no, null.\n"
+    "- dni y tel: solo dígitos (el teléfono sin +54 ni el 9).\n"
+    "- faltan: lista de los campos que NO se dijeron en el chat.\n"
+    "NO inventes ningún dato: lo que no esté en la conversación va vacío y se nombra en 'faltan'."
+)
+
+
+@app.post("/wa-pedido-extraer")
+def wa_pedido_extraer():
+    """Lee el chat y devuelve los datos del pedido para que el humano los revise. No crea nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    wid = (request.form.get("wa_id") or "").strip()
+    if not wid:
+        return jsonify({"ok": False, "msg": "falta el chat"})
+    conv = ((_wa_chats_all().get(email) or {}).get(wid) or {})
+    msgs = conv.get("messages") or []
+    if not msgs:
+        return jsonify({"ok": False, "msg": "el chat está vacío"})
+    hist = []
+    for m in msgs[-60:]:
+        t = (m.get("text") or "").strip() or ("[%s]" % (m.get("type") or "adjunto"))
+        hist.append(("Cliente: " if m.get("dir") == "in" else "Nosotros: ") + t)
+    try:
+        import agente_ia
+        raw = agente_ia.chat([{"role": "user", "content": "\n".join(hist)}], _WA_PED_SIS, max_tokens=900)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no se pudo leer la conversación: " + str(e)[:90]})
+    txt = (raw or "").strip()
+    i, j = txt.find("{"), txt.rfind("}")
+    if i < 0 or j <= i:
+        return jsonify({"ok": False, "msg": "no pude sacar los datos del chat, cargalo a mano"})
+    try:
+        d = _json.loads(txt[i:j + 1])
+    except Exception:
+        return jsonify({"ok": False, "msg": "la lectura del chat no vino en formato válido"})
+    try:
+        d["potes"] = int(d.get("potes") or 0)
+    except Exception:
+        d["potes"] = 0
+    if not d.get("total"):
+        d["total"] = _WA_PRECIO_PACK.get(d["potes"]) or 0
+    d["nombre"] = (d.get("nombre") or conv.get("name") or "").strip()
+    d["dni"] = _solo_dig(d.get("dni"))
+    d["tel"] = _solo_dig(d.get("tel")) or _solo_dig(wid)
+    d["ya_cargado"] = conv.get("pedido_shopify", "")
+    return jsonify({"ok": True, "datos": d})
+
+
+@app.post("/wa-pedido-crear")
+def wa_pedido_crear():
+    """Crea la orden en Shopify, ya pagada por transferencia y con el envío sin cargo."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token") or not tk.get("shop"):
+        return jsonify({"ok": False, "msg": "Shopify no está conectado en Integraciones"})
+    f = request.form
+    nombre = (f.get("nombre") or "").strip()
+    if not nombre:
+        return jsonify({"ok": False, "msg": "falta el nombre del cliente"})
+    try:
+        potes = int(float(f.get("potes") or 0))
+    except Exception:
+        potes = 0
+    if potes < 1:
+        return jsonify({"ok": False, "msg": "falta la cantidad de potes"})
+    try:
+        total = float(str(f.get("total") or "0").replace(".", "").replace(",", ".")) if "," in str(f.get("total") or "") \
+            else float(f.get("total") or 0)
+    except Exception:
+        total = 0.0
+    if total <= 0:
+        total = _WA_PRECIO_PACK.get(potes) or 0.0
+    if total <= 0:
+        return jsonify({"ok": False, "msg": "falta el total del pedido"})
+    tipo = "sucursal" if (f.get("tipo") or "") == "sucursal" else "domicilio"
+    shop, token = tk["shop"], tk["access_token"]
+    H = {"X-Shopify-Access-Token": token, "Content-Type": "application/json"}
+    # La variante se resuelve EN VIVO: el id cambia si tocan el producto, y hardcodearlo se rompe solo.
+    try:
+        r = requests.get("https://%s/admin/api/2026-07/products/%s.json" % (shop, _WA_PROD_NAD),
+                         headers=H, params={"fields": "id,title,variants"}, timeout=25)
+        vid = (((r.json().get("product") or {}).get("variants") or [{}])[0]).get("id")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude leer el producto en Shopify: " + str(e)[:90]})
+    if not vid:
+        return jsonify({"ok": False, "msg": "no encontré la variante del producto en Shopify"})
+    # OJO: este título es lo que después decide sucursal vs domicilio (_txt_es_sucursal busca la
+    # PALABRA ENTERA). Si dice "domicilio" nunca se clasifica como sucursal, y viceversa.
+    if tipo == "sucursal":
+        suc = (f.get("sucursal") or "").strip()
+        env_tit = "Envío a sucursal Andreani" + ((" — " + suc) if suc else "")
+    else:
+        env_tit = "Envío a domicilio (transferencia, sin cargo)"
+    calle = " ".join(p for p in [(f.get("calle") or "").strip(), (f.get("numero") or "").strip()] if p)
+    # OJO: en esta tienda el DNI viaja en el campo "Empresa" (company) del checkout, igual que en
+    # los pedidos de la web. Va ahi Y en note_attributes: _dni_de mira los dos, y el export de
+    # Andreani necesita encontrarlo si o si (sin DNI no se retira en sucursal).
+    addr = {"name": nombre, "address1": calle, "address2": (f.get("extra") or "").strip(),
+            "company": _solo_dig(f.get("dni")),
+            "city": (f.get("localidad") or "").strip(), "province": (f.get("provincia") or "").strip(),
+            "zip": (f.get("cp") or "").strip(), "country": "Argentina",
+            "phone": _solo_dig(f.get("tel"))}
+    payload = {"order": {
+        "email": (f.get("email") or "").strip(),
+        "currency": "ARS",
+        "line_items": [{"variant_id": vid, "quantity": potes, "price": "%.2f" % round(total / potes, 2)}],
+        "shipping_address": addr, "billing_address": addr,
+        "shipping_lines": [{"title": env_tit, "price": "0.00"}],
+        "note": "Venta cerrada por WhatsApp, pagada por transferencia.",
+        "note_attributes": [{"name": "DNI", "value": _solo_dig(f.get("dni"))},
+                            {"name": "Origen", "value": "WhatsApp — transferencia"},
+                            {"name": "WhatsApp", "value": (f.get("wa_id") or "").strip()}],
+        "tags": "whatsapp, transferencia",
+        "transactions": [{"kind": "sale", "status": "success", "amount": "%.2f" % total,
+                          "gateway": "Transferencia bancaria"}],
+        "send_receipt": False, "send_fulfillment_receipt": False,
+        "inventory_behaviour": "decrement_obeying_policy",
+    }}
+    try:
+        r = requests.post("https://%s/admin/api/2026-07/orders.json" % shop, headers=H,
+                          json=payload, timeout=30)
+        j = r.json()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no se pudo crear: " + str(e)[:110]})
+    if r.status_code >= 400:
+        return jsonify({"ok": False, "msg": "Shopify lo rechazó: " + str(j.get("errors") or j)[:200]})
+    o = j.get("order") or {}
+    num = str(o.get("order_number") or o.get("name") or "").replace("#", "")
+    wid = (f.get("wa_id") or "").strip()
+    chats = _wa_chats_all()
+    conv = (chats.get(email) or {}).get(wid)
+    if conv is not None:                      # queda anotado en el chat -> no se carga dos veces
+        conv["pedido_shopify"] = num
+        _wa_save_chats(chats)
+    try:
+        _DESP_CACHE.pop(email, None)          # que Despachos lo vea ya, sin esperar el cache
+    except Exception:
+        pass
+    return jsonify({"ok": True, "num": num})
+
+
 _WA_PAGE = """<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -16902,6 +17071,9 @@ _WA_PAGE = """<!doctype html>
  .chat.urg{border-left:3px solid #b3261e;background:rgba(179,38,30,.08)}
  .chat.urg:hover{background:rgba(179,38,30,.15)}
  .deriv{background:#2e1719;color:#ff9b9b;border-bottom:1px solid #5a2a2e;padding:9px 18px;font-size:12.5px;font-weight:700}
+ .pedbtn{margin-left:auto;background:var(--teal);color:#062d23;border:0;border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+ .pedbtn:hover{filter:brightness(1.08)}
+ .pedbtn.hecho{background:var(--pan3);color:var(--mut)}
  .bwrap{display:flex;flex-direction:column;gap:10px}
  .brow2{border:1px solid var(--line);border-radius:12px;background:var(--pan2);overflow:hidden}
  .brow2.on{border-color:var(--out)}
@@ -17050,7 +17222,7 @@ function renderApp(){
  var _bc=document.getElementById('bChats'); if(_bc) _bc.classList.toggle('on',conn);
  loadBotTop();
  var app=document.getElementById('app');
- app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
+ app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" autocomplete="off" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
   +'<div class="conv" id="conv"><div class="empty">&#128172; Elegí una conversación</div></div>';
  loadChats();
  if(POLL)clearInterval(POLL);
@@ -17203,7 +17375,8 @@ function renderConv(c){
   }
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
- conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div></div>'
+ conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':'')+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
+  +'<button class="pedbtn'+(c.pedido?' hecho':'')+'" onclick="openPedido()" title="Cargar en Shopify el pedido cerrado por transferencia">'+(c.pedido?'&#10003; Pedido #'+esc(c.pedido):'&#128722; Cargar pedido')+'</button></div>'
   +(c.urgente?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
@@ -17211,7 +17384,7 @@ function renderConv(c){
   +'<div class="compose"><button class="tpl" onclick="openTpl()">Plantilla</button>'
   +'<button class="att" onclick="toggleEmoji(event)" title="Emoji">&#128512;</button>'
   +'<button class="att" onclick="pickFile()" title="Adjuntar foto o archivo">&#128206;</button>'
-  +'<input id="txt" placeholder="Escribí un mensaje" onkeydown="if(event.key==='+"'Enter'"+')send()"><button class="snd" onclick="send()">&#10148;</button></div>'
+  +'<input id="txt" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Escribí un mensaje" onkeydown="if(event.key==='+"'Enter'"+')send()"><button class="snd" onclick="send()">&#10148;</button></div>'
   +'<input type="file" id="fileIn" style="display:none" accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" onchange="previewMedia(this)">';
  var m=document.getElementById('msgs'); if(m && _atBottom)m.scrollTop=m.scrollHeight;
 }
@@ -17236,7 +17409,7 @@ function previewMedia(inp){
  var md=document.getElementById('modal');
  md.innerHTML='<div class="mh"><h3>Enviar archivo</h3><button class="x" onclick="cancelMedia()">&times;</button></div>'
   +'<div style="margin:12px 0">'+body+'</div>'
-  +'<input id="mcap" placeholder="Agregá un mensaje (opcional)" value="'+esc(cap)+'" style="width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px" onkeydown="if(event.key===\\'Enter\\')confirmMedia()">'
+  +'<input id="mcap" autocomplete="off" placeholder="Agregá un mensaje (opcional)" value="'+esc(cap)+'" style="width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px" onkeydown="if(event.key===\\'Enter\\')confirmMedia()">'
   +'<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px"><button class="btn sec" style="width:auto" onclick="cancelMedia()">Cancelar</button><button class="btn" style="width:auto" onclick="confirmMedia()">Enviar</button></div>';
  document.getElementById('ov').classList.add('on'); inp.value='';
 }
@@ -17317,6 +17490,56 @@ function sendTpl(name,lang,nvars){
  });
 }
 function closeOv(){ document.getElementById('ov').classList.remove('on'); }
+// ── Cargar en Shopify el pedido cerrado por transferencia ──
+function openPedido(){
+ if(!SEL){ alert('Elegí un chat primero'); return; }
+ var ov=document.getElementById('ov'), md=document.getElementById('modal');
+ md.innerHTML='<div class="mh"><h3>&#128722; Cargar pedido en Shopify</h3><button class="x" onclick="closeOv()">&times;</button></div><div id="pedbox">Leyendo la conversaci&oacute;n&#8230;</div>';
+ ov.classList.add('on');
+ post('/wa-pedido-extraer',{wa_id:SEL}).then(function(r){
+  var box=document.getElementById('pedbox');
+  if(!r.ok){ box.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'; return; }
+  pintarPedido(r.datos||{});
+ });
+}
+function _pfld(id,lbl,val,ph){
+ return '<div class="fld"><label>'+lbl+'</label><input id="ped_'+id+'" value="'+esc(''+(val==null?'':val))+'" placeholder="'+(ph||'')+'"></div>';
+}
+function pintarPedido(d){
+ var box=document.getElementById('pedbox'), suc=(d.tipo=='sucursal');
+ var av='';
+ if(d.ya_cargado) av+='<div class="msgline msgbad">Este chat ya tiene el pedido #'+esc(d.ya_cargado)+' cargado. Si segu&iacute;s, se crea OTRO pedido.</div>';
+ if((d.faltan||[]).length) av+='<div class="msgline msgbad">No encontr&eacute; en el chat: '+esc(d.faltan.join(', '))+'. Complet&aacute;lo a mano antes de crear.</div>';
+ box.innerHTML=av
+  +'<div class="bcard"><b>Cliente</b>'+_pfld('nombre','Nombre y apellido',d.nombre)+_pfld('dni','DNI',d.dni)+_pfld('tel','Tel&eacute;fono',d.tel)+_pfld('email','Email',d.email)+'</div>'
+  +'<div class="bcard"><b>Entrega</b>'
+  +'<div class="fld"><label>Tipo</label><select id="ped_tipo" onchange="tipoPedido()"><option value="domicilio"'+(suc?'':' selected')+'>A domicilio (sin cargo)</option><option value="sucursal"'+(suc?' selected':'')+'>A sucursal Andreani</option></select></div>'
+  +'<div id="ped_sucwrap" style="display:'+(suc?'block':'none')+'">'+_pfld('sucursal','Sucursal o punto Andreani',d.sucursal)+'</div>'
+  +_pfld('calle','Calle',d.calle)+_pfld('numero','N&uacute;mero',d.numero)+_pfld('extra','Piso / depto (opcional)',d.extra)
+  +_pfld('localidad','Localidad',d.localidad)+_pfld('provincia','Provincia',d.provincia)+_pfld('cp','C&oacute;digo postal',d.cp)+'</div>'
+  +'<div class="bcard"><b>Pedido</b>'+_pfld('potes','Cantidad de potes',d.potes)+_pfld('total','Total transferido',d.total)
+  +'<small style="color:var(--mut)">Entra como PAGADO por transferencia, con el env&iacute;o sin cargo. Va directo a Despachos.</small></div>'
+  +'<div id="pedmsg"></div>'
+  +'<button class="b g" style="width:100%;margin-top:12px" onclick="crearPedido(this)">Crear el pedido en Shopify</button>';
+}
+function tipoPedido(){
+ var w=document.getElementById('ped_sucwrap'), t=document.getElementById('ped_tipo');
+ if(w&&t) w.style.display=(t.value=='sucursal')?'block':'none';
+}
+function crearPedido(btn){
+ var o={wa_id:SEL, tipo:document.getElementById('ped_tipo').value};
+ ['nombre','dni','tel','email','calle','numero','extra','localidad','provincia','cp','sucursal','potes','total'].forEach(function(k){
+  var e=document.getElementById('ped_'+k); o[k]=e?e.value:'';
+ });
+ var m=document.getElementById('pedmsg');
+ btn.disabled=true; btn.textContent='Creando…';
+ post('/wa-pedido-crear',o).then(function(r){
+  btn.disabled=false; btn.textContent='Crear el pedido en Shopify';
+  if(!r.ok){ m.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'; return; }
+  m.innerHTML='<div class="msgline msgok">Listo: pedido #'+esc(r.num)+' creado y pagado. Ya est&aacute; en Despachos.</div>';
+  loadChats();
+ });
+}
 document.getElementById('ov').addEventListener('click',function(e){ if(e.target.id=='ov')closeOv(); });
 
 // ── Bot / auto-respondedor ──
@@ -18789,6 +19012,7 @@ def wa_chats():
                     "nota": _nota, "cat": conv.get("bot_cat", "") or "",
                     "motivo": conv.get("bot_motivo", "") or "",
                     "humano": _hum, "urgente": bool(_urg),
+                    "pedido": conv.get("pedido_shopify", "") or "",
                     "messages": apimsgs[-300:]})
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
