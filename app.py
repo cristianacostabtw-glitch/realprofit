@@ -18727,11 +18727,6 @@ def wa_webhook():
     return jsonify({"ok": True})
 
 
-def _inv_ts(s):
-    """Clave para ordenar por fecha DESCENDENTE dentro de un sort ascendente."""
-    return tuple(-ord(c) for c in (s or ""))
-
-
 @app.get("/wa-chats")
 def wa_chats():
     email = _user_actual()
@@ -18752,9 +18747,23 @@ def wa_chats():
         last = apimsgs[-1]
         # Marca de DERIVACIÓN: el bot avisa que lo pasa a una persona (bot_nota) y con qué
         # categoría (reclamo, precio…). Sin esto la pantalla no tenía cómo saberlo.
-        _nota = conv.get("bot_nota", "") or ""
-        _hum = bool(conv.get("bot_humano"))
+        # La nota se BORRA cuando el bot logra responder, así que en los derivados suele venir
+        # vacía: el texto útil está en bot_motivo (lo que escribió el cerebro al derivar).
+        _nota = (conv.get("bot_nota", "") or "").strip()
+        _mot = (conv.get("bot_motivo", "") or "").strip()
+        # ¿Lo tomó una persona? Se calcula ACÁ, mirando el último saliente, y NO sólo con la marca
+        # que deja el bot: esa sólo se escribe cuando entra un mensaje nuevo del cliente, así que
+        # si atención contestaba y el cliente no volvía a escribir, el URGENTE quedaba pegado.
+        _lastout = None
+        for _m in reversed(apimsgs):
+            if _m.get("dir") == "out":
+                _lastout = _m
+                break
+        _hum = bool(conv.get("bot_humano")) or bool(
+            _lastout and _lastout.get("by") != "bot" and _lastout.get("type") != "template")
         _urg = (("deriv" in _nota.lower()) or (conv.get("bot_cat") or "") == "reclamo") and not _hum
+        if _urg and not _nota:
+            _nota = _mot or "El bot lo derivó a atención"
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
                     "unread": conv.get("unread", 0),
@@ -18762,8 +18771,9 @@ def wa_chats():
                     "motivo": conv.get("bot_motivo", "") or "",
                     "humano": _hum, "urgente": bool(_urg),
                     "messages": apimsgs[-300:]})
-    # Los derivados primero (que el de atención los vea arriba), después por fecha.
-    out.sort(key=lambda x: (0 if x.get("urgente") else 1, _inv_ts(x.get("ts", ""))))
+    # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
+    # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
+    out.sort(key=lambda x: x.get("ts", ""), reverse=True)
     return jsonify({"ok": True, "chats": out})
 
 
