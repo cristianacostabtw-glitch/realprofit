@@ -1,0 +1,36 @@
+name: compila
+on: [push]
+jobs:
+  py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: compilar app.py
+        run: |
+          python -m py_compile app.py
+          echo "COMPILA OK"
+      - name: rutas y funciones duplicadas
+        run: |
+          python - <<'PY'
+          import ast, collections, sys
+          src = open('app.py', encoding='utf-8').read()
+          tree = ast.parse(src)
+          print("AST OK — el archivo arranca")
+          fns = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+          dup = [k for k, v in collections.Counter(fns).items() if v > 1]
+          print("funciones top-level duplicadas:", dup or "ninguna")
+          if dup: sys.exit(1)
+          rutas = []
+          for n in ast.walk(tree):
+              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                  for d in n.decorator_list:
+                      if isinstance(d, ast.Call) and getattr(d.func, 'attr', '') in ('get','post','route','put','delete'):
+                          if d.args and isinstance(d.args[0], ast.Constant):
+                              rutas.append((d.func.attr, d.args[0].value))
+          dupr = [k for k, v in collections.Counter(rutas).items() if v > 1]
+          print("rutas duplicadas:", dupr or "ninguna")
+          if dupr: sys.exit(1)
+          PY
