@@ -13132,6 +13132,20 @@ def home():
     email = _user_actual()
     if not email:                       # sin login → pantalla de ingreso
         return Response(_LOGIN_PAGE, mimetype="text/html")
+    # SEGURIDAD (16/09/2026): un empleado NO ve la plata. Los numeros del dashboard se calculan
+    # ACA, en el server, y viajan PINTADOS adentro del HTML (window.__MFY__). Por eso tener los
+    # /pf-* en SOLO_ADMIN no alcanzaba: el empleado nunca los pedia y los veia igual. Peor: su
+    # sesion corre con el email del DUENO (ver /login), asi que el calculo le devolvia la
+    # facturacion real de la cuenta. Se corta por ROL, nunca por email.
+    _admin = (_mi_rol() == "admin")
+    if not _admin:
+        # Si TODO lo que tiene habilitado vive en una pagina propia, ni pisa el armazon del
+        # dashboard: entra y va derecho a lo suyo (atencion al cliente -> /wa).
+        _secs = [s for s in (session.get("secciones") or []) if s in SECCIONES]
+        _propias = {"whatsapp": "/wa", "meli": "/meli"}
+        _dest = [_propias[s] for s in _secs if s in _propias]
+        if _secs and len(_dest) == len(_secs):
+            return redirect(_dest[0])
     try:
         html = (RAIZ / "pf.html").read_text(encoding="utf-8")
     except Exception as e:
@@ -13144,7 +13158,8 @@ def home():
     # Si falla o no hay datos, se cae al snapshot viejo y, si tampoco hay, a vacio con guiones.
     _real = None
     try:
-        _real = _pf_periodo_blob(email, _hoy(), _hoy(), solo_fresco=True)
+        if _admin:                      # al empleado NO se le calcula la plata (ver arriba)
+            _real = _pf_periodo_blob(email, _hoy(), _hoy(), solo_fresco=True)
     except Exception:
         _real = None
     # RECOMPRAS: consulta pesada (180 dias de historia) que va aparte y tarda 5-12s en frio. Si la
@@ -13173,7 +13188,11 @@ def home():
         pass
     _frescos = bool(_real and (_real.get("raw") or {}).get("be_cpa") is not None)
     try:
-        blob = _json.dumps(_real or _load_last_blob(email) or _blob_vacio(), ensure_ascii=False)
+        # OJO: _load_last_blob(email) es el ULTIMO dashboard del DUENO guardado en disco. Si se
+        # dejaba como fallback para todos, el empleado seguia viendo los numeros reales aunque no
+        # se los calcularamos. Para quien no es admin: vacio y punto.
+        blob = _json.dumps((_real or _load_last_blob(email) or _blob_vacio()) if _admin
+                           else _blob_vacio(), ensure_ascii=False)
     except Exception:
         blob = _json.dumps(_blob_vacio(), ensure_ascii=False); _frescos = False
     # Inyectamos datos VACÍOS (sin esto el dashboard haría fetch y mostraría error).
