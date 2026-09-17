@@ -16920,7 +16920,26 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     _paso_alias = _wa_chat_paso_alias(conv, conf)
     _papel = str(_comp.get("texto_literal") or "")[:120]
     _nota_post = None
-    if _compra_web and _wa_comp_es_nuestro(_comp, email, conf):
+    # ¿Este comprobante es de un pedido que YA EXISTE? (el cliente pregunta por su pedido y manda el
+    # comprobante para que lo busquen). Si aparece en Shopify: se contesta el ESTADO, se anota el
+    # pedido en el chat y NO se marca nada para cargar.
+    _ped_existe = _wa_buscar_pedido_comprobante(email, _comp, conv, wid, _compra_web) if _es_comp else None
+    _msg_estado = _wa_msg_estado_pedido(_ped_existe) if _ped_existe else None
+    if _ped_existe:
+        conv["pedido_shopify"] = str(_ped_existe.get("order_number") or _ped_existe.get("name") or "").replace("#", "")
+        conv.pop("pend_pedido", None)
+        conv["bot_motivo"] = ("Comprobante de un pedido que YA existe: #%s (%s). Papel: %s"
+                              % (conv["pedido_shopify"], _ped_existe.get("fulfillment_status") or "sin despachar", _papel))
+        if _msg_estado:
+            d["responder"] = True
+            d["escalar"] = False
+            d["mensaje"] = _msg_estado
+        else:
+            d["responder"] = True
+            d["escalar"] = False
+            d["mensaje"] = "Recibí el comprobante 🙌 Lo está mirando un compañero del equipo y te confirmamos por acá."
+            _nota_post = "⚠️ El bot lo derivó a vos: el pedido #%s figura CANCELADO" % conv["pedido_shopify"]
+    elif _compra_web and _wa_comp_es_nuestro(_comp, email, conf):
         d["responder"] = True
         d["escalar"] = False
         d["mensaje"] = _wa_msg_compra_web(conv.get("name"), wid)
@@ -16934,8 +16953,12 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
         d["responder"] = True
         d["escalar"] = False
         d["mensaje"] = "Recibí el comprobante 🙌 Lo está chequeando un compañero del equipo y te confirmamos por acá."
-        conv["bot_motivo"] = "Comprobante sin confirmar: " + _por + ". Papel: " + _papel
-        _nota_post = "⚠️ El bot lo derivó a vos: comprobante a revisar (" + _por + ")"
+        _pago = "pagó $%s el %s (op. %s)" % (_comp.get("monto") or "?", _comp.get("fecha") or "?",
+                                              _comp.get("operacion") or "?")
+        conv["bot_motivo"] = ("Comprobante sin confirmar: " + _por + ". No encontré un pedido en Shopify para "
+                              "ese pago: " + _pago + ". Papel: " + _papel)
+        _nota_post = ("⚠️ El bot lo derivó a vos: " + _pago + " y NO aparece pedido en Shopify ("
+                      + _por + ")")
     if (_es_comp and _comp.get("titular_ok") and _dice_transf and _paso_alias
             and not _compra_web and _medio != "tarjeta"
             and not conv.get("pedido_shopify")
@@ -17111,6 +17134,123 @@ def _wa_chat_paso_alias(conv, conf) -> bool:
         if _re_and.search(r"\$\s?\d", t):
             vio_monto = True
     return vio_alias and vio_monto
+
+
+_WA_MESES = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7,
+             "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
+
+
+def _wa_comp_fecha(comp):
+    """Fecha y hora del comprobante (hora Argentina) -> datetime UTC naive, o None. Entiende
+    '17/09/2026 07:57', '16/09/26 - 20:12 hs', 'Jueves, 17 de septiembre 2026, 07:57:12'."""
+    import datetime as _dtm
+    c = comp or {}
+    t = _wa_sin_tildes(" ".join(str(c.get(k) or "") for k in ("fecha", "texto_literal")))
+    d = mo = y = None
+    m = _re_and.search(r"(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{2,4})", t)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    else:
+        m = _re_and.search(r"(\d{1,2})\s*(?:de\s+|/)?\s*(" + "|".join(_WA_MESES) + r")\s*(?:de\s+|/)?\s*(\d{4})?", t)
+        if m:
+            d, mo = int(m.group(1)), _WA_MESES[m.group(2)]
+            y = int(m.group(3)) if m.group(3) else (_dtm.datetime.utcnow() - _dtm.timedelta(hours=3)).year
+    if not d:
+        return None
+    if y < 100:
+        y += 2000
+    hh = mm = 12
+    h = _re_and.search(r"(\d{1,2}):(\d{2})", t)
+    if h:
+        hh, mm = int(h.group(1)), int(h.group(2))
+    try:
+        return _dtm.datetime(y, mo, d, hh, mm) + _dtm.timedelta(hours=3)      # AR -> UTC
+    except Exception:
+        return None
+
+
+def _wa_buscar_pedido_comprobante(email, comp, conv, wid, compra_web=False):
+    """Busca en Shopify el pedido al que corresponde un comprobante, para contestar el ESTADO en vez
+    de tratarlo como una venta nueva. Pedido de Cristian (17/09/2026): el cliente pregunta por su
+    pedido, le piden el comprobante, lo manda... y quedaba marcado 'TRANSFERENCIA A CARGAR'.
+    Para no contestarle el pedido de OTRO con el mismo monto, exige monto Y (teléfono o nombre dicho
+    en el chat). Una compra web también vale con monto + creada a <=15 min del pago.
+    Devuelve el pedido (dict de Shopify) o None. Nunca lanza."""
+    import datetime as _dtm
+    try:
+        tk = _shop_tokens().get(email) or {}
+        if not tk.get("access_token") or not tk.get("shop"):
+            return None
+        monto = _wa_monto_num((comp or {}).get("monto"))
+        if not monto:
+            return None
+        T = _wa_comp_fecha(comp)
+        ahora = _dtm.datetime.utcnow()
+        desde = (T - _dtm.timedelta(hours=2)) if T else (ahora - _dtm.timedelta(days=4))
+        hasta = (T + _dtm.timedelta(days=2)) if T else ahora
+        r = requests.get("https://%s/admin/api/2026-07/orders.json" % tk["shop"],
+                         headers={"X-Shopify-Access-Token": tk["access_token"]},
+                         params={"status": "any", "limit": 250,
+                                 "created_at_min": desde.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                 "created_at_max": hasta.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                 "fields": "id,name,order_number,created_at,total_price,financial_status,"
+                                           "fulfillment_status,cancelled_at,customer,shipping_address,"
+                                           "billing_address,phone,fulfillments,note_attributes"},
+                         timeout=15)
+        ords = (r.json() or {}).get("orders") or []
+    except Exception:
+        return None
+    tel = _solo_dig(wid)[-10:]
+    chat_in = _wa_sin_tildes(" ".join([str(conv.get("name") or "")] + [
+        str(m.get("text") or "") for m in (conv.get("messages") or []) if m.get("dir") == "in"]))
+    mejor, mejor_k = None, None
+    for o in ords:
+        try:
+            tot = float(o.get("total_price") or 0)
+        except Exception:
+            continue
+        if abs(tot - monto) > 2:
+            continue
+        tels = [(o.get("phone") or "")] + [((o.get(k) or {}).get("phone") or "") for k in
+                                           ("shipping_address", "billing_address", "customer")]
+        tels += [str(a.get("value") or "") for a in (o.get("note_attributes") or [])]
+        tel_ok = bool(tel) and len(tel) >= 8 and any(_solo_dig(x).endswith(tel[-8:]) for x in tels if x)
+        cu = o.get("customer") or {}
+        sa = o.get("shipping_address") or {}
+        nom = _wa_sin_tildes(" ".join([str(cu.get("first_name") or ""), str(cu.get("last_name") or ""),
+                                       str(sa.get("name") or "")]))
+        toks = {w for w in _re_and.findall(r"[a-z]{3,}", nom)}
+        nom_ok = len([w for w in toks if _re_and.search(r"\b" + w + r"\b", chat_in)]) >= 2
+        cerca = False
+        if T:
+            try:
+                oc = _dtm.datetime.strptime(str(o.get("created_at"))[:19], "%Y-%m-%dT%H:%M:%S")
+                off = str(o.get("created_at"))[19:25]
+                if off and off[0] in "+-":
+                    sg = 1 if off[0] == "+" else -1
+                    oc -= sg * _dtm.timedelta(hours=int(off[1:3]), minutes=int(off[4:6]))
+                cerca = abs((oc - T).total_seconds()) <= 15 * 60
+            except Exception:
+                cerca = False
+        if not (tel_ok or nom_ok or (compra_web and cerca)):
+            continue
+        k = (tel_ok, nom_ok, cerca)
+        if mejor is None or k > mejor_k:
+            mejor, mejor_k = o, k
+    return mejor
+
+
+def _wa_msg_estado_pedido(o):
+    """Respuesta con el ESTADO real del pedido encontrado."""
+    num = str(o.get("order_number") or o.get("name") or "").replace("#", "")
+    trk = next((f.get("tracking_number") for f in (o.get("fulfillments") or []) if f.get("tracking_number")), "")
+    if o.get("cancelled_at"):
+        return None
+    if trk:
+        return ("Ya lo ubiqué 🙌 Es tu pedido #%s y ya salió por Andreani. Lo seguís acá: "
+                "https://www.andreani.com/envio/%s" % (num, trk))
+    return ("Ya lo ubiqué 🙌 Es tu pedido #%s: está pago y en preparación para el despacho. Apenas "
+            "salga te llega el seguimiento de Andreani por mail." % num)
 
 
 def _wa_comp_es_nuestro(comp, email, conf) -> bool:
