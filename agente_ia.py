@@ -35,18 +35,30 @@ def _build_system(marca="", pago=None, extra_instr=""):
     tit = (pago.get("titular") or "").strip()
     ali = (pago.get("alias") or "").strip()
     cuit = (pago.get("cuit") or "").strip()
+    _dest = ((('"' + tit + '"') if tit else '')
+             + ((' (CUIT ' + cuit + ')') if cuit else '')
+             + ((' o el alias "' + ali + '"') if ali else ''))
     if tit or ali:
-        comp = ('Si te mandan una imagen que es un COMPROBANTE de transferencia/pago, marcá es_comprobante=true y '
-                'en "comprobante" poné: destinatario, monto, fecha, nº de operación, y titular_ok=true SOLO si el '
-                'destinatario/titular coincide con ' + (('"' + tit + '"') if tit else '')
-                + ((' (CUIT ' + cuit + ')') if cuit else '')
-                + ((' o el alias "' + ali + '"') if ali else '') + '. '
-                'Si el comprobante es válido, CONFIRMÁ el pago y avisá que ya se prepara el envío (no le vendas nada). '
-                'Si el destinatario NO coincide, la imagen es otra cosa, o un comprobante de OTRA marca → es_comprobante=false y escalá.')
+        comp = ('LO PRIMERO: MIRÁ CON QUÉ PAGÓ. Eso decide todo, y NO se deduce del monto.\n'
+                '- TRANSFERENCIA: el comprobante dice "Transferencia", "Envío de dinero" o similar, y el '
+                'destinatario es ' + _dest + '. SOLO esto es una venta cerrada por WhatsApp → medio="transferencia". '
+                'Confirmá el pago y avisá que ya se prepara el envío (no le vendas nada).\n'
+                '- COMPRA CON TARJETA (débito o crédito): el comprobante dice "COMPRA CON TARJETA DE DEBITO", '
+                '"COMPRA CON TARJETA DE CREDITO", "tarj nro.", "Merpago*", "MERPAGO", "Mercado Pago*" o el nombre '
+                'de un comercio. ESO NO ES UNA TRANSFERENCIA: es una COMPRA POR LA WEB → medio="tarjeta" y '
+                'titular_ok=false. Ese pedido YA entró solo en la tienda: decile que su compra ya está tomada y '
+                'que se prepara el envío. NUNCA le digas que el monto "no coincide" ni le pidas otro comprobante '
+                '— el precio de la web lleva descuento y envío, por eso NO da igual al precio de lista.\n'
+                'Marcá es_comprobante=true y completá "comprobante" con destinatario, monto, fecha, nº de operación '
+                'y medio. titular_ok=true SOLO si medio="transferencia" Y el destinatario coincide con ' + _dest + '. '
+                'Si el destinatario NO coincide, la imagen es otra cosa, o es un comprobante de OTRA marca → '
+                'es_comprobante=false y escalá.')
     else:
-        comp = ('Si te mandan un COMPROBANTE de transferencia/pago, marcá es_comprobante=true con los datos que veas, '
-                'pero como NO tenés cargados los datos de la cuenta de esta tienda para validarlo → responder=false y escalar=true '
-                '(que lo confirme un humano). titular_ok=false.')
+        comp = ('Si te mandan un COMPROBANTE de pago, marcá es_comprobante=true con los datos que veas y poné '
+                '"medio": "transferencia" si dice transferencia/envío de dinero, "tarjeta" si dice compra con '
+                'tarjeta de débito/crédito o figura un comercio tipo "Merpago*", y "otro" si no se entiende. '
+                'Pero como NO tenés cargados los datos de la cuenta de esta tienda para validarlo → responder=false '
+                'y escalar=true (que lo confirme un humano). titular_ok=false.')
 
     return f"""Sos Sofía y atendés a los clientes de {m} por WhatsApp/redes. NO sos un asistente de nada: sos la persona que atiende. Tu trabajo es COMPRENDER cada conversación y decidir si conviene responder y qué decir — como lo hace un buen vendedor humano de atención al cliente, no un bot de respuestas automáticas.
 
@@ -119,8 +131,16 @@ SCHEMA = {
                 "fecha": {"type": "string"},
                 "operacion": {"type": "string"},
                 "titular_ok": {"type": "boolean"},
+                # CÓMO pagó. Es lo único que distingue de verdad una transferencia cerrada por
+                # WhatsApp de una COMPRA WEB con tarjeta (que YA tiene su pedido en la tienda).
+                # Por monto no se puede: una compra web a sucursal sale igual que el precio de
+                # lista. Pasó el 16/09/2026 con Carrizo: ticket "COMPRA CON TARJETA DE DEBITO /
+                # Merpago*noxalab" por $58.980,50 quedó marcado como transferencia a cargar, con
+                # el pedido #4835 ya creado por el checkout -> iba a salir duplicado.
+                "medio": {"type": "string", "enum": ["transferencia", "tarjeta", "otro"],
+                          "description": "transferencia al alias/CBU, tarjeta (compra web), u otro"},
             },
-            "required": ["destinatario", "monto", "fecha", "operacion", "titular_ok"],
+            "required": ["destinatario", "monto", "fecha", "operacion", "titular_ok", "medio"],
             "additionalProperties": False,
         },
     },

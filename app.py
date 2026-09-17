@@ -16903,10 +16903,13 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # Se borra sola cuando el pedido se crea, así el botón desaparece de ese chat.
     _comp = d.get("comprobante") or {}
     if (d.get("es_comprobante") and _comp.get("titular_ok") and not conv.get("pedido_shopify")
-            and not _wa_es_checkout(_comp.get("monto"))):
+            and not _wa_es_checkout(_comp.get("monto"), _comp.get("medio"))):
         conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
                                "fecha": str(_comp.get("fecha") or ""),
                                "operacion": str(_comp.get("operacion") or ""),
+                               # CON QUE pago: 'transferencia' | 'tarjeta' | 'otro'. Se guarda para
+                               # que la lista de chats pueda revalidarlo despues (ver /wa-chats).
+                               "medio": str(_comp.get("medio") or ""),
                                "ts": _wa_now()}
 
     if (not _mudo) and d.get("responder") and (d.get("mensaje") or "").strip():
@@ -16986,19 +16989,40 @@ def _wa_monto_num(monto):
         return None
 
 
-def _wa_es_checkout(monto) -> bool:
+def _wa_es_checkout(monto, medio="") -> bool:
     """¿El comprobante es una COMPRA POR LA WEB y no una transferencia cerrada por WhatsApp?
-    La huella es el DESCUENTO: el checkout se paga con BOT5 (5% OFF) y la transferencia se cierra
-    al precio de LISTA. $56.990,50 = $59.990 menos 5%.
     Importa mucho: esa compra YA tiene su pedido creado por Shopify, así que marcarla como
     "pendiente de cargar" termina en un pedido DUPLICADO y pagado en la tienda.
-    (Lo marcó Cristian el 16/09/2026, con un comprobante de Mercado Pago por $56.990,50 que decía
-    "Comprobante de Compra en NoxaLab": "transferencia es cuando te brinda los datos también y
-    tiene el valor sin descuento, eso es compra de checkout".)"""
+
+    Se mira en DOS pasos, y el primero manda:
+
+    1) EL MEDIO DE PAGO (lo lee el cerebro de la imagen). Si el ticket dice "COMPRA CON TARJETA
+       DE DEBITO/CREDITO", "tarj nro." o el comercio "Merpago*", es checkout SEGURO. Esta es la
+       señal confiable: por monto NO alcanza, porque una compra web a sucursal (envío gratis y
+       sin descuento) sale EXACTAMENTE lo mismo que una transferencia.
+
+    2) EL MONTO, como segunda linea de defensa, solo en las combinaciones INEQUIVOCAS:
+         - con BOT5 (5% OFF), a sucursal:   p*0.95
+         - con BOT5 y envio a domicilio:    p*0.95 + 1990
+         - a precio de lista + domicilio:   p + 1990   (la transferencia NUNCA paga envio)
+       El precio de lista SOLO (p) queda AFUERA a proposito: eso es justo lo que paga una
+       transferencia, y meterlo mataria todas las ventas cerradas por WhatsApp.
+
+    (17/09/2026 — se escapo Carrizo: pago $58.980,50 = $56.990,50 + $1.990 de envio y el chat
+    quedo marcado "TRANSFERENCIA A CARGAR" teniendo ya el pedido #4835 hecho por el checkout;
+    su ticket decia "COMPRA CON TARJETA DE DEBITO / Merpago*noxalab". Antes aca solo se miraba
+    p*0.95 sin envio.)"""
+    if (medio or "").strip().lower() == "tarjeta":
+        return True
     v = _wa_monto_num(monto)
     if not v:
         return False
-    return any(abs(v - round(p * 0.95)) <= 2 for p in _WA_PRECIO_PACK.values())
+    _ENV = 1990                                   # envio a domicilio por la web
+    cand = []
+    for p in _WA_PRECIO_PACK.values():
+        _d5 = round(p * 0.95)
+        cand += [_d5, _d5 + _ENV, p + _ENV]
+    return any(abs(v - c) <= 2 for c in cand)
 
 _WA_PED_SIS = (
     "Leés una conversación de WhatsApp donde YA se cerró una venta por transferencia y extraés los "
@@ -19308,7 +19332,8 @@ def wa_chats():
         # de checkout, que ya tiene su pedido hecho por Shopify) deja de mostrar el botón sola, sin
         # tener que salir a corregir wa_chats.json a mano.
         _vta = (bool(conv.get("pend_pedido")) and not conv.get("pedido_shopify")
-                and not _wa_es_checkout((conv.get("pend_pedido") or {}).get("monto")))
+                and not _wa_es_checkout((conv.get("pend_pedido") or {}).get("monto"),
+                                        (conv.get("pend_pedido") or {}).get("medio")))
         out.append({"wa_id": wid, "name": conv.get("name", wid),
                     "last": last.get("text", ""), "ts": conv.get("updated", ""),
                     "unread": conv.get("unread", 0),
