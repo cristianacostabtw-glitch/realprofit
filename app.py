@@ -16902,7 +16902,16 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # se marca el chat, y esa marca es LA que hace aparecer el botón "Cargar pedido" en /wa.
     # Se borra sola cuando el pedido se crea, así el botón desaparece de ese chat.
     _comp = d.get("comprobante") or {}
-    if (d.get("es_comprobante") and _comp.get("titular_ok") and not conv.get("pedido_shopify")
+    # EXIGENCIA POSITIVA: se marca SOLO si el cerebro dijo, con todas las letras, que el papel es una
+    # TRANSFERENCIA. Antes alcanzaba con "no parece checkout", y la duda marcaba: el 17/09/2026 entró
+    # un "Comprobante de pago" de Mercado Pago que decia "Titulo: Compra en NoxaLab / Forma de Pago:
+    # Dinero disponible en Mercado Pago" por $59.990 (Walter Rodriguez) y quedo como transferencia a
+    # cargar -> el pedido ya existia por el checkout e iba a salir duplicado. Y por monto no habia
+    # forma de agarrarlo: $59.990 es exactamente el precio de lista. Ahora, si el cerebro no dice
+    # "transferencia", NO se marca.
+    _medio = (_comp.get("medio") or "").strip().lower()
+    if (d.get("es_comprobante") and _comp.get("titular_ok") and _medio == "transferencia"
+            and not conv.get("pedido_shopify")
             and not _wa_es_checkout(_comp.get("monto"), _comp.get("medio"))):
         conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
                                "fecha": str(_comp.get("fecha") or ""),
