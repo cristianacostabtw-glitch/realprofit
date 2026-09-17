@@ -60,7 +60,11 @@ def _build_system(marca="", pago=None, extra_instr=""):
                 'Marcá es_comprobante=true y completá "comprobante" con destinatario, monto, fecha, nº de operación '
                 'y medio. titular_ok=true SOLO si medio="transferencia" Y el destinatario coincide con ' + _dest + '. '
                 'Si el destinatario NO coincide, la imagen es otra cosa, o es un comprobante de OTRA marca → '
-                'es_comprobante=false y escalá.')
+                'es_comprobante=false y escalá.\n'
+                'En "texto_literal" copiá TEXTUAL, sin resumir ni interpretar, el TÍTULO del comprobante y la '
+                'línea que dice cómo se pagó o qué operación es (ej: "Comprobante de transferencia", '
+                '"Transferiste", "Compra en NoxaLab", "Forma de Pago: Dinero disponible en Mercado Pago", '
+                '"COMPRA CON TARJETA DE DEBITO"). El sistema lo usa para decidir si pedir datos o no.')
     else:
         comp = ('Si te mandan un COMPROBANTE de pago, marcá es_comprobante=true con los datos que veas y poné '
                 '"medio": "transferencia" si dice transferencia/envío de dinero, "tarjeta" si dice compra con '
@@ -147,8 +151,14 @@ SCHEMA = {
                 # el pedido #4835 ya creado por el checkout -> iba a salir duplicado.
                 "medio": {"type": "string", "enum": ["transferencia", "tarjeta", "otro"],
                           "description": "transferencia al alias/CBU, tarjeta (compra web), u otro"},
+                # Copia TEXTUAL del título y de la forma de pago del comprobante. El código decide con
+                # esto (no con la clasificación del modelo) si es una compra web: transcribir es mucho
+                # más confiable que clasificar, y clasificar fue lo que falló con Walter y Carrizo.
+                "texto_literal": {"type": "string",
+                                  "description": "título y forma de pago/tipo de operación, copiados textual"},
             },
-            "required": ["destinatario", "monto", "fecha", "operacion", "titular_ok", "medio"],
+            "required": ["destinatario", "monto", "fecha", "operacion", "titular_ok", "medio",
+                         "texto_literal"],
             "additionalProperties": False,
         },
     },

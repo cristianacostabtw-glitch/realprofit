@@ -16910,7 +16910,17 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # forma de agarrarlo: $59.990 es exactamente el precio de lista. Ahora, si el cerebro no dice
     # "transferencia", NO se marca.
     _medio = (_comp.get("medio") or "").strip().lower()
+    # CANDADO de compra web: si el papel dice compra/tarjeta/débito/dinero en cuenta, NO se marca y
+    # NO se piden datos: el mensaje del modelo se reemplaza por una confirmación fija.
+    _compra_web = bool(d.get("es_comprobante")) and _wa_comp_es_compra_web(_comp)
+    if _compra_web and _wa_comp_es_nuestro(_comp, email, conf):
+        d["responder"] = True
+        d["escalar"] = False
+        d["mensaje"] = _wa_msg_compra_web(conv.get("name"), wid)
+        conv["bot_motivo"] = ("Compra por la WEB (no transferencia): no se piden datos ni se carga pedido. "
+                              "Papel: " + str(_comp.get("texto_literal") or "")[:120])
     if (d.get("es_comprobante") and _comp.get("titular_ok") and _medio == "transferencia"
+            and not _compra_web
             and not conv.get("pedido_shopify")
             and not _wa_es_checkout(_comp.get("monto"), _comp.get("medio"))):
         conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
@@ -17010,6 +17020,64 @@ def _wa_monto_num(monto):
         return float(ent) if ent else None
     except Exception:
         return None
+
+
+_WA_TXT_COMPRA = (r"compra\s+en\b|comprobante\s+de\s+pago|compra\s+con\s+tarjeta|"
+                  r"tarjeta\s+de\s+(debito|credito)|tarj\.?\s*nro|dinero\s+disponible|"
+                  r"dinero\s+en\s+cuenta|merpago|pago\s+con\s+saldo|saldo\s+en\s+mercado\s+pago")
+
+
+def _wa_sin_tildes(s):
+    import unicodedata
+    return unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+
+
+def _wa_comp_es_compra_web(comp) -> bool:
+    """¿Este comprobante es de una COMPRA POR LA WEB (tarjeta, débito de Mercado Pago, dinero en
+    cuenta) y NO de una transferencia? Decide el CÓDIGO mirando el texto que el modelo copió
+    TEXTUAL del papel, no la clasificación del modelo (que es lo que falló: Carrizo 16/09 con
+    "COMPRA CON TARJETA DE DEBITO", Walter 17/09 con "Compra en NoxaLab / Dinero disponible en
+    Mercado Pago" — a los dos les pidió los datos y los marcó para cargar un pedido que ya existía).
+    Orden: tarjeta manda; si dice transferencia es transferencia; si dice compra/pago con saldo es
+    compra; si el papel no dice nada claro, recién ahí se usa lo que clasificó el modelo."""
+    c = comp or {}
+    txt = _wa_sin_tildes(" ".join(str(c.get(k) or "") for k in ("texto_literal", "destinatario")))
+    medio = (c.get("medio") or "").strip().lower()
+    if _re_and.search(r"compra\s+con\s+tarjeta|tarj\.?\s*nro|tarjeta\s+de\s+(debito|credito)", txt):
+        return True
+    if "transfer" in txt:
+        return False
+    if _re_and.search(_WA_TXT_COMPRA, txt):
+        return True
+    return medio == "tarjeta"
+
+
+def _wa_comp_es_nuestro(comp, email, conf) -> bool:
+    """¿La compra es en NUESTRA tienda? (marca, alias o titular aparecen en el papel)."""
+    c = comp or {}
+    txt = _wa_sin_tildes(" ".join(str(c.get(k) or "") for k in ("texto_literal", "destinatario")))
+    claves = []
+    for v in (_wa_marca_auto(email, conf), conf.get("bot_pago_alias"), conf.get("bot_pago_titular")):
+        v = _wa_sin_tildes(v).strip()
+        if len(v) >= 4:
+            claves.append(v)
+    return any(k in txt or k.replace(" ", "") in txt.replace(" ", "") for k in claves)
+
+
+def _wa_msg_compra_web(nombre, wid):
+    """Respuesta FIJA cuando mandan el comprobante de una compra web: NO se piden datos (ya los
+    cargó al pagar en la página) y no se le dice que 'el monto no coincide'."""
+    n = (str(nombre or "").strip().split() or [""])[0]
+    n = (", " + n.capitalize()) if n.isalpha() and len(n) >= 2 else ""
+    ops = [
+        "¡Listo%s! 🙌 Ese es el comprobante de tu compra por la web, así que el pedido ya quedó cargado "
+        "con los datos que pusiste al pagar. No hace falta que me pases nada más: apenas se despache "
+        "te llega el seguimiento por mail.",
+        "Perfecto%s 👌 Vi el comprobante: es de la compra en la página, así que ya está todo tomado con "
+        "los datos que cargaste ahí. No necesito nada más; el seguimiento de Andreani te llega por "
+        "correo cuando sale.",
+    ]
+    return ops[sum(map(ord, str(wid or ""))) % len(ops)] % n
 
 
 def _wa_es_checkout(monto, medio="") -> bool:
