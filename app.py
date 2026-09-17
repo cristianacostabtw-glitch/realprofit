@@ -16633,7 +16633,36 @@ def _wa_save_chats(d):
                     n += len(c.get("messages") or [])
         return n
     try:
-        with _WA_SAVE_LOCK:
+        with _WA_SAVE_LOCK:                       # un guardado por vez DENTRO del proceso
+            # ...y uno por vez ENTRE procesos: el server corre con 2 workers, y el candado de arriba
+            # no los sincroniza. Sin esto quedaba una ventana de milisegundos entre releer el disco y
+            # reemplazar el archivo donde el otro worker podia escribir y su version quedaba pisada.
+            # El lock se toma sobre un archivo aparte (wa_chats.lock) y se libera SIEMPRE (finally).
+            _lk = None
+            try:
+                import fcntl
+                _lk = open(str(WA_CHATS) + ".lock", "a+")
+                fcntl.flock(_lk.fileno(), fcntl.LOCK_EX)
+            except Exception:
+                _lk = None                        # si no se puede (SO sin flock), se sigue igual
+            try:
+                _guardar_fusionado(d, _cuenta)
+            finally:
+                if _lk is not None:
+                    try:
+                        import fcntl as _fc
+                        _fc.flock(_lk.fileno(), _fc.LOCK_UN)
+                        _lk.close()
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+
+def _guardar_fusionado(d, _cuenta):
+    """Relee el disco, FUSIONA y escribe. Se llama con los dos candados tomados (proceso + archivo)."""
+    try:
+        if True:
             try:
                 disco = _json.loads(WA_CHATS.read_text(encoding="utf-8"))
             except Exception:
@@ -16657,7 +16686,9 @@ def _wa_save_chats(d):
                         _json.dumps(disco, ensure_ascii=False), encoding="utf-8")
                 except Exception:
                     pass
-            tmp = WA_CHATS.with_suffix(".tmp")
+            # temporal POR PROCESO: si dos escribieran a la vez el mismo .tmp, uno se llevaba los
+            # bytes del otro y el archivo final quedaba mezclado.
+            tmp = WA_CHATS.with_suffix(".tmp.%d" % _os.getpid())
             tmp.write_text(_json.dumps(final, ensure_ascii=False), encoding="utf-8")
             tmp.replace(WA_CHATS)
     except Exception:
