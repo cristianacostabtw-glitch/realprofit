@@ -16967,6 +16967,11 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                 conv["bot_nota"] = "⚠️ El bot quiso responder pero falló el envío: " + (err or "?")
     elif (not _mudo) and d.get("escalar"):
         conv["bot_nota"] = "⚠️ El bot lo derivó a vos" + (": " + d["motivo"] if d.get("motivo") else "")
+    # Contestó Y derivó (ej: un RECLAMO, que ahora pide nombre y número de pedido): el envío OK borra
+    # bot_nota, y sin esto el chat dejaba de salir en rojo para la persona que tiene que resolverlo.
+    if (not _nota_post and not _mudo and d.get("escalar") and d.get("responder")
+            and (d.get("mensaje") or "").strip()):
+        _nota_post = "⚠️ El bot lo derivó a vos" + (": " + d["motivo"] if d.get("motivo") else "")
     if _nota_post:                      # va DESPUÉS del envío: el envío OK borra bot_nota
         conv["bot_nota"] = _nota_post
     _wa_save_chats(chats)
