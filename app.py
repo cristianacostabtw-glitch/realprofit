@@ -16912,15 +16912,32 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     _medio = (_comp.get("medio") or "").strip().lower()
     # CANDADO de compra web: si el papel dice compra/tarjeta/débito/dinero en cuenta, NO se marca y
     # NO se piden datos: el mensaje del modelo se reemplaza por una confirmación fija.
-    _compra_web = bool(d.get("es_comprobante")) and _wa_comp_es_compra_web(_comp)
+    # REGLA DE CRISTIAN (17/09/2026): es TRANSFERENCIA solo si (1) antes le pasamos ALIAS y MONTO en el
+    # chat y (2) el papel DICE transferencia. Si no se cumplen las dos, NO se piden datos y NO se marca.
+    _es_comp = bool(d.get("es_comprobante"))
+    _compra_web = _es_comp and _wa_comp_es_compra_web(_comp)
+    _dice_transf = _es_comp and not _compra_web and _wa_comp_dice_transferencia(_comp)
+    _paso_alias = _wa_chat_paso_alias(conv, conf)
+    _papel = str(_comp.get("texto_literal") or "")[:120]
+    _nota_post = None
     if _compra_web and _wa_comp_es_nuestro(_comp, email, conf):
         d["responder"] = True
         d["escalar"] = False
         d["mensaje"] = _wa_msg_compra_web(conv.get("name"), wid)
         conv["bot_motivo"] = ("Compra por la WEB (no transferencia): no se piden datos ni se carga pedido. "
-                              "Papel: " + str(_comp.get("texto_literal") or "")[:120])
-    if (d.get("es_comprobante") and _comp.get("titular_ok") and _medio == "transferencia"
-            and not _compra_web
+                              "Papel: " + _papel)
+    elif _es_comp and not (_dice_transf and _paso_alias):
+        # Comprobante que NO cumple la regla: o el papel no dice transferencia, o nunca le pasamos el
+        # alias y el monto. No se le piden datos ni se confirma nada: lo mira una persona.
+        _por = ("el papel no dice transferencia" if not _dice_transf
+                else "en el chat nunca le pasamos el alias y el monto")
+        d["responder"] = True
+        d["escalar"] = False
+        d["mensaje"] = "Recibí el comprobante 🙌 Lo está chequeando un compañero del equipo y te confirmamos por acá."
+        conv["bot_motivo"] = "Comprobante sin confirmar: " + _por + ". Papel: " + _papel
+        _nota_post = "⚠️ El bot lo derivó a vos: comprobante a revisar (" + _por + ")"
+    if (_es_comp and _comp.get("titular_ok") and _dice_transf and _paso_alias
+            and not _compra_web and _medio != "tarjeta"
             and not conv.get("pedido_shopify")
             and not _wa_es_checkout(_comp.get("monto"), _comp.get("medio"))):
         conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
@@ -16950,6 +16967,8 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                 conv["bot_nota"] = "⚠️ El bot quiso responder pero falló el envío: " + (err or "?")
     elif (not _mudo) and d.get("escalar"):
         conv["bot_nota"] = "⚠️ El bot lo derivó a vos" + (": " + d["motivo"] if d.get("motivo") else "")
+    if _nota_post:                      # va DESPUÉS del envío: el envío OK borra bot_nota
+        conv["bot_nota"] = _nota_post
     _wa_save_chats(chats)
 
 
@@ -17050,6 +17069,43 @@ def _wa_comp_es_compra_web(comp) -> bool:
     if _re_and.search(_WA_TXT_COMPRA, txt):
         return True
     return medio == "tarjeta"
+
+
+def _wa_comp_dice_transferencia(comp) -> bool:
+    """¿El PAPEL dice transferencia? Regla de Cristian (17/09/2026): el comprobante tiene que decir
+    TRANSFERENCIA, no pago ni compra. Cuenta 'transferencia/transferiste' y 'enviaste dinero / envío
+    de dinero' (así titulan las transferencias Mercado Pago y Ualá). Si hay señales de tarjeta, NO."""
+    c = comp or {}
+    txt = _wa_sin_tildes(" ".join(str(c.get(k) or "") for k in ("texto_literal", "destinatario")))
+    if _re_and.search(r"compra\s+con\s+tarjeta|tarj\.?\s*nro|tarjeta\s+de\s+(debito|credito)", txt):
+        return False
+    return bool(_re_and.search(r"transfer|enviaste\s+dinero|envio\s+de\s+dinero", txt))
+
+
+def _wa_chat_paso_alias(conv, conf) -> bool:
+    """¿ANTES del comprobante le pasamos el ALIAS y el MONTO en el chat? Regla de Cristian: la
+    transferencia se toma una vez que le pasamos alias y monto. Mira los mensajes salientes
+    (bot o persona) anteriores al último entrante. El alias tiene que aparecer como palabra suelta
+    (así 'noxalaboficial.com' del link de la web NO cuenta como haber pasado el alias)."""
+    ali = _wa_sin_tildes(conf.get("bot_pago_alias")).strip()
+    tit = _wa_sin_tildes(conf.get("bot_pago_titular")).strip()
+    msgs = conv.get("messages") or []
+    ult_in = max([i for i, m in enumerate(msgs) if m.get("dir") == "in"] or [len(msgs)])
+    vio_alias = vio_monto = False
+    for m in msgs[:ult_in]:
+        if m.get("dir") != "out":
+            continue
+        t = _wa_sin_tildes(m.get("text"))
+        # "alias" tiene que estar pegado: la MARCA se llama igual que el alias ("pago a NOXALAB"),
+        # y sin esto cualquier mención de la tienda contaba como haber pasado el alias.
+        if ali and len(ali) >= 3 and _re_and.search(
+                r"alias.{0,20}?(?<![a-z0-9])" + _re_and.escape(ali) + r"(?![a-z0-9])", t):
+            vio_alias = True
+        elif tit and len(tit) >= 6 and tit in t:
+            vio_alias = True
+        if _re_and.search(r"\$\s?\d", t):
+            vio_monto = True
+    return vio_alias and vio_monto
 
 
 def _wa_comp_es_nuestro(comp, email, conf) -> bool:
