@@ -16958,6 +16958,20 @@ def wa_resolver():
     conv = (chats.get(email) or {}).get(wid)
     if conv is None:
         return jsonify({"ok": False, "msg": "no encontré ese chat"})
+    # OPCIONAL: 'pedido' = numero de un pedido que YA EXISTE en Shopify. Sirve para apagar un
+    # "TRANSFERENCIA A CARGAR" que quedo mal puesto, SIN crear nada: se anota el pedido real y se
+    # borra la marca pendiente, asi ese chat no se puede cargar dos veces nunca mas.
+    # Por que hace falta: /wa-pedido-crear era el UNICO que limpiaba pend_pedido, y crea una orden
+    # nueva -> para un chat que ya tiene su pedido hecho por el checkout, usarlo DUPLICA la venta.
+    # Caso real 17/09/2026: Walter Rodriguez pago por la web ($59.990, pedido #4884 de las 07:57) y
+    # su chat quedo marcado como transferencia a cargar; por monto no habia forma de detectarlo
+    # (es el precio de lista exacto) y la marca vieja no tiene el campo 'medio'.
+    _ped = (request.form.get("pedido") or "").strip().lstrip("#")
+    if _ped:
+        conv["pedido_shopify"] = _ped
+        conv.pop("pend_pedido", None)
+        _wa_save_chats(chats)
+        return jsonify({"ok": True, "pedido": _ped})
     # Mismo camino que cuando contesta una persona (ver _wa_bot_run): queda tomado por humano y
     # se limpia lo que dispara el rojo en el calculo de _urg de /wa-chats.
     conv["bot_humano"] = True
