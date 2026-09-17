@@ -16556,41 +16556,110 @@ def _wa_chats_all():
             return {}
 
 
+_WA_SAVE_LOCK = threading.Lock()   # un guardado por vez DENTRO del proceso
+
+
+def _wa_msg_clave(m):
+    """Identidad de un mensaje para poder unirlos sin perder ni duplicar. Verificado contra los
+    datos vivos el 16/09/2026: los 236 mensajes traian 'id' y NINGUNO estaba repetido. El
+    respaldo por ts+dir+texto es solo por si algun dia entra uno sin id."""
+    return (m.get("id") or "").strip() or "%s|%s|%s" % (
+        m.get("ts", ""), m.get("dir", ""), (m.get("text") or "")[:80])
+
+
+def _wa_fusion_chats(disco, nuevo):
+    """Une lo que YA hay en disco con lo que se quiere guardar, SIN PERDER NADA.
+    Dos reglas, y de ahi sale la garantia:
+      1) un chat que existe en disco NUNCA desaparece (aunque el que guarda no lo tenga);
+      2) la lista de mensajes de un chat NUNCA se achica: se unen por _wa_msg_clave().
+    Los demas campos del chat (unread, bot_nota, pend_pedido...) los manda EL QUE GUARDA: si
+    fusionara esos, un pop() a proposito -como borrar pend_pedido al crear el pedido- se
+    revertiria solo y el boton no se apagaria nunca. La unica excepcion es pedido_shopify:
+    si esta en disco se conserva si o si, porque perderlo permitiria cargar dos veces el
+    mismo pedido."""
+    out = dict(disco or {})
+    for email, convs in (nuevo or {}).items():
+        base = dict(out.get(email) or {})
+        for wid, conv in (convs or {}).items():
+            vieja = base.get(wid)
+            if not isinstance(conv, dict):
+                continue
+            if not isinstance(vieja, dict):
+                base[wid] = conv
+                continue
+            fus = dict(conv)                      # los datos del chat: manda el que guarda
+            if vieja.get("pedido_shopify") and not fus.get("pedido_shopify"):
+                fus["pedido_shopify"] = vieja["pedido_shopify"]
+            vistos, orden = {}, []
+            for m in list(vieja.get("messages") or []) + list(conv.get("messages") or []):
+                if not isinstance(m, dict):
+                    continue
+                k = _wa_msg_clave(m)
+                if k in vistos:                   # el mismo mensaje por los dos lados: completa
+                    for kk, vv in m.items():
+                        if vv not in (None, ""):
+                            vistos[k][kk] = vv
+                    continue
+                vistos[k] = dict(m)
+                orden.append(k)
+            msgs = [vistos[k] for k in orden]
+            msgs.sort(key=lambda x: x.get("ts") or "")
+            fus["messages"] = msgs
+            base[wid] = fus
+        out[email] = base
+    return out
+
+
 def _wa_save_chats(d):
-    """Guarda los chats. OJO: REESCRIBE el archivo entero, asi que escribir un dict vacio o
-    recortado BORRA el historial. El 16/09/2026 se perdieron 1.751 chats exactamente asi: una
-    lectura fallo, _wa_chats_all() devolvio {}, el codigo siguio como si no hubiera nada y el
-    guardado siguiente escribio esa nada encima. Tres defensas:
-      1) si lo que se va a escribir tiene MUCHOS menos chats que lo que ya hay, no se escribe
-         (eso no es un guardado normal: es una lectura que fallo);
-      2) se deja copia en wa_chats.bak, que es de donde lee _wa_chats_all() si el principal falla;
-      3) la escritura es atomica (tmp + replace), para que un reinicio no deje el archivo a medias
-         y la proxima lectura no falle."""
+    """Guarda los chats FUSIONANDO, nunca reemplazando.
+
+    POR QUE: antes esto reescribia el archivo entero con la foto que traia el que llamaba. Como
+    hay 20 lugares que hacen leer-modificar-escribir y el server corre con 2 workers, dos pedidos
+    a la vez se pisaban (A lee, B lee, A escribe, B escribe -> se pierde lo de A). Asi se
+    perdieron 1.751 chats el 16/09/2026 con el envio masivo de seguimientos.
+
+    AHORA: al escribir se RELEE el disco y se une (ver _wa_fusion_chats), con un candado para que
+    dentro del proceso no se solapen. Un mensaje que ya esta guardado no se puede perder, tenga
+    el que guarda una foto vieja o no, se manden 1 o 1000 seguimientos.
+
+    Quedan las tres defensas viejas: se rechaza el guardado si aun asi bajaria la cuenta de
+    mensajes (invariante: despues de fusionar eso no puede pasar, si pasa algo anda mal), copia
+    en wa_chats.bak, y escritura atomica (tmp + replace)."""
+    def _cuenta(x):
+        n = 0
+        for v in (x or {}).values():
+            for c in (v or {}).values():
+                if isinstance(c, dict):
+                    n += len(c.get("messages") or [])
+        return n
     try:
-        nuevo = sum(len(v or {}) for v in (d or {}).values())
-        act, viejo = None, 0
-        try:
-            act = _json.loads(WA_CHATS.read_text(encoding="utf-8"))
-            viejo = sum(len(v or {}) for v in (act or {}).values())
-        except Exception:
-            act = None
-        if viejo >= 20 and nuevo < viejo * 0.6:
-            try:                        # queda a mano para mirarlo, pero NO pisa el bueno
-                (WA_CHATS.parent / "wa_chats.RECHAZADO.json").write_text(
-                    _json.dumps({"nuevo": nuevo, "viejo": viejo, "datos": d}, ensure_ascii=False),
-                    encoding="utf-8")
-            except Exception:
-                pass
-            return
-        if act is not None and viejo:
+        with _WA_SAVE_LOCK:
             try:
-                WA_CHATS.with_suffix(".bak").write_text(
-                    _json.dumps(act, ensure_ascii=False), encoding="utf-8")
+                disco = _json.loads(WA_CHATS.read_text(encoding="utf-8"))
             except Exception:
-                pass
-        tmp = WA_CHATS.with_suffix(".tmp")
-        tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(WA_CHATS)
+                # NO tratar una lectura fallida como "no hay nada": eso es lo que borro todo.
+                try:
+                    disco = _json.loads(WA_CHATS.with_suffix(".bak").read_text(encoding="utf-8"))
+                except Exception:
+                    disco = None
+            final = _wa_fusion_chats(disco or {}, d or {})
+            if disco is not None and _cuenta(final) < _cuenta(disco):
+                try:                    # no deberia pasar nunca; si pasa, queda para mirarlo
+                    (WA_CHATS.parent / "wa_chats.RECHAZADO.json").write_text(
+                        _json.dumps({"nuevo": _cuenta(final), "viejo": _cuenta(disco),
+                                     "datos": d}, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
+                return
+            if disco:
+                try:
+                    WA_CHATS.with_suffix(".bak").write_text(
+                        _json.dumps(disco, ensure_ascii=False), encoding="utf-8")
+                except Exception:
+                    pass
+            tmp = WA_CHATS.with_suffix(".tmp")
+            tmp.write_text(_json.dumps(final, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(WA_CHATS)
     except Exception:
         pass
 
