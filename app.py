@@ -16927,6 +16927,11 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                                 "alias": conf.get("bot_pago_alias", ""),
                                 "cuit": conf.get("bot_pago_cuit", "")})
     conv["bot_motivo"] = d.get("motivo", ""); conv["bot_cat"] = d.get("categoria", "")
+    # ETIQUETA automática: la elige el cerebro con los criterios de Cristian (transferencia /
+    # problema envío / problema producto / reclamo MP). Reemplaza al cartel URGENTE.
+    _et = (d.get("etiqueta") or "").strip().lower()
+    if _et in _WA_ETIQ:
+        conv["etiqueta"] = _et
     # TRANSFERENCIA CERRADA -> queda PENDIENTE DE CREAR EL PEDIDO.
     # El cerebro ya venía validando el comprobante (es_comprobante + titular_ok, que es true SOLO si
     # el destinatario del comprobante somos nosotros) pero esa señal se tiraba: nadie la leía. Acá
@@ -17007,6 +17012,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             and not _compra_web and _medio != "tarjeta"
             and not conv.get("pedido_shopify")
             and not _wa_es_checkout(_comp.get("monto"), _comp.get("medio"))):
+        conv["etiqueta"] = "transferencia"      # hay que cargarla -> queda etiquetada sola
         conv["pend_pedido"] = {"monto": str(_comp.get("monto") or ""),
                                "fecha": str(_comp.get("fecha") or ""),
                                "operacion": str(_comp.get("operacion") or ""),
@@ -18112,11 +18118,11 @@ function renderList(){
  box.innerHTML=arr.map(function(c){
   // La TRANSFERENCIA A CARGAR gana sobre el URGENTE: si el bot ya validó el comprobante y están
   // los datos, ese chat no es un reclamo esperando atención, es una venta esperando que la carguen.
-  var urg=c.venta?' vta':(c.urgente?' urg':'');
-  var chip=c.venta?'<span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?'<span class="urgchip">URGENTE</span>':'');
+  // Ya no hay cartel URGENTE: manda la ETIQUETA (la pone el bot o atención).
   var _e=etiqDe(c.etiqueta);
+  var urg=c.venta?' vta':'';
   var _bd=_e?' style="border-left:3px solid '+_e[2]+'"':'';   // color de la etiqueta en la lista
-  if(_e) chip='<span class="etdot" style="background:'+_e[2]+'" title="'+_e[1]+'"></span>'+chip;
+  var chip=_e?'<span class="etchip" style="background:'+_e[2]+'">'+_e[1]+'</span>':'';
   return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'"'+_bd+' onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
@@ -18151,14 +18157,17 @@ function renderConv(c){
   }
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
- conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(function(){var e=etiqDe(c.etiqueta);return (e?' <span class="etchip" style="background:'+e[2]+'">'+e[1]+'</span>':'')})()+(c.venta?' <span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':''))+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
+ conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(function(){var e=etiqDe(c.etiqueta);return (e?' <span class="etchip" style="background:'+e[2]+'">'+e[1]+'</span>':'')})()+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
   +'<div style="flex:1"></div>'
   +((c.urgente&&!c.venta)?'<button class="okbtn" onclick="resolverUrg()" title="Sacar el URGENTE: este caso ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button>':'')
   +'<button class="pedbtn man" onclick="openEtiq(event)" title="Asignarle una etiqueta de color a este chat">&#127991;&#65039; Etiqueta</button>'
   +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>'
     :(c.pedido?'':'<button class="pedbtn man" onclick="openPedido()" title="Cargar a mano el pedido de este chat en Shopify">+ Cargar pedido</button>'))
   +'<div id="etiqPop" class="etiqpop"></div></div>'
-  +((c.urgente&&!c.venta)?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
+  +(function(){var e=etiqDe(c.etiqueta);
+     if(!e && !c.urgente) return '';
+     var t=e?e[1]:'PARA ATENCI\\u00d3N', col=e?e[2]:'#b3261e';
+     return '<div class="deriv" style="border-left:3px solid '+col+'">'+esc(t)+(c.motivo?' \\u2014 '+esc(c.motivo):'')+'</div>';})()
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
   +'<div class="emoji-pop" id="emojiPop"></div>'

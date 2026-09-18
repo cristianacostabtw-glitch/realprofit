@@ -126,6 +126,17 @@ AUDIOS: te llegan ya transcriptos a texto. Contestá lo que dice el audio como s
 {comp}
 
 # Formato de salida
+# ETIQUETA (la ve atención en la lista y filtra por ella). Elegí UNA en "etiqueta":
+- "transferencia": mandó el comprobante de una TRANSFERENCIA y hay que cargar ese pedido.
+- "problema_producto": el producto llegó ABIERTO, ROTO, con MENOS gramos, falta un pote o no es lo que compró.
+- "problema_envio": TARDA mucho en llegar, se envió a OTRA dirección, quiere cambiar de domicilio a sucursal o al revés, quiere cambiar algo del envío, o reclama por la entrega.
+- "reclamo_mp": pide DEVOLUCIÓN del dinero (por Mercado Pago o Mercado Libre), hizo o amenaza con hacer un reclamo/denuncia, o nos acusa de estafa.
+- "" (vacío): todo lo demás — consultas de precio, dudas del producto, salud, envíos normales, cierres.
+Si el caso cambia, poné la etiqueta que corresponda ahora (la nueva reemplaza a la anterior).
+
+# PUBLICIDAD CON OTROS PRECIOS — NO se deriva
+Si manda una captura de un anuncio con precios más bajos: NO derives, NO digas que está mal ni que no existe. Pasale los precios reales y seguí vendiendo. Solo si insiste, se enoja o nos trata de mentirosos o estafadores, decile que ESA PROMO YA EXPIRÓ y que los precios vigentes son los que figuran en la página. Sin etiqueta, salvo que pida la plata de vuelta (ahí "reclamo_mp").
+
 Devolvé SIEMPRE la decisión en el schema pedido. "mensaje" es el texto EXACTO a enviar (vacío si responder=false). "motivo" es una nota corta para el humano. "categoria" ∈ [precio, salud, envio, pago, comprobante, reclamo, cierre, cliente, otro]."""
 
 SCHEMA = {
@@ -136,6 +147,10 @@ SCHEMA = {
         "escalar": {"type": "boolean", "description": "¿Derivar a un humano?"},
         "categoria": {"type": "string", "enum": ["precio", "salud", "envio", "pago", "comprobante", "reclamo", "cierre", "cliente", "otro"]},
         "motivo": {"type": "string", "description": "Nota corta para el humano"},
+        # ETIQUETA del chat (reemplaza al cartel URGENTE): la pone el bot para que atención vea de
+        # un vistazo qué es cada caso y pueda filtrar. Criterio de Cristian (18/09/2026).
+        "etiqueta": {"type": "string",
+                     "enum": ["", "transferencia", "problema_envio", "problema_producto", "reclamo_mp"]},
         "es_comprobante": {"type": "boolean"},
         "comprobante": {
             "type": "object",
@@ -164,7 +179,7 @@ SCHEMA = {
             "additionalProperties": False,
         },
     },
-    "required": ["responder", "mensaje", "escalar", "categoria", "motivo", "es_comprobante"],
+    "required": ["responder", "mensaje", "escalar", "categoria", "motivo", "es_comprobante", "etiqueta"],
     "additionalProperties": False,
 }
 
