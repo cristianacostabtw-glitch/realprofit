@@ -17987,8 +17987,8 @@ function renderList(){
  var q=(val('q')||'').toLowerCase();
  var box=document.getElementById('chats'); if(!box)return;
  var arr=CHATS.filter(function(c){ return !q || (c.name||'').toLowerCase().indexOf(q)>=0 || (c.wa_id||'').indexOf(q)>=0; });
- // Con el buscador escrito se busca en TODO (chats y avisos), para que no se pierda nadie.
- if(!q) arr=arr.filter(function(c){ return VISTA==='avisos' ? !!c.aviso : !c.aviso; });
+ // SIEMPRE separadas, también buscando: un chat está en UNA sola pestaña, nunca en las dos.
+ arr=arr.filter(function(c){ return VISTA==='avisos' ? !!c.aviso : !c.aviso; });
  pintarVista();
  if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">'+(VISTA==='avisos'?'No hay avisos sin respuesta.<br>Acá caen los chats donde lo último que se mandó fue una plantilla.':'Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.')+'</div>'; return; }
  box.innerHTML=arr.map(function(c){
