@@ -17756,13 +17756,21 @@ _WA_PAGE = """<!doctype html>
  .vtachip{background:#0b5d43;color:#7ff0c4;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
  .etchip{color:#fff;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
  .etdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;flex:none}
- .etiqpop{display:none;position:absolute;right:14px;top:56px;background:var(--pan2);border:1px solid var(--line);border-radius:12px;padding:10px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.45)}
- .etiqpop .op{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
- .etiqpop .op:hover{background:rgba(255,255,255,.06)}
- .etiqpop .bola{width:16px;height:16px;border-radius:50%;flex:none}
- .filtpop{display:none;position:absolute;left:14px;top:52px;background:var(--pan2);border:1px solid var(--line);border-radius:12px;padding:8px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.45)}
- .filtpop .op{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
- .filtpop .op:hover{background:rgba(255,255,255,.06)}
+ /* Menú de etiquetas y de filtros: ventanita CENTRADA en la pantalla, con fondo oscurecido */
+ .etiqpop,.filtpop{display:none;position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.55);
+   backdrop-filter:blur(2px);align-items:center;justify-content:center}
+ .etiqpop.on,.filtpop.on{display:flex}
+ .etiqpop .caja,.filtpop .caja{background:var(--pan2);border:1px solid var(--line);border-radius:16px;
+   padding:16px;min-width:300px;box-shadow:0 24px 60px rgba(0,0,0,.6);animation:etpop .13s ease-out}
+ @keyframes etpop{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+ .etiqpop h4,.filtpop h4{margin:2px 4px 12px;font-size:14px;font-weight:800;color:var(--txt);letter-spacing:.2px}
+ .etiqpop .op,.filtpop .op{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;
+   cursor:pointer;font-size:13.5px;font-weight:700;white-space:nowrap;color:var(--txt);transition:background .12s}
+ .etiqpop .op:hover,.filtpop .op:hover{background:rgba(255,255,255,.08)}
+ .etiqpop .op.sel,.filtpop .op.sel{background:rgba(255,255,255,.10);outline:1px solid var(--line)}
+ .etiqpop .bola,.filtpop .bola{width:18px;height:18px;border-radius:50%;flex:none;box-shadow:0 0 0 2px rgba(255,255,255,.10)}
+ .etiqpop .cnt,.filtpop .cnt{margin-left:auto;font-size:12px;font-weight:800;color:var(--txt2);
+   background:rgba(255,255,255,.07);border-radius:10px;padding:1px 8px}
  .chat.vta{border-left:3px solid #0b5d43;background:rgba(11,93,67,.10)}
  .okbtn{margin-left:10px;background:#3a1f22;color:#ffc9c9;border:1px solid #7a3a3f;border-radius:7px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
  .okbtn:hover{background:#4d2a2e}
@@ -18046,37 +18054,43 @@ var ETIQS=[['transferencia','TRANSFERENCIA','#0b5d43'],['problema_envio','PROBLE
 var FILTRO='';           // '' = todas
 function etiqDe(k){ for(var i=0;i<ETIQS.length;i++){ if(ETIQS[i][0]===k) return ETIQS[i]; } return null; }
 function setVista(v){ VISTA=v; renderList(); }
+function cerrarPops(){ ['etiqPop','filtPop'].forEach(function(id){ var x=document.getElementById(id); if(x)x.classList.remove('on'); }); }
 function openFiltros(ev){
  if(ev) ev.stopPropagation();
  var p=document.getElementById('filtPop'); if(!p)return;
- if(p.style.display==='block'){ p.style.display='none'; return; }
- var h='<div class="op" onclick="setFiltro(\\'\\')"><span class="bola" style="background:var(--txt2)"></span>Todas</div>';
+ if(p.classList.contains('on')){ cerrarPops(); return; }
+ var h='<div class="caja" onclick="event.stopPropagation()"><h4>Filtrar por etiqueta</h4>'
+  +'<div class="op'+(FILTRO?'':' sel')+'" onclick="setFiltro(\\'\\')"><span class="bola" style="background:linear-gradient(135deg,#0b5d43,#b06000,#6b3fa0,#b3261e)"></span>Todas'
+  +'<span class="cnt">'+CHATS.filter(function(c){return VISTA==='avisos'?c.aviso:!c.aviso;}).length+'</span></div>';
  ETIQS.forEach(function(e){
   var n=CHATS.filter(function(c){return c.etiqueta===e[0];}).length;
-  h+='<div class="op" onclick="setFiltro(\\''+e[0]+'\\')"><span class="bola" style="background:'+e[2]+'"></span>'+e[1]+(n?' ('+n+')':'')+'</div>';
+  h+='<div class="op'+(FILTRO===e[0]?' sel':'')+'" onclick="setFiltro(\\''+e[0]+'\\')"><span class="bola" style="background:'+e[2]+'"></span>'+e[1]+'<span class="cnt">'+n+'</span></div>';
  });
- p.innerHTML=h; p.style.display='block';
+ p.innerHTML=h+'</div>'; p.classList.add('on');
 }
-function setFiltro(k){ FILTRO=k; var p=document.getElementById('filtPop'); if(p)p.style.display='none'; renderList(); }
+function setFiltro(k){ FILTRO=k; cerrarPops(); renderList(); }
 function openEtiq(ev){
  if(ev) ev.stopPropagation();
  if(!SEL){ alert('Eleg\\u00ed un chat primero'); return; }
  var p=document.getElementById('etiqPop'); if(!p)return;
- if(p.style.display==='block'){ p.style.display='none'; return; }
- var h='';
- ETIQS.forEach(function(e){ h+='<div class="op" onclick="ponerEtiq(\\''+e[0]+'\\')"><span class="bola" style="background:'+e[2]+'"></span>'+e[1]+'</div>'; });
- h+='<div class="op" onclick="ponerEtiq(\\'\\')"><span class="bola" style="background:transparent;border:1px solid var(--line)"></span>Sin etiqueta</div>';
- p.innerHTML=h; p.style.display='block';
+ if(p.classList.contains('on')){ cerrarPops(); return; }
+ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0]||{};
+ var h='<div class="caja" onclick="event.stopPropagation()"><h4>Etiqueta de este chat</h4>';
+ ETIQS.forEach(function(e){ h+='<div class="op'+(c.etiqueta===e[0]?' sel':'')+'" onclick="ponerEtiq(\\''+e[0]+'\\')"><span class="bola" style="background:'+e[2]+'"></span>'+e[1]+'</div>'; });
+ h+='<div class="op'+(c.etiqueta?'':' sel')+'" onclick="ponerEtiq(\\'\\')"><span class="bola" style="background:transparent;box-shadow:0 0 0 2px var(--line)"></span>Sin etiqueta</div>';
+ p.innerHTML=h+'</div>'; p.classList.add('on');
 }
 function ponerEtiq(k){
- var p=document.getElementById('etiqPop'); if(p)p.style.display='none';
+ cerrarPops();
  post('/wa-etiqueta',{wa_id:SEL,etiqueta:k}).then(function(r){
   if(!r.ok){ alert('No se pudo asignar: '+(r.msg||'error')); return; }
   var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0]; if(c){ c.etiqueta=k; renderConv(c); }
   renderList();
  });
 }
-document.addEventListener('click',function(){ ['etiqPop','filtPop'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; }); });
+// Cerrar: clic en el fondo oscuro (la cajita frena el clic) o tecla Escape.
+document.addEventListener('click',cerrarPops);
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') cerrarPops(); });
 function pintarVista(){
  var nA=CHATS.filter(function(c){return c.aviso;}).length;
  var nC=CHATS.length-nA, sel='var(--teal)', off='transparent';
