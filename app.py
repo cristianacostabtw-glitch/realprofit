@@ -17745,6 +17745,8 @@ _WA_PAGE = """<!doctype html>
  <span class="lg"><svg viewBox="0 0 24 24" fill="#fff"><path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.51 5.26l-.999 3.648 3.743-.977zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.148-.669.149-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg> WhatsApp</span>
  <div id="wechan" style="display:inline-flex;gap:3px;margin-left:10px;background:var(--pan2);border:1px solid var(--line);border-radius:11px;padding:3px;flex:none">
   <button id="chApi" onclick="showApi()" title="API oficial (Cloud)" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:var(--teal);color:#fff">&#128241; API</button>
+  <button id="chChats" onclick="setVista('chats')" title="Conversaciones reales" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:var(--teal);color:#fff">&#128172; Chats</button>
+  <button id="chAvisos" onclick="setVista('avisos')" title="Chats donde lo último que se mandó es una plantilla (seguimientos). Vuelven a Chats cuando la persona contesta." style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:transparent;color:var(--txt2)">&#128227; Avisos</button>
  </div>
  <div class="navtabs" id="navtabs">
   <button id="bChats" class="tab" style="display:none" onclick="waTab('chats')">&#128172; Chats</button>
@@ -17968,11 +17970,27 @@ function loadChats(){
  });
 }
 function updateTitle(){ var n=0; CHATS.forEach(function(c){ n+=(c.unread||0); }); document.title=(n>0?'('+n+') ':'')+'WhatsApp \\u2014 RealProfit'; }
+// VISTA: 'chats' = conversaciones reales | 'avisos' = chats cuyo ÚLTIMO mensaje es una plantilla
+// nuestra. Es sólo un filtro de pantalla: no se archiva ni se borra nada, y el bot sigue igual.
+var VISTA='chats';
+function setVista(v){ VISTA=v; renderList(); }
+function pintarVista(){
+ var nA=CHATS.filter(function(c){return c.aviso;}).length;
+ var nC=CHATS.length-nA, sel='var(--teal)', off='transparent';
+ var bC=document.getElementById('chChats'), bA=document.getElementById('chAvisos');
+ if(bC){ bC.style.background=(VISTA==='chats')?sel:off; bC.style.color=(VISTA==='chats')?'#fff':'var(--txt2)';
+         bC.innerHTML='\\uD83D\\uDCAC Chats'+(nC?' '+nC:''); }
+ if(bA){ bA.style.background=(VISTA==='avisos')?sel:off; bA.style.color=(VISTA==='avisos')?'#fff':'var(--txt2)';
+         bA.innerHTML='\\uD83D\\uDCE3 Avisos'+(nA?' '+nA:''); }
+}
 function renderList(){
  var q=(val('q')||'').toLowerCase();
  var box=document.getElementById('chats'); if(!box)return;
  var arr=CHATS.filter(function(c){ return !q || (c.name||'').toLowerCase().indexOf(q)>=0 || (c.wa_id||'').indexOf(q)>=0; });
- if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.</div>'; return; }
+ // Con el buscador escrito se busca en TODO (chats y avisos), para que no se pierda nadie.
+ if(!q) arr=arr.filter(function(c){ return VISTA==='avisos' ? !!c.aviso : !c.aviso; });
+ pintarVista();
+ if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">'+(VISTA==='avisos'?'No hay avisos sin respuesta.<br>Acá caen los chats donde lo último que se mandó fue una plantilla.':'Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.')+'</div>'; return; }
  box.innerHTML=arr.map(function(c){
   // La TRANSFERENCIA A CARGAR gana sobre el URGENTE: si el bot ya validó el comprobante y están
   // los datos, ese chat no es un reclamo esperando atención, es una venta esperando que la carguen.
@@ -19667,6 +19685,17 @@ def wa_chats():
         # Se revalida ACÁ además de al marcar: así una marca vieja o mal puesta (típico: una compra
         # de checkout, que ya tiene su pedido hecho por Shopify) deja de mostrar el botón sola, sin
         # tener que salir a corregir wa_chats.json a mano.
+        # AVISOS: si lo último que pasó en el chat es una PLANTILLA nuestra (seguimiento, carrito),
+        # el chat va a la pestaña Avisos y NO ensucia la lista real. Vuelve a Chats apenas la
+        # persona conteste algo después de esa plantilla. Motivo: un envío masivo de 140 seguimientos
+        # empujaba 122 chats nuevos arriba de todo y tapaba las conversaciones de verdad (18/09/2026).
+        _avi = False
+        for _m in reversed(apimsgs):
+            if _m.get("dir") == "in":
+                break                      # contestó después de la plantilla -> es un chat normal
+            if _m.get("type") == "template":
+                _avi = True
+                break
         _vta = (bool(conv.get("pend_pedido")) and not conv.get("pedido_shopify")
                 and not _wa_es_checkout((conv.get("pend_pedido") or {}).get("monto"),
                                         (conv.get("pend_pedido") or {}).get("medio")))
@@ -19680,6 +19709,9 @@ def wa_chats():
                     "venta": bool(_vta),
 
                     "nomarca": conv.get("comp_nomarca") or {},
+
+
+                    "aviso": bool(_avi),
                     "messages": apimsgs[-300:]})
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
