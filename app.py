@@ -17015,6 +17015,29 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                                "medio": str(_comp.get("medio") or ""),
                                "ts": _wa_now()}
 
+    # ANTI-DOBLE RESPUESTA: si el cliente manda 2 cosas seguidas (foto + texto), entran 2 webhooks
+    # y cada uno llama al cerebro por separado -> contestaba DOS VECES casi lo mismo (18/09/2026,
+    # chat "Lic. Hector Carola": imagen y texto a las 19:45 -> dos mensajes con los mismos precios).
+    # Antes de mandar se relee el chat del disco: si YA hay respuesta del bot posterior a este
+    # entrante, o si entró un mensaje MÁS NUEVO (lo contesta esa otra llamada, con más contexto),
+    # este envío se cancela.
+    _dup = False
+    try:
+        _ts_in = last_in.get("ts") or ""
+        _m2 = ((_wa_chats_all().get(email) or {}).get(wid) or {}).get("messages") or []
+        for _x in reversed(_m2):
+            _t = _x.get("ts") or ""
+            if _t <= _ts_in:
+                break
+            if _x.get("dir") == "out" and _x.get("by") == "bot":
+                _dup = True; break          # otra llamada ya contestó
+            if _x.get("dir") == "in":
+                _dup = True; break          # llegó algo más nuevo: contesta la otra llamada
+    except Exception:
+        _dup = False
+    if _dup:
+        _wa_save_chats(chats)
+        return
     if (not _mudo) and d.get("responder") and (d.get("mensaje") or "").strip():
         msg = d["mensaje"].strip()
         if conf.get("bot_mode", "auto") == "draft":
