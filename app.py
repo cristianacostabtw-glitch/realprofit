@@ -17044,6 +17044,39 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     _wa_save_chats(chats)
 
 
+_WA_ETIQ = {                      # etiquetas de color por chat (las pone el bot o atención)
+    "transferencia":    {"txt": "TRANSFERENCIA",    "col": "#0b5d43"},
+    "problema_envio":   {"txt": "PROBLEMA ENVÍO",   "col": "#b06000"},
+    "problema_producto": {"txt": "PROBLEMA PRODUCTO", "col": "#6b3fa0"},
+    "reclamo_mp":       {"txt": "RECLAMO MP",       "col": "#b3261e"},
+}
+
+
+@app.post("/wa-etiqueta")
+def wa_etiqueta():
+    """Asigna (o saca) la etiqueta de color de un chat. La usa atención desde el botón
+    'Etiqueta' y también el bot cuando detecta el caso. Sirve para filtrar la lista."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    wid = (request.form.get("wa_id") or "").strip()
+    et = (request.form.get("etiqueta") or "").strip().lower()
+    if not wid:
+        return jsonify({"ok": False, "msg": "falta el chat"})
+    if et and et not in _WA_ETIQ:
+        return jsonify({"ok": False, "msg": "etiqueta desconocida"})
+    chats = _wa_chats_all()
+    conv = (chats.get(email) or {}).get(wid)
+    if conv is None:
+        return jsonify({"ok": False, "msg": "no encontré ese chat"})
+    if et:
+        conv["etiqueta"] = et
+    else:
+        conv.pop("etiqueta", None)          # sin etiqueta = se saca
+    _wa_save_chats(chats)
+    return jsonify({"ok": True, "etiqueta": et})
+
+
 @app.post("/wa-resolver")
 def wa_resolver():
     """Saca el URGENTE / DERIVADO A ATENCION de un chat: lo aprieta el que lo resolvio.
@@ -17698,6 +17731,15 @@ _WA_PAGE = """<!doctype html>
  .pedbtn.man:hover{color:var(--ink);border-color:var(--teal)}
  .pedbtn:hover{filter:brightness(1.08)}
  .vtachip{background:#0b5d43;color:#7ff0c4;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
+ .etchip{color:#fff;border-radius:6px;padding:2px 7px;font-size:10px;font-weight:800;letter-spacing:.4px;margin-right:6px;vertical-align:middle;white-space:nowrap}
+ .etdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;flex:none}
+ .etiqpop{display:none;position:absolute;right:14px;top:56px;background:var(--pan2);border:1px solid var(--line);border-radius:12px;padding:10px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+ .etiqpop .op{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+ .etiqpop .op:hover{background:rgba(255,255,255,.06)}
+ .etiqpop .bola{width:16px;height:16px;border-radius:50%;flex:none}
+ .filtpop{display:none;position:absolute;left:14px;top:52px;background:var(--pan2);border:1px solid var(--line);border-radius:12px;padding:8px;z-index:60;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+ .filtpop .op{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+ .filtpop .op:hover{background:rgba(255,255,255,.06)}
  .chat.vta{border-left:3px solid #0b5d43;background:rgba(11,93,67,.10)}
  .okbtn{margin-left:10px;background:#3a1f22;color:#ffc9c9;border:1px solid #7a3a3f;border-radius:7px;padding:3px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
  .okbtn:hover{background:#4d2a2e}
@@ -17747,6 +17789,8 @@ _WA_PAGE = """<!doctype html>
   <button id="chApi" onclick="showApi()" title="API oficial (Cloud)" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:var(--teal);color:#fff">&#128241; API</button>
   <button id="chChats" onclick="setVista('chats')" title="Conversaciones reales" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:var(--teal);color:#fff">&#128172; Chats</button>
   <button id="chAvisos" onclick="setVista('avisos')" title="Chats donde lo último que se mandó es una plantilla (seguimientos). Vuelven a Chats cuando la persona contesta." style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:transparent;color:var(--txt2)">&#128227; Avisos</button>
+  <button id="chFiltros" onclick="openFiltros(event)" title="Filtrar por etiqueta" style="border:0;border-radius:9px;padding:6px 13px;font-weight:800;cursor:pointer;font-size:12.5px;white-space:nowrap;background:transparent;color:var(--txt2)">&#9781; Filtros</button>
+  <div id="filtPop" class="filtpop"></div>
  </div>
  <div class="navtabs" id="navtabs">
   <button id="bChats" class="tab" style="display:none" onclick="waTab('chats')">&#128172; Chats</button>
@@ -17973,7 +18017,43 @@ function updateTitle(){ var n=0; CHATS.forEach(function(c){ n+=(c.unread||0); })
 // VISTA: 'chats' = conversaciones reales | 'avisos' = chats cuyo ÚLTIMO mensaje es una plantilla
 // nuestra. Es sólo un filtro de pantalla: no se archiva ni se borra nada, y el bot sigue igual.
 var VISTA='chats';
+// ETIQUETAS: las asigna atención (botón Etiqueta) o el bot. Sirven para filtrar la lista.
+var ETIQS=[['transferencia','TRANSFERENCIA','#0b5d43'],['problema_envio','PROBLEMA ENV\\u00cdO','#b06000'],
+           ['problema_producto','PROBLEMA PRODUCTO','#6b3fa0'],['reclamo_mp','RECLAMO MP','#b3261e']];
+var FILTRO='';           // '' = todas
+function etiqDe(k){ for(var i=0;i<ETIQS.length;i++){ if(ETIQS[i][0]===k) return ETIQS[i]; } return null; }
 function setVista(v){ VISTA=v; renderList(); }
+function openFiltros(ev){
+ if(ev) ev.stopPropagation();
+ var p=document.getElementById('filtPop'); if(!p)return;
+ if(p.style.display==='block'){ p.style.display='none'; return; }
+ var h='<div class="op" onclick="setFiltro(\\'\\')"><span class="bola" style="background:var(--txt2)"></span>Todas</div>';
+ ETIQS.forEach(function(e){
+  var n=CHATS.filter(function(c){return c.etiqueta===e[0];}).length;
+  h+='<div class="op" onclick="setFiltro(\\''+e[0]+'\\')"><span class="bola" style="background:'+e[2]+'"></span>'+e[1]+(n?' ('+n+')':'')+'</div>';
+ });
+ p.innerHTML=h; p.style.display='block';
+}
+function setFiltro(k){ FILTRO=k; var p=document.getElementById('filtPop'); if(p)p.style.display='none'; renderList(); }
+function openEtiq(ev){
+ if(ev) ev.stopPropagation();
+ if(!SEL){ alert('Eleg\\u00ed un chat primero'); return; }
+ var p=document.getElementById('etiqPop'); if(!p)return;
+ if(p.style.display==='block'){ p.style.display='none'; return; }
+ var h='';
+ ETIQS.forEach(function(e){ h+='<div class="op" onclick="ponerEtiq(\\''+e[0]+'\\')"><span class="bola" style="background:'+e[2]+'"></span>'+e[1]+'</div>'; });
+ h+='<div class="op" onclick="ponerEtiq(\\'\\')"><span class="bola" style="background:transparent;border:1px solid var(--line)"></span>Sin etiqueta</div>';
+ p.innerHTML=h; p.style.display='block';
+}
+function ponerEtiq(k){
+ var p=document.getElementById('etiqPop'); if(p)p.style.display='none';
+ post('/wa-etiqueta',{wa_id:SEL,etiqueta:k}).then(function(r){
+  if(!r.ok){ alert('No se pudo asignar: '+(r.msg||'error')); return; }
+  var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0]; if(c){ c.etiqueta=k; renderConv(c); }
+  renderList();
+ });
+}
+document.addEventListener('click',function(){ ['etiqPop','filtPop'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; }); });
 function pintarVista(){
  var nA=CHATS.filter(function(c){return c.aviso;}).length;
  var nC=CHATS.length-nA, sel='var(--teal)', off='transparent';
@@ -17989,6 +18069,7 @@ function renderList(){
  var arr=CHATS.filter(function(c){ return !q || (c.name||'').toLowerCase().indexOf(q)>=0 || (c.wa_id||'').indexOf(q)>=0; });
  // SIEMPRE separadas, también buscando: un chat está en UNA sola pestaña, nunca en las dos.
  arr=arr.filter(function(c){ return VISTA==='avisos' ? !!c.aviso : !c.aviso; });
+ if(FILTRO) arr=arr.filter(function(c){ return c.etiqueta===FILTRO; });
  pintarVista();
  if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">'+(VISTA==='avisos'?'No hay avisos sin respuesta.<br>Acá caen los chats donde lo último que se mandó fue una plantilla.':'Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.')+'</div>'; return; }
  box.innerHTML=arr.map(function(c){
@@ -17996,7 +18077,10 @@ function renderList(){
   // los datos, ese chat no es un reclamo esperando atención, es una venta esperando que la carguen.
   var urg=c.venta?' vta':(c.urgente?' urg':'');
   var chip=c.venta?'<span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?'<span class="urgchip">URGENTE</span>':'');
-  return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'" onclick="openChat(\\''+c.wa_id+'\\')">'
+  var _e=etiqDe(c.etiqueta);
+  var _bd=_e?' style="border-left:3px solid '+_e[2]+'"':'';   // color de la etiqueta en la lista
+  if(_e) chip='<span class="etdot" style="background:'+_e[2]+'" title="'+_e[1]+'"></span>'+chip;
+  return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'"'+_bd+' onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
    +'<div class="lt">'+esc(c.last||'')+(c.unread>0?'<span style="float:right;background:var(--teal);color:#fff;border-radius:11px;min-width:20px;height:20px;line-height:20px;text-align:center;font-size:12px;font-weight:700;padding:0 6px">'+c.unread+'</span>':'')+'</div></div></div>';
@@ -18030,11 +18114,13 @@ function renderConv(c){
   }
   return '<div class="b '+side+'">'+esc(m.text)+mt+'</div>';
  }).join('');
- conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(c.venta?' <span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':''))+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
+ conv.innerHTML='<div class="chd"><div class="av">'+esc(ini(c.name))+'</div><div><div class="nm">'+esc(c.name||c.wa_id)+(function(){var e=etiqDe(c.etiqueta);return (e?' <span class="etchip" style="background:'+e[2]+'">'+e[1]+'</span>':'')})()+(c.venta?' <span class="vtachip">TRANSFERENCIA A CARGAR</span>':(c.urgente?' <span class="urgchip">DERIVADO A ATENCI&Oacute;N</span>':''))+'</div><div class="st">'+esc(c.wa_id)+'</div></div>'
   +'<div style="flex:1"></div>'
   +((c.urgente&&!c.venta)?'<button class="okbtn" onclick="resolverUrg()" title="Sacar el URGENTE: este caso ya est&aacute; resuelto">&#10003; Ya lo resolv&iacute;</button>':'')
+  +'<button class="pedbtn man" onclick="openEtiq(event)" title="Asignarle una etiqueta de color a este chat">&#127991;&#65039; Etiqueta</button>'
   +(c.venta?'<button class="pedbtn" onclick="openPedido()" title="El bot dio la transferencia por cerrada. Carg&aacute; el pedido en Shopify.">&#128722; Cargar pedido</button>'
-    :(c.pedido?'':'<button class="pedbtn man" onclick="openPedido()" title="Cargar a mano el pedido de este chat en Shopify">+ Cargar pedido</button>'))+'</div>'
+    :(c.pedido?'':'<button class="pedbtn man" onclick="openPedido()" title="Cargar a mano el pedido de este chat en Shopify">+ Cargar pedido</button>'))
+  +'<div id="etiqPop" class="etiqpop"></div></div>'
   +((c.urgente&&!c.venta)?'<div class="deriv">&#9888; DERIVADO A ATENCI&Oacute;N'+(c.motivo?' &mdash; '+esc(c.motivo):'')+'</div>':'')
   +'<div class="msgs" id="msgs">'+msgs+'</div>'
   +(win?'<div class="win">Pasaron +24h desde el último mensaje del cliente. Solo se puede mandar una <a onclick="openTpl()">plantilla aprobada</a>.</div>':'')
@@ -19712,6 +19798,10 @@ def wa_chats():
 
 
                     "aviso": bool(_avi),
+
+
+
+                    "etiqueta": conv.get("etiqueta") or "",
                     "messages": apimsgs[-300:]})
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
