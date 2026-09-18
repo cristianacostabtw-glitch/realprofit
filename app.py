@@ -16990,6 +16990,19 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                               "ese pago: " + _pago + ". Papel: " + _papel)
         _nota_post = ("⚠️ El bot lo derivó a vos: " + _pago + " y NO aparece pedido en Shopify ("
                       + _por + ")")
+    if _es_comp and not conv.get("pend_pedido") and not conv.get("pedido_shopify"):
+        # POR QUÉ no se marcó este comprobante. Queda guardado aparte porque bot_motivo lo pisa el
+        # mensaje siguiente, y sin esto no hay forma de saber por qué una transferencia no se marcó
+        # (Cristian, 18/09/2026: "algunas transferencias no las marca").
+        conv["comp_nomarca"] = {
+            "ts": _wa_now(), "monto": str(_comp.get("monto") or ""),
+            "medio": _medio, "papel": _papel[:80],
+            "titular_ok": bool(_comp.get("titular_ok")),
+            "dice_transferencia": bool(_dice_transf),
+            "le_pasamos_alias": bool(_paso_alias),
+            "parece_compra_web": bool(_compra_web),
+            "pedido_ya_existe": str((_ped_existe or {}).get("order_number") or ""),
+        }
     if (_es_comp and _comp.get("titular_ok") and _dice_transf and _paso_alias
             and not _compra_web and _medio != "tarjeta"
             and not conv.get("pedido_shopify")
@@ -19665,6 +19678,8 @@ def wa_chats():
                     "humano": _hum, "urgente": bool(_urg),
                     "pedido": conv.get("pedido_shopify", "") or "",
                     "venta": bool(_vta),
+
+                    "nomarca": conv.get("comp_nomarca") or {},
                     "messages": apimsgs[-300:]})
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
