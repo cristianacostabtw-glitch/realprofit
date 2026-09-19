@@ -16909,6 +16909,15 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # entrega como "document". Tambien cuenta la foto enviada "como archivo" (document con
     # mime image/*). Antes solo entraba type=="image" y todo lo demas quedaba sin mirar.
     imagenes = []
+    if last_in.get("type") == "video" and last_in.get("media_id"):
+        # VIDEO: se le saca un cuadro y va como imagen (si no, el bot decía "no logro verlo").
+        if last_in.get("canal") == "web":
+            _vd, _vm = _wa_web_media_bytes(email, last_in["media_id"])
+        else:
+            _vd, _vm = _wa_bot_media(conf, last_in["media_id"])
+        _fd, _fm = _wa_video_a_imagen(_vd) if _vd else (None, "")
+        if _fd:
+            imagenes.append((_fd, _fm))
     if last_in.get("type") in ("image", "document") and last_in.get("media_id"):
         if last_in.get("canal") == "web":
             data, mime = _wa_web_media_bytes(email, last_in["media_id"])
@@ -17203,6 +17212,37 @@ def _wa_comp_es_compra_web(comp) -> bool:
     if _re_and.search(_WA_TXT_COMPRA, txt):
         return True
     return medio == "tarjeta"
+
+
+def _wa_video_a_imagen(datos):
+    """Saca un CUADRO del video para que el cerebro lo PUEDA VER. WhatsApp entrega videos y el bot
+    contestaba 'me llegó el video pero no logro verlo' (19/09/2026, Carlos: mostraba un frasco de
+    OTRA marca y el bot lo tomó como reclamo nuestro). Usa el ffmpeg que ya viene con el paquete."""
+    import subprocess, tempfile, os as _o
+    exe = _ads_ffmpeg()
+    if not exe or not datos:
+        return None, ""
+    tin = tout = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(datos); tin = f.name
+        tout = tin + ".jpg"
+        subprocess.run([exe, "-y", "-loglevel", "error", "-ss", "1", "-i", tin,
+                        "-frames:v", "1", "-vf", "scale=720:-1", tout],
+                       timeout=25, capture_output=True)
+        if _o.path.exists(tout) and _o.path.getsize(tout) > 500:
+            with open(tout, "rb") as f:
+                return f.read(), "image/jpeg"
+    except Exception:
+        pass
+    finally:
+        for p in (tin, tout):
+            try:
+                if p:
+                    _o.remove(p)
+            except Exception:
+                pass
+    return None, ""
 
 
 def _wa_comp_dice_transferencia(comp) -> bool:
