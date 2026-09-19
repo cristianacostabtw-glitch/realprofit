@@ -16972,6 +16972,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     _msg_estado = _wa_msg_estado_pedido(_ped_existe) if _ped_existe else None
     if _ped_existe:
         conv["pedido_shopify"] = str(_ped_existe.get("order_number") or _ped_existe.get("name") or "").replace("#", "")
+        if conv.get("etiqueta") == "transferencia": conv.pop("etiqueta", None)   # ya cargado: se saca la etiqueta
         conv.pop("pend_pedido", None)
         conv["bot_motivo"] = ("Comprobante de un pedido que YA existe: #%s (%s). Papel: %s"
                               % (conv["pedido_shopify"], _ped_existe.get("fulfillment_status") or "sin despachar", _papel))
@@ -17141,6 +17142,7 @@ def wa_resolver():
     _ped = (request.form.get("pedido") or "").strip().lstrip("#")
     if _ped:
         conv["pedido_shopify"] = _ped
+        if conv.get("etiqueta") == "transferencia": conv.pop("etiqueta", None)
         conv.pop("pend_pedido", None)
         _wa_save_chats(chats)
         return jsonify({"ok": True, "pedido": _ped})
@@ -17625,6 +17627,7 @@ def wa_pedido_crear():
     conv = (chats.get(email) or {}).get(wid)
     if conv is not None:
         conv["pedido_shopify"] = num          # queda anotado -> no se carga dos veces
+        if conv.get("etiqueta") == "transferencia": conv.pop("etiqueta", None)   # cargado -> chau etiqueta
         conv.pop("pend_pedido", None)         # ya no está pendiente -> el botón desaparece del chat
         _wa_save_chats(chats)
     try:
@@ -19887,7 +19890,7 @@ def wa_chats():
 
 
 
-                    "etiqueta": conv.get("etiqueta") or "",
+                    "etiqueta": ("" if (conv.get("etiqueta") == "transferencia" and conv.get("pedido_shopify")) else (conv.get("etiqueta") or "")),
                     "messages": apimsgs[-300:]})
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
