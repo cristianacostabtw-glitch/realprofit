@@ -20643,6 +20643,42 @@ def wa_plantillas():
     return jsonify({"ok": True, "templates": out})
 
 
+@app.post("/wa-plantilla-crear")
+def wa_plantilla_crear():
+    """Crea una plantilla en Meta para que la aprueben. El texto va con {{1}}, {{2}}... y hay que
+    mandar un ejemplo de cada variable (Meta la rechaza sin ejemplo). Categorías: UTILITY (sobre un
+    pedido existente) o MARKETING. Queda 'PENDING' hasta que Meta la revisa."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    c = _wa_conf(email)
+    if not c or not c.get("waba_id"):
+        return jsonify({"ok": False, "msg": "Falta el WABA ID en Config"})
+    d = request.get_json(silent=True) or {}
+    nombre = (d.get("nombre") or "").strip().lower()
+    cuerpo = (d.get("cuerpo") or "").strip()
+    if not nombre or not cuerpo:
+        return jsonify({"ok": False, "msg": "faltan nombre o cuerpo"})
+    ejemplos = [str(x) for x in (d.get("ejemplos") or [])]
+    comp = {"type": "BODY", "text": cuerpo}
+    if ejemplos:
+        comp["example"] = {"body_text": [ejemplos]}
+    payload = {"name": nombre,
+               "language": (d.get("idioma") or WA_TPL_LANG),
+               "category": (d.get("categoria") or "UTILITY").upper(),
+               "components": [comp]}
+    try:
+        r = requests.post("%s/%s/message_templates" % (WA_GRAPH, c["waba_id"]),
+                          params={"access_token": c["token"]}, json=payload, timeout=25)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    if r.status_code >= 400:
+        return jsonify({"ok": False, "msg": ((j.get("error") or {}).get("error_user_msg")
+                                             or (j.get("error") or {}).get("message") or "error")[:200]})
+    return jsonify({"ok": True, "id": j.get("id"), "estado": j.get("status"), "categoria": j.get("category")})
+
+
 @app.post("/wa-plantilla-enviar")
 def wa_plantilla_enviar():
     email = _user_actual()
