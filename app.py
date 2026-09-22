@@ -1283,9 +1283,10 @@ _SOLO_DASH = r"""
     else if(p.key==='meta'){ b='<a href="#" onclick="rpMetaTokToggle();return false;" style="'+bs+'">&#9889; '+(window._rpMetaTokOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='tn'){ b='<a href="#" onclick="rpTnToggle();return false;" style="'+bs+'">&#9889; '+(window._rpTnOpen?'Cerrar':'Conectar')+'</a>'; }
-    else if(p.key==='tiktok'){ b=window._rpTkListo
-      ? '<a href="/conectar-tiktok" onclick="window.location.assign(\'/conectar-tiktok\');return false;" style="'+bs+'">&#9889; Conectar</a>'
-      : '<a href="#" onclick="alert(\'Falta que TikTok apruebe la app de RealProfit. Apenas la aprueben, este boton conecta tu cuenta de TikTok Ads en un click.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
+    else if(p.key==='tiktok'){ b='<a href="#" onclick="rpTkManToggle();return false;" style="'+ds+'">&#128200; '+(window._rpTkManOpen?'Cerrar':'Cargar gasto')+'</a>'
+      +(window._rpTkListo
+        ? '<a href="/conectar-tiktok" onclick="window.location.assign(\'/conectar-tiktok\');return false;" style="'+bs+'">&#9889; Conectar</a>'
+        : '<a href="#" onclick="alert(\'Falta que TikTok apruebe la app. Mientras tanto usa Cargar gasto: el Dashboard lo suma igual.\');return false;" style="'+bs+'">&#9889; Conectar</a>'); }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
@@ -1300,6 +1301,7 @@ _SOLO_DASH = r"""
    else if(p.key==='envialo' && window._rpEnvOpen && !window._rpEnv) panel=rpEnvPanel();
    else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
    else if(p.key==='tiktok' && window._rpTk) panel=rpTkPanel();
+   else if(p.key==='tiktok' && !window._rpTk && window._rpTkManOpen) panel=rpTkManPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
@@ -1339,6 +1341,41 @@ _SOLO_DASH = r"""
   if(window._rpMetaCuentas && !force){ rpMetaRender(window._rpMetaCuentas.cuentas, window._rpMetaCuentas.elegida); return; }
   fetch('/meta/cuentas').then(function(r){return r.json();}).then(function(j){ window._rpMetaCuentas={cuentas:(j&&j.cuentas)||[],elegida:j&&j.elegida}; rpMetaRender(window._rpMetaCuentas.cuentas, window._rpMetaCuentas.elegida); }).catch(function(){ var e=document.getElementById('rp-meta-cuentas'); if(e)e.innerHTML='<span style="color:#f87171;font-size:12px">No se pudieron cargar las cuentas.</span>'; }); };
  window.rpMetaSave=function(cid){ if(!cid)return; fetch('/meta/cuenta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:cid})}).then(function(r){return r.json();}).then(function(){ if(window._rpMetaCuentas)window._rpMetaCuentas.elegida=cid; rpMetaRender((window._rpMetaCuentas||{}).cuentas||[],cid); }).catch(function(){}); };
+ function rpTkManPanel(){ return ''
+  +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
+  +'<div style="color:#94a3b8;font-size:12.5px;margin-bottom:13px">Mientras TikTok aprueba la app, carg&aacute; ac&aacute; el gasto: el Dashboard lo suma igual a la inversi&oacute;n en ads, y el ROAS, el CPA y la ganancia ya lo cuentan.</div>'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">Lo r&aacute;pido: sub&iacute; el CSV del Ads Manager</div>'
+  +'<div style="color:#94a3b8;font-size:12px;margin:4px 0 8px">En TikTok: <b>Informes</b> &rarr; informe por d&iacute;a &rarr; <b>Descargar</b>. Carga todos los d&iacute;as de una.</div>'
+  +'<input type="file" id="rp-tk-csv" accept=".csv,text/csv" onchange="rpTkManCsv()" style="color:#cbd5e1;font-size:12.5px">'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-top:17px">O carg&aacute; un d&iacute;a suelto</div>'
+  +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:7px">'
+  +'<input type="date" id="rp-tk-fecha" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:8px 10px;font-size:13px">'
+  +'<input id="rp-tk-monto" placeholder="Gasto en $" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:8px 10px;font-size:13px;width:150px">'
+  +'<button onclick="rpTkManGuardar()" style="background:#137fec;color:#fff;border:none;border-radius:8px;padding:9px 17px;font-weight:700;font-size:13px;cursor:pointer">Guardar</button>'
+  +'</div>'
+  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:6px">Para borrar un d&iacute;a mal cargado, guardalo de nuevo con monto 0.</div>'
+  +'<div id="rp-tk-man-msg" style="font-size:12.5px;margin-top:11px"></div>'
+  +'<div id="rp-tk-man-lista" style="margin-top:13px"></div>'
+  +'</div>'; }
+ function rpTkManMsg(t,ok){ var e=document.getElementById('rp-tk-man-msg'); if(e){ e.style.color=ok?'#34d399':'#f87171'; e.innerHTML=t; } }
+ window.rpTkManToggle=function(){ window._rpTkManOpen=!window._rpTkManOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); if(window._rpTkManOpen) rpTkManPintar(); };
+ window.rpTkManPintar=function(){ fetch('/tiktok/gasto').then(function(r){return r.json();}).then(function(j){
+   var e=document.getElementById('rp-tk-man-lista'); if(!e)return; var d=(j&&j.dias)||[];
+   if(!d.length){ e.innerHTML='<span style="color:#94a3b8;font-size:12px">Todav&iacute;a no cargaste ning&uacute;n d&iacute;a.</span>'; return; }
+   var h='<div style="color:#94a3b8;font-size:12px;margin-bottom:6px">&Uacute;ltimos d&iacute;as cargados</div>';
+   d.forEach(function(x){ h+='<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #16212f;font-size:12.5px;color:#cbd5e1"><span>'+esc(x.fecha)+'</span><span style="font-weight:700">$ '+Number(x.monto).toLocaleString('es-AR')+'</span></div>'; });
+   e.innerHTML=h; }).catch(function(){}); };
+ window.rpTkManGuardar=function(){ var f=document.getElementById('rp-tk-fecha'), m=document.getElementById('rp-tk-monto'); if(!f||!m)return;
+  if(!f.value){ rpTkManMsg('Eleg&iacute; la fecha.',false); return; }
+  fetch('/tiktok/gasto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fecha:f.value,monto:m.value})})
+   .then(function(r){return r.json();}).then(function(j){ if(j&&j.ok){ rpTkManMsg('Guardado.',true); m.value=''; rpTkManPintar(); } else { rpTkManMsg((j&&j.error)||'No se pudo guardar.',false); } })
+   .catch(function(){ rpTkManMsg('No se pudo guardar.',false); }); };
+ window.rpTkManCsv=function(){ var i=document.getElementById('rp-tk-csv'); if(!i||!i.files||!i.files[0])return;
+  var fd=new FormData(); fd.append('csv',i.files[0]); rpTkManMsg('Leyendo el archivo...',true);
+  fetch('/tiktok/gasto-csv',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+   if(j&&j.ok){ rpTkManMsg('Listo: '+j.dias+' d&iacute;as cargados ('+esc(j.desde)+' a '+esc(j.hasta)+'), total $ '+Number(j.total).toLocaleString('es-AR'),true); rpTkManPintar(); }
+   else { rpTkManMsg((j&&j.error)||'No se pudo leer el archivo.',false); } })
+   .catch(function(){ rpTkManMsg('No se pudo subir el archivo.',false); }); };
  function rpTkPanel(){ return '<div style="border-top:1px solid #1e2b3d;padding:14px 17px;background:#0c1521"><div style="font-weight:700;color:#e2e8f0;font-size:12.5px;margin-bottom:8px">Cuenta publicitaria de TikTok <span style="color:#94a3b8;font-weight:400">(de ac&aacute; sale el gasto)</span></div><div id="rp-tk-cuentas" style="color:#94a3b8;font-size:12.5px">Cargando cuentas...</div></div>'; }
  function rpTkRender(cuentas,elegida){ var c=document.getElementById('rp-tk-cuentas'); if(!c)return;
   if(!cuentas.length){ c.innerHTML='<span style="color:#94a3b8;font-size:12px">No encontramos cuentas publicitarias en tu TikTok (revis&aacute; los permisos que diste).</span>'; return; }
@@ -11804,13 +11841,15 @@ def desconectar_tiktok():
 
 
 def _tiktok_spend_crudo(email, desde, hasta):
-    """Gasto de TikTok Ads del período EN LA MONEDA DE LA CUENTA. Devuelve (monto, moneda).
-    Sin conectar, sin cuenta elegida o con error => (0, "")."""
+    """Gasto de TikTok Ads del período EN LA MONEDA DE LA CUENTA.
+    Devuelve (monto, moneda, hubo_api). `hubo_api` dice si la API contestó de verdad — NO alcanza
+    con mirar la moneda, porque la consulta de moneda puede fallar aunque el gasto haya venido
+    bien, y ahí caeríamos al gasto cargado a mano tapando el número real."""
     tk = _tiktok_tokens().get(email) or {}
     token = tk.get("access_token")
     cuenta = str(tk.get("cuenta") or "").strip()
     if not token or not cuenta:
-        return 0.0, ""
+        return 0.0, "", False
     try:
         d = _tiktok_get("/report/integrated/get/", token,
                         {"advertiser_id": cuenta, "report_type": "BASIC",
@@ -11821,7 +11860,7 @@ def _tiktok_spend_crudo(email, desde, hasta):
         filas = d.get("list") or []
         monto = float((filas[0].get("metrics") or {}).get("spend") or 0) if filas else 0.0
     except Exception:
-        return 0.0, ""
+        return 0.0, "", False
     moneda = str(tk.get("moneda") or "").upper()
     if not moneda:                          # se pregunta UNA vez y queda guardada
         try:
@@ -11834,22 +11873,201 @@ def _tiktok_spend_crudo(email, desde, hasta):
                 _tiktok_save_token(email, tk)
         except Exception:
             pass
-    return monto, moneda
+    return monto, moneda, True
+
+
+# ---- Gasto CARGADO A MANO (mientras TikTok no apruebe la app) ----
+# TikTok exige un mail corporativo para registrarte como developer, y la aprobación tarda días.
+# Para no quedar ciego mientras tanto, el gasto se puede cargar a mano o subiendo el CSV que baja
+# el Ads Manager. Guardado POR DÍA y EN PESOS. Apenas la API esté conectada, MANDA LA API y esto
+# queda de respaldo solo: no hay que borrar nada ni apagar nada a mano.
+TIKTOK_MANUAL = DATA_DIR / "tiktok_gasto_manual.json"   # {email: {"YYYY-MM-DD": monto_ars}}
+_TK_MANUAL_LOCK = threading.Lock()
+
+
+def _tk_manual_all() -> dict:
+    try:
+        return _json.loads(TIKTOK_MANUAL.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _tk_manual_set(email, dias: dict) -> int:
+    """Guarda {fecha: monto} para ese usuario. Pisa los días que vengan, deja el resto.
+    Monto 0 o negativo BORRA el día (así se puede corregir una carga mal hecha)."""
+    with _TK_MANUAL_LOCK:
+        d = _tk_manual_all()
+        mio = d.get(email) or {}
+        for f, m in (dias or {}).items():
+            if m and float(m) > 0:
+                mio[f] = round(float(m), 2)
+            else:
+                mio.pop(f, None)
+        d[email] = mio
+        try:
+            TIKTOK_MANUAL.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            return 0
+    return len(dias or {})
+
+
+def _tk_manual_rango(email, desde, hasta) -> float:
+    """Suma lo cargado a mano entre dos fechas (inclusive). Las claves son YYYY-MM-DD, que se
+    comparan bien como texto, así que no hace falta parsear nada."""
+    mio = _tk_manual_all().get(email) or {}
+    d, h = str(desde)[:10], str(hasta)[:10]
+    return round(sum(float(v or 0) for f, v in mio.items() if d <= f <= h), 2)
+
+
+def _tk_num(s) -> float:
+    """Pasa a número un importe como lo escribe TikTok: '1.234,56' (es-AR), '1,234.56' (en-US),
+    '$ 1234', '1234'. Regla: si están los dos separadores, EL ÚLTIMO es el decimal."""
+    t = re.sub(r"[^0-9,.\-]", "", str(s or "")).strip()
+    if not t:
+        return 0.0
+    ult_c, ult_p = t.rfind(","), t.rfind(".")
+    if ult_c >= 0 and ult_p >= 0:
+        dec = "," if ult_c > ult_p else "."
+        mil = "." if dec == "," else ","
+        t = t.replace(mil, "").replace(dec, ".")
+    elif ult_c >= 0 or ult_p >= 0:
+        # Un solo tipo de separador y NO se sabe si es coma decimal o punto de miles. La regla que
+        # desempata es cuántos dígitos deja atrás: 1 o 2 => DECIMAL ('12,5' / '1234.56'); 3 => MILES
+        # ('1.234' en es-AR es mil doscientos treinta y cuatro, NO uno coma doscientos treinta y
+        # cuatro). Sin esto, un gasto de $1.234 entraba al Dashboard como $1,23.
+        sep = "," if ult_c >= 0 else "."
+        ult = ult_c if ult_c >= 0 else ult_p
+        if len(t) - ult - 1 in (1, 2):
+            t = t[:ult].replace(sep, "") + "." + t[ult + 1:]
+        else:
+            t = t.replace(sep, "")
+    try:
+        return float(t)
+    except ValueError:
+        return 0.0
+
+
+def _tk_fecha(s) -> str:
+    """Normaliza a YYYY-MM-DD. Acepta '2026-09-22', '22/09/2026' y '2026/09/22'.
+    Ojo: TikTok puede traer la fecha con la hora pegada, por eso el corte al principio."""
+    t = str(s or "").strip()[:10].replace("/", "-")
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", t)
+    if m:
+        return "%s-%02d-%02d" % (m.group(1), int(m.group(2)), int(m.group(3)))
+    m = re.match(r"^(\d{1,2})-(\d{1,2})-(\d{4})$", t)     # es-AR: día primero
+    if m:
+        return "%s-%02d-%02d" % (m.group(3), int(m.group(2)), int(m.group(1)))
+    return ""
+
+
+def _tk_csv_leer(texto):
+    """Lee el CSV que baja el Ads Manager de TikTok y devuelve {fecha: gasto}.
+    Busca las columnas por NOMBRE (en español o inglés) en vez de por posición, porque el orden
+    cambia según qué métricas hayas tildado al armar el reporte."""
+    import csv as _csv, io as _io
+    texto = (texto or "").lstrip("﻿")                 # los export de TikTok vienen con BOM
+    if not texto.strip():
+        return {}, "El archivo está vacío."
+    primera = texto.split("\n", 1)[0]
+    sep = ";" if primera.count(";") > primera.count(",") else ","
+    filas = list(_csv.DictReader(_io.StringIO(texto), delimiter=sep))
+    if not filas:
+        return {}, "No pude leer ninguna fila del archivo."
+    cols = [c for c in (filas[0].keys() or []) if c]
+    def _buscar(claves):
+        for c in cols:
+            n = c.strip().lower()
+            if any(k in n for k in claves):
+                return c
+        return None
+    c_fecha = _buscar(["fecha", "date", "día", "dia", "day"])
+    c_gasto = _buscar(["costo total", "total cost", "costo", "cost", "gasto", "spend", "importe"])
+    if not c_fecha or not c_gasto:
+        return {}, "No encontré las columnas de fecha y costo. Columnas del archivo: " + ", ".join(cols[:8])
+    dias = {}
+    for f in filas:
+        fe = _tk_fecha(f.get(c_fecha))
+        if not fe:
+            continue
+        dias[fe] = round(dias.get(fe, 0.0) + _tk_num(f.get(c_gasto)), 2)
+    if not dias:
+        return {}, "Leí el archivo pero ninguna fila tenía una fecha válida."
+    return dias, ""
+
+
+@app.get("/tiktok/gasto")
+def tiktok_gasto_ver():
+    """Los últimos días cargados a mano, para mostrarlos en la tarjeta."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "dias": []}), 401
+    mio = _tk_manual_all().get(email) or {}
+    dias = [{"fecha": f, "monto": v} for f, v in sorted(mio.items(), reverse=True)[:30]]
+    return jsonify({"ok": True, "dias": dias, "total": round(sum(d["monto"] for d in dias), 2)})
+
+
+@app.post("/tiktok/gasto")
+def tiktok_gasto_cargar():
+    """Carga a mano el gasto de UN día (en pesos). Monto 0 borra ese día."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Entrá a RealProfit primero."}), 401
+    j = request.get_json(silent=True) or {}
+    fecha = _tk_fecha(j.get("fecha"))
+    if not fecha:
+        return jsonify({"ok": False, "error": "Fecha inválida."}), 400
+    _tk_manual_set(email, {fecha: _tk_num(j.get("monto"))})
+    return jsonify({"ok": True, "fecha": fecha})
+
+
+@app.post("/tiktok/gasto-csv")
+def tiktok_gasto_csv():
+    """Sube el CSV del Ads Manager de TikTok y carga todos los días de una."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Entrá a RealProfit primero."}), 401
+    f = request.files.get("csv") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "error": "No llegó ningún archivo."}), 400
+    try:
+        crudo = f.read()
+        try:
+            texto = crudo.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            texto = crudo.decode("latin-1", "replace")     # Excel en Windows guarda así
+    except Exception as e:
+        return jsonify({"ok": False, "error": "No pude leer el archivo: %s" % str(e)[:120]}), 400
+    dias, err = _tk_csv_leer(texto)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    _tk_manual_set(email, dias)
+    return jsonify({"ok": True, "dias": len(dias),
+                    "total": round(sum(dias.values()), 2),
+                    "desde": min(dias), "hasta": max(dias)})
 
 
 def _tiktok_spend(email, desde, hasta) -> float:
-    """Gasto de TikTok del período EN PESOS (mismo criterio que _meta_spend)."""
-    monto, moneda = _tiktok_spend_crudo(email, desde, hasta)
-    if monto and moneda == "USD":
-        monto *= _dolar_ars_vivo()
-    # Mismo estabilizador que Meta (solo crece, compartido en disco entre workers), con su
-    # propia clave para NO pisar el número de Meta.
-    return _meta_spend_estable("tk:" + str(email), desde, hasta, monto)
+    """Gasto de TikTok del período EN PESOS (mismo criterio que _meta_spend).
+    Si la API está conectada MANDA LA API; si no, usa lo cargado a mano."""
+    monto, moneda, hubo_api = _tiktok_spend_crudo(email, desde, hasta)
+    if hubo_api:
+        if monto and moneda == "USD":            # moneda desconocida => se asume local, no se convierte
+            monto *= _dolar_ars_vivo()
+        # Mismo estabilizador que Meta (solo crece, compartido en disco entre workers), con su
+        # propia clave para NO pisar el número de Meta.
+        return _meta_spend_estable("tk:" + str(email), desde, hasta, monto)
+    # Sin API: lo cargado a mano. NO pasa por el estabilizador, porque acá sí tiene que poder
+    # BAJAR (si se corrige una carga mal hecha, el número nuevo manda).
+    return _tk_manual_rango(email, desde, hasta)
 
 
 def _tiktok_ads_usd(email, desde, hasta) -> float:
     """Gasto de TikTok del período EN DÓLARES (para la planilla de finanzas)."""
-    monto, moneda = _tiktok_spend_crudo(email, desde, hasta)
+    monto, moneda, hubo_api = _tiktok_spend_crudo(email, desde, hasta)
+    if not hubo_api:                             # sin API: lo cargado a mano, que está en pesos
+        monto, moneda = _tk_manual_rango(email, desde, hasta), "ARS"
+    elif not moneda:                             # API sí, moneda desconocida => se asume local
+        moneda = "ARS"
     if monto and moneda and moneda != "USD":
         tc = _dolar_ars_vivo() or 0
         monto = (monto / tc) if tc else 0.0
