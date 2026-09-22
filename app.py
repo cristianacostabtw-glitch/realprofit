@@ -1264,7 +1264,7 @@ _SOLO_DASH = r"""
   {key:'meli',logo:'meli',nm:'Mercado Libre',tag:'Ventas',desc:'Incluye tus ventas de marketplace en el calculo de beneficio.'},
   {key:'meta',logo:'meta',nm:'Meta Ads',tag:'Anuncios',desc:'Trae tus campanas de Facebook e Instagram Ads.'},
   {key:'gads',logo:'gads',nm:'Google Ads',tag:'Anuncios',desc:'Trae tus campanas de Google Ads (Search, Performance Max, Shopping).'},
-  {key:'tiktok',logo:'tiktok',nm:'TikTok Ads',tag:'Anuncios',desc:'Trae tus campanas de TikTok Ads para medir su rentabilidad real.',soon:true}
+  {key:'tiktok',logo:'tiktok',nm:'TikTok Ads',tag:'Anuncios',desc:'Trae tus campanas de TikTok Ads para medir su rentabilidad real.'}
  ];
  function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
  function chip(txt,color,bg,bd){return '<span style="display:inline-flex;align-items:center;gap:7px;background:'+bg+';border:1px solid '+bd+';color:'+color+';border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:'+color+'"></span>'+txt+'</span>';}
@@ -1273,9 +1273,9 @@ _SOLO_DASH = r"""
   var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
   var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli);
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; var etiqCon=(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; var etiqCon=(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='meli'){ b='<a href="/conectar-meli" onclick="window.location.assign(\'/conectar-meli\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -1283,6 +1283,9 @@ _SOLO_DASH = r"""
     else if(p.key==='meta'){ b='<a href="#" onclick="rpMetaTokToggle();return false;" style="'+bs+'">&#9889; '+(window._rpMetaTokOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='tn'){ b='<a href="#" onclick="rpTnToggle();return false;" style="'+bs+'">&#9889; '+(window._rpTnOpen?'Cerrar':'Conectar')+'</a>'; }
+    else if(p.key==='tiktok'){ b=window._rpTkListo
+      ? '<a href="/conectar-tiktok" onclick="window.location.assign(\'/conectar-tiktok\');return false;" style="'+bs+'">&#9889; Conectar</a>'
+      : '<a href="#" onclick="alert(\'Falta que TikTok apruebe la app de RealProfit. Apenas la aprueben, este boton conecta tu cuenta de TikTok Ads en un click.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
@@ -1296,10 +1299,12 @@ _SOLO_DASH = r"""
    else if(p.key==='meta' && !metaOn && window._rpMetaTokOpen) panel=rpMetaTokenPanel();
    else if(p.key==='envialo' && window._rpEnvOpen && !window._rpEnv) panel=rpEnvPanel();
    else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
+   else if(p.key==='tiktok' && window._rpTk) panel=rpTkPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
   if(metaOn){ try{ rpMetaLoad(); }catch(e){} }
+  if(window._rpTk){ try{ rpTkLoad(); }catch(e){} }
  }
  window.rpMetaTokToggle=function(){ window._rpMetaTokOpen=!window._rpMetaTokOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
  function rpMetaTokenPanel(){ return ''
@@ -1334,13 +1339,25 @@ _SOLO_DASH = r"""
   if(window._rpMetaCuentas && !force){ rpMetaRender(window._rpMetaCuentas.cuentas, window._rpMetaCuentas.elegida); return; }
   fetch('/meta/cuentas').then(function(r){return r.json();}).then(function(j){ window._rpMetaCuentas={cuentas:(j&&j.cuentas)||[],elegida:j&&j.elegida}; rpMetaRender(window._rpMetaCuentas.cuentas, window._rpMetaCuentas.elegida); }).catch(function(){ var e=document.getElementById('rp-meta-cuentas'); if(e)e.innerHTML='<span style="color:#f87171;font-size:12px">No se pudieron cargar las cuentas.</span>'; }); };
  window.rpMetaSave=function(cid){ if(!cid)return; fetch('/meta/cuenta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:cid})}).then(function(r){return r.json();}).then(function(){ if(window._rpMetaCuentas)window._rpMetaCuentas.elegida=cid; rpMetaRender((window._rpMetaCuentas||{}).cuentas||[],cid); }).catch(function(){}); };
+ function rpTkPanel(){ return '<div style="border-top:1px solid #1e2b3d;padding:14px 17px;background:#0c1521"><div style="font-weight:700;color:#e2e8f0;font-size:12.5px;margin-bottom:8px">Cuenta publicitaria de TikTok <span style="color:#94a3b8;font-weight:400">(de ac&aacute; sale el gasto)</span></div><div id="rp-tk-cuentas" style="color:#94a3b8;font-size:12.5px">Cargando cuentas...</div></div>'; }
+ function rpTkRender(cuentas,elegida){ var c=document.getElementById('rp-tk-cuentas'); if(!c)return;
+  if(!cuentas.length){ c.innerHTML='<span style="color:#94a3b8;font-size:12px">No encontramos cuentas publicitarias en tu TikTok (revis&aacute; los permisos que diste).</span>'; return; }
+  var h='<select onchange="rpTkSave(this.value)" style="background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:9px;padding:9px 12px;font-size:13px;min-width:280px;max-width:100%"><option value="">Eleg&iacute; una cuenta...</option>';
+  cuentas.forEach(function(a){ var sel=(String(a.id)===String(elegida))?' selected':''; h+='<option value="'+a.id+'"'+sel+'>'+esc(a.name)+' ('+a.id+(a.moneda?' &middot; '+esc(a.moneda):'')+')</option>'; });
+  h+='</select>'+(elegida?'<span style="color:#34d399;font-size:12px;margin-left:10px;font-weight:600">&#10003; guardada</span>':'');
+  c.innerHTML=h; }
+ window.rpTkLoad=function(force){ var c=document.getElementById('rp-tk-cuentas'); if(!c)return;
+  if(window._rpTkCuentas && !force){ rpTkRender(window._rpTkCuentas.cuentas, window._rpTkCuentas.elegida); return; }
+  fetch('/tiktok/cuentas').then(function(r){return r.json();}).then(function(j){ window._rpTkCuentas={cuentas:(j&&j.cuentas)||[],elegida:j&&j.elegida}; rpTkRender(window._rpTkCuentas.cuentas, window._rpTkCuentas.elegida); }).catch(function(){ var e=document.getElementById('rp-tk-cuentas'); if(e)e.innerHTML='<span style="color:#f87171;font-size:12px">No se pudieron cargar las cuentas.</span>'; }); };
+ window.rpTkSave=function(cid){ if(!cid)return; fetch('/tiktok/cuenta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:cid})}).then(function(r){return r.json();}).then(function(){ if(window._rpTkCuentas)window._rpTkCuentas.elegida=cid; rpTkRender((window._rpTkCuentas||{}).cuentas||[],cid); }).catch(function(){}); };
  function load(){ cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta);
   fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meta/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeta=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meli/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeli=!!(j&&j.conectado); window._rpMeliNick=(j&&j.nickname)||''; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
-  fetch('/tiendanube/estado').then(function(r){return r.json();}).then(function(j){ window._rpTn=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
+  fetch('/tiendanube/estado').then(function(r){return r.json();}).then(function(j){ window._rpTn=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/tiktok/estado').then(function(r){return r.json();}).then(function(j){ window._rpTk=!!(j&&j.conectado); window._rpTkListo=!!(j&&j.listo); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
  function rpShopPanel(){ var CB='https://www.realprofitapp.com/shopify/callback'; return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
@@ -11638,6 +11655,207 @@ def desconectar_meta():
     return redirect("/?integ=1")
 
 
+# ==================== TikTok Ads (conectar con un click) ====================
+# Mismo patrón que Meta: OAuth -> token -> cuenta publicitaria elegida -> gasto al Dashboard.
+# OJO, la diferencia con Meta: TikTok NO tiene "pegá tu token" tipo Graph Explorer. Sí o sí hay
+# que crear una app en business-api.tiktok.com/portal y que TikTok la apruebe. Cuando esté
+# aprobada, las 3 variables van en Render y esto anda solo:
+#   TIKTOK_APP_ID  /  TIKTOK_APP_SECRET  /  TIKTOK_REDIRECT_URI
+# El redirect_uri tiene que ser EXACTAMENTE el mismo que se cargó en la app de TikTok.
+TIKTOK_API = "https://business-api.tiktok.com/open_api/v1.3"
+TIKTOK_TOKENS = DATA_DIR / "tiktok_tokens.json"   # token + cuenta por usuario (persistente)
+
+
+def _tiktok_cfg() -> dict:
+    return {"app_id": (_os.getenv("TIKTOK_APP_ID") or "").strip(),
+            "app_secret": (_os.getenv("TIKTOK_APP_SECRET") or "").strip(),
+            "redirect_uri": ((_os.getenv("TIKTOK_REDIRECT_URI") or "").strip()
+                             or "https://www.realprofitapp.com/tiktok/callback")}
+
+
+def _tiktok_tokens() -> dict:
+    try:
+        return _json.loads(TIKTOK_TOKENS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _tiktok_save_token(key, data) -> None:
+    d = _tiktok_tokens()
+    d[str(key)] = data
+    TIKTOK_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _tiktok_get(ruta, token, params):
+    """GET a la API de TikTok. El token va en el header Access-Token (NO en la query, como Meta).
+    TikTok siempre devuelve HTTP 200: el error real viene en el campo 'code' del JSON."""
+    r = requests.get(TIKTOK_API + ruta, headers={"Access-Token": token}, params=params, timeout=30)
+    j = r.json() if r.content else {}
+    if int(j.get("code", -1)) != 0:
+        raise RuntimeError(str(j.get("message") or "TikTok devolvió un error")[:160])
+    return j.get("data") or {}
+
+
+@app.get("/conectar-tiktok")
+@limiter.limit("30 per hour")
+def conectar_tiktok():
+    """Manda al usuario a la pantalla oficial de TikTok for Business para autorizar sus Ads."""
+    if not _user_actual():
+        return redirect("/")
+    cfg = _tiktok_cfg()
+    if not cfg["app_id"]:
+        return ("Falta configurar el App ID de TikTok (variables en Render).", 400)
+    state = _secrets.token_urlsafe(16)
+    session["tiktok_state"] = state
+    qs = _url.urlencode({"app_id": cfg["app_id"], "state": state, "redirect_uri": cfg["redirect_uri"]})
+    return redirect("https://business-api.tiktok.com/portal/auth?" + qs, code=302)
+
+
+@app.get("/tiktok/callback")
+@limiter.limit("30 per hour")
+def tiktok_callback():
+    """TikTok vuelve con 'auth_code'. Lo cambiamos por el access_token (el de Marketing API no
+    vence) y guardamos las cuentas publicitarias que autorizó."""
+    cfg = _tiktok_cfg()
+    code = request.args.get("auth_code") or request.args.get("code")
+    state = request.args.get("state")
+    if not code:
+        return ("RealProfit — punto de conexión con TikTok. Volvé a la app y usá «Conectar».", 200)
+    if not state or state != session.get("tiktok_state"):
+        return ("La conexión no pasó el control de seguridad. Reintentá desde el botón.", 400)
+    try:
+        r = requests.post(TIKTOK_API + "/oauth2/access_token/",
+                          json={"app_id": cfg["app_id"], "secret": cfg["app_secret"],
+                                "auth_code": code, "grant_type": "authorization_code"}, timeout=30)
+        j = r.json() if r.content else {}
+    except Exception:
+        return ("No pudimos conectar con TikTok en este momento. Probá de nuevo.", 502)
+    data = j.get("data") or {}
+    if int(j.get("code", -1)) != 0 or not data.get("access_token"):
+        return ("TikTok no autorizó la conexión: %s" % str(j.get("message") or "")[:140], 400)
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    ids = [str(x) for x in (data.get("advertiser_ids") or [])]
+    _tiktok_save_token(email, {"access_token": data["access_token"], "advertisers": ids,
+                               "cuenta": ids[0] if len(ids) == 1 else None})
+    session.pop("tiktok_state", None)
+    return redirect("/?integ=1", code=302)
+
+
+@app.get("/tiktok/estado")
+def tiktok_estado():
+    email = _user_actual()
+    tk = _tiktok_tokens().get(email) if email else None
+    return jsonify({"ok": True, "conectado": bool(tk and tk.get("access_token")),
+                    "cuenta": (tk or {}).get("cuenta"),
+                    "listo": bool(_tiktok_cfg()["app_id"])})
+
+
+@app.get("/tiktok/cuentas")
+def tiktok_cuentas():
+    """Las cuentas publicitarias que el usuario autorizó, con nombre y moneda."""
+    email = _user_actual()
+    tk = _tiktok_tokens().get(email) if email else None
+    if not tk or not tk.get("access_token"):
+        return jsonify({"ok": True, "cuentas": [], "elegida": None})
+    ids = [str(x) for x in (tk.get("advertisers") or [])]
+    cuentas = []
+    if ids:
+        try:
+            d = _tiktok_get("/advertiser/info/", tk["access_token"],
+                            {"advertiser_ids": _json.dumps(ids),
+                             "fields": _json.dumps(["advertiser_id", "advertiser_name", "currency"])})
+            for a in (d.get("list") or []):
+                cuentas.append({"id": str(a.get("advertiser_id")),
+                                "name": a.get("advertiser_name") or ("Cuenta " + str(a.get("advertiser_id"))),
+                                "moneda": a.get("currency")})
+        except Exception:
+            cuentas = [{"id": i, "name": "Cuenta " + i, "moneda": ""} for i in ids]
+    return jsonify({"ok": True, "cuentas": cuentas, "elegida": tk.get("cuenta")})
+
+
+@app.post("/tiktok/cuenta")
+def tiktok_elegir_cuenta():
+    """Guarda cuál cuenta publicitaria de TikTok mira este usuario (de ahí sale el gasto)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Entrá a RealProfit primero."}), 401
+    cid = str((request.get_json(silent=True) or {}).get("cuenta") or "").strip()
+    if not cid:
+        return jsonify({"ok": False, "error": "Elegí una cuenta."}), 400
+    tk = _tiktok_tokens().get(email) or {}
+    if not tk.get("access_token"):
+        return jsonify({"ok": False, "error": "Conectá TikTok primero."}), 400
+    tk["cuenta"] = cid
+    tk.pop("moneda", None)                 # cuenta nueva => moneda a recalcular
+    _tiktok_save_token(email, tk)
+    return jsonify({"ok": True})
+
+
+@app.get("/desconectar-tiktok")
+def desconectar_tiktok():
+    email = _user_actual()
+    if email:
+        d = _tiktok_tokens()
+        d.pop(email, None)
+        TIKTOK_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    return redirect("/?integ=1")
+
+
+def _tiktok_spend_crudo(email, desde, hasta):
+    """Gasto de TikTok Ads del período EN LA MONEDA DE LA CUENTA. Devuelve (monto, moneda).
+    Sin conectar, sin cuenta elegida o con error => (0, "")."""
+    tk = _tiktok_tokens().get(email) or {}
+    token = tk.get("access_token")
+    cuenta = str(tk.get("cuenta") or "").strip()
+    if not token or not cuenta:
+        return 0.0, ""
+    try:
+        d = _tiktok_get("/report/integrated/get/", token,
+                        {"advertiser_id": cuenta, "report_type": "BASIC",
+                         "data_level": "AUCTION_ADVERTISER",
+                         "dimensions": _json.dumps(["advertiser_id"]),
+                         "metrics": _json.dumps(["spend"]),
+                         "start_date": desde, "end_date": hasta, "page_size": 1})
+        filas = d.get("list") or []
+        monto = float((filas[0].get("metrics") or {}).get("spend") or 0) if filas else 0.0
+    except Exception:
+        return 0.0, ""
+    moneda = str(tk.get("moneda") or "").upper()
+    if not moneda:                          # se pregunta UNA vez y queda guardada
+        try:
+            info = _tiktok_get("/advertiser/info/", token,
+                               {"advertiser_ids": _json.dumps([cuenta]),
+                                "fields": _json.dumps(["advertiser_id", "currency"])})
+            moneda = str(((info.get("list") or [{}])[0] or {}).get("currency") or "").upper()
+            if moneda:
+                tk["moneda"] = moneda
+                _tiktok_save_token(email, tk)
+        except Exception:
+            pass
+    return monto, moneda
+
+
+def _tiktok_spend(email, desde, hasta) -> float:
+    """Gasto de TikTok del período EN PESOS (mismo criterio que _meta_spend)."""
+    monto, moneda = _tiktok_spend_crudo(email, desde, hasta)
+    if monto and moneda == "USD":
+        monto *= _dolar_ars_vivo()
+    # Mismo estabilizador que Meta (solo crece, compartido en disco entre workers), con su
+    # propia clave para NO pisar el número de Meta.
+    return _meta_spend_estable("tk:" + str(email), desde, hasta, monto)
+
+
+def _tiktok_ads_usd(email, desde, hasta) -> float:
+    """Gasto de TikTok del período EN DÓLARES (para la planilla de finanzas)."""
+    monto, moneda = _tiktok_spend_crudo(email, desde, hasta)
+    if monto and moneda and moneda != "USD":
+        tc = _dolar_ars_vivo() or 0
+        monto = (monto / tc) if tc else 0.0
+    return round(monto, 2)
+
+
 # ==================== SUBIR CREATIVOS (Meta Ads) ====================
 _ADS_API = "https://graph.facebook.com/v23.0"
 _ADS_JOBS = {}
@@ -12235,6 +12453,16 @@ def _fin_hoy_ar():
 
 
 def _fin_ads_usd(email, desde, hasta) -> float:
+    """Gasto REAL de ADS en USD del período: Meta (todas las cuentas) + TikTok."""
+    total = _fin_ads_usd_meta(email, desde, hasta)
+    try:
+        total += _tiktok_ads_usd(email, desde, hasta)
+    except Exception:
+        pass
+    return round(total, 2)
+
+
+def _fin_ads_usd_meta(email, desde, hasta) -> float:
     """Gasto REAL de Meta en USD del período, SUMANDO todas las cuentas de la tienda (CP1 + CP2).
     Ojo: _meta_spend devuelve ARS (convierte con el dólar vivo). Acá va el USD crudo porque la
     planilla lo pasa a pesos sola (columna ADS ARS = ADS USD × T.C de D3)."""
@@ -13676,6 +13904,10 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         blob["raw"]["dolar"] = 1200
     # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
     spend = _meta_spend(email, desde, hasta)
+    try:                                     # TikTok Ads suma a la MISMA inversión (plata es plata)
+        spend += _tiktok_spend(email, desde, hasta)
+    except Exception:
+        pass
     if spend:
         r = blob["raw"]
         fact = r.get("facturado", 0.0)
