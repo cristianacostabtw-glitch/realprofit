@@ -8432,21 +8432,56 @@ def _sku_pedidos_map(email, prog=None):
     return mapa
 
 
+def _sku_palabra_principal(paquetes):
+    """La palabra que MANDA (en NoxaLab: POTE). Genérico: la que aparece en más etiquetas."""
+    from collections import Counter
+    c = Counter()
+    for s, n in (paquetes or {}).items():
+        for parte in str(s).split("+"):
+            p = parte.strip().split(" ", 1)
+            if len(p) == 2 and p[1].strip():
+                c[p[1].strip().upper()] += n
+    return c.most_common(1)[0][0] if c else ""
+
+
+def _sku_bloque(sku, principal):
+    """En qué bloque va este SKU. Pedido de Cristian (22/09): NUNCA mezclar los tres.
+    0 = solo el producto principal (x2 POTE)
+    1 = principal + complemento (x2 POTE + x1 CAPS)
+    2 = sin el principal (x2 CAPS solas) → siempre al final."""
+    tiene = otro = False
+    for parte in str(sku or "").split("+"):
+        p = parte.strip().split(" ", 1)
+        w = p[1].strip().upper() if len(p) == 2 else ""
+        if not w:
+            continue
+        if w == principal:
+            tiene = True
+        else:
+            otro = True
+    if tiene and not otro:
+        return 0
+    return 1 if tiene else 2
+
+
 def _sku_hoja_empaquetar(doc, detalle):
     """Hoja final A4 'PARA EMPAQUETAR': cuántas bolsas de cada SKU (genérico, sin hardcodear
-    ningún producto). Cuenta cuántas etiquetas comparten el mismo SKU."""
+    ningún producto). Cuenta cuántas etiquetas comparten el mismo SKU.
+    ORDEN: primero los del producto principal solo, después los mixtos, y al final los que no
+    llevan el principal. Dentro de cada bloque, de MÁS bolsas a menos."""
     import fitz
     from collections import Counter
     paquetes = Counter(d["sku"] for d in detalle if d.get("sku"))
     if not paquetes:
         return
+    _pri = _sku_palabra_principal(paquetes)
     NEG, BLA = (0, 0, 0), (1, 1, 1)
     pg = doc.new_page(width=595, height=842)
     pg.insert_text((50, 92), "PARA EMPAQUETAR", fontname="hebo", fontsize=30, color=NEG)
     pg.draw_line((50, 112), (545, 112), color=NEG, width=1.2)
     y = 175
     total_bolsas = 0
-    for k, v in sorted(paquetes.items(), key=lambda x: (-x[1], x[0])):
+    for k, v in sorted(paquetes.items(), key=lambda x: (_sku_bloque(x[0], _pri), -x[1], x[0])):
         total_bolsas += v
         etq = "%dX %s" % (v, "BOLSA" if v == 1 else "BOLSAS")
         fs = 20
@@ -8576,13 +8611,15 @@ def _sku_run(job, data, email):
         # Las que no se pudieron estampar quedan al final, en el mismo orden que antes.
         from collections import Counter as _Cnt
         _grupos = _Cnt(d["sku"] for d in detalle if d.get("sku"))
+        _pri_pg = _sku_palabra_principal(_grupos)
 
         def _clave_orden(par):
             _k, _i = par
             _sku = (detalle[_i] or {}).get("sku") or ""
             if not _sku:
-                return (1, _k[0], "")            # sin pedido / conflicto / sin SKU -> al final
-            return (0, -_grupos[_sku], _sku)     # mismo criterio que _sku_hoja_empaquetar
+                return (1, 9, 0, "")             # sin pedido / conflicto / sin SKU -> al final
+            # MISMO criterio que _sku_hoja_empaquetar: bloque primero, después cantidad de bolsas.
+            return (0, _sku_bloque(_sku, _pri_pg), -_grupos[_sku], _sku)
         orden.sort(key=_clave_orden)
         nuevo_doc = fitz.open()
         for _clave, idx in orden:
@@ -8906,10 +8943,16 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
             labels.append({"page": i, "bbox": bbox, "potes": info["potes"],
                            "trak": trak, "buyer": info["buyer"], "sku": info["sku"]})
 
-    # 4) Una hoja de 10×15 cm por etiqueta, ORDENADAS por potes (x1, x2, x3…), sin deformar.
+    # 4) Una hoja de 10×15 cm por etiqueta, sin deformar.
+    # ORDEN: el mismo que la hoja PARA EMPAQUETAR y que Insertar SKU — el grupo MÁS GRANDE primero.
+    # Antes iba por potes de menor a mayor (x1, x2, x3) y no coincidía con la hoja, así que el que
+    # empaqueta tenía que ir salteando. Pedido de Cristian (22/09).
     CM = 28.3465
     PW, PH = 10 * CM, 15 * CM                        # 10cm ancho × 15cm alto (vertical, como Andreani)
-    labels.sort(key=lambda d: (d["potes"], d["trak"]))
+    from collections import Counter as _CntM
+    _gr_m = _CntM("X%d %s" % (d["potes"], "POTE" if d["potes"] == 1 else "POTES") for d in labels)
+    labels.sort(key=lambda d: (-_gr_m["X%d %s" % (d["potes"], "POTE" if d["potes"] == 1 else "POTES")],
+                               d["potes"], d["trak"]))
     out = fitz.open()
     orders = []
     detalle = []
