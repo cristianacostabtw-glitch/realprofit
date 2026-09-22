@@ -732,6 +732,7 @@ _SOLO_DASH = r"""
    <label title="Subí el Excel de Envialo: las sucursales de Envialo mandan (1=1)" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">verified</span>Subir Excel de Envialo<input type="file" accept=".xlsx" onchange="rpDEnvialo(this)" style="display:none"></label>
    <button onclick="rpDActSku()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">barcode</span>Actualizar SKUs</button>
    <button onclick="rpDOpenSku()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#3b3a8f,#2c2b6b);border:1px solid #3a3a86;color:#dcdcff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">qr_code_2</span>Insertar SKU</button>
+   <button onclick="rpDOpenPart()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#1d5f52,#154a41);border:1px solid #1f6b5c;color:#c9f5e8;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">content_cut</span>Separar etiquetas</button>
    <button onclick="rpDOpenSeg()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#b23a55,#8f2c44);border:1px solid #a23650;color:#ffe0e7;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">local_shipping</span>Enviar seguimiento</button>
   </div>
   <div id="rp-d-status" style="color:#34d399;font-size:12.5px;font-weight:600;min-height:18px;margin:2px 2px 10px"></div>
@@ -765,6 +766,17 @@ _SOLO_DASH = r"""
   </div>
   <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:34px 18px;text-align:center;cursor:pointer"><input type="file" accept="application/pdf" style="display:none" onchange="rpDUpSku(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Arrastr&aacute; el PDF de etiquetas o hac&eacute; clic para elegirlo</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">Te devuelve el PDF con los SKU insertados (Zebra o A4)</div></label>
   <div id="rp-d-skures" style="margin-top:14px"></div>
+ </div>
+</div>
+<div id="rp-d-partov" style="position:fixed;inset:0;z-index:100002;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpDClosePart()">
+ <div style="width:100%;max-width:560px;background:#0e1521;border:1px solid #1a2333;border-radius:18px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+   <div style="width:40px;height:40px;border-radius:11px;background:#10261f;border:1px solid #1f6b5c;display:flex;align-items:center;justify-content:center;flex:none"><span class="material-symbols-outlined" style="color:#4ade80;font-size:20px">content_cut</span></div>
+   <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Separar etiquetas en dos</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Sub&iacute; el PDF y te digo <b style="color:#cbd5e1">cu&aacute;ntas etiquetas tiene</b>. Eleg&iacute;s cu&aacute;ntas van en el primer archivo y te armo los dos, cada uno con su <b style="color:#cbd5e1">hoja PARA EMPAQUETAR</b> recalculada.</div></div>
+   <button onclick="rpDClosePart()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
+  </div>
+  <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:30px 18px;text-align:center;cursor:pointer"><input id="rp-d-partfile" type="file" accept="application/pdf" style="display:none" onchange="rpDPartCont(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Arrastr&aacute; el PDF de etiquetas o hac&eacute; clic para elegirlo</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">No toca las etiquetas: solo las reparte en dos archivos</div></label>
+  <div id="rp-d-partres" style="margin-top:14px"></div>
  </div>
 </div>
 <div id="rp-d-segov" style="position:fixed;inset:0;z-index:100002;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpDCloseSeg()">
@@ -1600,6 +1612,46 @@ _SOLO_DASH = r"""
    }).catch(function(){ _dStat('Error subiendo el Excel de Envialo.', '#fb7185'); }); };
  window.rpDActSku=function(){ _dStat('↻ Actualizando SKUs desde tu tienda…','#38bdf8');
    fetch('/pf-despachos-sku-sync',{method:'POST'}).then(function(r){return r.json();}).then(function(j){ _dStat(j&&j.ok?('✓ '+(j.n||0)+' SKUs actualizados desde tu tienda.'):'No se pudo actualizar.'); }).catch(function(){ _dStat('Actualización de SKUs: pendiente de conectar.', '#f0b429'); }); };
+ // ---- Modal Separar etiquetas (parte el PDF en dos) ----
+ window.rpDOpenPart=function(){ var m=document.getElementById('rp-d-partov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-partres'); if(r)r.innerHTML=''; window._rpPartFile=null; var i=document.getElementById('rp-d-partfile'); if(i)i.value=''; } };
+ window.rpDClosePart=function(){ var m=document.getElementById('rp-d-partov'); if(m)m.style.display='none'; window._rpPartFile=null; };
+ function rpDPartMsg(txt,col){ var r=document.getElementById('rp-d-partres'); if(r)r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:12px 14px;color:'+(col||'#9fb3c8')+';font-size:12.5px;font-weight:600">'+txt+'</div>'; }
+ // Paso 1: subo el PDF SIN cantidad -> el server solo cuenta las etiquetas.
+ window.rpDPartCont=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; window._rpPartFile=f;
+   rpDPartMsg('⏳ Leyendo el PDF…','#c9f5e8');
+   var fd=new FormData(); fd.append('pdf',f);
+   fetch('/pf-despachos-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ throw (j&&j.msg)||'No pude leer el PDF.'; }
+     var t=j.total||0;
+     var r=document.getElementById('rp-d-partres');
+     r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
+      +'<div style="color:#e7edf5;font-size:14px;font-weight:800">Este PDF tiene '+t+' etiquetas</div>'
+      +'<div style="color:#8493a8;font-size:12px;margin-top:4px">La hoja PARA EMPAQUETAR no se cuenta: se arma de nuevo en cada parte.</div>'
+      +'<div style="display:flex;gap:9px;align-items:center;margin-top:13px">'
+      +'<span style="color:#9fb3c8;font-size:12.5px;font-weight:600">En el primer archivo:</span>'
+      +'<input id="rp-d-partn" type="number" min="1" max="'+(t-1)+'" value="'+Math.min(20,Math.max(1,t-1))+'" style="width:92px;background:#0e1521;border:1px solid #23304a;color:#e7edf5;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700">'
+      +'<span style="color:#5b6b82;font-size:12px">de '+t+'</span></div>'
+      +'<button onclick="rpDPartHacer('+t+')" style="margin-top:13px;width:100%;background:linear-gradient(160deg,#1d5f52,#154a41);border:1px solid #1f6b5c;color:#c9f5e8;border-radius:11px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">Separar en dos archivos</button></div>';
+   }).catch(function(e){ rpDPartMsg('⚠️ '+String(e),'#fb7185'); });
+ };
+ // Paso 2: mando el MISMO archivo con la cantidad elegida.
+ window.rpDPartHacer=function(total){ var f=window._rpPartFile; if(!f){ rpDPartMsg('Volvé a elegir el PDF.','#f0b429'); return; }
+   var el=document.getElementById('rp-d-partn'); var n=parseInt(el&&el.value,10)||0;
+   if(n<1||n>=total){ rpDPartMsg('Poné un número entre 1 y '+(total-1)+'.','#f0b429'); return; }
+   rpDPartMsg('⏳ Separando…','#c9f5e8');
+   var fd=new FormData(); fd.append('pdf',f); fd.append('n',String(n));
+   fetch('/pf-despachos-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok||!j.job){ throw (j&&j.msg)||'No pude separarlo.'; }
+     var u='/pf-despachos-partir-descargar?job='+encodeURIComponent(j.job);
+     var r=document.getElementById('rp-d-partres');
+     r.innerHTML='<div style="background:#0d2018;border:1px solid #1f5f45;border-radius:12px;padding:14px">'
+      +'<div style="color:#86efac;font-size:13.5px;font-weight:800">✅ Listo: '+j.n+' + '+j.resto+' = '+j.total+' etiquetas</div>'
+      +'<div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">'
+      +'<a href="'+u+'&parte=1" style="flex:1;min-width:150px;text-align:center;text-decoration:none;background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800">⬇ Primeras '+j.n+'</a>'
+      +'<a href="'+u+'&parte=2" style="flex:1;min-width:150px;text-align:center;text-decoration:none;background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800">⬇ Resto ('+j.resto+')</a>'
+      +'</div><div style="color:#6b8b7c;font-size:11.5px;margin-top:9px">Cada archivo trae su propia hoja PARA EMPAQUETAR con los totales de esa parte.</div></div>';
+   }).catch(function(e){ rpDPartMsg('⚠️ '+String(e),'#fb7185'); });
+ };
  // ---- Modal Insertar SKU ----
  window.rpDOpenSku=function(){ var m=document.getElementById('rp-d-skuov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-skures'); if(r)r.innerHTML=''; } };
  window.rpDCloseSku=function(){ var m=document.getElementById('rp-d-skuov'); if(m)m.style.display='none'; };
@@ -8609,6 +8661,105 @@ def pf_despachos_sku_descargar():
     _SKU_JOBS.pop(job, None)          # libero memoria una vez descargado
     return send_file(io.BytesIO(pdf), as_attachment=True,
                      download_name="etiquetas-con-sku.pdf", mimetype="application/pdf")
+
+
+# ---------- Separar etiquetas: partir un PDF en DOS (las primeras N y el resto) ----------
+# Para cuando el lote no entra en un solo despacho: se manda una parte hoy y el resto después.
+# Cada parte se lleva su PROPIA hoja PARA EMPAQUETAR recalculada; si se copiara la hoja original
+# los totales no cerrarían con las etiquetas que tiene cada archivo.
+_PARTIR_JOBS = {}
+
+
+def _partir_sku_pagina(txt):
+    """El SKU que ya está estampado en la página (lo escribió _sku_estampar_*). Vacío si no hay."""
+    m = re.search(r"(x\d+\s+[^\s+]+(?:\s*\+\s*x\d+\s+[^\s+]+)*)", txt or "", re.I)
+    return m.group(1).strip() if m else ""
+
+
+@app.post("/pf-despachos-partir")
+@_heavy
+def pf_despachos_partir():
+    """Parte el PDF de etiquetas en dos. Sin 'n' (o n fuera de rango) solo CUENTA las etiquetas,
+    para que el front pueda mostrar cuántas hay antes de que el usuario elija."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    f = request.files.get("pdf")
+    if not f:
+        return jsonify({"ok": False, "msg": "Subí el PDF de etiquetas."})
+    try:
+        n = int((request.form.get("n") or "0").strip() or 0)
+    except Exception:
+        n = 0
+    import io
+    try:
+        import fitz
+        doc = fitz.open(stream=f.read(), filetype="pdf")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude abrir el PDF: %s: %s"
+                                            % (type(e).__name__, str(e)[:90])})
+    try:
+        # Las hojas PARA EMPAQUETAR NO son etiquetas: se descartan acá y se regeneran por parte.
+        paginas, detalle = [], []
+        for i in range(len(doc)):
+            t = doc[i].get_text() or ""
+            if "PARA EMPAQUETAR" in t.upper():
+                continue
+            paginas.append(i)
+            detalle.append({"sku": _partir_sku_pagina(t)})
+        total = len(paginas)
+        if total == 0:
+            return jsonify({"ok": False, "msg": "Ese PDF no tiene etiquetas."})
+        if n <= 0 or n >= total:
+            return jsonify({"ok": True, "total": total, "solo_conteo": True})
+
+        def _armar(idxs, det):
+            d = fitz.open()
+            for i in idxs:
+                d.insert_pdf(doc, from_page=i, to_page=i)
+            _sku_hoja_empaquetar(d, det)      # MISMA hoja que usa Insertar SKU
+            b = io.BytesIO()
+            d.save(b, garbage=3, deflate=True)
+            d.close()
+            return b.getvalue()
+
+        pdf_a = _armar(paginas[:n], detalle[:n])
+        pdf_b = _armar(paginas[n:], detalle[n:])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])}), 500
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+    job = _secrets.token_hex(6)
+    _PARTIR_JOBS[job] = {"a": pdf_a, "b": pdf_b}
+    try:                                   # a disco: con 2 workers la descarga puede caer en el otro
+        _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        (_JOBS_DIR / (job + ".a.pdf")).write_bytes(pdf_a)
+        (_JOBS_DIR / (job + ".b.pdf")).write_bytes(pdf_b)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "job": job, "total": total, "n": n, "resto": total - n})
+
+
+@app.get("/pf-despachos-partir-descargar")
+def pf_despachos_partir_descargar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    job = (request.args.get("job") or "").strip()
+    parte = "a" if (request.args.get("parte") or "1") == "1" else "b"
+    pdf = (_PARTIR_JOBS.get(job) or {}).get(parte)
+    if not pdf:
+        try:
+            pdf = (_JOBS_DIR / ("%s.%s.pdf" % (job, parte))).read_bytes()
+        except Exception:
+            pdf = None
+    if not pdf:
+        return jsonify({"ok": False, "msg": "No encontré esa parte."}), 404
+    import io
+    return send_file(io.BytesIO(pdf), as_attachment=True,
+                     download_name=("etiquetas-parte1.pdf" if parte == "a" else "etiquetas-resto.pdf"),
+                     mimetype="application/pdf")
 
 
 # ---------- MercadoLibre: etiquetas → estampar SKU (potes) + hoja PARA EMPAQUETAR ----------
@@ -16860,8 +17011,17 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
         # Ahora sigue de largo SOLO si el último entrante trae un adjunto que puede ser comprobante:
         # lo evalúa, marca la transferencia y NO responde nada. Si no hay adjunto se va como antes
         # (no tiene sentido gastar una llamada al cerebro para no contestar).
+        #
+        # 19/09: faltaba un caso. La ETIQUETA existe para ORIENTAR AL QUE ATIENDE, o sea que en los
+        # chats que toca una persona es donde MÁS falta hace — y eran justo los únicos que quedaban
+        # sin etiquetar nunca, porque la etiqueta sólo se asigna cuando corre el cerebro (chat "Cano
+        # Carlos": devolución del envío, $8.000 de reenvío y el cliente diciendo "abuso... estafa",
+        # sin ninguna marca). Ahora, si el texto trae SEÑALES de problema, el cerebro corre igual en
+        # mudo: sólo para clasificar. El filtro es local y gratis, así que se paga una llamada nada
+        # más cuando puede haber algo que marcar, no en cada mensaje de cada chat atendido.
         if last_in.get("type") not in ("image", "document"):
-            return
+            if not _wa_texto_con_senal(last_in.get("text") or ""):
+                return
         _mudo = True
 
     lin_id = last_in.get("id") or ""
@@ -17194,6 +17354,28 @@ _WA_TXT_COMPRA = (r"compra\s+en\b|comprobante\s+de\s+pago|compra\s+con\s+tarjeta
 def _wa_sin_tildes(s):
     import unicodedata
     return unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+
+
+# Señales de que un mensaje PUEDE merecer etiqueta (problema envío / producto / reclamo MP).
+# Es un filtro LOCAL y gratis: decide si vale la pena gastar una llamada al cerebro en un chat que
+# ya está atendiendo una persona. No etiqueta nada por sí solo — eso lo sigue decidiendo el cerebro
+# con los criterios de Cristian. Va ancho a propósito: perder una etiqueta cuesta más que una
+# llamada de más, y el que atiende se queda sin la marca que necesita para ubicarse.
+_WA_SENAL = re.compile(
+    r"estaf|abuso|fraude|choreo|robo|verguenza|denunci|"
+    r"reclam|reembols|devoluc|devuelv|devolv|plata de vuelta|mi dinero|"
+    r"no me lleg|nunca lleg|no lleg|todavia no|sigue sin lleg|no recib|"
+    r"demora|tarda|atras|perdid|extravi|"
+    r"roto|rota|abiert|danad|golpead|vencid|faltab|falta un|falta el|me falta|menos de lo|"
+    r"no es lo que|no era lo que|equivocad|otra direccion|mal la direccion|"
+    r"reenvi|re-envi|volvio a|devolvieron|lo devolv|no lo retir|no fui a retir|"
+    r"mercado pago|mercadopago|contracargo|"
+    r"cancel|anul|no quiero mas|quiero que me devuelvan")
+
+
+def _wa_texto_con_senal(txt) -> bool:
+    """¿El texto tiene alguna señal de problema que justifique clasificarlo?"""
+    return bool(_WA_SENAL.search(_wa_sin_tildes(txt)))
 
 
 def _wa_comp_es_compra_web(comp) -> bool:
