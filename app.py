@@ -8828,13 +8828,18 @@ def pf_despachos_partir():
             out.close()
             return b.getvalue()
 
+        # El orden se aplica SIEMPRE, se una o se parta: primero POTES solos, después POTES+CAPS y
+        # al final CAPS solas; dentro de cada bloque, de más bolsas a menos.
+        # ANTES esto vivía sólo adentro de la rama de UNIR, así que al PARTIR se cortaban las
+        # páginas tal como venían en el PDF: pedías "las primeras 15" esperando 15 de X2 POTES y
+        # salían 12 de X2 mezcladas con 3 de X1, que es justo lo que hay que evitar al empaquetar.
+        from collections import Counter as _CntU
+        _gr = _CntU(s for _d, _i, s in etiquetas if s)
+        _pri = _sku_palabra_principal(_gr)
+        etiquetas.sort(key=lambda it: (1, 9, 0, "") if not it[2]
+                       else (0, _sku_bloque(it[2], _pri), -_gr[it[2]], it[2]))
+
         if len(docs) >= 2:
-            # UNIR: reordeno TODO con la misma regla que la hoja (bloque, luego más bolsas).
-            from collections import Counter as _CntU
-            _gr = _CntU(s for _d, _i, s in etiquetas if s)
-            _pri = _sku_palabra_principal(_gr)
-            etiquetas.sort(key=lambda it: (1, 9, 0, "") if not it[2]
-                           else (0, _sku_bloque(it[2], _pri), -_gr[it[2]], it[2]))
             pdf_a = _armar(etiquetas)
             pdf_b = None
             modo = "unir"
