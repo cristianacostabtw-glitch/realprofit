@@ -20818,6 +20818,13 @@ def wa_bot_backlog():
         n = max(1, min(int(request.values.get("n") or 5), 12))
     except Exception:
         n = 5
+    # Canal con el que se corre el cerebro. ANTES estaba clavado en "web": en una cuenta
+    # configurada en "api" (NoxaLab) el bot rechazaba TODO por canal equivocado y encima
+    # dejaba el chat marcado como intentado, o sea que se quemaba el backlog entero sin
+    # contestar a nadie. Por defecto se usa el canal configurado de la cuenta.
+    _canal = (request.values.get("canal") or conf.get("bot_canal") or "api").strip().lower()
+    if _canal not in ("api", "web"):
+        _canal = "api"
     chats = _wa_chats_all()
     convs = (chats.get(email) or {})
 
@@ -20849,9 +20856,10 @@ def wa_bot_backlog():
             continue
         conv["bot_backlog_seen"] = mid          # ya lo intenté (evita loop infinito)
         conv.pop("bot_last_in", None)           # destraba el anti-duplicado del bot
+        conv.pop("bot_nota", None)              # nota vieja: si no, no se sabe si es de esta corrida
         antes = len(conv.get("messages") or [])
         try:
-            _wa_bot_run(email, conf, wid, chats, canal="web")
+            _wa_bot_run(email, conf, wid, chats, canal=_canal)
         except Exception as e:
             fail += 1
             detalle.append({"wid": wid, "estado": "error", "nota": str(e)[:80]})
@@ -20863,6 +20871,11 @@ def wa_bot_backlog():
             detalle.append({"wid": wid, "estado": "respondido"})
         else:
             nota = (convs.get(wid) or {}).get("bot_nota", "") or ""
+            # Si NO contestó por un problema de CONFIGURACIÓN (canal o horario), el chat no se
+            # "gasta": se desmarca para poder reintentarlo una vez arreglada la config. Si se
+            # dejara marcado, arreglar el canal después no serviría de nada.
+            if ("canal" in nota) or ("horario" in nota):
+                (convs.get(wid) or {}).pop("bot_backlog_seen", None)
             if "deriv" in nota:
                 esc += 1
             elif "envío" in nota or "envio" in nota:
