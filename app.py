@@ -18871,12 +18871,21 @@ function pintarVista(){
 function renderList(){
  var q=(val('q')||'').toLowerCase();
  var box=document.getElementById('chats'); if(!box)return;
- var arr=CHATS.filter(function(c){ return !q || (c.name||'').toLowerCase().indexOf(q)>=0 || (c.wa_id||'').indexOf(q)>=0; });
- // SIEMPRE separadas, también buscando: un chat está en UNA sola pestaña, nunca en las dos.
- arr=arr.filter(function(c){ return VISTA==='avisos' ? !!c.aviso : !c.aviso; });
- if(FILTRO) arr=arr.filter(function(c){ return c.etiqueta===FILTRO; });
+ var _qn=q.replace(/[^0-9]/g,'');   // buscar por teléfono sin importar espacios, + ni guiones
+ var arr=CHATS.filter(function(c){ if(!q) return true;
+  if((c.name||'').toLowerCase().indexOf(q)>=0) return true;
+  if((c.last||'').toLowerCase().indexOf(q)>=0) return true;
+  return !!_qn && (c.wa_id||'').indexOf(_qn)>=0; });
+ // BUSCANDO se mira TODO: pestañas y etiqueta se ignoran.
+ // Antes el buscador filtraba sólo adentro de la pestaña abierta, así que un chat que se había
+ // ido a Avisos (le mandamos una plantilla) no aparecía aunque pusieras el número entero, y desde
+ // atención se veía como si el chat estuviera borrado. 867 de 1.484 chats estaban en esa situación.
+ if(!q){
+   arr=arr.filter(function(c){ return VISTA==='avisos' ? !!c.aviso : !c.aviso; });
+   if(FILTRO) arr=arr.filter(function(c){ return c.etiqueta===FILTRO; });
+ }
  pintarVista();
- if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">'+(VISTA==='avisos'?'No hay avisos sin respuesta.<br>Acá caen los chats donde lo último que se mandó fue una plantilla.':'Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.')+'</div>'; return; }
+ if(!arr.length){ box.innerHTML='<div class="empty" style="padding:30px;font-size:13px">'+(q?('No encontré ningún chat con «'+esc(q)+'».<br>Probá con el número sin el +54 o con parte del nombre.'):(VISTA==='avisos'?'No hay avisos sin respuesta.<br>Acá caen los chats donde lo último que se mandó fue una plantilla.':'Todavía no hay conversaciones.<br>Cuando alguien te escriba, aparece acá.'))+'</div>'; return; }
  box.innerHTML=arr.map(function(c){
   // La TRANSFERENCIA A CARGAR gana sobre el URGENTE: si el bot ya validó el comprobante y están
   // los datos, ese chat no es un reclamo esperando atención, es una venta esperando que la carguen.
@@ -18885,6 +18894,9 @@ function renderList(){
   var urg=c.venta?' vta':'';
   var _bd=_e?' style="border-left:3px solid '+_e[2]+'"':'';   // color de la etiqueta en la lista
   var chip=_e?'<span class="etchip" style="background:'+_e[2]+'">'+_e[1]+'</span>':'';
+  // Buscando se mezclan las dos pestañas, así que se avisa cuál es de Avisos (si no, no se
+  // entiende por qué aparece un chat que en la lista normal no está).
+  if(q && c.aviso) chip='<span class="etchip" style="background:#7c6a3a">AVISO</span>'+chip;
   return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'"'+_bd+' onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
