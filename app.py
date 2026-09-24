@@ -9201,6 +9201,64 @@ def _meli_envios_listos(email, sids=None):
         return [], "%s: %s" % (type(e).__name__, str(e)[:120])
     sel = set(str(x) for x in (sids or []))
     envios, cache = {}, {}
+    # EN PARALELO. Antes esto pedía /shipments/{sid} de a uno dentro del for: con ~400 órdenes
+    # eran cientos de llamadas en fila y la pantalla tardaba 75 segundos en listar (medido
+    # 24/09/2026). Son GET independientes, así que van en paralelo y el for de abajo ya no toca
+    # la red: lee todo del cache. Se limita a 12 a la vez para no hacer enojar a la API de ML.
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    def _traer_envio(sid):
+        try:
+            return sid, requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                                     headers={"Authorization": "Bearer " + tok,
+                                              "x-format-new": "true"}).json()
+        except Exception:
+            return sid, {}
+
+    _sids = []
+    for o in res:
+        _s = (o.get("shipping") or {}).get("id")
+        if not _s:
+            continue
+        _s = str(_s)
+        if sel and _s not in sel:
+            continue
+        if _s not in cache:
+            cache[_s] = None
+            _sids.append(_s)
+    if _sids:
+        with _TPE(max_workers=12) as _ex:
+            for _sid, _js in _ex.map(_traer_envio, _sids):
+                cache[_sid] = _js
+
+    # Los nombres reales de los compradores, también en paralelo y SOLO de los que quedan listos
+    # (/orders/search devuelve el buyer sin nombre, sólo el nickname — verificado 13/09).
+    _faltan = []
+    for o in res:
+        _s = (o.get("shipping") or {}).get("id")
+        if not _s:
+            continue
+        _s = str(_s)
+        if sel and _s not in sel:
+            continue
+        if ((cache.get(_s) or {}).get("status") or "") != "ready_to_ship":
+            continue
+        _b0 = o.get("buyer") or {}
+        if not (_b0.get("first_name") or _b0.get("last_name")):
+            _faltan.append(o.get("id"))
+
+    def _traer_orden(oid):
+        try:
+            return oid, requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=20).json()
+        except Exception:
+            return oid, {}
+
+    _ords = {}
+    if _faltan:
+        with _TPE(max_workers=12) as _ex:
+            for _oid, _js in _ex.map(_traer_orden, _faltan):
+                _ords[_oid] = _js
+
     for o in res:
         sid = (o.get("shipping") or {}).get("id")
         if not sid:
@@ -9208,26 +9266,12 @@ def _meli_envios_listos(email, sids=None):
         sid = str(sid)
         if sel and sid not in sel:        # filtro ANTES de pedir el envio: no gasto llamadas
             continue
-        if sid not in cache:              # un envio se pide UNA vez aunque tenga 2 ordenes
-            try:
-                cache[sid] = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
-                                          headers={"Authorization": "Bearer " + tok,
-                                                   "x-format-new": "true"}).json()
-            except Exception:
-                cache[sid] = {}
-        sj = cache[sid]
+        sj = cache.get(sid) or {}
         if (sj.get("status") or "") != "ready_to_ship":
             continue
         _b = o.get("buyer") or {}
         if not (_b.get("first_name") or _b.get("last_name")):
-            # /orders/search devuelve buyer SIN nombre real (solo nickname); la orden individual
-            # si lo trae. Verificado 13/09: por search venian los 10 nombres vacios.
-            try:
-                _of = requests.get("%s/orders/%s" % (MELI_API, o.get("id")),
-                                   headers=h, timeout=20).json()
-                _b = _of.get("buyer") or _b
-            except Exception:
-                pass
+            _b = (_ords.get(o.get("id")) or {}).get("buyer") or _b
         e = envios.setdefault(sid, {
             "sid": sid, "tracking": sj.get("tracking_number") or "",
             "numero": str(o.get("id") or ""),
