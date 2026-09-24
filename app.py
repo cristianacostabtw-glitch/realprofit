@@ -3971,6 +3971,10 @@ ENVIO_ZONAS_RC = {
     "extremo": {"sucursal": 7286, "domicilio": 10603},
 }
 ENVIO_RC_DESDE = "2026-09-15"   # desde este día (00:00) rige la lista de Redchat
+# VUELTA A ANDREANI: desde el 24/09/2026 a las 10:00 (hora Argentina) se despacha otra vez con
+# Andreani, así que vuelve a regir ENVIO_ZONAS. Es fecha Y HORA porque los pedidos de esa misma
+# mañana anteriores a las 10 salieron con la logística anterior. Nada de antes se toca.
+ENVIO_AND_VUELVE = "2026-09-24T10:00"
 
 _ENV_ACC = str.maketrans("áéíóúüàèìòùÁÉÍÓÚÜÑñ", "aeiouuaeiouAEIOUUNn")
 def _env_norm(s):
@@ -4058,14 +4062,55 @@ def _envio_suc(o) -> bool:
     txt += " " + (o.get("shipping_option") or "")   # TN manda el método acá ("Envío a domicilio"/"Punto de retiro")
     return _txt_es_sucursal(txt)
 
+def _envio_hora_ar(o) -> str:
+    """Fecha y HORA del pedido en hora ARGENTINA, como 'YYYY-MM-DDTHH:MM'.
+
+    Shopify y Tiendanube mandan ISO con offset ('2026-09-24T09:15:33-03:00'), que ya es hora
+    local. Pero no se puede dar por hecho y cortar el string a lo bruto: si alguna orden viniera
+    en UTC ('...Z'), un pedido de las 8:30 de la mañana se leería como 11:30 y caería del lado
+    equivocado del corte de las 10:00, cobrándole al pedido la tarifa que no es."""
+    import re as _re_h
+    s = str(o.get("created_at") or o.get("completed_at") or "").strip()
+    if not s:
+        return ""
+    m = _re_h.match(r"^(\d{4}-\d\d-\d\d)[T ](\d\d):(\d\d)(?::\d\d)?(?:\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?", s)
+    if not m:
+        return s[:16]
+    try:
+        dt = _dt.datetime.strptime("%s %s:%s" % (m.group(1), m.group(2), m.group(3)), "%Y-%m-%d %H:%M")
+    except Exception:
+        return s[:16]
+    off = m.group(4) or ""
+    if off:                                    # sin offset se asume que ya viene en hora argentina
+        if off.upper() == "Z":
+            omin = 0
+        else:
+            o2 = off.replace(":", "")
+            omin = (1 if o2[0] == "+" else -1) * (int(o2[1:3]) * 60 + int(o2[3:5]))
+        dt = dt - _dt.timedelta(minutes=omin)  # a UTC
+        dt = dt - _dt.timedelta(hours=3)       # UTC -> Argentina (UTC-3)
+    return dt.strftime("%Y-%m-%dT%H:%M")
+
+
 def _envio_costo(o) -> int:
     """Costo de envío del pedido, según provincia/CP y si va a sucursal o domicilio.
-    DESDE EL 15/09/2026 usa la tabla de REDCHAT (la logística que reemplazó a Envialo, que cerró:
-    su API devuelve 403 ENVIALO_LOCKED_DOWN). Antes de esa fecha sigue la vieja de Andreani, para
-    no reescribir el histórico. Cubre Shopify y Tiendanube (las dos traen created_at)."""
+
+    Hay DOS cortes en el tiempo, y ninguno reescribe el histórico:
+      1) hasta el 14/09/2026 -> tabla vieja de ANDREANI.
+      2) del 15/09 hasta el 24/09 a las 10:00 -> tabla de REDCHAT (la logística que reemplazó a
+         Envialo, que cerró: su API devuelve 403 ENVIALO_LOCKED_DOWN).
+      3) desde el 24/09/2026 a las 10:00 -> se vuelve a despachar con ANDREANI, así que vuelve a
+         regir SU tabla.
+    El corte 3 es por HORA y no por día a propósito: los pedidos de esa misma mañana anteriores a
+    las 10 salieron con la logística anterior y tienen que quedar costeados con la lista anterior.
+    Cubre Shopify y Tiendanube (las dos traen created_at)."""
     suc = _envio_suc(o)
     z = _envio_zona(o)
     fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
+    _hora = _envio_hora_ar(o)
+    if _hora and _hora >= ENVIO_AND_VUELVE:     # volvimos a Andreani
+        z3 = ENVIO_ZONAS.get(z) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
+        return z3["sucursal"] if suc else z3["domicilio"]
     if fecha >= ENVIO_RC_DESDE:
         # En RETIRO la Patagonia paga como Cuyo; sólo Salta/Jujuy quedan en la banda cara.
         # (Verificado: Trelew, Pto Madryn, Comodoro y Río Gallegos a $6.979, no a $7.286.)
