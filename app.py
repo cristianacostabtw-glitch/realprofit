@@ -9310,17 +9310,46 @@ def _meli_etiquetas_pendientes(email, sids=None):
         if f["tracking"]:
             mapa[f["tracking"]] = {"sku": f["sku"], "cant": f["cant"],
                                    "buyer": f["buyer"], "potes": f["potes"]}
-    ids = [f["sid"] for f in filas][:50]
-    try:
-        rr = requests.get("%s/shipment_labels?shipment_ids=%s&response_type=pdf"
-                          % (MELI_API, ",".join(ids)),
-                          headers={"Authorization": "Bearer " + tok}, timeout=90)
-    except Exception as e:
-        return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
-    if rr.status_code >= 400 or (rr.content or b"")[:4] != b"%PDF":
-        return None, [], {}, {"msg": "ML no devolvio el PDF (status %s)" % rr.status_code}
-    pdf, orders, stats = _meli_etiquetas_procesar(rr.content, mapa_ext=mapa)
-    return pdf, orders, stats, {"envios": len(ids), "crudo_bytes": len(rr.content), "sids": ids}
+    # TODOS los envíos, en tandas de 50. ANTES esto era `[:50]` y cortaba ahí sin avisar: con 54
+    # seleccionadas bajabas 50 etiquetas y te faltaban 4, y el PDF no decía nada. ML no acepta
+    # una lista ilimitada en shipment_ids, así que se pide por tandas y se unen los PDF.
+    ids = [f["sid"] for f in filas]
+    LOTE = 50
+    crudos, total_bytes = [], 0
+    for _i in range(0, len(ids), LOTE):
+        _chunk = ids[_i:_i + LOTE]
+        try:
+            rr = requests.get("%s/shipment_labels?shipment_ids=%s&response_type=pdf"
+                              % (MELI_API, ",".join(_chunk)),
+                              headers={"Authorization": "Bearer " + tok}, timeout=90)
+        except Exception as e:
+            return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
+        if rr.status_code >= 400 or (rr.content or b"")[:4] != b"%PDF":
+            return None, [], {}, {"msg": "ML no devolvio el PDF de los envios %s-%s (status %s)"
+                                         % (_i + 1, _i + len(_chunk), rr.status_code)}
+        crudos.append(rr.content)
+        total_bytes += len(rr.content)
+    if not crudos:
+        return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+    if len(crudos) == 1:
+        crudo = crudos[0]
+    else:                                   # unir los PDF de cada tanda en uno solo
+        try:
+            import fitz, io as _io
+            _out = fitz.open()
+            for _c in crudos:
+                _d = fitz.open(stream=_c, filetype="pdf")
+                _out.insert_pdf(_d)
+                _d.close()
+            _b = _io.BytesIO()
+            _out.save(_b, garbage=3, deflate=True)
+            _out.close()
+            crudo = _b.getvalue()
+        except Exception as e:
+            return None, [], {}, {"msg": "no pude unir las tandas de etiquetas: %s" % str(e)[:120]}
+    pdf, orders, stats = _meli_etiquetas_procesar(crudo, mapa_ext=mapa)
+    return pdf, orders, stats, {"envios": len(ids), "tandas": len(crudos),
+                                "crudo_bytes": total_bytes, "sids": ids}
 
 
 @app.get("/meli/pendientes-lista")
