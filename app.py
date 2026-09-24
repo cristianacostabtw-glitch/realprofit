@@ -9127,6 +9127,35 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
 
 _MELI_ETQ_BAJ = DATA_DIR / "meli_etq_bajadas.json"   # {email: {sid: ts}} — etiquetas ya bajadas
 
+# Estado FINAL de cada envío, en disco. Sirve para no volver a preguntarle a ML por envíos que ya
+# se despacharon: un envío que está entregado/enviado/cancelado NUNCA vuelve a ready_to_ship, así
+# que preguntar por él otra vez es tiempo tirado. Sin esto la pantalla revisaba ~400 envíos en
+# cada carga y tardaba más de un minuto (medido 24/09/2026: 74s antes, 57s ya en paralelo).
+# OJO: sólo se guardan los estados TERMINALES. ready_to_ship, pending y handling NO se cachean
+# nunca, porque esos sí cambian y hay que volver a preguntarlos siempre.
+_MELI_SHIP_EST = DATA_DIR / "meli_ship_estado.json"   # {sid: status}
+_MELI_SHIP_FIN = ("shipped", "delivered", "cancelled", "not_delivered", "returned")
+
+
+def _meli_ship_est() -> dict:
+    try:
+        return _json.loads(_MELI_SHIP_EST.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _meli_ship_est_guardar(nuevos: dict) -> None:
+    if not nuevos:
+        return
+    try:
+        d = _meli_ship_est()
+        d.update(nuevos)
+        if len(d) > 20000:                 # no dejarlo crecer para siempre
+            d = dict(list(d.items())[-12000:])
+        _MELI_SHIP_EST.write_text(_json.dumps(d), encoding="utf-8")
+    except Exception:
+        pass
+
 
 def _meli_baj_all() -> dict:
     try:
@@ -9215,6 +9244,7 @@ def _meli_envios_listos(email, sids=None):
         except Exception:
             return sid, {}
 
+    _fin = _meli_ship_est()               # envíos ya cerrados: no hay que volver a preguntarlos
     _sids = []
     for o in res:
         _s = (o.get("shipping") or {}).get("id")
@@ -9223,13 +9253,20 @@ def _meli_envios_listos(email, sids=None):
         _s = str(_s)
         if sel and _s not in sel:
             continue
-        if _s not in cache:
-            cache[_s] = None
-            _sids.append(_s)
+        if _s in cache:
+            continue
+        if _s in _fin:                    # ya está despachado/entregado/cancelado → ni lo miro
+            cache[_s] = {"status": _fin[_s]}
+            continue
+        cache[_s] = None
+        _sids.append(_s)
     if _sids:
         with _TPE(max_workers=12) as _ex:
             for _sid, _js in _ex.map(_traer_envio, _sids):
                 cache[_sid] = _js
+        _meli_ship_est_guardar({k: (cache[k] or {}).get("status")
+                                for k in _sids
+                                if (cache[k] or {}).get("status") in _MELI_SHIP_FIN})
 
     # Los nombres reales de los compradores, también en paralelo y SOLO de los que quedan listos
     # (/orders/search devuelve el buyer sin nombre, sólo el nickname — verificado 13/09).
