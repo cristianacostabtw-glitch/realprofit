@@ -14893,6 +14893,95 @@ def meli_publicaciones():
     return jsonify({"ok": True, "items": items, "total": len(ids)})
 
 
+@app.post("/meli/precios-subir")
+@_heavy
+def meli_precios_subir():
+    """Sube (o baja) el precio de las publicaciones de ML en un monto FIJO en pesos.
+
+    Por defecto SOLO SIMULA: devuelve qué quedaría en cada publicación sin tocar nada.
+    Recién con aplicar=true escribe, y despues de escribir RELEE cada item para confirmar.
+    Eso ultimo no es paranoia: ML contesta 200 aunque ignore el cambio (ya paso con los tags
+    de cuotas), asi que sin releer la pantalla canta exito sin haber hecho nada.
+
+    Parametros (JSON):
+      delta        cuanto sumar en pesos (ej 10000). Obligatorio, distinto de 0.
+      aplicar      false (default) = simulacion. true = escribe de verdad.
+      solo_activas true (default) = no toca las que estan en revision (under_review) ni pausadas.
+      ids          opcional, lista de MLA para limitar a esas.
+    """
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado"})
+    d = request.get_json(silent=True) or {}
+    try:
+        delta = int(float(d.get("delta") or 0))
+    except Exception:
+        delta = 0
+    if not delta:
+        return jsonify({"ok": False, "msg": "Falta 'delta': cuantos pesos sumar (ej 10000)."})
+    if abs(delta) > 200000:      # freno de mano: un cero de mas no puede salir caro
+        return jsonify({"ok": False, "msg": "Delta demasiado grande (%s). Freno por las dudas." % delta})
+    aplicar = bool(d.get("aplicar"))
+    solo_activas = d.get("solo_activas", True)
+    filtro = set(str(x).strip().upper() for x in (d.get("ids") or []) if str(x).strip())
+    h = {"Authorization": "Bearer " + tok}
+    try:
+        r = requests.get("%s/users/%s/items/search" % (MELI_API, uid), headers=h,
+                         params={"limit": 100}, timeout=25)
+        ids = (r.json() if r.content else {}).get("results", [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    plan, saltadas = [], []
+    for i in range(0, len(ids), 20):
+        try:
+            rr = requests.get("%s/items" % MELI_API, headers=h,
+                              params={"ids": ",".join(ids[i:i + 20]),
+                                      "attributes": "id,title,price,status,seller_custom_field"}, timeout=25)
+            arr = rr.json() if rr.content else []
+        except Exception:
+            arr = []
+        for wrap in arr:
+            b = wrap.get("body") or {}
+            iid, pr, st = b.get("id"), b.get("price"), (b.get("status") or "")
+            if not iid or pr is None:
+                continue
+            if filtro and str(iid).upper() not in filtro:
+                continue
+            if solo_activas and st != "active":
+                saltadas.append({"id": iid, "estado": st, "precio": pr})
+                continue
+            plan.append({"id": iid, "sku": b.get("seller_custom_field") or "",
+                         "titulo": (b.get("title") or "")[:60], "estado": st,
+                         "antes": pr, "despues": int(pr) + delta})
+    if not aplicar:
+        return jsonify({"ok": True, "simulacion": True, "delta": delta,
+                        "van_a_cambiar": len(plan), "saltadas": len(saltadas),
+                        "detalle": plan, "no_tocadas": saltadas})
+    hechas, fallaron = [], []
+    for p in plan:
+        try:
+            requests.put("%s/items/%s" % (MELI_API, p["id"]),
+                         headers={"Authorization": "Bearer " + tok,
+                                  "Content-Type": "application/json"},
+                         json={"price": p["despues"]}, timeout=25)
+            # VERIFICACION: releo el item. Si ML no lo aplico, no lo cuento como hecho.
+            v = requests.get("%s/items/%s?attributes=price" % (MELI_API, p["id"]),
+                             headers=h, timeout=20)
+            real = (v.json() if v.content else {}).get("price")
+            if real is not None and int(real) == int(p["despues"]):
+                hechas.append({"id": p["id"], "antes": p["antes"], "ahora": int(real)})
+            else:
+                fallaron.append({"id": p["id"], "queria": p["despues"], "quedo": real})
+        except Exception as e:
+            fallaron.append({"id": p["id"], "queria": p["despues"], "error": str(e)[:80]})
+    return jsonify({"ok": True, "simulacion": False, "delta": delta,
+                    "cambiadas": len(hechas), "fallaron": len(fallaron),
+                    "saltadas": len(saltadas), "detalle": hechas, "errores": fallaron})
+
+
 @app.post("/meli/subir-foto")
 def meli_subir_foto():
     """Sube una imagen a MercadoLibre y devuelve su picture id (para usarla como primera foto de una copia)."""
