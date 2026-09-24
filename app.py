@@ -21560,6 +21560,74 @@ def wa_plantilla_crear():
     return jsonify({"ok": True, "id": j.get("id"), "estado": j.get("status"), "categoria": j.get("category")})
 
 
+@app.post("/wa-plantilla-editar")
+def wa_plantilla_editar():
+    """Cambia el TEXTO de una plantilla YA APROBADA. Se busca por nombre (es lo que se ve en la
+    pantalla) y el id se resuelve acá contra Meta.
+
+    Ojo con dos cosas de Meta, que no son evidentes:
+      - Editar manda la plantilla de nuevo a revisión. La versión vieja se sigue pudiendo enviar
+        mientras tanto, así que NO se corta el envío de seguimientos.
+      - Hay un tope de ediciones por mes por plantilla. Si se pasa, Meta rechaza el cambio.
+    Se exige que el cuerpo nuevo tenga las MISMAS variables que el viejo: si se pierde una, los
+    envíos que mandan 3 parámetros empiezan a fallar de a uno y sin aviso."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"})
+    c = _wa_conf(email)
+    if not c or not c.get("waba_id"):
+        return jsonify({"ok": False, "msg": "Falta el WABA ID en Config"})
+    d = request.get_json(silent=True) or {}
+    nombre = (d.get("nombre") or "").strip().lower()
+    cuerpo = (d.get("cuerpo") or "").strip()
+    if not nombre or not cuerpo:
+        return jsonify({"ok": False, "msg": "faltan nombre o cuerpo"})
+    import re as _re_t
+    try:
+        r = requests.get("%s/%s/message_templates" % (WA_GRAPH, c["waba_id"]),
+                         params={"limit": 200, "access_token": c["token"]}, timeout=20)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    tpl = None
+    for t in (j.get("data") or []):
+        if (t.get("name") or "").lower() == nombre:
+            tpl = t
+            break
+    if not tpl:
+        return jsonify({"ok": False, "msg": "No encontré la plantilla '%s'." % nombre})
+    viejo = ""
+    for comp in (tpl.get("components") or []):
+        if comp.get("type") == "BODY":
+            viejo = comp.get("text", "")
+    v_viejas = sorted(set(_re_t.findall(r"\{\{(\d+)\}\}", viejo)))
+    v_nuevas = sorted(set(_re_t.findall(r"\{\{(\d+)\}\}", cuerpo)))
+    if v_viejas != v_nuevas:
+        return jsonify({"ok": False, "msg": "Las variables no coinciden: la plantilla usa %s y el texto "
+                                            "nuevo %s. Si cambian, los envíos fallan." %
+                                            (v_viejas or "ninguna", v_nuevas or "ninguna")})
+    comp = {"type": "BODY", "text": cuerpo}
+    ejemplos = [str(x) for x in (d.get("ejemplos") or [])]
+    if ejemplos:
+        comp["example"] = {"body_text": [ejemplos]}
+    else:                                   # reuso los ejemplos que ya tenía, si los tenía
+        for cc in (tpl.get("components") or []):
+            if cc.get("type") == "BODY" and cc.get("example"):
+                comp["example"] = cc["example"]
+    try:
+        r2 = requests.post("%s/%s" % (WA_GRAPH, tpl.get("id")),
+                           params={"access_token": c["token"]},
+                           json={"components": [comp]}, timeout=25)
+        j2 = r2.json() if r2.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:120]})
+    if r2.status_code >= 400:
+        return jsonify({"ok": False, "msg": ((j2.get("error") or {}).get("error_user_msg")
+                                             or (j2.get("error") or {}).get("message") or "error")[:250]})
+    return jsonify({"ok": True, "id": tpl.get("id"), "nombre": nombre,
+                    "antes": viejo, "ahora": cuerpo, "respuesta": j2})
+
+
 @app.post("/wa-plantilla-enviar")
 def wa_plantilla_enviar():
     email = _user_actual()
