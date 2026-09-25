@@ -1694,9 +1694,10 @@ _SOLO_DASH = r"""
    var h='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
     +'<div style="color:#e7edf5;font-size:14px;font-weight:800">'+j.total+' env&iacute;os en la planilla</div>'
     +(det.length?'<div style="color:#8493a8;font-size:12px;margin-top:3px">'+det.join(' &middot; ')+'</div>':'')
-    +'<div style="color:#9fb3c8;font-size:12.5px;margin:12px 0 7px">&iquest;En cu&aacute;ntas partes la corto?</div>'
+    +'<div style="color:#9fb3c8;font-size:12.5px;margin:12px 0 4px">Primero separo <b>sucursal</b> de <b>domicilio</b>. &iquest;En cu&aacute;ntas partes corto cada uno?</div>'
+    +'<div style="color:#8493a8;font-size:11.5px;margin-bottom:8px">Con 2 te quedan 4 archivos: sucursal mitad y mitad, domicilio mitad y mitad.</div>'
     +'<div style="display:flex;gap:7px;flex-wrap:wrap">';
-   [2,3,4,5,6].forEach(function(n){ if(n<=j.total) h+='<button onclick="rpDXlsPartir('+n+')" style="background:#7a5a1e;border:1px solid #8a6722;color:#ffe9bf;border-radius:9px;padding:8px 15px;font-size:13px;font-weight:700;cursor:pointer">'+n+'</button>'; });
+   [1,2,3,4,5,6].forEach(function(n){ if(n<=j.total) h+='<button onclick="rpDXlsPartir('+n+')" style="background:#7a5a1e;border:1px solid #8a6722;color:#ffe9bf;border-radius:9px;padding:8px 15px;font-size:13px;font-weight:700;cursor:pointer">'+n+'</button>'; });
    h+='</div></div>'; r.innerHTML=h;
   }).catch(function(){ rpDXlsMsg('No pude subir la planilla.','#fca5a5'); }); };
  window.rpDXlsPartir=function(n){ var f=window._rpXlsFile; if(!f){ rpDXlsMsg('Eleg&iacute; la planilla de nuevo.','#fca5a5'); return; }
@@ -1706,11 +1707,12 @@ _SOLO_DASH = r"""
    if(!j||!j.ok){ rpDXlsMsg((j&&j.msg)||'No pude partirla.','#fca5a5'); return; }
    var r=document.getElementById('rp-d-xlsres'); if(!r)return;
    var h='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
-    +'<div style="color:#4ade80;font-size:13.5px;font-weight:800">Listo: '+j.total+' env&iacute;os en '+j.partes+' partes</div>'
-    +'<div style="color:#8493a8;font-size:12px;margin:3px 0 11px">Sub&iacute; una, y si entra sub&iacute; la siguiente.</div>'
+    +'<div style="color:#4ade80;font-size:13.5px;font-weight:800">Listo: '+j.total+' env&iacute;os en '+j.partes+' archivos</div>'
+    +'<div style="color:#8493a8;font-size:12px;margin:3px 0 11px">Sub&iacute; uno, y si entra sub&iacute; el siguiente. El que falle te dice de qu&eacute; lado est&aacute; el problema.</div>'
     +'<div style="display:flex;flex-direction:column;gap:7px">';
-   (j.envios||[]).forEach(function(c,i){
-     h+='<a href="/pf-despachos-excel-descargar?job='+j.job+'&parte='+(i+1)+'" style="display:flex;justify-content:space-between;align-items:center;background:#111c2b;border:1px solid #1f2a3d;color:#dbeafe;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;text-decoration:none"><span>Parte '+(i+1)+' de '+j.partes+'</span><span style="color:#8493a8;font-weight:600">'+c+' env&iacute;os &nbsp;&darr;</span></a>'; });
+   var arch=j.archivos||(j.envios||[]).map(function(c,i){ return {etiqueta:'Parte '+(i+1),envios:c}; });
+   arch.forEach(function(a,i){
+     h+='<a href="/pf-despachos-excel-descargar?job='+j.job+'&parte='+(i+1)+'" style="display:flex;justify-content:space-between;align-items:center;background:#111c2b;border:1px solid #1f2a3d;color:#dbeafe;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;text-decoration:none"><span>'+a.etiqueta+'</span><span style="color:#8493a8;font-weight:600">'+a.envios+' env&iacute;os &nbsp;&darr;</span></a>'; });
    h+='</div></div>'; r.innerHTML=h;
   }).catch(function(){ rpDXlsMsg('No pude partirla.','#fca5a5'); }); };
  function rpDPartMsg(txt,col){ var r=document.getElementById('rp-d-partres'); if(r)r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:12px 14px;color:'+(col||'#9fb3c8')+';font-size:12.5px;font-weight:600">'+txt+'</div>'; }
@@ -8963,38 +8965,56 @@ def pf_despachos_excel_partir():
         total += len(filas)
     if total == 0:
         return jsonify({"ok": False, "msg": "No encontré envíos cargados en la planilla."})
-    if partes < 2:
+    if partes < 1:                             # sin 'partes' = sólo contar, para que el front pregunte
         return jsonify({"ok": True, "solo_conteo": True, "total": total,
                         "detalle": {k: len(v[2]) for k, v in datos.items()}})
-    if partes > total:
-        partes = total
-    salidas = []
-    for p in range(partes):
+    # Se separa primero por TIPO (sucursal / domicilio / llega hoy) y recién dentro de cada tipo
+    # se corta en `partes`. Cada archivo queda con un solo tipo de envío: si Andreani rechaza uno
+    # ya sabés de qué lado está el problema, sin tener los dos tipos mezclados en la misma parte.
+    planes = []                                # (hoja, desde, hasta, nro_de_parte, total_partes)
+    for nom in _XLS_HOJAS:
+        if nom not in datos:
+            continue
+        n = len(datos[nom][2])
+        if n == 0:
+            continue                           # "Llega hoy" casi siempre viene vacía
+        cortes = min(partes, n)
+        for p in range(cortes):
+            planes.append((nom, (n * p) // cortes, (n * (p + 1)) // cortes, p + 1, cortes))
+    if not planes:
+        return jsonify({"ok": False, "msg": "No encontré envíos cargados en la planilla."})
+    # OJO: writestr() MUTA el ZipInfo que recibe (le pisa header_offset y CRC con los del zip de
+    # SALIDA). Si se le pasa el ZipInfo del archivo de origen, a partir de la segunda parte zin.read()
+    # lee desde un offset equivocado y revienta con "Bad CRC-32". Por eso se lee TODO una sola vez
+    # acá y después se escribe siempre con ZipInfo nuevos.
+    original = [(it.filename, it.date_time, it.compress_type, it.external_attr,
+                 zin.read(it.filename)) for it in zin.infolist()]
+    salidas, etiquetas, cuenta = [], [], []
+    for (nom, desde, hasta, nro, cortes) in planes:
+        reemplazo = {}
+        for otro, (ruta, pre, filas, post) in datos.items():
+            trozo = filas[desde:hasta] if otro == nom else []   # las otras hojas van vacías
+            reemplazo[ruta] = _xls_rearmar(pre, trozo, post)
         buf = _io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zo:
-            reemplazo = {}
-            for nom, (ruta, pre, filas, post) in datos.items():
-                n = len(filas)
-                desde = (n * p) // partes
-                hasta = (n * (p + 1)) // partes
-                reemplazo[ruta] = _xls_rearmar(pre, filas[desde:hasta], post)
-            for it in zin.infolist():          # TODO lo demás se copia tal cual
-                zo.writestr(it, reemplazo.get(it.filename, zin.read(it.filename)))
+            for nombre, fecha, comp, attr, cont in original:    # TODO lo demás se copia tal cual
+                zi = zipfile.ZipInfo(nombre, date_time=fecha)
+                zi.compress_type = comp
+                zi.external_attr = attr
+                zo.writestr(zi, reemplazo.get(nombre, cont))
         salidas.append(buf.getvalue())
-    cuenta = []
-    for p in range(partes):
-        c = 0
-        for nom, (ruta, pre, filas, post) in datos.items():
-            n = len(filas)
-            c += ((n * (p + 1)) // partes) - ((n * p) // partes)
-        cuenta.append(c)
+        etiquetas.append("%s %d de %d" % (nom, nro, cortes) if cortes > 1 else nom)
+        cuenta.append(hasta - desde)
     import time as _tt
     job = _secrets.token_hex(6)
-    _XLS_JOBS[job] = {"partes": salidas, "ts": _tt.time()}
-    for k in list(_XLS_JOBS):                  # limpio los viejos (>30 min)
-        if _tt.time() - _XLS_JOBS[k].get("ts", 0) > 1800:
-            _XLS_JOBS.pop(k, None)
-    return jsonify({"ok": True, "job": job, "total": total, "partes": partes, "envios": cuenta})
+    _XLS_JOBS[job] = {"partes": salidas, "etiquetas": etiquetas, "ts": _tt.time()}
+    for viejo_job in list(_XLS_JOBS):          # limpio los viejos (>30 min)
+        if _tt.time() - _XLS_JOBS[viejo_job].get("ts", 0) > 1800:
+            _XLS_JOBS.pop(viejo_job, None)
+    return jsonify({"ok": True, "job": job, "total": total, "partes": len(salidas),
+                    "envios": cuenta,
+                    "archivos": [{"etiqueta": etiquetas[i], "envios": cuenta[i]}
+                                 for i in range(len(salidas))]})
 
 
 @app.get("/pf-despachos-excel-descargar")
@@ -9009,8 +9029,13 @@ def pf_despachos_excel_descargar():
     if not st or p < 0 or p >= len(st["partes"]):
         return jsonify({"ok": False, "msg": "el archivo expiró, subilo de nuevo"}), 404
     import io as _io2
+    # El nombre lleva el tipo de envío (A sucursal / A domicilio) para no confundirse al subirlos
+    # de a uno en Andreani.
+    etiquetas = st.get("etiquetas") or []
+    etq = etiquetas[p] if p < len(etiquetas) else "parte %d" % (p + 1)
+    etq = re.sub(r"[^A-Za-z0-9]+", "-", etq).strip("-") or "parte"
     return send_file(_io2.BytesIO(st["partes"][p]), as_attachment=True,
-                     download_name="Andreani-parte-%d-de-%d.xlsx" % (p + 1, len(st["partes"])),
+                     download_name="Andreani-%s.xlsx" % etq,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
