@@ -8864,7 +8864,11 @@ def pf_despachos_sku_descargar():
 # (los desplegables) y la hoja Configuracion, y Andreani rechaza la planilla por eso. Acá se toca
 # el XML crudo adentro del .xlsx: se quedan sólo las filas elegidas de las hojas de envíos y TODO
 # lo demás (Configuracion con sus ~30.000 filas, estilos, validaciones) se copia tal cual.
-_XLS_JOBS = {}
+# Las partes van al DISCO PERSISTENTE, NO a un dict en memoria: gunicorn corre con 2 workers y
+# el proceso que parte la planilla NO es siempre el que después atiende la descarga → salía
+# "el archivo expiró" de forma intermitente (1 de cada 2 o 3 descargas) con el archivo recién hecho.
+_XLS_DIR = DATA_DIR / "xls_partes"
+_XLS_TTL = 6 * 3600                                       # cada corte vive 6 h y después se purga
 _XLS_HOJAS = ("A domicilio", "A sucursal", "Llega hoy")   # las hojas donde van los envíos
 
 
@@ -9007,10 +9011,24 @@ def pf_despachos_excel_partir():
         cuenta.append(hasta - desde)
     import time as _tt
     job = _secrets.token_hex(6)
-    _XLS_JOBS[job] = {"partes": salidas, "etiquetas": etiquetas, "ts": _tt.time()}
-    for viejo_job in list(_XLS_JOBS):          # limpio los viejos (>30 min)
-        if _tt.time() - _XLS_JOBS[viejo_job].get("ts", 0) > 1800:
-            _XLS_JOBS.pop(viejo_job, None)
+    carpeta = _XLS_DIR / job
+    try:
+        carpeta.mkdir(parents=True, exist_ok=True)
+        for i, contenido in enumerate(salidas):
+            (carpeta / ("%d.xlsx" % (i + 1))).write_bytes(contenido)
+        (carpeta / "meta.json").write_text(
+            _json.dumps({"etiquetas": etiquetas, "ts": _tt.time()}), "utf-8")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude guardar las partes: %s: %s"
+                                            % (type(e).__name__, str(e)[:120])})
+    try:                                       # purga de cortes viejos
+        for d in _XLS_DIR.iterdir():
+            if d.is_dir() and _tt.time() - d.stat().st_mtime > _XLS_TTL:
+                for f in d.iterdir():
+                    f.unlink()
+                d.rmdir()
+    except Exception:
+        pass
     return jsonify({"ok": True, "job": job, "total": total, "partes": len(salidas),
                     "envios": cuenta,
                     "archivos": [{"etiqueta": etiquetas[i], "envios": cuenta[i]}
@@ -9021,20 +9039,24 @@ def pf_despachos_excel_partir():
 def pf_despachos_excel_descargar():
     if not _user_actual():
         return jsonify({"ok": False}), 401
-    st = _XLS_JOBS.get((request.args.get("job") or "").strip())
+    job = re.sub(r"[^a-f0-9]", "", (request.args.get("job") or "").strip())[:32]
     try:
-        p = int(request.args.get("parte") or 1) - 1
+        p = int(request.args.get("parte") or 1)
     except Exception:
-        p = 0
-    if not st or p < 0 or p >= len(st["partes"]):
+        p = 1
+    carpeta = _XLS_DIR / job
+    archivo = carpeta / ("%d.xlsx" % p)
+    if not job or p < 1 or not archivo.exists():
         return jsonify({"ok": False, "msg": "el archivo expiró, subilo de nuevo"}), 404
-    import io as _io2
     # El nombre lleva el tipo de envío (A sucursal / A domicilio) para no confundirse al subirlos
     # de a uno en Andreani.
-    etiquetas = st.get("etiquetas") or []
-    etq = etiquetas[p] if p < len(etiquetas) else "parte %d" % (p + 1)
+    try:
+        etiquetas = (_json.loads((carpeta / "meta.json").read_text("utf-8")) or {}).get("etiquetas") or []
+    except Exception:
+        etiquetas = []
+    etq = etiquetas[p - 1] if p <= len(etiquetas) else "parte %d" % p
     etq = re.sub(r"[^A-Za-z0-9]+", "-", etq).strip("-") or "parte"
-    return send_file(_io2.BytesIO(st["partes"][p]), as_attachment=True,
+    return send_file(str(archivo), as_attachment=True,
                      download_name="Andreani-%s.xlsx" % etq,
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
