@@ -9902,16 +9902,44 @@ def _wa_seg_marcar_varios(email, pedidos) -> None:
     _WA_SEG_ENV.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
 
 
-def _seg_e164(tel: str) -> str:
-    import re
-    d = re.sub(r"\D", "", tel or "").lstrip("0")
-    if d.startswith("15"):
+def _tel_ar(tel):
+    """Teléfono argentino -> (numero_para_whatsapp, motivo_del_rechazo).
+
+    Acepta como lo escriba una persona: '011 15 5575-6770', '+54 9 11 5575-6770', '1155756770',
+    '0341 15 250-5248'. Devuelve ('5491155756770', '') o ('', 'por qué no sirve').
+
+    El 15 NO va al principio del número: va DESPUÉS del código de área (011 **15** 5575-6770).
+    La versión vieja lo sacaba sólo si arrancaba el número, así que un teléfono escrito con 0 y 15
+    quedaba en 14 dígitos y el mensaje rebotaba sin que nadie se enterara.
+
+    Cuando no se puede estar seguro NO se adivina: '15 5575 6770' sin código de área podría ser de
+    cualquier provincia, y mandarlo asumiendo Buenos Aires es escribirle a otra persona."""
+    import re as _re_p
+    d = _re_p.sub(r"\D", "", str(tel or ""))
+    if d.startswith("00"):
         d = d[2:]
-    if not d.startswith("54"):
-        d = "54" + d
-    if d.startswith("54") and not d.startswith("549"):
-        d = "549" + d[2:]
-    return d
+    if d.startswith("54"):                      # ya viene internacional
+        d = d[2:]
+        if d.startswith("9") and len(d) > 10:
+            d = d[1:]
+    d = d.lstrip("0")                           # el 0 de larga distancia
+    if len(d) > 10:                             # sacar el 15 que va después del área (2, 3 o 4)
+        for p in (2, 3, 4):
+            if d[p:p + 2] == "15" and len(d) - 2 == 10:
+                d = d[:p] + d[p + 2:]
+                break
+    if len(d) < 10:
+        return "", "Faltan dígitos: escribí código de área + número (10 en total)."
+    if len(d) > 10:
+        return "", "Sobran dígitos (%d). Revisá el número." % len(d)
+    if d.startswith("15"):
+        return "", "Falta el código de área. En Argentina ningún área empieza con 15."
+    return "549" + d, ""
+
+
+def _seg_e164(tel: str) -> str:
+    n, _ = _tel_ar(tel)
+    return n
 
 
 def _seg_unidades(o: dict) -> int:
@@ -19126,7 +19154,7 @@ function renderApp(){
  var _bc=document.getElementById('bChats'); if(_bc) _bc.classList.toggle('on',conn);
  loadBotTop();
  var app=document.getElementById('app');
- app.innerHTML='<div class="list" id="list"><div class="search"><input id="q" autocomplete="off" placeholder="Buscar chat…" oninput="renderList()"></div><div class="chats" id="chats"></div></div>'
+ app.innerHTML='<div class="list" id="list"><div class="search" style="display:flex;gap:7px;align-items:center"><input id="q" autocomplete="off" placeholder="Buscar chat…" oninput="renderList()" style="flex:1;min-width:0"><button onclick="openNuevo()" title="Escribirle a un número que todavía no te escribió" style="flex:none;background:#1d5f52;border:1px solid #1f6b5c;color:#c9f5e8;border-radius:9px;width:34px;height:34px;font-size:19px;font-weight:700;cursor:pointer;line-height:1">+</button></div><div class="chats" id="chats"></div></div>'
   +'<div class="conv" id="conv"><div class="empty">&#128172; Elegí una conversación</div></div>';
  loadChats();
  if(POLL)clearInterval(POLL);
@@ -19457,6 +19485,7 @@ function openTpl(){
   var link='<div style="font-size:12px;color:var(--mut);margin-top:6px">¿Crear una nueva? Se hacen en <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank">el Administrador de WhatsApp de Meta</a> (necesitan aprobación).</div>';
   if(!r.ok){ box.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'+link; return; }
   var ts=r.templates||[];
+  window.__TPLB={}; ts.forEach(function(t){ window.__TPLB[t.name]=t.body||''; });   // textos, para la vista previa
   if(!ts.length){ box.innerHTML='<div class="empty" style="font-size:13px">No hay plantillas todavía.</div>'+link; return; }
   box.innerHTML=ts.map(function(t){
    var ok=(t.status||'').toUpperCase()=='APPROVED';
@@ -19470,12 +19499,97 @@ function openTpl(){
 }
 function sendTpl(name,lang,nvars){
  if(!SEL){alert('Elegí un chat primero');return;}
- var params=[];
- for(var i=1;i<=nvars;i++){ var v=prompt('Valor para la variable {{'+i+'}}:'); if(v===null)return; params.push(v); }
- post('/wa-plantilla-enviar',{wa_id:SEL,name:name,lang:lang,params:params.join('|')}).then(function(r){
-  if(!r.ok){ alert('No se pudo enviar: '+(r.msg||'error')); return; }
-  closeOv(); loadChats();
+ var c=CHATS.filter(function(x){return x.wa_id==SEL;})[0]||{};
+ var sug=(c.name&&c.name!=SEL)?c.name:'';           // si ya sabemos el nombre, lo proponemos
+ abrirPreview(SEL,name,lang,nvars,(window.__TPLB||{})[name]||'',sug);
+}
+// Vista previa: se ve el mensaje ARMADO antes de mandarlo. Antes esto pedía los valores con
+// prompt('Valor para la variable {{1}}:') — nadie sabe qué es eso, se escribía a ciegas y salía
+// sin confirmación. Ahora el campo dice "Nombre del cliente" y el texto se actualiza al tipear.
+window.__PV={};
+function abrirPreview(wid,name,lang,nvars,body,sug){
+ window.__PV={wid:wid,name:name,lang:lang,nvars:nvars,body:body};
+ var ov=document.getElementById('ov'), md=document.getElementById('modal');
+ var campos='';
+ for(var i=1;i<=nvars;i++){
+  var et=(i===1?'Nombre del cliente':'Dato para {{'+i+'}}');
+  campos+='<div style="margin-top:10px"><div style="color:var(--mut);font-size:12px;font-weight:600;margin-bottom:4px">'+et+'</div>'
+   +'<input id="pv'+i+'" oninput="pintarPreview()" value="'+(i===1?esc(sug||''):'')+'" placeholder="'+(i===1?'Ej: Marcelo Pontnau':'')+'" style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:9px 11px;font-size:14px"></div>';
+ }
+ md.innerHTML='<div class="mh"><h3>Enviar plantilla</h3><button class="x" onclick="closeOv()">&times;</button></div>'
+  +'<div style="padding:4px 2px 2px"><div style="color:var(--mut);font-size:12px">Para</div>'
+  +'<div style="color:#e7edf5;font-size:14px;font-weight:700;margin-bottom:2px">+'+esc(wid)+'</div>'
+  +campos
+  +'<div style="color:var(--mut);font-size:12px;font-weight:600;margin:14px 0 5px">Así le va a llegar</div>'
+  +'<div id="pvtxt" style="background:#0f2b22;border:1px solid #1f6b5c;border-radius:12px;padding:12px 14px;color:#e8fff7;font-size:13.5px;white-space:pre-wrap;line-height:1.5"></div>'
+  +'<div id="pvmsg" style="font-size:12.5px;margin-top:9px"></div>'
+  +'<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">'
+  +'<button onclick="closeOv()" style="background:#111c2b;border:1px solid #1f2a3d;color:#cbd5e1;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">Cancelar</button>'
+  +'<button id="pvgo" onclick="enviarPreview()" style="background:#1d5f52;border:1px solid #1f6b5c;color:#c9f5e8;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Enviar</button>'
+  +'</div></div>';
+ ov.classList.add('on');
+ pintarPreview();
+}
+function pintarPreview(){
+ var p=window.__PV, t=p.body||'';
+ for(var i=1;i<=p.nvars;i++){
+  var e=document.getElementById('pv'+i); var v=(e&&e.value)||'';
+  t=t.split('{{'+i+'}}').join(v||('{{'+i+'}}'));
+ }
+ var box=document.getElementById('pvtxt'); if(box) box.textContent=t;
+}
+function enviarPreview(){
+ var p=window.__PV, params=[];
+ for(var i=1;i<=p.nvars;i++){
+  var e=document.getElementById('pv'+i); var v=((e&&e.value)||'').trim();
+  if(!v){ var m=document.getElementById('pvmsg'); if(m){m.style.color='#fca5a5'; m.textContent='Completá '+(i===1?'el nombre':'el dato {{'+i+'}}')+'.';} return; }
+  params.push(v);
+ }
+ var b=document.getElementById('pvgo'); if(b){ b.disabled=true; b.textContent='Enviando…'; }
+ post('/wa-plantilla-enviar',{wa_id:p.wid,name:p.name,lang:p.lang,params:params.join('|')}).then(function(r){
+  if(!r.ok){ var m=document.getElementById('pvmsg'); if(m){m.style.color='#fca5a5'; m.textContent=r.msg||'No se pudo enviar.';}
+   if(b){b.disabled=false;b.textContent='Enviar';} return; }
+  closeOv(); SEL=p.wid; loadChats();
  });
+}
+function openNuevo(){
+ var ov=document.getElementById('ov'), md=document.getElementById('modal');
+ md.innerHTML='<div class="mh"><h3>Escribirle a un número nuevo</h3><button class="x" onclick="closeOv()">&times;</button></div>'
+  +'<div style="padding:4px 2px 2px"><div style="color:var(--mut);font-size:12.5px;line-height:1.5;margin-bottom:11px">Si el número nunca te escribió, WhatsApp sólo deja mandarle una <b>plantilla aprobada</b>. Escribilo como quieras: con +54, con 0, con 15, con guiones.</div>'
+  +'<input id="nvtel" placeholder="Ej: 011 15 5575-6770" oninput="chequearTel()" style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:10px 12px;font-size:15px">'
+  +'<div id="nvmsg" style="font-size:12.5px;margin-top:8px;min-height:17px"></div>'
+  +'<div id="nvtpl" style="margin-top:6px"></div></div>';
+ ov.classList.add('on');
+ setTimeout(function(){ var e=document.getElementById('nvtel'); if(e)e.focus(); },80);
+}
+var _nvT=null;
+function chequearTel(){
+ clearTimeout(_nvT);
+ _nvT=setTimeout(function(){
+  var e=document.getElementById('nvtel'), msg=document.getElementById('nvmsg'), box=document.getElementById('nvtpl');
+  if(!e||!msg||!box) return;
+  var v=(e.value||'').trim();
+  box.innerHTML='';
+  if(v.replace(/[^0-9]/g,'').length<8){ msg.textContent=''; return; }
+  msg.style.color='var(--mut)'; msg.textContent='Revisando…';
+  post('/wa-chat-nuevo',{tel:v}).then(function(r){
+   if(!r||!r.ok){ msg.style.color='#fca5a5'; msg.textContent=(r&&r.msg)||'No pude leer el número.'; return; }
+   msg.style.color='#4ade80';
+   msg.innerHTML='Va a +'+esc(r.wa_id)+(r.nombre?(' &middot; <b>'+esc(r.nombre)+'</b>, lo saqué de '+esc(r.encontrado_en)):'')+(r.ya_tiene_chat?' &middot; ya tiene chat abierto':'');
+   window.__NV={wid:r.wa_id,nombre:r.nombre||''};
+   get('/wa-plantillas').then(function(p){
+    var ts=((p&&p.templates)||[]).filter(function(t){return (t.status||'').toUpperCase()==='APPROVED';});
+    if(!ts.length){ box.innerHTML='<div style="color:var(--mut);font-size:12.5px;margin-top:8px">No hay plantillas aprobadas.</div>'; return; }
+    box.innerHTML='<div style="color:var(--mut);font-size:12px;font-weight:600;margin:12px 0 6px">¿Qué le mandás?</div>'
+     +ts.map(function(t){ return '<button onclick="nuevoConTpl(\\''+t.name+'\\',\\''+(t.lang||'es')+'\\','+t.nvars+')" style="display:block;width:100%;text-align:left;background:#111c2b;border:1px solid #1f2a3d;color:#dbeafe;border-radius:10px;padding:10px 13px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px">'+esc(t.name)+'<div style="color:var(--mut);font-weight:400;font-size:11.5px;margin-top:3px">'+esc((t.body||'').slice(0,90))+'…</div></button>'; }).join('');
+    window.__NVTPL={}; ts.forEach(function(t){ window.__NVTPL[t.name]=t.body||''; });
+   });
+  });
+ },420);
+}
+function nuevoConTpl(name,lang,nvars){
+ var nv=window.__NV||{};
+ abrirPreview(nv.wid,name,lang,nvars,(window.__NVTPL||{})[name]||'',nv.nombre||'');
 }
 function closeOv(){ document.getElementById('ov').classList.remove('on'); }
 // ── Sacar el URGENTE cuando atención ya lo resolvió ──
@@ -21916,6 +22030,43 @@ def wa_plantilla_editar():
                                              or (j2.get("error") or {}).get("message") or "error")[:250]})
     return jsonify({"ok": True, "id": tpl.get("id"), "nombre": nombre,
                     "antes": viejo, "ahora": cuerpo, "respuesta": j2})
+
+
+@app.post("/wa-chat-nuevo")
+def wa_chat_nuevo():
+    """Prepara un chat con un número que todavía no escribió: normaliza el teléfono y, si ese
+    número compró alguna vez, trae el nombre y el último pedido para no escribirlo a mano.
+    NO manda nada: sólo devuelve los datos para que la pantalla arme la vista previa."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    crudo = (request.form.get("tel") or (request.get_json(silent=True) or {}).get("tel") or "").strip()
+    if not crudo:
+        return jsonify({"ok": False, "msg": "Escribí el teléfono."})
+    wid, motivo = _tel_ar(crudo)
+    if not wid:
+        return jsonify({"ok": False, "msg": motivo})
+    nombre, pedido, donde = "", "", ""
+    ult = _norm_tel(wid)                        # últimos 10 dígitos, que es como se comparan
+    try:                                        # ¿ya tiene chat abierto? ahí puede estar el nombre
+        conv = (_wa_chats_all().get(email) or {}).get(wid) or {}
+        if conv.get("name") and conv["name"] != wid:
+            nombre, donde = conv["name"], "un chat que ya existe"
+    except Exception:
+        pass
+    if not nombre:                              # si no, lo busco en los pedidos de la tienda
+        try:
+            for r in (_despachos_orders(email) or []):
+                if _norm_tel(r.get("tel")) and _norm_tel(r.get("tel")) == ult:
+                    nombre = (r.get("nombre") or "").strip()
+                    pedido = str(r.get("num") or "")
+                    donde = "el pedido #%s" % pedido if pedido else "tus pedidos"
+                    break
+        except Exception:
+            pass
+    return jsonify({"ok": True, "wa_id": wid, "nombre": nombre, "pedido": pedido,
+                    "encontrado_en": donde,
+                    "ya_tiene_chat": bool((_wa_chats_all().get(email) or {}).get(wid))})
 
 
 @app.post("/wa-plantilla-enviar")
