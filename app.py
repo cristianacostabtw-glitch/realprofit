@@ -1690,19 +1690,12 @@ _SOLO_DASH = r"""
   fetch('/pf-despachos-excel-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){ rpDXlsMsg((j&&j.msg)||'No pude leer la planilla.','#fca5a5'); return; }
    var d=j.detalle||{}; var det=[]; for(var k in d){ if(d[k]) det.push(d[k]+' '+k.toLowerCase()); }
-   var r=document.getElementById('rp-d-xlsres'); if(!r)return;
-   var h='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
-    +'<div style="color:#e7edf5;font-size:14px;font-weight:800">'+j.total+' env&iacute;os en la planilla</div>'
-    +(det.length?'<div style="color:#8493a8;font-size:12px;margin-top:3px">'+det.join(' &middot; ')+'</div>':'')
-    +'<div style="color:#9fb3c8;font-size:12.5px;margin:12px 0 4px">Primero separo <b>sucursal</b> de <b>domicilio</b>. &iquest;En cu&aacute;ntas partes corto cada uno?</div>'
-    +'<div style="color:#8493a8;font-size:11.5px;margin-bottom:8px">Con 2 te quedan 4 archivos: sucursal mitad y mitad, domicilio mitad y mitad.</div>'
-    +'<div style="display:flex;gap:7px;flex-wrap:wrap">';
-   [1,2,3,4,5,6].forEach(function(n){ if(n<=j.total) h+='<button onclick="rpDXlsPartir('+n+')" style="background:#7a5a1e;border:1px solid #8a6722;color:#ffe9bf;border-radius:9px;padding:8px 15px;font-size:13px;font-weight:700;cursor:pointer">'+n+'</button>'; });
-   h+='</div></div>'; r.innerHTML=h;
+   rpDXlsMsg(j.total+' env&iacute;os'+(det.length?' ('+det.join(' &middot; ')+')':'')+'. Separando domicilio y sucursal...');
+   rpDXlsPartir(2);   // sin preguntar: domicilio entero + sucursal al medio
   }).catch(function(){ rpDXlsMsg('No pude subir la planilla.','#fca5a5'); }); };
  window.rpDXlsPartir=function(n){ var f=window._rpXlsFile; if(!f){ rpDXlsMsg('Eleg&iacute; la planilla de nuevo.','#fca5a5'); return; }
-  rpDXlsMsg('Partiendo en '+n+' partes...');
-  var fd=new FormData(); fd.append('excel',f); fd.append('partes',n);
+  rpDXlsMsg('Separando domicilio y sucursal...');
+  var fd=new FormData(); fd.append('excel',f); fd.append('partes',n); fd.append('auto','1');
   fetch('/pf-despachos-excel-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){ rpDXlsMsg((j&&j.msg)||'No pude partirla.','#fca5a5'); return; }
    var r=document.getElementById('rp-d-xlsres'); if(!r)return;
@@ -8928,6 +8921,10 @@ def pf_despachos_excel_partir():
         partes = int((request.form.get("partes") or "0").strip() or 0)
     except Exception:
         partes = 0
+    # 'auto': no preguntar nada. Domicilio va entero y sucursal al medio.
+    auto = (request.form.get("auto") or "") in ("1", "true", "on")
+    if auto and partes < 2:
+        partes = 2
     import zipfile, io as _io
     try:
         crudo = f.read()
@@ -8982,7 +8979,10 @@ def pf_despachos_excel_partir():
         n = len(datos[nom][2])
         if n == 0:
             continue                           # "Llega hoy" casi siempre viene vacía
-        cortes = min(partes, n)
+        # Reparto que pidió Cristian: domicilio ENTERO (casi nunca es el que falla) y sucursal
+        # partida al medio, que es donde aparecen las sucursales cerradas.
+        cortes = 1 if (auto and nom == "A domicilio") else partes
+        cortes = min(cortes, n)
         for p in range(cortes):
             planes.append((nom, (n * p) // cortes, (n * (p + 1)) // cortes, p + 1, cortes))
     if not planes:
