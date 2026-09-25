@@ -8866,16 +8866,25 @@ _XLS_JOBS = {}
 _XLS_HOJAS = ("A domicilio", "A sucursal", "Llega hoy")   # las hojas donde van los envíos
 
 
+_RX_FILA = re.compile(r'<(?:\w+:)?row\b[^>]*/>|<(?:\w+:)?row\b[^>]*>.*?</(?:\w+:)?row>', re.S)
+
+
 def _xls_hoja_filas(xml: bytes):
     """Parte el XML de una hoja en (cabecera, [filas de datos], cola). Las 2 primeras filas son
-    encabezados de Andreani y van SIEMPRE en todas las partes."""
+    encabezados de Andreani y van SIEMPRE en todas las partes.
+
+    OJO con el namespace: la planilla que arma RealProfit escribe <row r="3">, pero la plantilla
+    nueva de Andreani escribe <x:row r="1" spans="1:19">. Por eso todo acá acepta prefijo opcional
+    y no asume que r="3" venga pegado al nombre del tag."""
     s = xml.decode("utf-8", "replace")
-    i = s.find('<row r="3"')
-    if i < 0:
+    m = re.search(r'<(?:\w+:)?row\b[^>]*\br="3"', s)
+    if not m:
         return s, [], ""                      # hoja sin datos (ej "Llega hoy" vacía)
-    j = s.find("</sheetData>")
+    i = m.start()
+    mj = re.search(r'</(?:\w+:)?sheetData>', s)
+    j = mj.start() if mj else len(s)
     pre, mid, post = s[:i], s[i:j], s[j:]
-    filas = re.findall(r'<row r="\d+".*?</row>', mid, re.S)
+    filas = _RX_FILA.findall(mid)
     return pre, filas, post
 
 
@@ -8884,17 +8893,18 @@ def _xls_rearmar(pre, filas, post):
     números originales quedan huecos y el cargador de Andreani se confunde."""
     out, n = [], 3
     for r in filas:
-        m = re.match(r'<row r="(\d+)"', r)
+        m = re.match(r'<(?:\w+:)?row\b[^>]*?\br="(\d+)"', r)
         if not m:
             continue
         viejo = m.group(1)
-        r = re.sub(r'^<row r="%s"' % viejo, '<row r="%d"' % n, r)
-        r = re.sub(r' r="([A-Z]+)%s"' % viejo, lambda mm: ' r="%s%d"' % (mm.group(1), n), r)
+        r = re.sub(r'(<(?:\w+:)?row\b[^>]*?\b)r="%s"' % viejo,
+                   lambda mm: '%sr="%d"' % (mm.group(1), n), r, count=1)
+        r = re.sub(r'\br="([A-Z]+)%s"' % viejo, lambda mm: 'r="%s%d"' % (mm.group(1), n), r)
         out.append(r)
         n += 1
     ult = max(n - 1, 2)
-    pre = re.sub(r'<dimension ref="([A-Z]+)1:([A-Z]+)\d+"',
-                 lambda mm: '<dimension ref="%s1:%s%d"' % (mm.group(1), mm.group(2), ult), pre)
+    pre = re.sub(r'<((?:\w+:)?dimension) ref="([A-Z]+)1:([A-Z]+)\d+"',
+                 lambda mm: '<%s ref="%s1:%s%d"' % (mm.group(1), mm.group(2), mm.group(3), ult), pre)
     return (pre + "".join(out) + post).encode("utf-8")
 
 
@@ -8924,11 +8934,25 @@ def pf_despachos_excel_partir():
         rels = zin.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace")
     except Exception:
         return jsonify({"ok": False, "msg": "El archivo no parece una planilla de Andreani."})
-    idx = dict(re.findall(r'Id="(rId\d+)"[^>]*Target="(worksheets/[^"]+)"', rels))
+    # OJO: en las planillas reales el <Relationship> trae Target ANTES que Id y con ruta ABSOLUTA
+    # (Target="/xl/worksheets/sheet1.xml"). Por eso no se puede asumir el orden de los atributos
+    # ni que la ruta sea relativa: hay que leer cada tag y normalizar la ruta a mano.
+    idx = {}
+    for tag in re.findall(r'<Relationship\b[^>]*>', rels):
+        m_id = re.search(r'\bId="([^"]+)"', tag)
+        m_tg = re.search(r'\bTarget="([^"]+)"', tag)
+        if not m_id or not m_tg:
+            continue
+        destino = m_tg.group(1).replace("\\", "/")
+        if "worksheets/" not in destino:
+            continue                          # styles, theme, sharedStrings: no interesan
+        idx[m_id.group(1)] = "worksheets/" + destino.split("worksheets/")[-1]
     hojas = {}
-    for nom, rid in re.findall(r'<sheet[^>]*name="([^"]*)"[^>]*r:id="(rId\d+)"', wb):
-        if rid in idx:
-            hojas[nom] = "xl/" + idx[rid]
+    for tag in re.findall(r'<(?:\w+:)?sheet\b[^>]*>', wb):
+        m_nom = re.search(r'\bname="([^"]*)"', tag)
+        m_rid = re.search(r'\br:id="(rId\d+)"', tag)
+        if m_nom and m_rid and m_rid.group(1) in idx:
+            hojas[m_nom.group(1)] = "xl/" + idx[m_rid.group(1)]
     datos, total = {}, 0
     for nom in _XLS_HOJAS:
         ruta = hojas.get(nom)
