@@ -733,6 +733,7 @@ _SOLO_DASH = r"""
    <button onclick="rpDActSku()" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">barcode</span>Actualizar SKUs</button>
    <button onclick="rpDOpenSku()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#3b3a8f,#2c2b6b);border:1px solid #3a3a86;color:#dcdcff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">qr_code_2</span>Insertar SKU</button>
    <button onclick="rpDOpenPart()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#1d5f52,#154a41);border:1px solid #1f6b5c;color:#c9f5e8;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">content_cut</span>Separar / unir</button>
+   <button onclick="rpDOpenXls()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#7a5a1e,#5e4516);border:1px solid #8a6722;color:#ffe9bf;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer" title="Cuando Andreani rechaza la planilla entera: la partís y subís las partes de a una"><span class="material-symbols-outlined" style="font-size:17px">table_view</span>Partir Excel Andreani</button>
    <button onclick="rpDOpenSeg()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#b23a55,#8f2c44);border:1px solid #a23650;color:#ffe0e7;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">local_shipping</span>Enviar seguimiento</button>
   </div>
   <div id="rp-d-status" style="color:#34d399;font-size:12.5px;font-weight:600;min-height:18px;margin:2px 2px 10px"></div>
@@ -777,6 +778,17 @@ _SOLO_DASH = r"""
   </div>
   <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:30px 18px;text-align:center;cursor:pointer"><input id="rp-d-partfile" type="file" accept="application/pdf" multiple style="display:none" onchange="rpDPartCont(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Eleg&iacute; uno para separar, o varios para unir</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">No toca las etiquetas: solo las reparte o las junta</div></label>
   <div id="rp-d-partres" style="margin-top:14px"></div>
+ </div>
+</div>
+<div id="rp-d-xlsov" style="position:fixed;inset:0;z-index:100002;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpDCloseXls()">
+ <div style="width:100%;max-width:560px;background:#0e1521;border:1px solid #1a2333;border-radius:18px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.6)">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+   <div style="width:40px;height:40px;border-radius:11px;background:#2a2110;border:1px solid #8a6722;display:flex;align-items:center;justify-content:center;flex:none"><span class="material-symbols-outlined" style="color:#fbbf24;font-size:20px">table_view</span></div>
+   <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Partir el Excel de Andreani</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Cuando el cargador de Andreani rechaza la planilla entera, part&iacute;la ac&aacute; y sub&iacute; las partes de a una. Si el problema es una fila, <b style="color:#cbd5e1">las dem&aacute;s entran igual</b>.</div></div>
+   <button onclick="rpDCloseXls()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
+  </div>
+  <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:30px 18px;text-align:center;cursor:pointer"><input id="rp-d-xlsfile" type="file" accept=".xlsx" style="display:none" onchange="rpDXlsCont(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Eleg&iacute; el Excel de Andreani</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">Se respetan los desplegables y la hoja Configuracion</div></label>
+  <div id="rp-d-xlsres" style="margin-top:14px"></div>
  </div>
 </div>
 <div id="rp-d-segov" style="position:fixed;inset:0;z-index:100002;background:rgba(4,8,14,.72);display:none;align-items:center;justify-content:center;padding:20px;font-family:system-ui,-apple-system,sans-serif" onclick="if(event.target===this)rpDCloseSeg()">
@@ -1669,6 +1681,38 @@ _SOLO_DASH = r"""
  // ---- Modal Separar etiquetas (parte el PDF en dos) ----
  window.rpDOpenPart=function(){ var m=document.getElementById('rp-d-partov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-partres'); if(r)r.innerHTML=''; window._rpPartFile=null; var i=document.getElementById('rp-d-partfile'); if(i)i.value=''; } };
  window.rpDClosePart=function(){ var m=document.getElementById('rp-d-partov'); if(m)m.style.display='none'; window._rpPartFile=null; };
+ window.rpDOpenXls=function(){ var m=document.getElementById('rp-d-xlsov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-xlsres'); if(r)r.innerHTML=''; window._rpXlsFile=null; var i=document.getElementById('rp-d-xlsfile'); if(i)i.value=''; } };
+ window.rpDCloseXls=function(){ var m=document.getElementById('rp-d-xlsov'); if(m)m.style.display='none'; window._rpXlsFile=null; };
+ function rpDXlsMsg(txt,col){ var r=document.getElementById('rp-d-xlsres'); if(r)r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:12px 14px;color:'+(col||'#9fb3c8')+';font-size:12.5px;font-weight:600">'+txt+'</div>'; }
+ window.rpDXlsCont=function(inp){ var f=inp&&inp.files&&inp.files[0]; if(!f)return; window._rpXlsFile=f;
+  rpDXlsMsg('Leyendo la planilla...');
+  var fd=new FormData(); fd.append('excel',f);
+  fetch('/pf-despachos-excel-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){ rpDXlsMsg((j&&j.msg)||'No pude leer la planilla.','#fca5a5'); return; }
+   var d=j.detalle||{}; var det=[]; for(var k in d){ if(d[k]) det.push(d[k]+' '+k.toLowerCase()); }
+   var r=document.getElementById('rp-d-xlsres'); if(!r)return;
+   var h='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
+    +'<div style="color:#e7edf5;font-size:14px;font-weight:800">'+j.total+' env&iacute;os en la planilla</div>'
+    +(det.length?'<div style="color:#8493a8;font-size:12px;margin-top:3px">'+det.join(' &middot; ')+'</div>':'')
+    +'<div style="color:#9fb3c8;font-size:12.5px;margin:12px 0 7px">&iquest;En cu&aacute;ntas partes la corto?</div>'
+    +'<div style="display:flex;gap:7px;flex-wrap:wrap">';
+   [2,3,4,5,6].forEach(function(n){ if(n<=j.total) h+='<button onclick="rpDXlsPartir('+n+')" style="background:#7a5a1e;border:1px solid #8a6722;color:#ffe9bf;border-radius:9px;padding:8px 15px;font-size:13px;font-weight:700;cursor:pointer">'+n+'</button>'; });
+   h+='</div></div>'; r.innerHTML=h;
+  }).catch(function(){ rpDXlsMsg('No pude subir la planilla.','#fca5a5'); }); };
+ window.rpDXlsPartir=function(n){ var f=window._rpXlsFile; if(!f){ rpDXlsMsg('Eleg&iacute; la planilla de nuevo.','#fca5a5'); return; }
+  rpDXlsMsg('Partiendo en '+n+' partes...');
+  var fd=new FormData(); fd.append('excel',f); fd.append('partes',n);
+  fetch('/pf-despachos-excel-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){ rpDXlsMsg((j&&j.msg)||'No pude partirla.','#fca5a5'); return; }
+   var r=document.getElementById('rp-d-xlsres'); if(!r)return;
+   var h='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
+    +'<div style="color:#4ade80;font-size:13.5px;font-weight:800">Listo: '+j.total+' env&iacute;os en '+j.partes+' partes</div>'
+    +'<div style="color:#8493a8;font-size:12px;margin:3px 0 11px">Sub&iacute; una, y si entra sub&iacute; la siguiente.</div>'
+    +'<div style="display:flex;flex-direction:column;gap:7px">';
+   (j.envios||[]).forEach(function(c,i){
+     h+='<a href="/pf-despachos-excel-descargar?job='+j.job+'&parte='+(i+1)+'" style="display:flex;justify-content:space-between;align-items:center;background:#111c2b;border:1px solid #1f2a3d;color:#dbeafe;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:700;text-decoration:none"><span>Parte '+(i+1)+' de '+j.partes+'</span><span style="color:#8493a8;font-weight:600">'+c+' env&iacute;os &nbsp;&darr;</span></a>'; });
+   h+='</div></div>'; r.innerHTML=h;
+  }).catch(function(){ rpDXlsMsg('No pude partirla.','#fca5a5'); }); };
  function rpDPartMsg(txt,col){ var r=document.getElementById('rp-d-partres'); if(r)r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:12px 14px;color:'+(col||'#9fb3c8')+';font-size:12.5px;font-weight:600">'+txt+'</div>'; }
  function rpDPartFd(n){ var fd=new FormData(); var L=window._rpPartFiles||[];
    for(var i=0;i<L.length;i++){ fd.append('pdf',L[i]); }
@@ -8808,6 +8852,141 @@ def pf_despachos_sku_descargar():
     _SKU_JOBS.pop(job, None)          # libero memoria una vez descargado
     return send_file(io.BytesIO(pdf), as_attachment=True,
                      download_name="etiquetas-con-sku.pdf", mimetype="application/pdf")
+
+
+# ---------- Partir el EXCEL de Andreani en varias partes ----------
+# Para cuando el cargador masivo de Andreani rechaza la planilla entera: se sube acá, se parte y
+# se suben las partes de a una. Así, si el problema es un dato de UNA fila, las demás entran igual.
+#
+# NO se usa openpyxl a propósito: al reescribir el archivo se pierden las VALIDACIONES DE DATOS
+# (los desplegables) y la hoja Configuracion, y Andreani rechaza la planilla por eso. Acá se toca
+# el XML crudo adentro del .xlsx: se quedan sólo las filas elegidas de las hojas de envíos y TODO
+# lo demás (Configuracion con sus ~30.000 filas, estilos, validaciones) se copia tal cual.
+_XLS_JOBS = {}
+_XLS_HOJAS = ("A domicilio", "A sucursal", "Llega hoy")   # las hojas donde van los envíos
+
+
+def _xls_hoja_filas(xml: bytes):
+    """Parte el XML de una hoja en (cabecera, [filas de datos], cola). Las 2 primeras filas son
+    encabezados de Andreani y van SIEMPRE en todas las partes."""
+    s = xml.decode("utf-8", "replace")
+    i = s.find('<row r="3"')
+    if i < 0:
+        return s, [], ""                      # hoja sin datos (ej "Llega hoy" vacía)
+    j = s.find("</sheetData>")
+    pre, mid, post = s[:i], s[i:j], s[j:]
+    filas = re.findall(r'<row r="\d+".*?</row>', mid, re.S)
+    return pre, filas, post
+
+
+def _xls_rearmar(pre, filas, post):
+    """Renumera las filas elegidas para que queden consecutivas desde la 3. Si se dejaran los
+    números originales quedan huecos y el cargador de Andreani se confunde."""
+    out, n = [], 3
+    for r in filas:
+        m = re.match(r'<row r="(\d+)"', r)
+        if not m:
+            continue
+        viejo = m.group(1)
+        r = re.sub(r'^<row r="%s"' % viejo, '<row r="%d"' % n, r)
+        r = re.sub(r' r="([A-Z]+)%s"' % viejo, lambda mm: ' r="%s%d"' % (mm.group(1), n), r)
+        out.append(r)
+        n += 1
+    ult = max(n - 1, 2)
+    pre = re.sub(r'<dimension ref="([A-Z]+)1:([A-Z]+)\d+"',
+                 lambda mm: '<dimension ref="%s1:%s%d"' % (mm.group(1), mm.group(2), ult), pre)
+    return (pre + "".join(out) + post).encode("utf-8")
+
+
+@app.post("/pf-despachos-excel-partir")
+@_heavy
+def pf_despachos_excel_partir():
+    """Sube el Excel de Andreani y lo parte en N partes iguales. Sin 'partes' sólo cuenta."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    f = request.files.get("excel") or (next(iter(request.files.values())) if request.files else None)
+    if not f:
+        return jsonify({"ok": False, "msg": "Subí el Excel de Andreani."})
+    try:
+        partes = int((request.form.get("partes") or "0").strip() or 0)
+    except Exception:
+        partes = 0
+    import zipfile, io as _io
+    try:
+        crudo = f.read()
+        zin = zipfile.ZipFile(_io.BytesIO(crudo))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude abrir el Excel: %s" % str(e)[:100]})
+    # qué archivo XML es cada hoja
+    try:
+        wb = zin.read("xl/workbook.xml").decode("utf-8", "replace")
+        rels = zin.read("xl/_rels/workbook.xml.rels").decode("utf-8", "replace")
+    except Exception:
+        return jsonify({"ok": False, "msg": "El archivo no parece una planilla de Andreani."})
+    idx = dict(re.findall(r'Id="(rId\d+)"[^>]*Target="(worksheets/[^"]+)"', rels))
+    hojas = {}
+    for nom, rid in re.findall(r'<sheet[^>]*name="([^"]*)"[^>]*r:id="(rId\d+)"', wb):
+        if rid in idx:
+            hojas[nom] = "xl/" + idx[rid]
+    datos, total = {}, 0
+    for nom in _XLS_HOJAS:
+        ruta = hojas.get(nom)
+        if not ruta:
+            continue
+        pre, filas, post = _xls_hoja_filas(zin.read(ruta))
+        datos[nom] = (ruta, pre, filas, post)
+        total += len(filas)
+    if total == 0:
+        return jsonify({"ok": False, "msg": "No encontré envíos cargados en la planilla."})
+    if partes < 2:
+        return jsonify({"ok": True, "solo_conteo": True, "total": total,
+                        "detalle": {k: len(v[2]) for k, v in datos.items()}})
+    if partes > total:
+        partes = total
+    salidas = []
+    for p in range(partes):
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zo:
+            reemplazo = {}
+            for nom, (ruta, pre, filas, post) in datos.items():
+                n = len(filas)
+                desde = (n * p) // partes
+                hasta = (n * (p + 1)) // partes
+                reemplazo[ruta] = _xls_rearmar(pre, filas[desde:hasta], post)
+            for it in zin.infolist():          # TODO lo demás se copia tal cual
+                zo.writestr(it, reemplazo.get(it.filename, zin.read(it.filename)))
+        salidas.append(buf.getvalue())
+    cuenta = []
+    for p in range(partes):
+        c = 0
+        for nom, (ruta, pre, filas, post) in datos.items():
+            n = len(filas)
+            c += ((n * (p + 1)) // partes) - ((n * p) // partes)
+        cuenta.append(c)
+    job = _secrets.token_hex(6)
+    _XLS_JOBS[job] = {"partes": salidas, "ts": _t.time()}
+    for k in list(_XLS_JOBS):                  # limpio los viejos (>30 min)
+        if _t.time() - _XLS_JOBS[k].get("ts", 0) > 1800:
+            _XLS_JOBS.pop(k, None)
+    return jsonify({"ok": True, "job": job, "total": total, "partes": partes, "envios": cuenta})
+
+
+@app.get("/pf-despachos-excel-descargar")
+def pf_despachos_excel_descargar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    st = _XLS_JOBS.get((request.args.get("job") or "").strip())
+    try:
+        p = int(request.args.get("parte") or 1) - 1
+    except Exception:
+        p = 0
+    if not st or p < 0 or p >= len(st["partes"]):
+        return jsonify({"ok": False, "msg": "el archivo expiró, subilo de nuevo"}), 404
+    import io as _io2
+    return send_file(_io2.BytesIO(st["partes"][p]), as_attachment=True,
+                     download_name="Andreani-parte-%d-de-%d.xlsx" % (p + 1, len(st["partes"])),
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ---------- Separar etiquetas: partir un PDF en DOS (las primeras N y el resto) ----------
