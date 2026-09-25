@@ -8964,10 +8964,11 @@ def pf_despachos_excel_partir():
             n = len(filas)
             c += ((n * (p + 1)) // partes) - ((n * p) // partes)
         cuenta.append(c)
+    import time as _tt
     job = _secrets.token_hex(6)
-    _XLS_JOBS[job] = {"partes": salidas, "ts": _t.time()}
+    _XLS_JOBS[job] = {"partes": salidas, "ts": _tt.time()}
     for k in list(_XLS_JOBS):                  # limpio los viejos (>30 min)
-        if _t.time() - _XLS_JOBS[k].get("ts", 0) > 1800:
+        if _tt.time() - _XLS_JOBS[k].get("ts", 0) > 1800:
             _XLS_JOBS.pop(k, None)
     return jsonify({"ok": True, "job": job, "total": total, "partes": partes, "envios": cuenta})
 
