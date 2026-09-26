@@ -2365,8 +2365,17 @@ _SOLO_DASH = r"""
     var tpl=_rpcCardPorLabel('CPA')||_rpcCardPorLabel('Productos')||_rpcCardPorLabel('Envíos');
     if(!tpl) return false;
     var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
-    var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
+    var wv=+(_raw.web_ventas||0), wg=+(_raw.web_ganancia||0);
     var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
+    // NO dibujar hasta que MELI este sumado al blob. En los primeros polls llega con MELI en
+    // cero y ahi web_facturado == facturado, o sea que Shopify mostraba la facturacion TOTAL
+    // (visto en produccion: $8.931.287 en vez de $7.046.557). Si MELI esta conectado pero
+    // todavia no aporta, se espera al proximo poll en vez de pintar un numero falso.
+    var _hayML = !!(_raw.canales && _raw.canales.indexOf && _raw.canales.indexOf('meli')>=0);
+    if(_hayML && mlf<=0) return false;
+    // y la facturacion de la tienda se deriva acá: total menos MELI, sin depender de que el
+    // backend la haya calculado en ese blob.
+    var wf=fac-mlf; if(wf<0) wf=0;
     // el PERIODO entra en la firma: si no, al cambiar de fecha y dar valores parecidos las
     // tarjetas no se redibujaban y quedaban mostrando el período anterior sin avisar.
     var fir=[(_raw.desde||''),(_raw.hasta||''),mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
