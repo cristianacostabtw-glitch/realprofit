@@ -2367,7 +2367,9 @@ _SOLO_DASH = r"""
     var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
     var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
     var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
-    var fir=[mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
+    // el PERIODO entra en la firma: si no, al cambiar de fecha y dar valores parecidos las
+    // tarjetas no se redibujaban y quedaban mostrando el período anterior sin avisar.
+    var fir=[(_raw.desde||''),(_raw.hasta||''),mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
     var caja=document.getElementById(_RPC_ID);
     if(caja && (!document.body.contains(caja) || caja.parentElement!==grid)){ try{ caja.remove(); }catch(e){} caja=null; }
     if(caja && caja.getAttribute('data-fir')===fir) return true;
@@ -15073,6 +15075,23 @@ def home():
 # ---------------- Endpoints en blanco (para que no rompa nada) ----------------
 _PF_CACHE = {}   # (email, desde, hasta) -> (momento, blob) — evita pegarle a Shopify en cada refresco
 
+
+def _pf_cerrado(hasta) -> bool:
+    """True si el período YA TERMINÓ (no incluye hoy). Un período cerrado no puede cambiar:
+    sus ventas, su gasto y sus comisiones son historia. Con el TTL de 60s se recalculaba igual
+    cada minuto, y un mes tarda ~40 s (medido 26-09-2026: 39.992 ms). Por eso cambiar a "ayer"
+    o a un mes pasado parecía colgado: no estaba roto, estaba recalculando lo mismo de nuevo."""
+    try:
+        hoy = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3))).date()
+        return _dt.datetime.strptime(str(hasta)[:10], "%Y-%m-%d").date() < hoy
+    except Exception:
+        return False
+
+
+def _pf_ttl(hasta) -> int:
+    """Segundos que vale el cache: 12 h si el período está cerrado, 60 s si incluye hoy."""
+    return 43200 if _pf_cerrado(hasta) else 60
+
 _LAST_BLOB = DATA_DIR / "last_blob.json"   # ULTIMO dashboard de HOY por usuario -> home() lo inyecta = carga instantanea (estilo Escalafy)
 def _save_last_blob(email, blob):
     try:
@@ -15137,7 +15156,7 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
     key = (email, desde, hasta)
     now = _dt.datetime.utcnow()
     c = _PF_CACHE.get(key)
-    if c and (now - c[0]).total_seconds() < 60:
+    if c and (now - c[0]).total_seconds() < _pf_ttl(hasta):
         return _pf_mejor(email, c[1], desde, hasta, key, now)
     # home() entra con solo_fresco=True: si no hay un valor FRESCO en memoria devuelve None y la
     # pagina sale al instante (el front pide /pf-periodo por su cuenta y la cortina tapa hasta que
@@ -15166,7 +15185,7 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
             return _blob_vacio()
     try:
         c2 = _PF_CACHE.get(key)      # pudo terminar el otro mientras yo esperaba el candado
-        if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < 60:
+        if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < _pf_ttl(hasta):
             return _pf_mejor(email, c2[1], desde, hasta, key, now)
         return _pf_periodo_calcular(email, desde, hasta, key, now)
     finally:
