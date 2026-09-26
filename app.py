@@ -9691,6 +9691,105 @@ def _meli_etiquetas_pendientes(email, sids=None):
                                 "crudo_bytes": total_bytes, "sids": ids}
 
 
+def _meli_esperando_stock(email):
+    """Las ventas que MELI tiene en "Esperando disponibilidad de stock", o sea las que en el
+    panel del vendedor muestran el botón "Ya tengo el producto".
+
+    CÓMO SE RECONOCEN (verificado 26-09-2026 contra /shipments/{id} con x-format-new):
+    son los envíos con **status=pending y substatus=manufacturing**. Salen así porque la
+    publicación tiene tiempo de fabricación; recién cuando el vendedor confirma que tiene el
+    producto pasan a ready_to_ship y ahí aparece la etiqueta.
+
+    OJO: acá sólo se LEE. La API pública de MercadoLibre no expone ninguna acción del
+    vendedor para salir de manufacturing (Mercado Envíos 2: el estado lo maneja ML), así que
+    confirmar se hace desde el panel. Contarlas sí se puede, y es lo que hace esto."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return [], "MercadoLibre no conectado"
+    h = {"Authorization": "Bearer " + tok}
+    res = []
+    try:
+        _off = 0
+        while _off < 400:
+            r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
+                             params={"seller": uid, "sort": "date_desc",
+                                     "limit": 50, "offset": _off})
+            _lote = (r.json() if r.content else {}).get("results", [])
+            res += _lote
+            if len(_lote) < 50:
+                break
+            _off += 50
+    except Exception as e:
+        return [], "%s: %s" % (type(e).__name__, str(e)[:120])
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+
+    def _traer(sid):
+        try:
+            return sid, requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                                     headers={"Authorization": "Bearer " + tok,
+                                              "x-format-new": "true"}).json()
+        except Exception:
+            return sid, {}
+
+    # Los envíos ya cerrados (entregado/enviado/cancelado) no se vuelven a preguntar. "pending"
+    # no es terminal, así que nunca está en ese cache: los que buscamos se piden siempre.
+    _fin = _meli_ship_est()
+    porsid, pedir = {}, []
+    for o in res:
+        _s = (o.get("shipping") or {}).get("id")
+        if not _s:
+            continue
+        _s = str(_s)
+        porsid.setdefault(_s, []).append(o)
+        if _s in _fin or _s in pedir:
+            continue
+        pedir.append(_s)
+    envs = {}
+    if pedir:
+        with _TPE(max_workers=12) as _ex:
+            for _sid, _js in _ex.map(_traer, pedir):
+                envs[_sid] = _js or {}
+    filas = []
+    for sid, js in envs.items():
+        if (js.get("status") or "") != "pending":
+            continue
+        if (js.get("substatus") or "") != "manufacturing":
+            continue
+        ords = porsid.get(sid) or []
+        o0 = ords[0] if ords else {}
+        b = o0.get("buyer") or {}
+        cant, tit = 0, ""
+        for o in ords:
+            for it in (o.get("order_items") or []):
+                cant += int(it.get("quantity") or 0)
+                if not tit:
+                    tit = ((it.get("item") or {}).get("title") or "")
+        filas.append({"sid": sid, "numero": str(o0.get("id") or ""),
+                      "fecha_hora": o0.get("date_created") or "",
+                      "buyer": b.get("nickname", ""),
+                      "nombre": (" ".join(x for x in [b.get("first_name"),
+                                                      b.get("last_name")] if x)).strip(),
+                      "titulo": tit, "cant": cant})
+    filas.sort(key=lambda f: f.get("fecha_hora") or "", reverse=True)
+    return filas, ""
+
+
+@app.get("/meli/stock-esperando")
+def meli_stock_esperando():
+    """Cuántas ventas están esperando que confirmes el stock ("Ya tengo el producto")."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    try:
+        filas, err = _meli_esperando_stock(email)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+    if err:
+        return jsonify({"ok": False, "msg": err})
+    return jsonify({"ok": True, "n": len(filas), "potes": sum(f.get("cant") or 0 for f in filas),
+                    "ventas": filas})
+
+
 @app.get("/meli/pendientes-lista")
 def meli_pendientes_lista():
     """Las ventas listas para despachar, para tildar cuales imprimir."""
@@ -17061,11 +17160,39 @@ function envFila(o,arch){
   +(arch?('<button class="btn gh" style="padding:5px 10px;font-size:10.5px" onclick="envReabrir(\''+esc(o.sid)+'\')">volver a habilitar</button>'):'')
   +'</div>';
 }
+// Las ventas que ML tiene en "Esperando disponibilidad de stock" (envio status=pending,
+// substatus=manufacturing). Son las que en el panel del vendedor muestran "Ya tengo el
+// producto": hasta que se confirma, NO existe la etiqueta, asi que no aparecen en "Para
+// despachar". Por eso se muestran aca arriba: si no, el dia parece vacio y no lo esta.
+function cargarStkEsperando(){ var c=document.getElementById('mlstk'); if(!c)return;
+ c.innerHTML='<div style="font-size:12px;color:var(--ink3);padding:4px 0">Mirando si hay ventas esperando stock...</div>';
+ fetch('/meli/stock-esperando').then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ c.innerHTML=''; return; }
+  var v=j.ventas||[];
+  if(!v.length){ c.innerHTML=''; return; }
+  var fila=function(o){
+   var hh=(o.fecha_hora||'').replace('T',' ').slice(0,16);
+   return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1b2635">'
+    +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap;min-width:96px">'+esc(hh)+'</div>'
+    +'<div style="font-size:12px;color:var(--ink2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.nombre||o.buyer||'')+'</div>'
+    +'<div style="font-size:11.5px;color:var(--ink3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo||'')+'</div>'
+    +'<div style="font-size:12px;font-weight:800;color:var(--warn);white-space:nowrap">x'+(o.cant||0)+'</div></div>';
+  };
+  c.innerHTML='<div class="card" style="margin-bottom:16px;border-color:#4a3a12">'
+   +'<div class="sec-h"><b>Esperando que confirmes el stock</b>'
+   +'<span style="font-size:12px;color:var(--warn);font-weight:800">'+v.length+' venta(s) &middot; '+(j.potes||0)+' unidad(es)</span></div>'
+   +'<div style="font-size:12px;color:var(--ink3);margin:-2px 0 8px">Hasta que no confirmes "Ya tengo el producto" en Mercado Libre, ML no genera la etiqueta y estas ventas <b>no aparecen en Para despachar</b>.</div>'
+   +v.slice(0,40).map(fila).join('')
+   +(v.length>40?('<div style="font-size:11.5px;color:var(--ink3);padding-top:6px">y '+(v.length-40)+' mas</div>'):'')
+   +'</div>';
+ }).catch(function(){ c.innerHTML=''; });
+}
 function cargarEnvios(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/pendientes-lista?todas=1').then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok){ box.innerHTML=err(j); return; }
   var all=j.envios||[], pend=all.filter(function(o){return !o.bajada;}), arch=all.filter(function(o){return !!o.bajada;});
-  var h='<div class="sec-h"><b>Para despachar</b><span id="envcnt" style="font-size:12px;color:var(--ink2)"></span>'
+  var h='<div id="mlstk"></div>'
+   +'<div class="sec-h"><b>Para despachar</b><span id="envcnt" style="font-size:12px;color:var(--ink2)"></span>'
    +'<span style="flex:1"></span>'
    +(pend.length?'<button class="btn gh" style="padding:8px 13px;font-size:12px" onclick="envTodos(true)">Tildar todas</button>':'')
    +'<button class="btn" id="envbtn" onclick="envBajar()">&#11015; Descargar etiquetas con SKU</button></div>'
@@ -17079,6 +17206,7 @@ function cargarEnvios(){ var box=document.getElementById('mlc'); if(!box)return;
   }
   box.innerHTML=h;
   envSel();
+  cargarStkEsperando();
   var hist=document.getElementById('mlhist');
   if(hist) fetch('/meli/envios').then(function(r){return r.json();}).then(function(k){
    var v=(k&&k.envios)||[]; if(!v.length){ hist.innerHTML=''; return; }
