@@ -13370,6 +13370,35 @@ def _fin_tab_mes(sess, sid, f) -> str:
     return nombre
 
 
+# Fórmulas de IVA de la planilla (las que tenía antes de que el bot las pisara con 0 por
+# monotributo). Se leyeron de una fila todavía sin cargar. OJO: la planilla usa ";" de separador
+# y "," de decimal, y tiene los rótulos CAMBIADOS — "IVA CREDITO" (U) es en realidad el IVA de
+# las VENTAS y "IVA DEBITO" (V) el de las COMPRAS. La cuenta X=U-V igual da bien.
+_FIN_IVA_FX = (
+    ("G", "=((F{r}/1,21)*0,21)"),                       # IVA costo mercadería
+    ("I", "=(H{r}/1,21)*0,21"),                         # IVA total facturado (ventas)
+    ("L", '=IFERROR(H{r}*((K{r}/1,21)*0,21);"")'),       # IVA comisiones
+    ("N", "=(M{r}/1,21)*0,21"),                         # IVA envío
+    ("Q", "=(M{r}*0,7/1,21)*0,21"),                     # IVA envíos (70%)
+    ("U", "=I{r}"),                                     # "IVA CREDITO" = IVA de ventas
+    ("V", "=G{r}+L{r}+N{r}"),                             # "IVA DEBITO" = IVA de compras
+    ("X", "=U{r}-V{r}"),                                 # IVA A PAGAR
+)
+
+
+def _fin_es_ri(conf, f) -> bool:
+    """¿Este día ya entra como Responsable Inscripto? Manda la fecha 'ri_desde' si está; si no,
+    el régimen suelto. Así el cambio de régimen no reescribe los días viejos."""
+    desde = str(conf.get("ri_desde") or "").strip()
+    if desde:
+        try:
+            import datetime as _dt
+            return f >= _dt.datetime.strptime(desde[:10], "%Y-%m-%d").date()
+        except Exception:
+            pass
+    return str(conf.get("regimen") or "monotributo").lower().startswith("ri")
+
+
 def _fin_cargar_dia(email, f) -> dict:
     """Calcula el día y lo escribe en la fila que le toca. Idempotente (se puede repetir).
     De paso deja el formato de plata en la columna de GASTOS (se auto-repara cada noche)."""
@@ -13395,7 +13424,10 @@ def _fin_cargar_dia(email, f) -> dict:
     if r.status_code != 200:
         return {"ok": False, "msg": "error escribiendo: %s %s" % (r.status_code, r.text[:250])}
     # ENVÍO REAL + RÉGIMEN. Van en RAW (números), pisando las fórmulas estimadas.
-    regimen = str(conf.get("regimen") or "monotributo").lower()
+    # El cambio de régimen tiene FECHA ('ri_desde'): los días anteriores quedan como estaban
+    # (sin IVA) y sólo desde esa fecha se calcula. Si no, al pasar a RI se reescribiría todo el
+    # mes con un IVA que en su momento no correspondía.
+    regimen = "ri" if _fin_es_ri(conf, f) else "monotributo"
     extra = [{"range": "%s!M%d" % (tab, fila), "values": [[dat["envio"]]]},
              {"range": "%s!Y%d" % (tab, fila), "values": [[dat["iibb"]]]}]
     if regimen.startswith("mono"):
@@ -13406,6 +13438,13 @@ def _fin_cargar_dia(email, f) -> dict:
             extra.append({"range": "%s!%s%d" % (tab, col, fila), "values": [[0]]})
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "RAW", "data": extra}, timeout=(15, 90))
+    if not regimen.startswith("mono"):
+        # RESPONSABLE INSCRIPTO: hay que VOLVER A ESCRIBIR las fórmulas de IVA. No alcanza con
+        # "no poner 0": si el día ya se cargó como monotributo, el 0 quedó pisando la fórmula.
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                  json={"valueInputOption": "USER_ENTERED",
+                        "data": [{"range": "%s!%s%d" % (tab, col, fila), "values": [[fx.format(r=fila)]]}
+                                 for col, fx in _FIN_IVA_FX]}, timeout=(15, 90))
     # COSTO MERCADERIA = UNIDADES × precio, PARTIDO POR PRODUCTO. Arreglos sobre la planilla:
     #  1) usaba N49/N50/N51 (referencia relativa que se desliza a celdas vacías → costo $0);
     #  2) multiplicaba por D (PEDIDOS), pero si un pedido lleva 3 potes el costo son 3;
@@ -13463,6 +13502,13 @@ def fin_config():
         c["auto"] = bool(d["auto"])
     if d.get("regimen"):                 # "monotributo" (sin IVA) o "ri" (Responsable Inscripto)
         c["regimen"] = str(d["regimen"]).lower()
+    if d.get("ri_desde") is not None:    # fecha (YYYY-MM-DD) desde la que se calcula IVA.
+        # Vacío = se borra y manda 'regimen' suelto. Con fecha, los días anteriores NO llevan IVA.
+        v = str(d.get("ri_desde") or "").strip()[:10]
+        if v:
+            c["ri_desde"] = v
+        else:
+            c.pop("ri_desde", None)
     conf[email] = c
     _fin_conf_save(conf)
     return jsonify({"ok": True, "conf": c})
