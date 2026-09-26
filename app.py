@@ -14749,8 +14749,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
     _fact = r.get("facturado", 0.0) or 0.0
     _iva_deb = _fact * _F
+    # OJO con la comisión de MercadoLibre: _meli_resumen deja mp_costo_real en 0 y la pone en
+    # meli_comision, así que si sólo se mira mp_costo_real el crédito de MELI se pierde. Esa
+    # comisión (cargo por vender + costo de cuotas) trae el IVA adentro igual que la de MP.
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
-                 + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
+                 + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0) \
+                 + (r.get("meli_comision", 0) or 0)
     _iva_cred = _base_cred * _F
     # ADS DE AGENCIA (CP3): también dan crédito fiscal. OJO, acá es ×0,21 y NO ÷1,21: la factura
     # de la agencia discrimina el IVA POR ENCIMA del neto (gasto+comisión), o sea que ese monto
