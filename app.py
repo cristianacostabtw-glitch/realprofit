@@ -2295,156 +2295,97 @@ _SOLO_DASH = r"""
 
   // ----------------------------------------------------------------------------------
   // GRUPOS POR CANAL (MercadoLibre / Shopify) en el Resumen del periodo.
-  // Medidas copiadas de las tarjetas reales (leidas en vivo): etiqueta 12px/700/0.6px,
-  // numero 24px/700 tabular, bajada 12px/400, padding 16px, radio 16px, borde izq 2.67px,
-  // chip del icono 32px. Va DENTRO de la grilla de 4 columnas del dashboard, asi las
-  // tarjetas miden lo mismo (284px). Se repinta desde paint(), sin MutationObserver.
-  var ID='rp-canales';
-  var LBL='#94a3b8', SUB='#64748b', TINTA='#ffffff';
-  var AM='#fbbf24', SH='#34d399', VERDE='#34d399', ROJO='#f87171';
-  function plata(n){ try{ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }catch(e){ return '$'+(n||0); } }
-  function pct(n){ var v=Number(n)||0; return (v<0?'-':'')+Math.abs(v).toFixed(1).replace('.',',')+'%'; }
-  var IC={
-    venta:'<path d="M3.5 8.5h17L19 19.2a2 2 0 0 1-2 1.8H7a2 2 0 0 1-2-1.8Z"/><path d="M8.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5"/>',
-    plata:'<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/>',
-    sube:'<path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/>',
-    pct:'<path d="M18.5 5.5 5.5 18.5"/><circle cx="7.8" cy="7.8" r="2.3"/><circle cx="16.2" cy="16.2" r="2.3"/>',
-    entra:'<path d="M12 4v12.5"/><path d="m17.5 11.5-5.5 5.5-5.5-5.5"/><path d="M5 20h14"/>',
-    tag:'<path d="M3 11.5V4h7.5L20 13.5 13.5 20Z"/><circle cx="7.3" cy="7.3" r="1.3"/>',
-    tienda:'<path d="M4.5 7.5h15L18.3 19.2a2 2 0 0 1-2 1.8H7.7a2 2 0 0 1-2-1.8Z"/><path d="M9.5 11V6.5a2.5 2.5 0 0 1 5 0V11"/>'
-  };
-  function card(acc,ic,lbl,val,sub,col){
-    var c=document.createElement('div');
-    c.style.cssText='background:rgba(24,36,48,.8);border:1px solid rgba(255,255,255,.06);'
-      +'border-left:2.67px solid '+acc+';border-radius:16px;padding:16px;'
-      +'display:flex;flex-direction:column;min-width:0';
-    // fila de arriba: chip con el icono a la izquierda y la etiqueta a la derecha,
-    // igual que las tarjetas que ya tiene el dashboard
-    var top=document.createElement('div');
-    top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:10px';
-    var chip=document.createElement('span');
-    chip.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;'
-      +'border-radius:10px;background:'+acc+'1f;color:'+acc+';flex:0 0 auto';
-    chip.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" '
-      +'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(IC[ic]||IC.plata)+'</svg>';
-    var esp=document.createElement('span'); esp.style.cssText='flex:1 1 auto';
-    var l=document.createElement('div');
-    l.style.cssText='font-size:12px;font-weight:700;letter-spacing:.6px;color:'+LBL+';text-align:right';
-    l.textContent=lbl;
-    top.appendChild(chip); top.appendChild(esp); top.appendChild(l);
-    var v=document.createElement('div');
-    v.style.cssText='font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:'+(col||TINTA)+';margin-bottom:6px';
-    v.textContent=val;
-    var b=document.createElement('div');
-    b.style.cssText='font-size:12px;font-weight:400;color:'+SUB;
-    b.textContent=sub;
-    c.appendChild(top); c.appendChild(v); c.appendChild(b); return c;
-  }
-  function titulo(acc,txt,n){
-    var h=document.createElement('div');
-    h.style.cssText='display:flex;align-items:center;gap:8px;margin:18px 0 12px';
-    var p=document.createElement('span'); p.style.cssText='width:8px;height:8px;border-radius:50%;background:'+acc;
-    var t=document.createElement('span');
-    t.style.cssText='font-size:12px;font-weight:700;letter-spacing:.6px;color:'+acc; t.textContent=txt;
-    var c=document.createElement('span');
-    c.style.cssText='font-size:12px;font-weight:400;color:'+SUB; c.textContent=String(n);
-    h.appendChild(p); h.appendChild(t); h.appendChild(c); return h;
-  }
-  function fila(cs){
-    var g=document.createElement('div');
-    g.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px';
-    // una fila de 2 se estira: cada tarjeta toma 2 de las 4 columnas y llega a los extremos,
-    // en vez de quedar angosta a la izquierda con dos huecos al lado
-    for(var i=0;i<cs.length;i++){ if(cs.length===2) cs[i].style.gridColumn='span 2'; g.appendChild(cs[i]); }
-    return g;
+  //
+  // NO se dibujan tarjetas nuevas: se CLONA una tarjeta real del dashboard y se le cambia
+  // el texto. Asi el diseno es identico por construccion (mismas clases, mismo chip de
+  // icono, mismos tamanos) y no hay que copiar medidas a mano.
+  // Van en la grilla de 4 columnas, antes del titulo COSTOS. Se repintan desde paint().
+  var _RPC_ID='rp-canales';
+  function _rpcPlata(n){ try{ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }catch(e){ return '$'+(n||0); } }
+  function _rpcPct(n){ var v=Number(n)||0; return (v<0?'-':'')+Math.abs(v).toFixed(1).replace('.',',')+'%'; }
+  function _rpcHojas(c){ var o=[]; var d=c.querySelectorAll('*');
+    for(var i=0;i<d.length;i++){ if(!d[i].children.length && (d[i].textContent||'').trim()) o.push(d[i]); } return o; }
+  function _rpcClon(tpl, acc, ico, lbl, val, sub, col){
+    var c=tpl.cloneNode(true);
+    var h=_rpcHojas(c);
+    // orden en la tarjeta del dashboard: icono, etiqueta, numero, bajada
+    if(h[0]){ h[0].textContent=ico; h[0].className=(h[0].className||'').replace(/text-[a-z]+-\d+/,''); h[0].style.color=acc; }
+    if(h[1]) h[1].textContent=lbl;
+    if(h[2]){ h[2].textContent=val; h[2].style.color=col||''; }
+    if(h[3]) h[3].textContent=sub;
+    c.style.borderLeftColor=acc;
+    return c;
   }
   function canales(){
     if(!_raw) return false;
-    var caja=document.getElementById(ID);
-    if(caja && !document.body.contains(caja)) caja=null;
-    if(!caja){
-      var cost=_hdrLeaf('costos'); if(!cost) return false;
-      // subo hasta la GRILLA de tarjetas (display:grid). Antes cortaba en el primer
-      // grid|flex y caia en la FILA DEL TITULO, que es flex sin wrap: ahi adentro el
-      // bloque empujaba "COSTOS" a la derecha.
-      var anc=cost, pa=cost.parentElement;
-      for(var k=0;k<7 && pa;k++){
-        if((getComputedStyle(pa).display||'')==='grid') break;
-        anc=pa; pa=pa.parentElement;
-      }
-      if(!pa || (getComputedStyle(pa).display||'')!=='grid') return false;
-      caja=document.createElement('div'); caja.id=ID;
-      caja.style.cssText='grid-column:1/-1;flex:0 0 100%;width:100%;box-sizing:border-box;order:0';
-      try{ pa.insertBefore(caja,anc); }catch(e){ return false; }
-    }
-    // SHADOW DOM: RealProfit busca sus tarjetas por ETIQUETA en todo el documento, y estas
-    // tambien dicen MARGEN y GANANCIA. Sin esto se las come (paso en produccion: el Margen
-    // del dashboard quedaba vacio y el Break Even ROAS en 0,00x).
-    var raiz=caja.shadowRoot;
-    if(!raiz){ try{ raiz=caja.attachShadow({mode:'open'}); }catch(e){ raiz=caja; } }
-    var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
-    var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
-    var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
-    // Recompras y Facturación Recompra: fuera de Publicidad (pedido de Cristian). Se ocultan,
-    // no se borran, y como son las DOS ÚLTIMAS de la secuencia de metricas() el mapeo de las
-    // otras seis no se corre.
+    var AM='#fbbf24', SH='#34d399', VERDE='#34d399', ROJO='#f87171';
+    // PUBLICIDAD: fuera Recompras y Facturacion Recompra (son las DOS ULTIMAS de la secuencia
+    // de metricas(), asi que ocultarlas no corre el mapeo de las otras seis), y las dos que
+    // quedan se estiran a 2 columnas para que la fila llegue de punta a punta.
     try{
       [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
-        if(e.children.length) return;
+        if(e.children.length || _rpcMio(e)) return;
         var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-        if(t!=='recompras' && t!=='facturación recompra' && t!=='facturacion recompra') return;
-        var p=e;
-        for(var k=0;k<5&&p;k++){ if(/rounded-2xl/.test(p.className||'')){ p.style.display='none'; break; } p=p.parentElement; }
-      });
-    }catch(e){}
-    // PUBLICIDAD: arriba 4 y abajo 2. Al ocultar Recompras y Facturación Recompra, las dos
-    // que quedan (CPA y Break Even CPA) tomaban 1 columna cada una y dejaban dos huecos.
-    // Se estiran a 2 columnas para que la fila llegue de punta a punta.
-    try{
-      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
-        if(e.children.length) return;
-        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-        if(t!=='cpa' && t!=='break even cpa') return;
+        var ocultar=(t==='recompras'||t==='facturación recompra'||t==='facturacion recompra');
+        var ancho=(t==='cpa'||t==='break even cpa');
+        if(!ocultar && !ancho) return;
         var p=e;
         for(var k=0;k<5&&p;k++){
-          if(/rounded-2xl/.test(p.className||'')){ if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2'; break; }
+          if(/rounded-2xl/.test(p.className||'')){
+            if(ocultar) p.style.display='none'; else if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2';
+            break;
+          }
           p=p.parentElement;
         }
       });
     }catch(e){}
+    var cost=_hdrLeaf('costos'); if(!cost) return false;
+    // la FILA del titulo (col-span-full) y la GRILLA de 4 columnas
+    var filaTit=cost.parentElement; if(!filaTit) return false;
+    var grid=filaTit.parentElement;
+    if(!grid || (getComputedStyle(grid).display||'')!=='grid') return false;
+    var tpl=cardByLabel('CPA')||cardByLabel('Productos')||cardByLabel('Envíos');
+    if(!tpl) return false;
+    var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
+    var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
+    var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
     var fir=[mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
-    if(caja.getAttribute('data-fir')===fir) return true;
-    caja.setAttribute('data-fir',fir);
-    raiz.innerHTML='';
-    // la fuente se hereda del documento (Inter); igual se fija por las dudas
-    var st=document.createElement('style');
-    st.textContent=':host{font-family:Inter,ui-sans-serif,system-ui,sans-serif}';
-    raiz.appendChild(st);
+    var caja=document.getElementById(_RPC_ID);
+    if(caja && (!document.body.contains(caja) || caja.parentElement!==grid)){ try{ caja.remove(); }catch(e){} caja=null; }
+    if(caja && caja.getAttribute('data-fir')===fir) return true;
+    if(caja){ try{ caja.remove(); }catch(e){} }
+    caja=document.createElement('div');
+    caja.id=_RPC_ID;
+    caja.style.cssText='grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:inherit;row-gap:12px;column-gap:12px';
+    caja.setAttribute('data-fir', fir);
     var p=function(a,b){ return b?Math.round(a/b*100)+'%':'0%'; };
-    raiz.appendChild(titulo(AM,'MERCADOLIBRE',6));
-    raiz.appendChild(fila([
-      card(AM,'venta','VENTAS',String(Math.round(mlv)), p(mlv,ord)+' de las '+ord+' del período'),
-      card(AM,'plata','FACTURACIÓN',plata(mlf), p(mlf,fac)+' de la facturación total'),
-      card(AM,'sube','GANANCIA',plata(mlg), plata(_raw.ml_gan_venta||0)+' por venta', mlg<0?ROJO:VERDE)
-,
-      card(AM,'pct','MARGEN',pct(_raw.ml_margen||0),'Ganancia ÷ facturación de ML',(+(_raw.ml_margen||0))<0?ROJO:VERDE)
-    ]));
-    raiz.appendChild(fila([
-      card(AM,'entra','NETO ENTRADO',plata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'),
-      card(AM,'tag','TICKET PROM',plata(_raw.ml_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
-    ]));
-    raiz.appendChild(titulo(SH,'SHOPIFY',6));
-    raiz.appendChild(fila([
-      card(SH,'tienda','VENTAS',String(Math.round(wv)), p(wv,ord)+' de las '+ord+' del período'),
-      card(SH,'plata','FACTURACIÓN',plata(wf), p(wf,fac)+' de la facturación total'),
-      card(SH,'sube','GANANCIA',plata(wg),'Después de la pauta de '+plata(_raw.publi_ars||0), wg<0?ROJO:VERDE)
-,
-      card(SH,'pct','MARGEN',pct(_raw.web_margen||0),'Ganancia ÷ facturación de la tienda',(+(_raw.web_margen||0))<0?ROJO:VERDE)
-    ]));
-    raiz.appendChild(fila([
-      card(SH,'entra','NETO ENTRADO',plata(_raw.web_neto||0),'Menos '+plata(_raw.mp_costo_real||0)+' de MercadoPago'),
-      card(SH,'tag','TICKET PROM',plata(_raw.web_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
-    ]));
+    var tit=function(txt,acc,n){
+      var d=filaTit.cloneNode(true), h=_rpcHojas(d);
+      for(var i=0;i<h.length;i++){
+        var t=(h[i].textContent||'').trim().toLowerCase();
+        if(t==='costos'){ h[i].textContent=txt; h[i].style.color=acc; }
+        else if(/^\d+$/.test(t)){ h[i].textContent=String(n); }
+        else if(h[i].className && /material-symbols/.test(h[i].className)){ h[i].textContent=(acc===AM?'sell':'storefront'); h[i].style.color=acc; }
+      }
+      d.style.gridColumn='1/-1';
+      return d;
+    };
+    var add=function(el){ caja.appendChild(el); };
+    add(tit('MercadoLibre',AM,6));
+    add(_rpcClon(tpl,AM,'sell','Ventas',String(Math.round(mlv)), p(mlv,ord)+' de las '+ord+' del período'));
+    add(_rpcClon(tpl,AM,'payments','Facturación',_rpcPlata(mlf), p(mlf,fac)+' de la facturación total'));
+    add(_rpcClon(tpl,AM,'trending_up','Ganancia',_rpcPlata(mlg), _rpcPlata(_raw.ml_gan_venta||0)+' por venta', mlg<0?ROJO:VERDE));
+    add(_rpcClon(tpl,AM,'percent','Margen',_rpcPct(_raw.ml_margen||0),'Ganancia ÷ facturación de ML',(+(_raw.ml_margen||0))<0?ROJO:VERDE));
+    var a1=_rpcClon(tpl,AM,'savings','Neto entrado',_rpcPlata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'); a1.style.gridColumn='span 2'; add(a1);
+    var a2=_rpcClon(tpl,AM,'receipt_long','Ticket prom',_rpcPlata(_raw.ml_aov||0),'Contra '+_rpcPlata(_raw.ticket||0)+' del total'); a2.style.gridColumn='span 2'; add(a2);
+    add(tit('Shopify',SH,6));
+    add(_rpcClon(tpl,SH,'storefront','Ventas',String(Math.round(wv)), p(wv,ord)+' de las '+ord+' del período'));
+    add(_rpcClon(tpl,SH,'payments','Facturación',_rpcPlata(wf), p(wf,fac)+' de la facturación total'));
+    add(_rpcClon(tpl,SH,'trending_up','Ganancia',_rpcPlata(wg),'Después de la pauta de '+_rpcPlata(_raw.publi_ars||0), wg<0?ROJO:VERDE));
+    add(_rpcClon(tpl,SH,'percent','Margen',_rpcPct(_raw.web_margen||0),'Ganancia ÷ facturación de la tienda',(+(_raw.web_margen||0))<0?ROJO:VERDE));
+    var b1=_rpcClon(tpl,SH,'savings','Neto entrado',_rpcPlata(_raw.web_neto||0),'Menos '+_rpcPlata(_raw.mp_costo_real||0)+' de MercadoPago'); b1.style.gridColumn='span 2'; add(b1);
+    var b2=_rpcClon(tpl,SH,'receipt_long','Ticket prom',_rpcPlata(_raw.web_aov||0),'Contra '+_rpcPlata(_raw.ticket||0)+' del total'); b2.style.gridColumn='span 2'; add(b2);
+    try{ grid.insertBefore(caja, filaTit); }catch(e){ return false; }
     return true;
   }
   function paint(){ if(!_raw)return;
@@ -2594,8 +2535,13 @@ _SOLO_DASH = r"""
       var q=e.querySelector&&e.querySelector('[class*="rounded-2xl"]'); if(q) return q; }
     return null; }
   // Header de sección por su TEXTO hoja (Publicidad/Costos/Finanzas). No depende de col-span-full.
+  // Mis tarjetas son CLONES de las del dashboard, asi que dicen MARGEN, GANANCIA, VENTAS…
+  // igual que las suyas. Sin esta guarda, cardByLabel/_hdrLeaf/_pubCards agarran las mias y
+  // escriben el valor equivocado (paso en produccion: el Margen del dashboard quedo vacio).
+  function _rpcMio(n){ try{ var c=document.getElementById('rp-canales'); return !!(c && c.contains(n)); }catch(e){ return false; } }
   function _hdrLeaf(name){ var all=document.querySelectorAll('span,div,p,h2,h3');
     for(var i=0;i<all.length;i++){ var e=all[i]; if(e.children.length) continue;
+      if(_rpcMio(e)) continue;
       var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
       if(t===name || (t.indexOf(name)===0 && t.length<name.length+6)) return e; }
     return null; }
@@ -2605,6 +2551,7 @@ _SOLO_DASH = r"""
     var cost=_hdrLeaf('costos');   // Finanzas va ANTES de Publicidad → alcanza con cortar en Costos
     var all=document.querySelectorAll('[class*="rounded-2xl"]'), out=[], F=Node.DOCUMENT_POSITION_FOLLOWING;
     for(var i=0;i<all.length;i++){ var c=all[i];
+      if(_rpcMio(c)) continue;                                                     // mis tarjetas no son del dashboard
       if(c.querySelector && c.querySelector('[class*="rounded-2xl"]')) continue;   // solo la tarjeta hoja (no wrappers)
       if(c.offsetParent===null) continue;                                          // visible (excluye Finanzas/Reembolsos ocultos)
       if(!(pub.compareDocumentPosition(c)&F)) continue;                            // debe venir DESPUÉS de PUBLICIDAD
@@ -2955,6 +2902,7 @@ _SOLO_DASH = r"""
   function _na(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
   function cardByLabel(lbl){ lbl=_na(lbl); var a=document.querySelectorAll('span,div,p');
     for(var i=0;i<a.length;i++){ var e=a[i]; if(e.children.length) continue;
+      if(_rpcMio(e)) continue;
       if(_na(e.textContent)===lbl){ if(e.offsetParent===null) continue;
         var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c&&/rounded/.test(c.className||'')) return c; } } }
     return null; }
