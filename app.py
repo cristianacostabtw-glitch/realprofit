@@ -2353,7 +2353,10 @@ _SOLO_DASH = r"""
   function fila(cs){
     var g=document.createElement('div');
     g.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px';
-    for(var i=0;i<cs.length;i++) g.appendChild(cs[i]); return g;
+    // una fila de 2 se estira: cada tarjeta toma 2 de las 4 columnas y llega a los extremos,
+    // en vez de quedar angosta a la izquierda con dos huecos al lado
+    for(var i=0;i<cs.length;i++){ if(cs.length===2) cs[i].style.gridColumn='span 2'; g.appendChild(cs[i]); }
+    return g;
   }
   function canales(){
     if(!_raw) return false;
@@ -2392,6 +2395,21 @@ _SOLO_DASH = r"""
         if(t!=='recompras' && t!=='facturación recompra' && t!=='facturacion recompra') return;
         var p=e;
         for(var k=0;k<5&&p;k++){ if(/rounded-2xl/.test(p.className||'')){ p.style.display='none'; break; } p=p.parentElement; }
+      });
+    }catch(e){}
+    // PUBLICIDAD: arriba 4 y abajo 2. Al ocultar Recompras y Facturación Recompra, las dos
+    // que quedan (CPA y Break Even CPA) tomaban 1 columna cada una y dejaban dos huecos.
+    // Se estiran a 2 columnas para que la fila llegue de punta a punta.
+    try{
+      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
+        if(e.children.length) return;
+        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+        if(t!=='cpa' && t!=='break even cpa') return;
+        var p=e;
+        for(var k=0;k<5&&p;k++){
+          if(/rounded-2xl/.test(p.className||'')){ if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2'; break; }
+          p=p.parentElement;
+        }
       });
     }catch(e){}
     var fir=[mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
