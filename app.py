@@ -2461,7 +2461,7 @@ _SOLO_DASH = r"""
              ['ROAS',num(_raw.roas)+'x','Solo tienda · con MELI '+num(_raw.roas_total||_raw.roas)+'x'],
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · solo tienda'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
-             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta · incluye el aporte de MELI'],
+             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta · con MELI '+money(_raw.be_cpa_mix||0)],
              ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     var hit=0;
@@ -14799,17 +14799,24 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                 - ((r.get("mp_costo_real", 0) or 0) + (r.get("meli_comision", 0) or 0)
                    + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
                 - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
-        _pre_ri = _pre - _iva_pag
+        # CONTRIBUCIÓN REAL = ganancia + lo que se gastó en ads. Se saca así, y no sumando
+        # componentes a mano, porque rearmándola se escapaba alguno: faltaba el adelanto de
+        # MercadoPago de las ventas de MELI y el break even daba $593 de más por venta (gastando
+        # justo el "break even" se perdían $67.038 en vez de quedar en cero). Definido de esta
+        # forma cierra por construcción: si gastás exactamente esto, la ganancia da 0.
+        _pre_ri = (r.get("ganancia", 0) or 0) + spend
         # Y el break even va SOLO sobre la tienda: en MercadoLibre no se gasta un peso de ads,
         # así que su contribución no es "plata para bancar pauta" sino ganancia directa. Si se
         # mezcla, el ROAS mínimo sale más bajo del real y parece que se puede gastar de más.
         _ml_f = float(r.get("meli_facturado", 0) or 0)
         _ml_ord = int(r.get("meli_ventas", 0) or 0)
         _fact_w = _fact - _ml_f
-        _ml_pre = (_ml_f - (r.get("meli_costo", 0) or 0) - (r.get("meli_comision", 0) or 0)
-                   - OPER_ORDEN * _ml_ord - _ml_f * 0.035)
+        # Lo que aporta MELI: su propia ganancia (ahí ya están su comisión, producto, fulfillment,
+        # IIBB y el adelanto de MP) menos el IVA que le toca. En MELI no se gasta en ads, así que
+        # todo eso es ganancia directa y NO es plata destinada a bancar pauta.
+        _ml_pre = float(r.get("meli_ganancia", 0) or 0)
         _ml_pre -= max(_ml_f - (r.get("meli_costo", 0) or 0)
-                       - (r.get("meli_comision", 0) or 0), 0.0) * _F      # el IVA que le toca
+                       - (r.get("meli_comision", 0) or 0), 0.0) * _F
         _pre_w = _pre_ri - _ml_pre
         _ord_w = _ord - _ml_ord
         # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
@@ -14818,8 +14825,11 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # (la ganancia de MercadoLibre banca pauta aunque no la genere) y abajo sólo las ventas
         # que la pauta sí trae. Da el máximo que se puede pagar por venta sin perder plata en
         # el negocio entero, que es la decisión real a la hora de subir o bajar el presupuesto.
-        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord_w, 2) if _ord_w > 0 else 0.0
-        r["be_cpa_web"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0   # sólo tienda, para auditar
+        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0
+        # El mixto (sumando lo que aporta MELI) queda como REFERENCIA, no como numero principal:
+        # marca donde el negocio entero da cero, pero pagando eso cada venta de la tienda pierde
+        # plata y la tapa la ganancia de MELI. El limite sano es el de arriba.
+        r["be_cpa_mix"] = round(_pre_ri / _ord_w, 2) if _ord_w > 0 else 0.0
     # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
     # y el front lo pintaba encima del bueno: la pantalla saltaba entre 112 y 116 ventas cada 2s.
     # Con este sello el front puede descartar todo lo que sea MAS VIEJO que lo que ya tiene puesto.
