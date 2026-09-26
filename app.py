@@ -2292,6 +2292,107 @@ _SOLO_DASH = r"""
       if((t==='Todas'||t==='Shopify'||t==='MercadoLibre') && /text-primary|bg-primary/.test(bs[i].className||'')) return t; }
     return 'Todas'; }
   function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
+
+  // ----------------------------------------------------------------------------------
+  // GRUPOS POR CANAL (MercadoLibre / Shopify) dentro del Resumen del periodo.
+  // Medidas COPIADAS de las tarjetas reales del dashboard (leidas en vivo 26-09-2026):
+  //   etiqueta 12px/700/0.6px  ·  numero 24px/700 tabular  ·  bajada 12px/400
+  //   tarjeta padding 16px, radio 16px, borde izquierdo 2.67px
+  // Se repinta desde paint() (corre en cada poll), NO con MutationObserver: un observer
+  // global ya rompio la fila de KPIs una vez.
+  var ID='rp-canales';
+  var LBL='#94a3b8', SUB='#64748b', TINTA='#ffffff';
+  var AM='#fbbf24', SH='#34d399', VERDE='#34d399', ROJO='#f87171';
+  function plata(n){ try{ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }catch(e){ return '$'+(n||0); } }
+  function pct(n){ var v=Number(n)||0; return (v<0?'-':'')+Math.abs(v).toFixed(1).replace('.',',')+'%'; }
+  function card(acc,lbl,val,sub,col){
+    var c=document.createElement('div');
+    c.style.cssText='background:rgba(24,36,48,.8);border:1px solid rgba(255,255,255,.06);'
+      +'border-left:2.67px solid '+acc+';border-radius:16px;padding:16px;'
+      +'display:flex;flex-direction:column;min-width:0';
+    var l=document.createElement('div');
+    l.style.cssText='font-size:12px;font-weight:700;letter-spacing:.6px;color:'+LBL+';text-align:right;margin-bottom:10px';
+    l.textContent=lbl;
+    var v=document.createElement('div');
+    v.style.cssText='font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:'+(col||TINTA)+';margin-bottom:6px';
+    v.textContent=val;
+    var b=document.createElement('div');
+    b.style.cssText='font-size:12px;font-weight:400;color:'+SUB;
+    b.textContent=sub;
+    c.appendChild(l); c.appendChild(v); c.appendChild(b); return c;
+  }
+  function titulo(acc,txt,n){
+    var h=document.createElement('div');
+    h.style.cssText='display:flex;align-items:center;gap:8px;margin:18px 0 12px';
+    var p=document.createElement('span'); p.style.cssText='width:8px;height:8px;border-radius:50%;background:'+acc;
+    var t=document.createElement('span');
+    t.style.cssText='font-size:12px;font-weight:700;letter-spacing:.6px;color:'+acc; t.textContent=txt;
+    var c=document.createElement('span');
+    c.style.cssText='font-size:12px;font-weight:400;color:'+SUB; c.textContent=String(n);
+    h.appendChild(p); h.appendChild(t); h.appendChild(c); return h;
+  }
+  function fila(cs){
+    var g=document.createElement('div');
+    g.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px';
+    for(var i=0;i<cs.length;i++) g.appendChild(cs[i]); return g;
+  }
+  function canales(){
+    if(!_raw) return false;
+    var caja=document.getElementById(ID);
+    if(caja && !document.body.contains(caja)) caja=null;
+    if(!caja){
+      var cost=_hdrLeaf('costos'); if(!cost) return false;
+      var anc=cost, pa=cost.parentElement;
+      for(var k=0;k<6 && pa;k++){
+        if(/grid|flex/.test(getComputedStyle(pa).display||'')) break;
+        anc=pa; pa=pa.parentElement;
+      }
+      if(!pa) return false;
+      caja=document.createElement('div'); caja.id=ID;
+      caja.style.cssText='grid-column:1/-1;width:100%;box-sizing:border-box';
+      try{ pa.insertBefore(caja,anc); }catch(e){ return false; }
+    }
+    // SHADOW DOM: RealProfit busca sus tarjetas por ETIQUETA en todo el documento, y estas
+    // tambien dicen MARGEN y GANANCIA. Sin esto se las come (paso en produccion: el Margen
+    // del dashboard quedaba vacio y el Break Even ROAS en 0,00x).
+    var raiz=caja.shadowRoot;
+    if(!raiz){ try{ raiz=caja.attachShadow({mode:'open'}); }catch(e){ raiz=caja; } }
+    var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
+    var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
+    var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
+    var fir=[mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
+    if(caja.getAttribute('data-fir')===fir) return true;
+    caja.setAttribute('data-fir',fir);
+    raiz.innerHTML='';
+    // la fuente se hereda del documento (Inter); igual se fija por las dudas
+    var st=document.createElement('style');
+    st.textContent=':host{font-family:Inter,ui-sans-serif,system-ui,sans-serif}';
+    raiz.appendChild(st);
+    var p=function(a,b){ return b?Math.round(a/b*100)+'%':'0%'; };
+    raiz.appendChild(titulo(AM,'MERCADOLIBRE',6));
+    raiz.appendChild(fila([
+      card(AM,'VENTAS',String(Math.round(mlv)), p(mlv,ord)+' de las '+ord+' del período'),
+      card(AM,'FACTURACIÓN',plata(mlf), p(mlf,fac)+' de la facturación total'),
+      card(AM,'GANANCIA',plata(mlg), plata(_raw.ml_gan_venta||0)+' por venta', mlg<0?ROJO:VERDE)
+    ]));
+    raiz.appendChild(fila([
+      card(AM,'MARGEN',pct(_raw.ml_margen||0),'Ganancia ÷ facturación de ML',(+(_raw.ml_margen||0))<0?ROJO:VERDE),
+      card(AM,'NETO ENTRADO',plata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'),
+      card(AM,'TICKET PROM',plata(_raw.ml_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
+    ]));
+    raiz.appendChild(titulo(SH,'SHOPIFY',6));
+    raiz.appendChild(fila([
+      card(SH,'VENTAS',String(Math.round(wv)), p(wv,ord)+' de las '+ord+' del período'),
+      card(SH,'FACTURACIÓN',plata(wf), p(wf,fac)+' de la facturación total'),
+      card(SH,'GANANCIA',plata(wg),'Después de la pauta de '+plata(_raw.publi_ars||0), wg<0?ROJO:VERDE)
+    ]));
+    raiz.appendChild(fila([
+      card(SH,'MARGEN',pct(_raw.web_margen||0),'Ganancia ÷ facturación de la tienda',(+(_raw.web_margen||0))<0?ROJO:VERDE),
+      card(SH,'NETO ENTRADO',plata(_raw.web_neto||0),'Menos '+plata(_raw.mp_costo_real||0)+' de MercadoPago'),
+      card(SH,'TICKET PROM',plata(_raw.web_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
+    ]));
+    return true;
+  }
   function paint(){ if(!_raw)return;
     // Recompras se piden aparte y _raw se reemplaza en cada poll de /pf-periodo → reaplico el valor cacheado
     // ANTES de pintar, así Recompras + Facturación Recompra NO parpadean entre el valor real y 0.
@@ -2302,6 +2403,7 @@ _SOLO_DASH = r"""
     var _mok=false;
     try{ costos4(); }catch(e){}
     try{ _mok=metricas(); }catch(e){}
+    try{ canales(); }catch(e){}   // NUNCA puede romper el resto del pintado
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
