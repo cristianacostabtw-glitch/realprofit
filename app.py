@@ -12,6 +12,7 @@ import datetime as _dt
 import json as _json
 import secrets as _secrets
 import threading
+import time as _time
 import urllib.parse as _url
 from pathlib import Path
 
@@ -9708,12 +9709,17 @@ def _meli_esperando_stock(email):
         return [], "MercadoLibre no conectado"
     h = {"Authorization": "Bearer " + tok}
     res = []
+    # VENTANA DE 30 DIAS, no las ultimas 400 ordenes. Barrer todo tardaba 20 segundos (medido
+    # en produccion 26-09-2026: 29 ventas encontradas, 20,2 s) porque pedia /shipments/{id} de
+    # cada orden no cerrada. El tiempo de fabricacion son dias, no meses: una venta esperando
+    # stock de hace un mes no existe. Con la ventana quedan muchas menos ordenes que mirar.
+    _desde = (_dt.date.today() - _dt.timedelta(days=30)).isoformat() + "T00:00:00.000-03:00"
     try:
         _off = 0
         while _off < 400:
             r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
-                             params={"seller": uid, "sort": "date_desc",
-                                     "limit": 50, "offset": _off})
+                             params={"seller": uid, "sort": "date_desc", "limit": 50,
+                                     "offset": _off, "order.date_created.from": _desde})
             _lote = (r.json() if r.content else {}).get("results", [])
             res += _lote
             if len(_lote) < 50:
@@ -9774,20 +9780,266 @@ def _meli_esperando_stock(email):
     return filas, ""
 
 
-@app.get("/meli/stock-esperando")
-def meli_stock_esperando():
-    """Cuántas ventas están esperando que confirmes el stock ("Ya tengo el producto")."""
+# Argentina no tiene horario de verano: -3 fijo. El server corre en UTC, asi que la hora que
+# escribe el usuario ("hasta las 12") es hora de ACA y hay que convertirla, no usar la del server.
+_ARG = _dt.timezone(_dt.timedelta(hours=-3))
+
+
+class _CorteMalo(Exception):
+    """La hora escrita no se entiende. Es un error, NO "sin corte"."""
+
+
+def _meli_corte_ts(hasta):
+    """El instante (hora de Argentina) hasta el que se confirma, INCLUSIVE.
+
+    Acepta el dia y la hora, o solo la hora (y ahi es hoy):
+        "2026-09-25T23:00"  ·  "2026-09-25 23:00"  ·  "23:00"  ·  "23"
+    Vacio = None (sin corte). Cualquier otra cosa levanta _CorteMalo.
+
+    OJO, esto es a proposito: antes una hora ilegible ("banana", "99") caia en "sin corte" y
+    entraban TODAS las ventas. O sea que un dedazo en el campo confirmaba todo. Un texto que
+    no se entiende tiene que FALLAR, nunca ampliar el alcance."""
+    import re as _re          # no hay _re a nivel modulo: cada funcion lo importa
+    h = (hasta or "").strip()
+    if not h:
+        return None
+    m = _re.match(r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2})[:.](\d{2})(?::\d{2})?$", h)
+    if m:
+        a, me, d, hh, mm = (int(x) for x in m.groups())
+    else:
+        m = _re.match(r"^(\d{1,2})(?:[:.](\d{1,2}))?$", h)
+        if not m:
+            raise _CorteMalo(hasta)
+        hh = int(m.group(1))
+        mm = int(m.group(2) or 0)
+        hoy = _dt.datetime.now(_ARG).date()
+        a, me, d = hoy.year, hoy.month, hoy.day
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        raise _CorteMalo(hasta)
+    try:
+        # inclusive: "hasta las 12:00" toma las 12:00:59
+        return _dt.datetime(a, me, d, hh, mm, 59, tzinfo=_ARG)
+    except ValueError:      # 31 de febrero y esas cosas
+        raise _CorteMalo(hasta)
+
+
+def _meli_fecha_ts(txt):
+    """La fecha de MELI ("2026-09-26T11:01:00.000-03:00") a datetime con zona."""
+    import re as _re
+    t = (txt or "").strip()
+    if not t:
+        return None
+    try:
+        # Python < 3.11 no come los milisegundos con zona en fromisoformat: los saco
+        t = _re.sub(r"\.\d+", "", t)
+        return _dt.datetime.fromisoformat(t)
+    except Exception:
+        return None
+
+
+def _meli_filtrar_corte(filas, hasta):
+    """Parte las ventas en (entran, quedan_afuera) segun el corte.
+
+    Si de una venta no se puede leer la fecha, NO entra: se prefiere dejar una sin confirmar
+    antes que confirmar una que no correspondia (la de mas no se puede deshacer)."""
+    corte = _meli_corte_ts(hasta)
+    if corte is None:
+        return list(filas), []
+    dentro, fuera = [], []
+    for f in filas:
+        ts = _meli_fecha_ts(f.get("fecha_hora"))
+        (dentro if (ts is not None and ts <= corte) else fuera).append(f)
+    return dentro, fuera
+
+
+# ---------------------------------------------------------------------------------------
+# PUENTE "Ya tengo el producto": el boton vive aca, la ejecucion en la Mac.
+#
+# POR QUE. Confirmar el stock NO se puede hacer desde el server. La API publica de ML solo
+# LEE el estado de los envios; la accion del panel es un BFF interno
+#   POST vendedores.mercadolibre.com.ar/ventas/omni/listado/api/channels/event-request
+#   {"baseUrl":"/sales-omni","path":"/packs/marketplace/action/modal/MANUFACTURING",...}
+# que va con las COOKIES de la sesion del vendedor (capturado el 26-09-2026 interceptando
+# fetch/XHR en el panel). Render no tiene esa sesion, asi que el click sale de la Mac.
+#
+# COMO. El boton deja un pedido con el corte elegido; el agente de la Mac lo levanta, corre
+# el robot en Safari y devuelve el informe. El estado se guarda en DISCO y no en memoria:
+# son 2 workers, y el pedido lo escribe uno y lo lee el otro.
+_STK_PEDIDOS = DATA_DIR / "meli_stock_pedidos.json"
+_STK_TOKEN = (_os.getenv("MELI_ROBOT_TOKEN") or "").strip()
+_STK_VIEJO = 20 * 60        # un pedido sin tomar despues de esto esta muerto
+_STK_SIN_MAC = 45           # si nadie lo levanta en 45s, la Mac no esta escuchando
+
+
+def _stk_pedidos() -> dict:
+    try:
+        return _json.loads(_STK_PEDIDOS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _stk_guardar(d: dict) -> None:
+    _STK_PEDIDOS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _stk_estado(p: dict) -> dict:
+    """Le agrega al pedido el estado que se muestra en pantalla."""
+    if not p:
+        return {}
+    q = dict(p)
+    edad = _time.time() - float(p.get("ts") or 0)
+    q["edad"] = int(edad)
+    if p.get("estado") == "pedido" and edad > _STK_SIN_MAC:
+        q["estado"] = "sin_mac"
+        q["msg"] = ("La Mac no contestó en %ds. Fijate que esté prendida y que el agente esté "
+                    "corriendo (~/Downloads/MELI-ROBOT/agente.sh)." % _STK_SIN_MAC)
+    return q
+
+
+@app.post("/meli/stock-pedir")
+def meli_stock_pedir():
+    """El boton. Deja el pedido con el corte elegido para que lo tome la Mac."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
+    hasta = ((request.get_json(silent=True) or {}).get("hasta") or "").strip()
+    try:
+        corte = _meli_corte_ts(hasta)
+    except _CorteMalo:
+        return jsonify({"ok": False, "msg": 'No entiendo "%s" como día y hora.' % hasta})
     try:
         filas, err = _meli_esperando_stock(email)
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
     if err:
         return jsonify({"ok": False, "msg": err})
-    return jsonify({"ok": True, "n": len(filas), "potes": sum(f.get("cant") or 0 for f in filas),
-                    "ventas": filas})
+    dentro, fuera = _meli_filtrar_corte(filas, hasta)
+    if not dentro:
+        return jsonify({"ok": False, "msg": "Con ese corte no entra ninguna."})
+    d = _stk_pedidos()
+    # Un pedido en curso no se pisa: si no, dos clicks lanzan dos pasadas encimadas.
+    ant = _stk_estado(d.get(email) or {})
+    if ant and ant.get("estado") in ("pedido", "corriendo"):
+        return jsonify({"ok": False, "en_curso": True, "pedido": ant,
+                        "msg": "Ya hay una pasada en curso."})
+    p = {"id": _secrets.token_hex(8), "hasta": hasta,
+         "corte": corte.isoformat() if corte else "",
+         "esperadas": len(dentro), "afuera": len(fuera),
+         "sids": [f["sid"] for f in dentro],
+         "estado": "pedido", "ts": _time.time(), "salida": "", "msg": ""}
+    d[email] = p
+    _stk_guardar(d)
+    _MELI_STK_CACHE.pop(email, None)      # al volver, que lea de nuevo
+    return jsonify({"ok": True, "pedido": _stk_estado(p)})
+
+
+@app.get("/meli/stock-pedido")
+def meli_stock_pedido():
+    """Como viene la pasada (lo pregunta la pantalla cada 2s)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "pedido": _stk_estado((_stk_pedidos() or {}).get(email) or {})})
+
+
+def _stk_token_ok() -> bool:
+    t = (request.args.get("t") or request.headers.get("X-Robot-Token") or "").strip()
+    return bool(_STK_TOKEN) and t == _STK_TOKEN
+
+
+@app.get("/meli/stock-trabajo")
+def meli_stock_trabajo():
+    """Lo llama el agente de la Mac: devuelve el pedido que haya y lo marca como tomado."""
+    if not _stk_token_ok():
+        return jsonify({"ok": False, "msg": "token"}), 403
+    d = _stk_pedidos()
+    for email, p in (d or {}).items():
+        if (p or {}).get("estado") != "pedido":
+            continue
+        if _time.time() - float(p.get("ts") or 0) > _STK_VIEJO:
+            p["estado"] = "vencido"
+            _stk_guardar(d)
+            continue
+        p["estado"] = "corriendo"
+        p["ts_tomado"] = _time.time()
+        _stk_guardar(d)
+        return jsonify({"ok": True, "hay": True, "email": email, "id": p["id"],
+                        "hasta": p.get("hasta") or "", "esperadas": p.get("esperadas") or 0})
+    return jsonify({"ok": True, "hay": False})
+
+
+@app.post("/meli/stock-reporte")
+def meli_stock_reporte():
+    """Lo llama el agente de la Mac cuando termina, con el informe del robot."""
+    if not _stk_token_ok():
+        return jsonify({"ok": False, "msg": "token"}), 403
+    j = request.get_json(silent=True) or {}
+    d = _stk_pedidos()
+    for email, p in (d or {}).items():
+        if (p or {}).get("id") != (j.get("id") or ""):
+            continue
+        p["estado"] = "listo" if j.get("ok") else "error"
+        p["confirmadas"] = int(j.get("confirmadas") or 0)
+        p["quedan"] = j.get("quedan")
+        p["salida"] = str(j.get("salida") or "")[:4000]
+        p["msg"] = str(j.get("msg") or "")[:300]
+        p["ts_fin"] = _time.time()
+        _stk_guardar(d)
+        _MELI_STK_CACHE.pop(email, None)
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "msg": "no encontre ese pedido"}), 404
+
+
+# Cache corto del panel de "esperando stock". Se pide en CADA visita a Envios y la cuenta
+# cuesta varios /shipments/{id}, asi que se guarda un rato. Es por proceso (hay 2 workers):
+# no importa, es solo lectura y cada uno arma el suyo.
+_MELI_STK_CACHE = {}
+_MELI_STK_TTL = 120
+
+
+@app.get("/meli/stock-esperando")
+def meli_stock_esperando():
+    """Cuántas ventas están esperando que confirmes el stock ("Ya tengo el producto")."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    _fresco = (request.args.get("fresco") or "") in ("1", "true", "si")
+    _hasta = request.args.get("hasta") or ""
+
+    def _resp(filas, cache):
+        base = {"ok": True, "n": len(filas),
+                "potes": sum(f.get("cant") or 0 for f in filas),
+                "ventas": filas, "cache": cache, "hasta": _hasta}
+        try:
+            dentro, fuera = _meli_filtrar_corte(filas, _hasta)
+        except _CorteMalo:
+            base.update({"corte_ok": False, "entran": 0, "afuera": len(filas),
+                         "entran_sids": [], "corte_msg": "No entiendo la hora \"%s\". Poné 12 o 12:30." % _hasta})
+            return jsonify(base)
+        # Si la hora todavia no paso (poner 23:30 a las 12), el corte no filtra nada: es lo
+        # mismo que "todas". Hay que decirlo, si no confirma la venta que entro hace 2 minutos
+        # y parece que el corte funciono.
+        _c = _meli_corte_ts(_hasta)
+        _futuro = bool(_c and _c > _dt.datetime.now(_ARG))
+        base.update({"corte_ok": True, "entran": len(dentro), "afuera": len(fuera),
+                     "entran_sids": [f["sid"] for f in dentro], "futuro": _futuro})
+        if _futuro:
+            base["corte_msg"] = ("Ese momento todavía no pasó (%s), así que entran todas, "
+                                 "incluso las de hace un rato."
+                                 % _c.strftime("%d-%m %H:%M"))
+        return jsonify(base)
+
+    _hit = _MELI_STK_CACHE.get(email)
+    if _hit and not _fresco and (_time.time() - _hit[0]) < _MELI_STK_TTL:
+        return _resp(_hit[1], int(_time.time() - _hit[0]))
+    try:
+        filas, err = _meli_esperando_stock(email)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+    if err:
+        return jsonify({"ok": False, "msg": err})
+    _MELI_STK_CACHE[email] = (_time.time(), filas)
+    return _resp(filas, 0)
 
 
 @app.get("/meli/pendientes-lista")
@@ -16835,9 +17087,11 @@ _MELI_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
 var CONN=false, NICK='', SEL='ventas';
+var _STKN=null;   // cuantas esperan stock, para el numerito de la barra
 var FEATURES=[
  {k:'ventas',ic:'📈',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
  {k:'mensajes',ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Preguntas sin responder de tus publicaciones — respondé desde acá.',soon:false},
+ {k:'stkpend',ic:'⏳',bg:'#241a10',t:'Stock pendiente',d:'Las ventas que esperan que confirmes "Ya tengo el producto". Hasta que no lo hagas, ML no genera la etiqueta y no aparecen en Envíos.',soon:false},
  {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Las ventas listas para despachar. Al bajar la etiqueta pasan a archivadas, no se borran.',soon:false},
  {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
  {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock unificado en botellas de 30 ml. Un Pack X2 descuenta 2. Sincronizá a ML con un clic.',soon:false},
@@ -16846,7 +17100,7 @@ var FEATURES=[
 ];
 function renderSide(){
  var s=document.getElementById('side');
- s.innerHTML='<div class="gr">Tu cuenta</div>'+FEATURES.map(function(f){ return '<div class="it'+(f.k===SEL?' on':'')+'" onclick="sel(\''+f.k+'\')"><span class="ic" style="background:'+f.bg+'">'+f.ic+'</span><span>'+esc(f.t)+'</span>'+(f.soon?'<span class="soon">PRONTO</span>':'')+'</div>'; }).join('');
+ s.innerHTML='<div class="gr">Tu cuenta</div>'+FEATURES.map(function(f){ return '<div class="it'+(f.k===SEL?' on':'')+'" onclick="sel(\''+f.k+'\')"><span class="ic" style="background:'+f.bg+'">'+f.ic+'</span><span>'+esc(f.t)+'</span>'+(f.k==='stkpend'&&_STKN?'<span class="soon" style="background:#4a3a12;color:#ffd479">'+_STKN+'</span>':'')+(f.soon?'<span class="soon">PRONTO</span>':'')+'</div>'; }).join('');
 }
 function sel(k){ SEL=k; renderSide(); renderMain(); }
 function post(u,o){ return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(o||{})}).then(function(r){return r.json();}); }
@@ -16859,7 +17113,7 @@ function renderMain(){
  if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
  var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
  m.innerHTML=head+(f.k==='ventas'?'<div id="mlvivo" style="margin-bottom:16px"></div>':'')+'<div class="card"><div id="mlc" style="color:var(--ink3);font-size:12.5px">Cargando…</div></div>'+(f.k==='envios'?'<div id="mlhist"></div>':'');
- if(f.k==='ventas'){cargarVivo();cargarVentas();} else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
+ if(f.k==='ventas'){cargarVivo();cargarVentas();} else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='stkpend')cargarStkEsperando(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
 }
 function vvPlata(n){ try{ return '$ '+Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }catch(e){ return '$ '+(n||0); } }
 function vvTile(lab,val,col){
@@ -17164,35 +17418,157 @@ function envFila(o,arch){
 // substatus=manufacturing). Son las que en el panel del vendedor muestran "Ya tengo el
 // producto": hasta que se confirma, NO existe la etiqueta, asi que no aparecen en "Para
 // despachar". Por eso se muestran aca arriba: si no, el dia parece vacio y no lo esta.
-function cargarStkEsperando(){ var c=document.getElementById('mlstk'); if(!c)return;
+var _STK=[];          // las ventas esperando stock, tal como las devolvio el server
+// El corte del lado del navegador es SOLO la vista previa. La que manda es la del server,
+// que recalcula con los mismos timestamps cuando se aprieta el boton.
+function _stkCorte(txt){
+ // Acepta "2026-09-25T23:00" (lo que manda el campo de dia+hora) y tambien "23:00"/"23"
+ // sueltos, que son de hoy. Vacio = sin corte.
+ // Una hora que no se entiende tiene que FALLAR: si cayera en "sin corte", un dedazo en el
+ // campo confirmaria TODAS las ventas.
+ var t=(txt||'').trim();
+ if(!t) return {sin:true};
+ var a,me,d,hh,mm, m=t.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2})[:.](\d{2})(?::\d{2})?$/);
+ if(m){ a=+m[1]; me=+m[2]; d=+m[3]; hh=+m[4]; mm=+m[5]; }
+ else {
+   m=t.match(/^(\d{1,2})(?:[:.](\d{1,2}))?$/);
+   if(!m) return {malo:true};
+   hh=+m[1]; mm=m[2]?+m[2]:0;
+   var y=new Date(); a=y.getFullYear(); me=y.getMonth()+1; d=y.getDate();
+ }
+ if(hh<0||hh>23||mm<0||mm>59||me<1||me>12||d<1||d>31) return {malo:true};
+ var n=new Date(a, me-1, d, hh, mm, 59, 999);
+ if(n.getDate()!==d||n.getMonth()!==me-1) return {malo:true};   // 31 de febrero y esas cosas
+ return {ms:n.getTime(), futuro:n.getTime()>Date.now(),
+         lindo:('0'+d).slice(-2)+'-'+('0'+me).slice(-2)+' '+('0'+hh).slice(-2)+':'+('0'+mm).slice(-2)};
+}
+function _stkEntra(o,C){
+ if(C.sin) return true;
+ if(C.malo) return false;
+ var t=Date.parse(o.fecha_hora||'');
+ if(isNaN(t)) return false;      // sin fecha legible no se toca
+ return t<=C.ms;
+}
+function stkPintar(){
+ var c=document.getElementById('mlc'); if(!c)return;
+ var v=_STK;
+ if(!v.length){ c.innerHTML=vacio('No hay ventas esperando que confirmes el stock. 🎉'); return; }
+ var campo=document.getElementById('stkhasta');
+ // Arranca en AHORA: el caso normal es "pasá todo lo que ya entró". _STKVAL se acuerda de lo
+ // que escribio el usuario entre repintados (el campo se re-crea en cada pintada).
+ if(_STKVAL===null) _STKVAL=_stkAhora();
+ var val=(campo && campo.value!==undefined && document.activeElement===campo) ? campo.value : _STKVAL;
+ _STKVAL=val;
+ var C=_stkCorte(val);
+ var dentro=v.filter(function(o){return _stkEntra(o,C);});
+ var aviso='';
+ if(C.malo) aviso='<span style="color:var(--bad);font-weight:700">No entiendo ese día y hora.</span>';
+ else if(C.sin) aviso='<span style="color:var(--ink3)">Sin fecha entran las '+v.length+'.</span>';
+ else if(C.futuro) aviso='<span style="color:var(--warn);font-weight:700">Ese momento todavía no pasó: entran las '+v.length+', incluso las de hace un rato.</span>';
+ else aviso='<span style="color:var(--ink2)">Hasta <b>'+esc(C.lindo)+'</b>: entran <b>'+dentro.length+'</b>, quedan afuera '+(v.length-dentro.length)+'.</span>';
+ var fila=function(o){
+  var e=_stkEntra(o,C), hh=(o.fecha_hora||'').replace('T',' ').slice(0,16);
+  return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1b2635;opacity:'+(e?'1':'.42')+'">'
+   +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap;min-width:96px">'+esc(hh)+'</div>'
+   +'<div style="font-size:12px;color:var(--ink2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.nombre||o.buyer||'')+'</div>'
+   +'<div style="font-size:11.5px;color:var(--ink3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo||'')+'</div>'
+   +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap;min-width:78px;text-align:right">'+(e?'':'queda')+'</div>'
+   +'<div style="font-size:12px;font-weight:800;color:'+(e?'var(--warn)':'var(--ink3)')+';white-space:nowrap">x'+(o.cant||0)+'</div></div>';
+ };
+ var puede = !C.malo && dentro.length>0;
+ c.innerHTML='<div class="sec-h"><b>Esperando que confirmes el stock</b>'
+  +'<span style="font-size:12px;color:var(--warn);font-weight:800">'+v.length+' venta(s) &middot; '+(_STK.reduce(function(a,o){return a+(o.cant||0);},0))+' unidad(es)</span></div>'
+  +'<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:4px">'
+  +'<span style="font-size:12.5px;color:var(--ink2)">Pasar a "Ya tengo el producto" todo hasta</span>'
+  +'<input type="datetime-local" id="stkhasta" value="'+esc(val)+'" oninput="stkPintar()" onchange="stkPintar()" '
+  +'style="background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:8px;padding:7px 9px;font-size:13px;font-family:inherit">'
+  +'<button class="btn" id="stkbtn" '+(puede?'':'disabled style="opacity:.45;cursor:default"')+' onclick="stkConfirmar()">Pasar '+(C.malo?0:dentro.length)+'</button>'
+  +'</div>'
+  +'<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:9px">'
+  +'<button class="btn gh" style="padding:5px 9px;font-size:11px" onclick="stkPoner(0)">ahora</button>'
+  +'<button class="btn gh" style="padding:5px 9px;font-size:11px" onclick="stkPoner(1)">hoy 00:00</button>'
+  +'<button class="btn gh" style="padding:5px 9px;font-size:11px" onclick="stkPoner(2)">ayer 23:59</button>'
+  +'<button class="btn gh" style="padding:5px 9px;font-size:11px" onclick="stkPoner(3)">sin corte (todas)</button>'
+  +'<span style="flex:1;min-width:160px;font-size:12px" id="stkavi">'+aviso+'</span></div>'
+  +'<div id="stkmsg" style="font-size:12.5px;font-weight:600;min-height:16px;margin-bottom:4px"></div>'
+  +v.slice(0,60).map(fila).join('')
+  +(v.length>60?('<div style="font-size:11.5px;color:var(--ink3);padding-top:6px">y '+(v.length-60)+' mas</div>'):'');
+ var f=document.getElementById('stkhasta');
+ if(f && document.activeElement!==f && _STKFOCO){ f.focus(); f.setSelectionRange(f.value.length,f.value.length); }
+}
+var _STKFOCO=false;
+var _STKVAL=null;     // lo que hay en el campo de dia+hora
+var _STKPED=null;     // el pedido en curso, si hay
+var _STKTMR=null;
+// El boton no confirma nada aca: deja el pedido y el agente de la Mac lo ejecuta en Safari.
+// Confirmar es un endpoint interno del panel de ML que va con las cookies de la sesion, asi
+// que no se puede hacer desde el server (ver /meli/stock-pedir).
+function stkConfirmar(){
+ var C=_stkCorte(_STKVAL);
+ if(C.malo){ stkMsg('No entiendo ese día y hora.','var(--bad)'); return; }
+ var n=_STK.filter(function(o){return _stkEntra(o,C);}).length;
+ if(!n){ stkMsg('Con ese corte no entra ninguna.','var(--warn)'); return; }
+ var q=C.sin ? ('Pasar TODAS ('+n+') a "Ya tengo el producto"?')
+             : ('Pasar '+n+' a "Ya tengo el producto" (hasta '+C.lindo+')?\n\nLas '
+                +(_STK.length-n)+' posteriores no se tocan.');
+ if(!confirm(q)) return;
+ var b=document.getElementById('stkbtn'); if(b){ b.disabled=true; b.textContent='Pidiendo…'; }
+ post('/meli/stock-pedir',{hasta:_STKVAL||''}).then(function(j){
+  if(!j||!j.ok){ stkMsg((j&&j.msg)||'No se pudo pedir','var(--bad)'); stkPintar(); return; }
+  _STKPED=j.pedido; stkSeguir();
+ }).catch(function(){ stkMsg('No se pudo pedir','var(--bad)'); stkPintar(); });
+}
+function stkMsg(t,c){ var m=document.getElementById('stkmsg'); if(m) m.innerHTML='<span style="color:'+(c||'var(--ink2)')+'">'+esc(t)+'</span>'; }
+function stkSeguir(){
+ if(_STKTMR) clearTimeout(_STKTMR);
+ var p=_STKPED||{};
+ if(p.estado==='pedido')   stkMsg('Pedido enviado. Esperando que la Mac lo levante…','var(--ink2)');
+ if(p.estado==='corriendo')stkMsg('Corriendo en la Mac… ('+(p.esperadas||0)+' venta(s))','var(--acc)');
+ if(p.estado==='sin_mac'){ stkMsg(p.msg||'La Mac no contestó.','var(--bad)'); stkPintar(); return; }
+ if(p.estado==='error'){   stkMsg('Falló: '+(p.msg||'sin detalle'),'var(--bad)'); stkPintar(); return; }
+ if(p.estado==='listo'){
+   stkMsg('Listo: '+(p.confirmadas||0)+' confirmada(s)'+(p.quedan!=null?(' · quedan '+p.quedan):''),'var(--ok)');
+   _STKPED=null; cargarStkEsperando(); return;
+ }
+ _STKTMR=setTimeout(function(){
+   fetch('/meli/stock-pedido').then(function(r){return r.json();}).then(function(j){
+     if(j&&j.ok){ _STKPED=j.pedido||null; stkSeguir(); }
+   }).catch(function(){});
+ }, 2000);
+}
+function _stkFmt(d){
+ var p=function(n){ return ('0'+n).slice(-2); };
+ return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function _stkAhora(){ return _stkFmt(new Date()); }
+function stkPoner(cual){
+ var d=new Date();
+ if(cual===0) _STKVAL=_stkAhora();
+ else if(cual===1){ d.setHours(0,0,0,0); _STKVAL=_stkFmt(d); }
+ else if(cual===2){ d.setDate(d.getDate()-1); d.setHours(23,59,0,0); _STKVAL=_stkFmt(d); }
+ else _STKVAL='';
+ var c=document.getElementById('stkhasta'); if(c) c.value=_STKVAL;
+ stkPintar();
+}
+function cargarStkEsperando(){ var c=document.getElementById('mlc'); if(!c)return;
  c.innerHTML='<div style="font-size:12px;color:var(--ink3);padding:4px 0">Mirando si hay ventas esperando stock...</div>';
  fetch('/meli/stock-esperando').then(function(r){return r.json();}).then(function(j){
-  if(!j||!j.ok){ c.innerHTML=''; return; }
-  var v=j.ventas||[];
-  if(!v.length){ c.innerHTML=''; return; }
-  var fila=function(o){
-   var hh=(o.fecha_hora||'').replace('T',' ').slice(0,16);
-   return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1b2635">'
-    +'<div style="font-size:11px;color:var(--ink3);white-space:nowrap;min-width:96px">'+esc(hh)+'</div>'
-    +'<div style="font-size:12px;color:var(--ink2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.nombre||o.buyer||'')+'</div>'
-    +'<div style="font-size:11.5px;color:var(--ink3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.titulo||'')+'</div>'
-    +'<div style="font-size:12px;font-weight:800;color:var(--warn);white-space:nowrap">x'+(o.cant||0)+'</div></div>';
-  };
-  c.innerHTML='<div class="card" style="margin-bottom:16px;border-color:#4a3a12">'
-   +'<div class="sec-h"><b>Esperando que confirmes el stock</b>'
-   +'<span style="font-size:12px;color:var(--warn);font-weight:800">'+v.length+' venta(s) &middot; '+(j.potes||0)+' unidad(es)</span></div>'
-   +'<div style="font-size:12px;color:var(--ink3);margin:-2px 0 8px">Hasta que no confirmes "Ya tengo el producto" en Mercado Libre, ML no genera la etiqueta y estas ventas <b>no aparecen en Para despachar</b>.</div>'
-   +v.slice(0,40).map(fila).join('')
-   +(v.length>40?('<div style="font-size:11.5px;color:var(--ink3);padding-top:6px">y '+(v.length-40)+' mas</div>'):'')
-   +'</div>';
+  if(!j||!j.ok){ c.innerHTML=err(j); return; }
+  _STK=j.ventas||[];
+  _STKN=_STK.length; renderSide();
+  stkPintar();
+  // si quedo una pasada en curso (por ejemplo se recargo la pagina), se retoma
+  fetch('/meli/stock-pedido').then(function(r){return r.json();}).then(function(k){
+   var p=(k&&k.pedido)||null;
+   if(p && (p.estado==='pedido'||p.estado==='corriendo')){ _STKPED=p; stkSeguir(); }
+  }).catch(function(){});
  }).catch(function(){ c.innerHTML=''; });
 }
 function cargarEnvios(){ var box=document.getElementById('mlc'); if(!box)return;
  fetch('/meli/pendientes-lista?todas=1').then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok){ box.innerHTML=err(j); return; }
   var all=j.envios||[], pend=all.filter(function(o){return !o.bajada;}), arch=all.filter(function(o){return !!o.bajada;});
-  var h='<div id="mlstk"></div>'
-   +'<div class="sec-h"><b>Para despachar</b><span id="envcnt" style="font-size:12px;color:var(--ink2)"></span>'
+  var h='<div class="sec-h"><b>Para despachar</b><span id="envcnt" style="font-size:12px;color:var(--ink2)"></span>'
    +'<span style="flex:1"></span>'
    +(pend.length?'<button class="btn gh" style="padding:8px 13px;font-size:12px" onclick="envTodos(true)">Tildar todas</button>':'')
    +'<button class="btn" id="envbtn" onclick="envBajar()">&#11015; Descargar etiquetas con SKU</button></div>'
@@ -17206,7 +17582,6 @@ function cargarEnvios(){ var box=document.getElementById('mlc'); if(!box)return;
   }
   box.innerHTML=h;
   envSel();
-  cargarStkEsperando();
   var hist=document.getElementById('mlhist');
   if(hist) fetch('/meli/envios').then(function(r){return r.json();}).then(function(k){
    var v=(k&&k.envios)||[]; if(!v.length){ hist.innerHTML=''; return; }
@@ -17384,6 +17759,10 @@ function boot(){ renderSide(); renderMain();
  fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
   var e=document.getElementById('estado'); if(CONN){ e.className='chip on'; e.textContent='✓ Conectado'+(NICK?(' · '+NICK):''); } else { e.className='chip off'; e.textContent='No conectado'; }
   renderMain();
+  // el numerito de "Stock pendiente" desde el arranque (el server lo cachea 2 minutos)
+  if(CONN) fetch('/meli/stock-esperando').then(function(r){return r.json();}).then(function(k){
+    if(k&&k.ok){ _STK=k.ventas||[]; _STKN=_STK.length; renderSide(); if(SEL==='stkpend') stkPintar(); }
+  }).catch(function(){});
  }).catch(function(){});
 }
 boot();
