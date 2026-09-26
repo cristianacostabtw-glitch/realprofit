@@ -14811,20 +14811,23 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _ml_f = float(r.get("meli_facturado", 0) or 0)
         _ml_ord = int(r.get("meli_ventas", 0) or 0)
         _fact_w = _fact - _ml_f
-        # Lo que aporta MELI: su propia ganancia (ahí ya están su comisión, producto, fulfillment,
-        # IIBB y el adelanto de MP) menos el IVA que le toca. En MELI no se gasta en ads, así que
-        # todo eso es ganancia directa y NO es plata destinada a bancar pauta.
-        _ml_pre = float(r.get("meli_ganancia", 0) or 0)
-        _ml_pre -= max(_ml_f - (r.get("meli_costo", 0) or 0)
-                       - (r.get("meli_comision", 0) or 0), 0.0) * _F
-        _pre_w = _pre_ri - _ml_pre
         _ord_w = _ord - _ml_ord
+        # La contribución de la TIENDA se calcula con SUS propios números, no restándole MELI al
+        # total: haciéndolo así se le devolvía a la tienda el IVA que le toca a MELI y el break
+        # even salía MÁS ALTO que cualquiera de las dos cuentas por separado (36.221 cuando el
+        # desglose de una venta real daba 30.908). Esta forma es auditable contra el desglose:
+        # precio − producto − comisión − envío − fulfillment − IIBB − 1% tienda − IVA.
+        _prod_w = (r.get("costo_prod", 0) or 0) - (r.get("meli_costo", 0) or 0)
+        _com_w = r.get("mp_costo_real", 0) or 0
+        _env_w = r.get("envio_monto", 0) or 0
+        _iibb_w = _fact_w * (IIBB_PCT / 100.0)
+        _iva_w = (_fact_w - _prod_w - _com_w - _env_w) * _F
+        _pre_w = (_fact_w - _prod_w - _com_w - _env_w - OPER_ORDEN * _ord_w
+                  - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w)
         # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
         r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
-        # BREAK EVEN CPA: MIXTO a propósito. Arriba va la contribución de TODOS los canales
-        # (la ganancia de MercadoLibre banca pauta aunque no la genere) y abajo sólo las ventas
-        # que la pauta sí trae. Da el máximo que se puede pagar por venta sin perder plata en
-        # el negocio entero, que es la decisión real a la hora de subir o bajar el presupuesto.
+        # BREAK EVEN CPA: el de la TIENDA. Cada venta tiene el suyo segun su ticket; este es el
+        # promedio del periodo. Tiene que quedar en linea con el desglose de una venta real.
         r["be_cpa"] = r["breakeven_cpa"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0
         # El mixto (sumando lo que aporta MELI) queda como REFERENCIA, no como numero principal:
         # marca donde el negocio entero da cero, pero pagando eso cada venta de la tienda pierde
