@@ -2453,6 +2453,7 @@ _SOLO_DASH = r"""
     var all=document.querySelectorAll('span,p,div');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>34 || tx.slice(-11)!=='Facturación') continue;
+      if(_rpcMio(e)) continue;            // mis tarjetas por canal NO son el KPI del dashboard
       if(e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
@@ -2484,6 +2485,7 @@ _SOLO_DASH = r"""
   function _fixLeaf(suf, val){ suf=suf.toLowerCase(); var all=document.querySelectorAll('span,p,div');
     for(var i=0;i<all.length;i++){ var e=all[i], tx=(e.textContent||'').replace(/\s+/g,' ').trim();
       if(tx.length>44 || tx.toLowerCase().slice(-suf.length)!==suf) continue;
+      if(_rpcMio(e)) continue;            // idem: Ganancia / Ticket prom por canal son mias
       if(e.offsetParent===null) continue;
       var card=e; for(var k=0;k<9&&card;k++){ card=card.parentElement; if(card&&/rounded/.test(card.className||'')) break; }
       if(!card||!/rounded/.test(card.className||'')||card.offsetParent===null) continue;
