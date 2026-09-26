@@ -14739,7 +14739,15 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         r["publi_cuenta"] = round(spend, 2)
         r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
         r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
-        r["roas"] = round(fact / spend, 2) if spend else 0.0
+        # ROAS: mismo criterio que el CPA de acá arriba, SOLO la facturación de la tienda. Las
+        # ventas de Mercado Libre llegan por el tráfico del marketplace, no por los anuncios;
+        # sumarlas al numerador infla el ROAS. El 25/09/2026 mostraba 2,74x cuando la pauta
+        # estaba rindiendo 2,15x, porque el 21,5% de la facturación era de MELI.
+        _fact_web = fact - float(r.get("meli_facturado", 0) or 0)
+        if _fact_web < 0:
+            _fact_web = 0.0
+        r["facturado_web"] = round(_fact_web, 2)
+        r["roas"] = round(_fact_web / spend, 2) if spend else 0.0
         r["cpa"] = round(spend / ordenes_web, 2) if ordenes_web else 0.0
         r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
         r["tot_ganancia"] = r["ganancia"]
@@ -14789,8 +14797,20 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                    + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
                 - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
         _pre_ri = _pre - _iva_pag
-        r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
-        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord, 2) if _ord else 0.0
+        # Y el break even va SOLO sobre la tienda: en MercadoLibre no se gasta un peso de ads,
+        # así que su contribución no es "plata para bancar pauta" sino ganancia directa. Si se
+        # mezcla, el ROAS mínimo sale más bajo del real y parece que se puede gastar de más.
+        _ml_f = float(r.get("meli_facturado", 0) or 0)
+        _ml_ord = int(r.get("meli_ventas", 0) or 0)
+        _fact_w = _fact - _ml_f
+        _ml_pre = (_ml_f - (r.get("meli_costo", 0) or 0) - (r.get("meli_comision", 0) or 0)
+                   - OPER_ORDEN * _ml_ord - _ml_f * 0.035)
+        _ml_pre -= max(_ml_f - (r.get("meli_costo", 0) or 0)
+                       - (r.get("meli_comision", 0) or 0), 0.0) * _F      # el IVA que le toca
+        _pre_w = _pre_ri - _ml_pre
+        _ord_w = _ord - _ml_ord
+        r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
+        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0
     # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
     # y el front lo pintaba encima del bueno: la pantalla saltaba entre 112 y 116 ventas cada 2s.
     # Con este sello el front puede descartar todo lo que sea MAS VIEJO que lo que ya tiene puesto.
