@@ -15185,6 +15185,35 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     r["iva_total"] = round(_iva_deb, 2)
     r["iva_favor"] = round(_iva_cred, 2)
     r["iva_pagar"] = round(_iva_pag, 2)
+    # IVA POR CANAL, con el mismo método de arriba. Hace falta porque el corte por canal se
+    # calcula ANTES de esta resta, así que sin esto ml_ganancia + web_ganancia NO daba la
+    # ganancia total: sobraba justo el IVA a pagar (medido 26-09-2026: $ 737.675 contra
+    # $ 453.380). Los dos canales tienen que cerrar contra el total, siempre.
+    try:
+        _ml_f2 = float(r.get("meli_facturado", 0) or 0)
+        _ml_deb = _ml_f2 * _F
+        # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
+        _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)) * _F
+        _ml_iva = _ml_deb - _ml_cred
+        r["ml_iva_total"] = round(_ml_deb, 2)
+        r["ml_iva_favor"] = round(_ml_cred, 2)
+        r["ml_iva_pagar"] = round(_ml_iva, 2)
+        r["web_iva_total"] = round(_iva_deb - _ml_deb, 2)
+        r["web_iva_favor"] = round(_iva_cred - _ml_cred, 2)
+        r["web_iva_pagar"] = round(_iva_pag - _ml_iva, 2)
+        if r.get("ri"):
+            r["ml_ganancia"] = round((r.get("ml_ganancia", 0) or 0) - _ml_iva, 2)
+            r["web_ganancia"] = round((r.get("web_ganancia", 0) or 0) - (_iva_pag - _ml_iva), 2)
+            _mf = r.get("ml_facturado", 0) or 0
+            _wf = r.get("web_facturado", 0) or 0
+            r["ml_margen"] = round(r["ml_ganancia"] / _mf * 100, 2) if _mf else 0.0
+            r["web_margen"] = round(r["web_ganancia"] / _wf * 100, 2) if _wf else 0.0
+            _mv = r.get("ml_ventas", 0) or 0
+            _wv = r.get("web_ventas", 0) or 0
+            r["ml_gan_venta"] = round(r["ml_ganancia"] / _mv, 2) if _mv else 0.0
+            r["web_gan_venta"] = round(r["web_ganancia"] / _wv, 2) if _wv else 0.0
+    except Exception:
+        pass
     if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
         _ord = r.get("ordenes", 0) or 0
         r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
