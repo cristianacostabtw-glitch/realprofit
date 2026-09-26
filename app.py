@@ -2382,6 +2382,18 @@ _SOLO_DASH = r"""
     var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
     var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
     var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
+    // Recompras y Facturación Recompra: fuera de Publicidad (pedido de Cristian). Se ocultan,
+    // no se borran, y como son las DOS ÚLTIMAS de la secuencia de metricas() el mapeo de las
+    // otras seis no se corre.
+    try{
+      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
+        if(e.children.length) return;
+        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+        if(t!=='recompras' && t!=='facturación recompra' && t!=='facturacion recompra') return;
+        var p=e;
+        for(var k=0;k<5&&p;k++){ if(/rounded-2xl/.test(p.className||'')){ p.style.display='none'; break; } p=p.parentElement; }
+      });
+    }catch(e){}
     var fir=[mlv,mlf,mlg,wv,wf,wg,ord,fac].join('|');
     if(caja.getAttribute('data-fir')===fir) return true;
     caja.setAttribute('data-fir',fir);
@@ -2415,18 +2427,6 @@ _SOLO_DASH = r"""
       card(SH,'entra','NETO ENTRADO',plata(_raw.web_neto||0),'Menos '+plata(_raw.mp_costo_real||0)+' de MercadoPago'),
       card(SH,'tag','TICKET PROM',plata(_raw.web_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
     ]));
-    // Recompras y Facturación Recompra: fuera de Publicidad (pedido de Cristian). Se ocultan,
-    // no se borran, y como son las DOS ÚLTIMAS de la secuencia de metricas() el mapeo de las
-    // otras seis no se corre.
-    try{
-      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
-        if(e.children.length) return;
-        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-        if(t!=='recompras' && t!=='facturación recompra' && t!=='facturacion recompra') return;
-        var p=e;
-        for(var k=0;k<5&&p;k++){ if(/rounded-2xl/.test(p.className||'')){ p.style.display='none'; break; } p=p.parentElement; }
-      });
-    }catch(e){}
     return true;
   }
   function paint(){ if(!_raw)return;
@@ -3016,10 +3016,14 @@ _SOLO_DASH = r"""
     // Margen por canal: MELI viene aparte en el blob; tienda = total menos MELI.
     try{
       if(R){
+        // OJO: antes se calculaba acá con (ganancia total − ganancia MELI), y esa resta mezcla
+        // una ganancia CON el IVA descontado contra otra SIN descontar, así que daba distinto
+        // de las tarjetas por canal (54,2% / −4,4% contra 43,8% / −1,6%). El backend ya publica
+        // ml_margen y web_margen con el IVA repartido por canal: se usan esos.
         var mf=+(R.meli_facturado||0), mgan=+(R.meli_ganancia||0);
         var tf=+(R.facturado||0)-mf,   tgan=+(R.ganancia||0)-mgan;
-        window._rpMgCh={ meli:(mf>0?Math.round(mgan/mf*1000)/10:null),
-                         tienda:(tf>0?Math.round(tgan/tf*1000)/10:null) };
+        window._rpMgCh={ meli:(R.ml_margen!=null ? R.ml_margen : (mf>0?Math.round(mgan/mf*1000)/10:null)),
+                         tienda:(R.web_margen!=null ? R.web_margen : (tf>0?Math.round(tgan/tf*1000)/10:null)) };
       }
     }catch(e){}
     var mg=null;
