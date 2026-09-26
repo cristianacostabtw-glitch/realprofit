@@ -2332,6 +2332,10 @@ _SOLO_DASH = r"""
   function canales(){
     if(!_raw) return false;
     var AM='#fbbf24', SH='#34d399', VERDE='#34d399', ROJO='#f87171';
+    var _cost0=_hdrLeaf('costos'); if(!_cost0) return false;
+    var _filaTit0=_cost0.parentElement; if(!_filaTit0) return false;
+    var _grid0=_filaTit0.parentElement;
+    if(!_grid0 || (getComputedStyle(_grid0).display||'')!=='grid') return false;
     // PUBLICIDAD: fuera Recompras y Facturacion Recompra (son las DOS ULTIMAS de la secuencia
     // de metricas(), asi que ocultarlas no corre el mapeo de las otras seis), y las dos que
     // quedan se estiran a 2 columnas para que la fila llegue de punta a punta.
@@ -2343,20 +2347,13 @@ _SOLO_DASH = r"""
         // acá no servía, porque ese barrido les devolvía display='' en cada vuelta.
         if(t!=='cpa' && t!=='break even cpa') return;
         var p=e;
-        for(var k=0;k<5&&p;k++){
-          if(/rounded-2xl/.test(p.className||'')){
-            if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2';
-            break;
-          }
+        for(var k=0;k<9&&p;k++){
+          if(p.parentElement===_grid0){ if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2'; break; }
           p=p.parentElement;
         }
       });
     }catch(e){}
-    var cost=_hdrLeaf('costos'); if(!cost) return false;
-    // la FILA del titulo (col-span-full) y la GRILLA de 4 columnas
-    var filaTit=cost.parentElement; if(!filaTit) return false;
-    var grid=filaTit.parentElement;
-    if(!grid || (getComputedStyle(grid).display||'')!=='grid') return false;
+    var cost=_cost0, filaTit=_filaTit0, grid=_grid0;
     // Buscador propio: cardByLabel() esta en otro closure y desde aca tira ReferenceError,
     // que el try/catch de paint() se tragaba en silencio. Por eso el bloque nunca aparecia.
     var tpl=_rpcCardPorLabel('CPA')||_rpcCardPorLabel('Productos')||_rpcCardPorLabel('Envíos');
