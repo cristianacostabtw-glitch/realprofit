@@ -2323,6 +2323,10 @@ _SOLO_DASH = r"""
     if(h[2]){ h[2].textContent=val; h[2].style.color=col||''; }
     if(h[3]) h[3].textContent=sub;
     c.style.borderLeftColor=acc;
+    // La plantilla es la tarjeta de CPA, que ANTES se estira a 2 columnas: el clon se llevaba
+    // ese "span 2" y todas mis tarjetas salian del doble de ancho (581 en vez de 284).
+    c.style.gridColumn='';
+    c.style.display='';
     return c;
   }
   function canales(){
