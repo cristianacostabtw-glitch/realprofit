@@ -2535,7 +2535,7 @@ _SOLO_DASH = r"""
         var _row=document.createElement('div'); _row.id='rp-iva3';
         _row.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px';
         var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA contenido en la facturación','percent'],
-                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito: producto + envío + comisiones','savings'],
+                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito: producto + envío + comisiones + ads de agencia','savings'],
                     ['IVA a pagar',_raw.iva_pagar,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
         for(var _i=0;_i<3;_i++){ var C=_cards[_i];
           var _cl=_pc.cloneNode(true); _cl.style.display=''; _cl.style.height=''; _cl.style.minHeight='';
@@ -12054,10 +12054,48 @@ def _meta_spend(email, desde, hasta):
                 # (mismo criterio que METAFY: USDC/ARS de criptoya). Se puede fijar con la env DOLAR_ARS.
                 if moneda == "USD" or es_owner:
                     spend *= _dolar_ars_vivo()
+                # La cuenta de AGENCIA (CP3) no se paga directo a Meta: la agencia factura el
+                # gasto + su comisión, así que lo que sale del bolsillo es ese total. Sin esto el
+                # dashboard muestra la pauta más barata de lo que realmente cuesta.
+                if _FIN_ACT_AGENCIA and str(acc) == _FIN_ACT_AGENCIA:
+                    spend *= (1.0 + _FIN_AGENCIA_PCT / 100.0)
                 total += spend
         except Exception:
             pass
     return _meta_spend_estable(email, desde, hasta, total if hubo else 0.0)
+
+
+def _meta_spend_agencia(email, desde, hasta) -> float:
+    """Sólo la cuenta de AGENCIA (CP3), en ARS y CON la comisión sumada. Es el NETO que factura
+    la agencia: el IVA va ENCIMA de este monto (×0,21), no adentro (no se divide por 1,21)."""
+    import os
+    if not _FIN_ACT_AGENCIA:
+        return 0.0
+    tk = _meta_tokens().get(email)
+    token = tk.get("access_token") if tk else None
+    es_owner = False
+    if not token:
+        owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
+        if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
+            token = os.getenv("META_OWNER_TOKEN")
+            es_owner = True
+    if not token:
+        return 0.0
+    try:
+        r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, _FIN_ACT_AGENCIA),
+                         params={"access_token": token, "fields": "spend,account_currency",
+                                 "time_range": _json.dumps({"since": desde, "until": hasta}),
+                                 "level": "account"}, timeout=30)
+        data = r.json().get("data") or []
+        if not data:
+            return 0.0
+        spend = float(data[0].get("spend") or 0)
+        moneda = (data[0].get("account_currency") or "").upper()
+        if moneda == "USD" or es_owner:
+            spend *= _dolar_ars_vivo()
+        return round(spend * (1.0 + _FIN_AGENCIA_PCT / 100.0), 2)
+    except Exception:
+        return 0.0
 
 
 _META_SPEND_FILE = DATA_DIR / "meta_spend_max.json"   # máximo por período, EN DISCO (compartido entre workers)
@@ -14693,6 +14731,17 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
                  + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0)
     _iva_cred = _base_cred * _F
+    # ADS DE AGENCIA (CP3): también dan crédito fiscal. OJO, acá es ×0,21 y NO ÷1,21: la factura
+    # de la agencia discrimina el IVA POR ENCIMA del neto (gasto+comisión), o sea que ese monto
+    # NO lo trae adentro, al revés que producto/envío/comisiones.
+    try:
+        _pub_ag = _meta_spend_agencia(email, desde, hasta)
+        if _pub_ag:
+            _iva_cred += _pub_ag * 0.21
+            r["publi_agencia"] = round(_pub_ag, 2)
+            r["iva_ads"] = round(_pub_ag * 0.21, 2)
+    except Exception:
+        pass
     _iva_pag = _iva_deb - _iva_cred
     r["iva_total"] = round(_iva_deb, 2)
     r["iva_favor"] = round(_iva_cred, 2)
