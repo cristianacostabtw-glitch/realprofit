@@ -2323,6 +2323,12 @@ _SOLO_DASH = r"""
     if(h[2]){ h[2].textContent=val; h[2].style.color=col||''; }
     if(h[3]) h[3].textContent=sub;
     c.style.borderLeftColor=acc;
+    // La plantilla trae el tinte verde de su clase (from-emerald-500/[0.06]). Se pisa con el
+    // color del canal, con la MISMA opacidad 0,06, para que MercadoLibre quede amarillo.
+    try{
+      var _r=parseInt(acc.slice(1,3),16), _g=parseInt(acc.slice(3,5),16), _b=parseInt(acc.slice(5,7),16);
+      c.style.backgroundImage='linear-gradient(to bottom right, rgba('+_r+','+_g+','+_b+',0.06), transparent)';
+    }catch(e){}
     // La plantilla es la tarjeta de CPA, que ANTES se estira a 2 columnas: el clon se llevaba
     // ese "span 2" y todas mis tarjetas salian del doble de ancho (581 en vez de 284).
     c.style.gridColumn='';
