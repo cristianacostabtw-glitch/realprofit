@@ -13110,8 +13110,10 @@ def _fin_hoy_ar():
 
 
 def _fin_ads_usd(email, desde, hasta) -> float:
-    """Gasto REAL de ADS en USD del período: Meta (todas las cuentas) + TikTok."""
-    total = _fin_ads_usd_meta(email, desde, hasta)
+    """Gasto REAL de ADS en USD del período que se paga DIRECTO: Meta (sin la cuenta de
+    agencia, que va aparte con su comisión) + TikTok."""
+    total = _fin_ads_usd_meta(email, desde, hasta,
+                              excluir=[_FIN_ACT_AGENCIA] if _FIN_ACT_AGENCIA else None)
     try:
         total += _tiktok_ads_usd(email, desde, hasta)
     except Exception:
@@ -13119,8 +13121,28 @@ def _fin_ads_usd(email, desde, hasta) -> float:
     return round(total, 2)
 
 
-def _fin_ads_usd_meta(email, desde, hasta) -> float:
-    """Gasto REAL de Meta en USD del período, SUMANDO todas las cuentas de la tienda (CP1 + CP2).
+# CP3 no se paga directo a Meta: va por una AGENCIA que factura el gasto + su comisión, y el IVA
+# se calcula sobre ESE total (gasto+comisión), no sobre el gasto pelado. Por eso va aparte, en las
+# columnas "ADS ... AGENCIA" de la planilla, y con el recargo aplicado al gasto de CADA DÍA: la
+# recarga es un monto grande pero el gasto es diario, y prorratearlo da el mismo total que la factura.
+_FIN_ACT_AGENCIA = (_os.getenv("META_ACT_AGENCIA", "2531179297401424") or "").replace("act_", "").strip()
+try:
+    _FIN_AGENCIA_PCT = float(_os.getenv("META_AGENCIA_PCT", "10") or 10)
+except Exception:
+    _FIN_AGENCIA_PCT = 10.0
+
+
+def _fin_ads_agencia_usd(email, desde, hasta) -> float:
+    """Gasto de la cuenta de AGENCIA (CP3) en USD, ya con la comisión sumada."""
+    if not _FIN_ACT_AGENCIA:
+        return 0.0
+    bruto = _fin_ads_usd_meta(email, desde, hasta, solo=[_FIN_ACT_AGENCIA])
+    return round(bruto * (1.0 + _FIN_AGENCIA_PCT / 100.0), 2)
+
+
+def _fin_ads_usd_meta(email, desde, hasta, solo=None, excluir=None) -> float:
+    """Gasto REAL de Meta en USD del período, sumando las cuentas de la tienda.
+    'solo'/'excluir' permiten separar la cuenta de agencia de las que se pagan directo.
     Ojo: _meta_spend devuelve ARS (convierte con el dólar vivo). Acá va el USD crudo porque la
     planilla lo pasa a pesos sola (columna ADS ARS = ADS USD × T.C de D3)."""
     tk = _meta_tokens().get(email)
@@ -13145,6 +13167,10 @@ def _fin_ads_usd_meta(email, desde, hasta) -> float:
             ex = ex.strip().replace("act_", "")
             if ex and ex not in cuentas:
                 cuentas.append(ex)
+    if solo:
+        cuentas = [c for c in cuentas if c in solo]
+    if excluir:
+        cuentas = [c for c in cuentas if c not in excluir]
     total = 0.0
     for acc in cuentas:
         try:
@@ -13261,7 +13287,9 @@ def _fin_datos_dia(email, f) -> dict:
             "envio": round(float(raw.get("envio_zona_monto") or 0), 2),
             # IIBB como lo calcula RealProfit (3,5% configurable), no el 2% que traía la planilla.
             "iibb": round(float(raw.get("iibb_monto") or 0), 2),
-            "ads_usd": _fin_ads_usd(email, d, d)}
+            "ads_usd": _fin_ads_usd(email, d, d),
+            # CP3 va por agencia: el gasto del día YA con la comisión sumada (va a ADS AGENCIA)
+            "ads_usd_agencia": _fin_ads_agencia_usd(email, d, d)}
 
 
 # Fórmulas de las filas de cierre que venían MAL en la planilla y el bot repara.
@@ -13381,7 +13409,7 @@ _FIN_IVA_FX = (
     ("N", "=(M{r}/1,21)*0,21"),                         # IVA envío
     ("Q", "=(M{r}*0,7/1,21)*0,21"),                     # IVA envíos (70%)
     ("U", "=I{r}"),                                     # "IVA CREDITO" = IVA de ventas
-    ("V", "=G{r}+L{r}+N{r}"),                             # "IVA DEBITO" = IVA de compras
+    ("V", "=G{r}+L{r}+N{r}+(P{r}*0,21)"),            # "IVA DEBITO" = IVA de compras (+ ads de agencia)
     ("X", "=U{r}-V{r}"),                                 # IVA A PAGAR
 )
 
@@ -13420,6 +13448,9 @@ def _fin_cargar_dia(email, f) -> dict:
                       {"range": "%s!H%d" % (tab, fila), "values": [[dat["facturado"]]]},
                       {"range": "%s!J%d" % (tab, fila), "values": [[dat["ingreso_limpio"]]]},
                       {"range": "%s!R%d" % (tab, fila), "values": [[dat["ads_usd"]]]},
+                      # O = ADS USD AGENCIA (CP3 con su 10% adentro). La planilla lo pasa a pesos
+                      # en P con la fórmula que escribe más abajo.
+                      {"range": "%s!O%d" % (tab, fila), "values": [[dat.get("ads_usd_agencia") or 0]]},
                   ]}, timeout=(15, 90))
     if r.status_code != 200:
         return {"ok": False, "msg": "error escribiendo: %s %s" % (r.status_code, r.text[:250])}
@@ -13455,10 +13486,16 @@ def _fin_cargar_dia(email, f) -> dict:
     _ox = int(dat.get("unidades_ox") or 0)
     _nad = max(int(dat.get("unidades") or 0) - _ox, 0)
     _fx = ("=%d*$N$49+%d*$M$49" % (_nad, _ox)) if _ox else ("=%d*$N$49" % _nad)
+    fx_extra = [{"range": "%s!F%d" % (tab, fila), "values": [[_fx]]},
+                # P = ADS ARS AGENCIA (igual que S para los ads directos)
+                {"range": "%s!P%d" % (tab, fila), "values": [["=O%d*$D$3" % fila]]},
+                # GANANCIA NETA: la fórmula original restaba S (ads directos) pero NO P, así que
+                # el gasto de la cuenta de agencia no se descontaba y la ganancia salía inflada.
+                {"range": "%s!W%d" % (tab, fila),
+                 "values": [["=J{r}-F{r}-M{r}-S{r}-P{r}-X{r}-Y{r}-T{r}".format(r=fila)]]}]
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "USER_ENTERED",
-                    "data": [{"range": "%s!F%d" % (tab, fila),
-                              "values": [[_fx]]}]}, timeout=(15, 60))
+                    "data": fx_extra}, timeout=(15, 60))
     dat.update({"ok": True, "pestana": tab, "fila": fila, "regimen": regimen})
     return dat
 
