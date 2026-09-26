@@ -2294,32 +2294,51 @@ _SOLO_DASH = r"""
   function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
 
   // ----------------------------------------------------------------------------------
-  // GRUPOS POR CANAL (MercadoLibre / Shopify) dentro del Resumen del periodo.
-  // Medidas COPIADAS de las tarjetas reales del dashboard (leidas en vivo 26-09-2026):
-  //   etiqueta 12px/700/0.6px  ·  numero 24px/700 tabular  ·  bajada 12px/400
-  //   tarjeta padding 16px, radio 16px, borde izquierdo 2.67px
-  // Se repinta desde paint() (corre en cada poll), NO con MutationObserver: un observer
-  // global ya rompio la fila de KPIs una vez.
+  // GRUPOS POR CANAL (MercadoLibre / Shopify) en el Resumen del periodo.
+  // Medidas copiadas de las tarjetas reales (leidas en vivo): etiqueta 12px/700/0.6px,
+  // numero 24px/700 tabular, bajada 12px/400, padding 16px, radio 16px, borde izq 2.67px,
+  // chip del icono 32px. Va DENTRO de la grilla de 4 columnas del dashboard, asi las
+  // tarjetas miden lo mismo (284px). Se repinta desde paint(), sin MutationObserver.
   var ID='rp-canales';
   var LBL='#94a3b8', SUB='#64748b', TINTA='#ffffff';
   var AM='#fbbf24', SH='#34d399', VERDE='#34d399', ROJO='#f87171';
   function plata(n){ try{ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }catch(e){ return '$'+(n||0); } }
   function pct(n){ var v=Number(n)||0; return (v<0?'-':'')+Math.abs(v).toFixed(1).replace('.',',')+'%'; }
-  function card(acc,lbl,val,sub,col){
+  var IC={
+    venta:'<path d="M3.5 8.5h17L19 19.2a2 2 0 0 1-2 1.8H7a2 2 0 0 1-2-1.8Z"/><path d="M8.5 8.5V6a3.5 3.5 0 0 1 7 0v2.5"/>',
+    plata:'<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/>',
+    sube:'<path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/>',
+    pct:'<path d="M18.5 5.5 5.5 18.5"/><circle cx="7.8" cy="7.8" r="2.3"/><circle cx="16.2" cy="16.2" r="2.3"/>',
+    entra:'<path d="M12 4v12.5"/><path d="m17.5 11.5-5.5 5.5-5.5-5.5"/><path d="M5 20h14"/>',
+    tag:'<path d="M3 11.5V4h7.5L20 13.5 13.5 20Z"/><circle cx="7.3" cy="7.3" r="1.3"/>',
+    tienda:'<path d="M4.5 7.5h15L18.3 19.2a2 2 0 0 1-2 1.8H7.7a2 2 0 0 1-2-1.8Z"/><path d="M9.5 11V6.5a2.5 2.5 0 0 1 5 0V11"/>'
+  };
+  function card(acc,ic,lbl,val,sub,col){
     var c=document.createElement('div');
     c.style.cssText='background:rgba(24,36,48,.8);border:1px solid rgba(255,255,255,.06);'
       +'border-left:2.67px solid '+acc+';border-radius:16px;padding:16px;'
       +'display:flex;flex-direction:column;min-width:0';
+    // fila de arriba: chip con el icono a la izquierda y la etiqueta a la derecha,
+    // igual que las tarjetas que ya tiene el dashboard
+    var top=document.createElement('div');
+    top.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:10px';
+    var chip=document.createElement('span');
+    chip.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;'
+      +'border-radius:10px;background:'+acc+'1f;color:'+acc+';flex:0 0 auto';
+    chip.innerHTML='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" '
+      +'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(IC[ic]||IC.plata)+'</svg>';
+    var esp=document.createElement('span'); esp.style.cssText='flex:1 1 auto';
     var l=document.createElement('div');
-    l.style.cssText='font-size:12px;font-weight:700;letter-spacing:.6px;color:'+LBL+';text-align:right;margin-bottom:10px';
+    l.style.cssText='font-size:12px;font-weight:700;letter-spacing:.6px;color:'+LBL+';text-align:right';
     l.textContent=lbl;
+    top.appendChild(chip); top.appendChild(esp); top.appendChild(l);
     var v=document.createElement('div');
     v.style.cssText='font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:'+(col||TINTA)+';margin-bottom:6px';
     v.textContent=val;
     var b=document.createElement('div');
     b.style.cssText='font-size:12px;font-weight:400;color:'+SUB;
     b.textContent=sub;
-    c.appendChild(l); c.appendChild(v); c.appendChild(b); return c;
+    c.appendChild(top); c.appendChild(v); c.appendChild(b); return c;
   }
   function titulo(acc,txt,n){
     var h=document.createElement('div');
@@ -2333,7 +2352,7 @@ _SOLO_DASH = r"""
   }
   function fila(cs){
     var g=document.createElement('div');
-    g.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:12px';
+    g.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px';
     for(var i=0;i<cs.length;i++) g.appendChild(cs[i]); return g;
   }
   function canales(){
@@ -2342,14 +2361,17 @@ _SOLO_DASH = r"""
     if(caja && !document.body.contains(caja)) caja=null;
     if(!caja){
       var cost=_hdrLeaf('costos'); if(!cost) return false;
+      // subo hasta la GRILLA de tarjetas (display:grid). Antes cortaba en el primer
+      // grid|flex y caia en la FILA DEL TITULO, que es flex sin wrap: ahi adentro el
+      // bloque empujaba "COSTOS" a la derecha.
       var anc=cost, pa=cost.parentElement;
-      for(var k=0;k<6 && pa;k++){
-        if(/grid|flex/.test(getComputedStyle(pa).display||'')) break;
+      for(var k=0;k<7 && pa;k++){
+        if((getComputedStyle(pa).display||'')==='grid') break;
         anc=pa; pa=pa.parentElement;
       }
-      if(!pa) return false;
+      if(!pa || (getComputedStyle(pa).display||'')!=='grid') return false;
       caja=document.createElement('div'); caja.id=ID;
-      caja.style.cssText='grid-column:1/-1;width:100%;box-sizing:border-box';
+      caja.style.cssText='grid-column:1/-1;flex:0 0 100%;width:100%;box-sizing:border-box;order:0';
       try{ pa.insertBefore(caja,anc); }catch(e){ return false; }
     }
     // SHADOW DOM: RealProfit busca sus tarjetas por ETIQUETA en todo el documento, y estas
@@ -2371,26 +2393,40 @@ _SOLO_DASH = r"""
     var p=function(a,b){ return b?Math.round(a/b*100)+'%':'0%'; };
     raiz.appendChild(titulo(AM,'MERCADOLIBRE',6));
     raiz.appendChild(fila([
-      card(AM,'VENTAS',String(Math.round(mlv)), p(mlv,ord)+' de las '+ord+' del período'),
-      card(AM,'FACTURACIÓN',plata(mlf), p(mlf,fac)+' de la facturación total'),
-      card(AM,'GANANCIA',plata(mlg), plata(_raw.ml_gan_venta||0)+' por venta', mlg<0?ROJO:VERDE)
+      card(AM,'venta','VENTAS',String(Math.round(mlv)), p(mlv,ord)+' de las '+ord+' del período'),
+      card(AM,'plata','FACTURACIÓN',plata(mlf), p(mlf,fac)+' de la facturación total'),
+      card(AM,'sube','GANANCIA',plata(mlg), plata(_raw.ml_gan_venta||0)+' por venta', mlg<0?ROJO:VERDE)
+,
+      card(AM,'pct','MARGEN',pct(_raw.ml_margen||0),'Ganancia ÷ facturación de ML',(+(_raw.ml_margen||0))<0?ROJO:VERDE)
     ]));
     raiz.appendChild(fila([
-      card(AM,'MARGEN',pct(_raw.ml_margen||0),'Ganancia ÷ facturación de ML',(+(_raw.ml_margen||0))<0?ROJO:VERDE),
-      card(AM,'NETO ENTRADO',plata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'),
-      card(AM,'TICKET PROM',plata(_raw.ml_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
+      card(AM,'entra','NETO ENTRADO',plata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'),
+      card(AM,'tag','TICKET PROM',plata(_raw.ml_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
     ]));
     raiz.appendChild(titulo(SH,'SHOPIFY',6));
     raiz.appendChild(fila([
-      card(SH,'VENTAS',String(Math.round(wv)), p(wv,ord)+' de las '+ord+' del período'),
-      card(SH,'FACTURACIÓN',plata(wf), p(wf,fac)+' de la facturación total'),
-      card(SH,'GANANCIA',plata(wg),'Después de la pauta de '+plata(_raw.publi_ars||0), wg<0?ROJO:VERDE)
+      card(SH,'tienda','VENTAS',String(Math.round(wv)), p(wv,ord)+' de las '+ord+' del período'),
+      card(SH,'plata','FACTURACIÓN',plata(wf), p(wf,fac)+' de la facturación total'),
+      card(SH,'sube','GANANCIA',plata(wg),'Después de la pauta de '+plata(_raw.publi_ars||0), wg<0?ROJO:VERDE)
+,
+      card(SH,'pct','MARGEN',pct(_raw.web_margen||0),'Ganancia ÷ facturación de la tienda',(+(_raw.web_margen||0))<0?ROJO:VERDE)
     ]));
     raiz.appendChild(fila([
-      card(SH,'MARGEN',pct(_raw.web_margen||0),'Ganancia ÷ facturación de la tienda',(+(_raw.web_margen||0))<0?ROJO:VERDE),
-      card(SH,'NETO ENTRADO',plata(_raw.web_neto||0),'Menos '+plata(_raw.mp_costo_real||0)+' de MercadoPago'),
-      card(SH,'TICKET PROM',plata(_raw.web_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
+      card(SH,'entra','NETO ENTRADO',plata(_raw.web_neto||0),'Menos '+plata(_raw.mp_costo_real||0)+' de MercadoPago'),
+      card(SH,'tag','TICKET PROM',plata(_raw.web_aov||0),'Contra '+plata(_raw.ticket||0)+' del total')
     ]));
+    // Recompras y Facturación Recompra: fuera de Publicidad (pedido de Cristian). Se ocultan,
+    // no se borran, y como son las DOS ÚLTIMAS de la secuencia de metricas() el mapeo de las
+    // otras seis no se corre.
+    try{
+      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
+        if(e.children.length) return;
+        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+        if(t!=='recompras' && t!=='facturación recompra' && t!=='facturacion recompra') return;
+        var p=e;
+        for(var k=0;k<5&&p;k++){ if(/rounded-2xl/.test(p.className||'')){ p.style.display='none'; break; } p=p.parentElement; }
+      });
+    }catch(e){}
     return true;
   }
   function paint(){ if(!_raw)return;
