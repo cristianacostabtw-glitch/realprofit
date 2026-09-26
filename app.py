@@ -14781,8 +14781,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         r["tot_gan_por_venta"] = r["gan_por_venta"]
         # Break-even TAMBIÉN resta el IVA a pagar: la contribución que queda para bancar el ads
         # baja, entonces el ROAS mínimo para no perder SUBE y el CPA tope BAJA (es lo correcto).
+        # OJO: antes restaba mp_costo_real, que son SOLO las comisiones de MercadoPago. La
+        # comisión de MercadoLibre (cargo por vender + cuotas) quedaba afuera, así que el break
+        # even salía más bajo del real y parecía que se podía gastar más en ads de lo que se puede.
         _pre = ((r.get("facturado", 0) or 0) - (r.get("costo_prod", 0) or 0)
-                - ((r.get("mp_costo_real", 0) or 0) + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
+                - ((r.get("mp_costo_real", 0) or 0) + (r.get("meli_comision", 0) or 0)
+                   + (r.get("iibb_monto", 0) or 0) + (r.get("tienda_monto", 0) or 0))
                 - (r.get("envio_monto", 0) or 0) - (r.get("oper_monto", 0) or 0))
         _pre_ri = _pre - _iva_pag
         r["be_roas"] = r["breakeven_roas"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 else 0.0
