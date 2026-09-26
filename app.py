@@ -2376,7 +2376,7 @@ _SOLO_DASH = r"""
     if(caja){ try{ caja.remove(); }catch(e){} }
     caja=document.createElement('div');
     caja.id=_RPC_ID;
-    caja.style.cssText='grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:inherit;row-gap:12px;column-gap:12px';
+    caja.style.cssText='grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));row-gap:12px;column-gap:12px;margin-top:18px;margin-bottom:18px';
     caja.setAttribute('data-fir', fir);
     var p=function(a,b){ return b?Math.round(a/b*100)+'%':'0%'; };
     var tit=function(txt,acc,n){
@@ -2388,6 +2388,8 @@ _SOLO_DASH = r"""
         else if(h[i].className && /material-symbols/.test(h[i].className)){ h[i].textContent=(acc===AM?'sell':'storefront'); h[i].style.color=acc; }
       }
       d.style.gridColumn='1/-1';
+      d.style.marginTop=(txt==='MercadoLibre'?'2px':'18px');   // Shopify respira mas del bloque de arriba
+      d.style.marginBottom='4px';
       return d;
     };
     var add=function(el){ caja.appendChild(el); };
