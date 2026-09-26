@@ -3970,8 +3970,13 @@ def _mp_freeze_end(email):
 TIENDA_PCT = 0.6        # comisión de tienda (Shopify): 0,6% por venta, no editable.
                         # Estaba en 1% y no era: Cristian lo confirmó el 26-09-2026 ("siempre fue
                         # ese"). El 0,4% de más se restaba de la ganancia de CADA venta.
-IIBB_PCT = 3.5
-MP_ADELANTO_PCT = 3.75   # Adelanto Programado de MercadoPago (IVA incluido), sobre lo acreditado          # Ingresos Brutos: 3,5% fijo por venta, no editable
+IIBB_PCT = 3.0          # IIBB. Decision de Cristian (26-09-2026): baja de 3,5% a 3% para
+                        # compensar que las RETENCIONES de IIBB ya vienen adentro del neto de MP
+                        # (van dentro de mp_costo_real) y se estaban contando dos veces. Es un
+                        # parche, no el arreglo: la retencion varia 0,73%-3,23% segun la provincia
+                        # del comprador, asi que el total sigue quedando entre 3,73% y 6,22%.
+                        # El arreglo de verdad es sumar solo (3% menos lo ya retenido).
+MP_ADELANTO_PCT = 3.75   # Adelanto Programado de MercadoPago (IVA incluido), sobre lo acreditado
 FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
 # INSUMOS en 0 a proposito: el dueno carga los insumos/packaging UNA VEZ AL MES como gasto real
 # (bloque GASTOS de la planilla, por el bot de WhatsApp). Si ademas se cobraran $200 por pedido
