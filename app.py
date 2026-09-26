@@ -2458,7 +2458,7 @@ _SOLO_DASH = r"""
     var cards=_pubCards(); if(cards.length<4) return false;   // <4 = grilla todavía no montada → no destapar
     var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
-             ['ROAS',num(_raw.roas)+'x','Recuperás por cada $1 invertido'],
+             ['ROAS',num(_raw.roas)+'x','Solo tienda · con MELI '+num(_raw.roas_total||_raw.roas)+'x'],
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
              ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
@@ -14748,6 +14748,9 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
             _fact_web = 0.0
         r["facturado_web"] = round(_fact_web, 2)
         r["roas"] = round(_fact_web / spend, 2) if spend else 0.0
+        # El ROAS con TODO (tienda + MELI) se sigue mostrando al lado, como referencia del
+        # retorno del negocio entero. El que manda para decidir la pauta es el de arriba.
+        r["roas_total"] = round(fact / spend, 2) if spend else 0.0
         r["cpa"] = round(spend / ordenes_web, 2) if ordenes_web else 0.0
         r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
         r["tot_ganancia"] = r["ganancia"]
