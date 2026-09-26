@@ -13311,9 +13311,30 @@ def _fin_datos_dia(email, f) -> dict:
         _n = str(_p.get("nombre") or "").lower()
         if "xido" in _n and "trico" in _n:
             ox += int(_p.get("unidades") or 0)
+    # MERCADOLIBRE: se SUMA al día igual que la tienda propia. La comisión NO se estima: ML
+    # informa el sale_fee de CADA venta (≈20,5%), así que "cobrado" ya es el neto real. Como la
+    # planilla saca el % de comisión sola (K = 1 − J/H), al sumar acá el facturado y el neto,
+    # la comisión combinada y su IVA (columna L) salen bien sin tocar ninguna fórmula.
+    # El ENVÍO de ML no se suma (decisión de Cristian) y por eso no toca la columna M.
+    ml_v = ml_u = 0
+    ml_fact = ml_limpio = ml_iibb = 0.0
+    try:
+        ml = _meli_resumen(email, d, d) or {}
+        mraw = ml.get("raw") or ml
+        ml_v = int(mraw.get("meli_ventas") or mraw.get("ordenes") or 0)
+        ml_u = int(mraw.get("meli_unidades") or mraw.get("unidades") or 0)
+        ml_fact = float(mraw.get("meli_facturado") or mraw.get("facturado") or 0)
+        ml_limpio = float(mraw.get("meli_cobrado") or mraw.get("cobrado") or 0)
+        ml_iibb = float(mraw.get("iibb_monto") or 0)
+    except Exception:
+        pass
+    fact += ml_fact
+    limpio += ml_limpio
     return {"fecha": d,
-            "ventas": int(raw.get("ordenes") or 0),
-            "unidades": int(raw.get("unidades") or 0),
+            "meli_ventas": ml_v, "meli_unidades": ml_u,
+            "meli_facturado": round(ml_fact, 2), "meli_limpio": round(ml_limpio, 2),
+            "ventas": int(raw.get("ordenes") or 0) + ml_v,
+            "unidades": int(raw.get("unidades") or 0) + ml_u,
             "unidades_ox": ox,
             "facturado": round(fact, 2),
             "ingreso_limpio": round(limpio, 2),
@@ -13324,7 +13345,7 @@ def _fin_datos_dia(email, f) -> dict:
             # vs domicilio), la misma que usa RealProfit. La planilla traía "=5200*pedidos" (estimado).
             "envio": round(float(raw.get("envio_zona_monto") or 0), 2),
             # IIBB como lo calcula RealProfit (3,5% configurable), no el 2% que traía la planilla.
-            "iibb": round(float(raw.get("iibb_monto") or 0), 2),
+            "iibb": round(float(raw.get("iibb_monto") or 0) + ml_iibb, 2),
             "ads_usd": _fin_ads_usd(email, d, d),
             # CP3 va por agencia: el gasto del día YA con la comisión sumada (va a ADS AGENCIA)
             "ads_usd_agencia": _fin_ads_agencia_usd(email, d, d)}
