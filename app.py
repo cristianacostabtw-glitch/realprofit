@@ -2320,7 +2320,7 @@ _SOLO_DASH = r"""
     // orden en la tarjeta del dashboard: icono, etiqueta, numero, bajada
     if(h[0]){ h[0].textContent=ico; h[0].className=(h[0].className||'').replace(/text-[a-z]+-\d+/,''); h[0].style.color=acc; }
     if(h[1]) h[1].textContent=lbl;
-    if(h[2]){ h[2].textContent=val; h[2].style.color=col||''; }
+    if(h[2]){ h[2].textContent=val; h[2].style.color=col||''; c.setAttribute('data-rpv', val); }
     if(h[3]) h[3].textContent=sub;
     c.style.borderLeftColor=acc;
     // La plantilla trae el tinte verde de su clase (from-emerald-500/[0.06]). Se pisa con el
@@ -2334,6 +2334,20 @@ _SOLO_DASH = r"""
     c.style.gridColumn='';
     c.style.display='';
     return c;
+  }
+  // Re-afirma los valores de mis tarjetas al final del pintado. Hace falta porque varias
+  // rutinas del dashboard (fixFacturacion, _fixLeaf, setCard) buscan la tarjeta POR SU
+  // ETIQUETA en todo el documento y escriben adentro: como las mias se llaman igual
+  // (Facturación, Ganancia, Ticket prom), les metian el TOTAL encima. En produccion se veia
+  // Shopify con la facturacion total ($9.061.267) en vez de la suya ($7.046.557).
+  function canalesFix(){
+    var c=document.getElementById('rp-canales'); if(!c) return;
+    var t=c.querySelectorAll('[data-rpv]');
+    for(var i=0;i<t.length;i++){
+      var q=t[i].getAttribute('data-rpv');
+      var h=[].slice.call(t[i].querySelectorAll('*')).filter(function(x){ return !x.children.length && (x.textContent||'').trim(); });
+      if(h[2] && h[2].textContent!==q) h[2].textContent=q;
+    }
   }
   function canales(){
     if(!_raw) return false;
@@ -2451,6 +2465,7 @@ _SOLO_DASH = r"""
          window._rpOvVals.rpgan   = money(Math.round((+(_ov.ganancia||_ov.tot_ganancia||0)) + _rawpub - pub)); // ganancia baja lo que subió el gasto
          window._rpOvVals.rpbecpa = money(_ov.be_cpa||0); }catch(e){}
     try{ hookCur(); }catch(e){}
+    try{ canalesFix(); }catch(e){}   // ultimo: que nadie deje mis tarjetas con el total
     // Revelar la grilla SOLO cuando metricas() YA remapeó las tarjetas a los valores reales (nunca el demo).
     if(_mok){ window._rpValsOK=true; try{ _rpSacarCortina(); }catch(e){} }   // valores reales pintados -> fuera la cortina
     if(!_painted && _mok){ var _g=findGrid(); if(_g){ _painted=true; _g.style.opacity='1'; } } }
