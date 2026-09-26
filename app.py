@@ -2335,13 +2335,13 @@ _SOLO_DASH = r"""
       [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
         if(e.children.length || _rpcMio(e)) return;
         var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-        var ocultar=(t==='recompras'||t==='facturación recompra'||t==='facturacion recompra');
-        var ancho=(t==='cpa'||t==='break even cpa');
-        if(!ocultar && !ancho) return;
+        // Recompras y Facturación Recompra las saca el barrido de arriba (pub>6): hacerlo
+        // acá no servía, porque ese barrido les devolvía display='' en cada vuelta.
+        if(t!=='cpa' && t!=='break even cpa') return;
         var p=e;
         for(var k=0;k<5&&p;k++){
           if(/rounded-2xl/.test(p.className||'')){
-            if(ocultar) p.style.display='none'; else if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2';
+            if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2';
             break;
           }
           p=p.parentElement;
@@ -2611,9 +2611,15 @@ _SOLO_DASH = r"""
     if(_ok){ if(grid.style.opacity!=='1'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='1'; } _painted=true; }
     else if(grid.style.opacity!=='0'){ grid.style.transition='opacity .25s ease'; grid.style.opacity='0'; }
     for(var i=0;i<kids.length;i++){ var el=kids[i], tgt='';
+      // Mi bloque de canales es un hijo mas de la grilla y caia como "tarjeta 9 de Publicidad",
+      // asi que este barrido lo ocultaba (display:none) y por eso NO SE VEIA. Se saltea.
+      if(el.id==='rp-canales'){ if(el.style.display==='none') el.style.display=''; continue; }
       if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
       if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
-      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>8)?'none':''; }  // más de 8 (Reembolsos) → fuera
+      // Publicidad queda en 6: las tarjetas 7 y 8 son Recompras y Facturación Recompra, que
+      // Cristian pidió sacar. Antes se ocultaban por etiqueta desde canales() y este mismo
+      // barrido se las devolvía (tgt='') en cada vuelta; acá no vuelven.
+      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>6)?'none':''; }
       if(el.style.display!==tgt) el.style.display=tgt; }
     // Barrido: cualquier tarjeta 'Reembolsos / cancel.' que haya quedado suelta → ocultar (no va en el diseño).
     var sp=document.querySelectorAll('span,div');
