@@ -2459,9 +2459,9 @@ _SOLO_DASH = r"""
     var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
              ['ROAS',num(_raw.roas)+'x','Solo tienda · con MELI '+num(_raw.roas_total||_raw.roas)+'x'],
-             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder'],
+             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · solo tienda'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
-             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta'],
+             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta · incluye el aporte de MELI'],
              ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
     var hit=0;
@@ -14812,8 +14812,14 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                        - (r.get("meli_comision", 0) or 0), 0.0) * _F      # el IVA que le toca
         _pre_w = _pre_ri - _ml_pre
         _ord_w = _ord - _ml_ord
+        # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
         r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
-        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0
+        # BREAK EVEN CPA: MIXTO a propósito. Arriba va la contribución de TODOS los canales
+        # (la ganancia de MercadoLibre banca pauta aunque no la genere) y abajo sólo las ventas
+        # que la pauta sí trae. Da el máximo que se puede pagar por venta sin perder plata en
+        # el negocio entero, que es la decisión real a la hora de subir o bajar el presupuesto.
+        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_ri / _ord_w, 2) if _ord_w > 0 else 0.0
+        r["be_cpa_web"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0   # sólo tienda, para auditar
     # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
     # y el front lo pintaba encima del bueno: la pantalla saltaba entre 112 y 116 ventas cada 2s.
     # Con este sello el front puede descartar todo lo que sea MAS VIEJO que lo que ya tiene puesto.
