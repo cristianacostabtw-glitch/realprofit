@@ -3967,7 +3967,9 @@ def _mp_freeze_end(email):
     return None
 
 
-TIENDA_PCT = 1.0        # comisión de tienda (Shopify/TN): 1% fijo por venta, no editable
+TIENDA_PCT = 0.6        # comisión de tienda (Shopify): 0,6% por venta, no editable.
+                        # Estaba en 1% y no era: Cristian lo confirmó el 26-09-2026 ("siempre fue
+                        # ese"). El 0,4% de más se restaba de la ganancia de CADA venta.
 IIBB_PCT = 3.5
 MP_ADELANTO_PCT = 3.75   # Adelanto Programado de MercadoPago (IVA incluido), sobre lo acreditado          # Ingresos Brutos: 3,5% fijo por venta, no editable
 FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
