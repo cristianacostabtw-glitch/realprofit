@@ -3977,6 +3977,7 @@ IIBB_PCT = 3.0          # IIBB. Decision de Cristian (26-09-2026): baja de 3,5% 
                         # parche, no el arreglo: la retencion varia 0,73%-3,23% segun la provincia
                         # del comprador, asi que el total sigue quedando entre 3,73% y 6,22%.
                         # El arreglo de verdad es sumar solo (3% menos lo ya retenido).
+MELI_ADELANTO_PCT = 2.5  # MercadoLibre: cobrar al instante (confirmado por Cristian 26-09-2026)
 MP_ADELANTO_PCT = 3.75   # Adelanto Programado de MercadoPago (IVA incluido), sobre lo acreditado
 FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
 # INSUMOS en 0 a proposito: el dueno carga los insumos/packaging UNA VEZ AL MES como gasto real
@@ -11604,11 +11605,16 @@ def _meli_resumen(email, desde, hasta):
         com_orden = 0.0
         for it in (o.get("order_items") or []):
             q = int(it.get("quantity") or 0)
-            unidades += q
             com_orden += float(it.get("sale_fee") or 0) * q   # sale_fee es POR UNIDAD
             comis_ml += float(it.get("sale_fee") or 0) * q
             itm = it.get("item") or {}
             sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
+            # UNIDADES = POTES, no publicaciones. `quantity` es cuántas veces se compró la
+            # publicación: un "Pack x2" comprado una vez trae quantity=1 y son DOS potes, así
+            # que contaba casi la mitad (medido 26-09-2026: 14 ventas = 28 potes, decía 14).
+            # No se puede usar un factor: la mezcla de X1/X2/X3 cambia todos los días. El costo
+            # de acá abajo ya lo hacía bien; las unidades no lo usaban.
+            unidades += _meli_units_from_sku(sku) * q if sku else q
             # COSTO POR UNIDAD (meli:POTE), multiplicado por los potes que dice el SKU.
             # Asi un pack nuevo (X3, X6) toma el costo solo, sin cargar nada de nuevo.
             c = costos.get("meli:%s" % sku) if sku else None      # costo propio de ESE sku (si lo cargaron)
@@ -11634,7 +11640,10 @@ def _meli_resumen(email, desde, hasta):
     comision_monto = comis_ml + iibb_monto          # sin 1% de tienda: eso es de la tienda propia
     # Adelanto Programado de MercadoPago: 3,75% (IVA incluido) sobre la plata que MP adelanta,
     # que es lo que queda DESPUES de la comision de ML (no sobre el precio de venta).
-    adelanto_monto = (fact - comis_ml) * MP_ADELANTO_PCT / 100.0
+    # OJO: en MercadoLibre el adelanto para cobrar al instante es 2,5%, NO el 3,75% del
+    # Adelanto Programado de MercadoPago de la tienda. Con el 3,75% se le restaba de más a
+    # MELI (26-09-2026: $ 30.919 en vez de $ 20.613, o sea $ 10.306 de más en un día).
+    adelanto_monto = (fact - comis_ml) * MELI_ADELANTO_PCT / 100.0
     ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
     r["mp_costo_real"] = 0.0; r["mp_match"] = 0
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
@@ -11658,7 +11667,11 @@ def _meli_resumen(email, desde, hasta):
     r["meli_facturado"] = round(fact, 2); r["meli_cobrado"] = round(fact - comis_ml, 2)
     r["meli_comision"] = round(comis_ml, 2); r["meli_costo"] = round(costo_prod, 2)
     r["meli_ganancia"] = round(ganancia, 2)
-    r["meli_aov"] = r["ticket"]; r["meli_sin_costo"] = sin_costo
+    r["meli_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
+    r["meli_rent"] = round(ganancia / fact * 100, 2) if fact else 0.0
+    r["meli_gan_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    r["meli_neto"] = round(fact - comis_ml - adelanto_monto, 2)   # lo que queda de verdad
+    r["meli_sin_costo"] = sin_costo
     r["meli_adelanto"] = round(adelanto_monto, 2)
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
             for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
@@ -15105,14 +15118,46 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         if _fact_web < 0:
             _fact_web = 0.0
         r["facturado_web"] = round(_fact_web, 2)
-        r["roas"] = round(_fact_web / spend, 2) if spend else 0.0
-        # El ROAS con TODO (tienda + MELI) se sigue mostrando al lado, como referencia del
-        # retorno del negocio entero. El que manda para decidir la pauta es el de arriba.
-        r["roas_total"] = round(fact / spend, 2) if spend else 0.0
+        # ROAS: facturación de TODOS los canales sobre el gasto de Meta (decisión de
+        # Cristian, 26-09-2026). El de la tienda sola queda al lado como referencia.
+        # ⚠️ OJO al comparar: "be_roas" se calcula SÓLO con la tienda, así que enfrentar
+        # roas (con MELI) contra be_roas (sin MELI) dice que ganás cuando podés estar
+        # perdiendo. Para esa comparación está "be_roas_total", acá abajo.
+        r["roas"] = round(fact / spend, 2) if spend else 0.0
+        r["roas_web"] = round(_fact_web / spend, 2) if spend else 0.0
+        r["roas_total"] = r["roas"]
         r["cpa"] = round(spend / ordenes_web, 2) if ordenes_web else 0.0
         r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
         r["tot_ganancia"] = r["ganancia"]
         r["tot_margen"] = r["margen"]
+        # ------------------------------------------------------------------
+        # CORTE POR CANAL. El total tapa lo que pasa en cada lado: MercadoLibre puede estar
+        # ganando mientras la tienda pierde, y sumados dan positivo. Todo lo de la tienda
+        # sale por DIFERENCIA contra MELI, así los dos canales suman siempre el total.
+        _ml_v = _meli_v
+        _ml_f = float(r.get("meli_facturado", 0) or 0)
+        _ml_g = float(r.get("meli_ganancia", 0) or 0)
+        _ml_com = float(r.get("meli_comision", 0) or 0)
+        _ml_ade = float(r.get("meli_adelanto", 0) or 0)
+        r["ml_ventas"] = _ml_v
+        r["ml_facturado"] = round(_ml_f, 2)
+        r["ml_ganancia"] = round(_ml_g, 2)
+        r["ml_margen"] = round(_ml_g / _ml_f * 100, 2) if _ml_f else 0.0
+        r["ml_neto"] = round(_ml_f - _ml_com - _ml_ade, 2)   # menos comisión y adelanto
+        r["ml_aov"] = round(_ml_f / _ml_v, 2) if _ml_v else 0.0
+        r["ml_gan_venta"] = round(_ml_g / _ml_v, 2) if _ml_v else 0.0
+        r["ml_pct_ventas"] = round(_ml_v / ordenes * 100, 2) if ordenes else 0.0
+        r["ml_pct_fact"] = round(_ml_f / fact * 100, 2) if fact else 0.0
+        _w_g = float(r.get("ganancia", 0) or 0) - _ml_g
+        r["web_ventas"] = ordenes_web
+        r["web_facturado"] = round(_fact_web, 2)
+        r["web_ganancia"] = round(_w_g, 2)
+        r["web_margen"] = round(_w_g / _fact_web * 100, 2) if _fact_web else 0.0
+        r["web_neto"] = round(_fact_web - float(r.get("mp_costo_real", 0) or 0), 2)
+        r["web_aov"] = round(_fact_web / ordenes_web, 2) if ordenes_web else 0.0
+        r["web_gan_venta"] = round(_w_g / ordenes_web, 2) if ordenes_web else 0.0
+        r["web_pct_ventas"] = round(ordenes_web / ordenes * 100, 2) if ordenes else 0.0
+        r["web_pct_fact"] = round(_fact_web / fact * 100, 2) if fact else 0.0
     # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
     r = blob["raw"]
     _F = 0.21 / 1.21   # IVA contenido en precio con IVA incluido (verificado: se divide por 1,21)
@@ -15191,6 +15236,11 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # marca donde el negocio entero da cero, pero pagando eso cada venta de la tienda pierde
         # plata y la tapa la ganancia de MELI. El limite sano es el de arriba.
         r["be_cpa_mix"] = round(_pre_ri / _ord_w, 2) if _ord_w > 0 else 0.0
+        # El ROAS de arriba incluye MELI, así que necesita un break even en la MISMA base:
+        # facturación de todos los canales sobre la contribución de todos los canales.
+        # Comparar el ROAS con MELI contra el break even sin MELI dice que ganás cuando la
+        # tienda puede estar perdiendo, y eso hace gastar de más.
+        r["be_roas_total"] = round(_fact / _pre_ri, 2) if _pre_ri > 0 and _fact > 0 else 0.0
     # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
     # y el front lo pintaba encima del bueno: la pantalla saltaba entre 112 y 116 ventas cada 2s.
     # Con este sello el front puede descartar todo lo que sea MAS VIEJO que lo que ya tiene puesto.
