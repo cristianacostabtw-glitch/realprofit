@@ -2292,6 +2292,111 @@ _SOLO_DASH = r"""
       if((t==='Todas'||t==='Shopify'||t==='MercadoLibre') && /text-primary|bg-primary/.test(bs[i].className||'')) return t; }
     return 'Todas'; }
   function _ceroRaw(){ var z={}; for(var k in _raw){ z[k]=(typeof _raw[k]==='number')?0:_raw[k]; } return z; }
+
+  // ------------------------------------------------------------------------------------
+  // GRUPOS POR CANAL (MercadoLibre / Shopify) dentro del Resumen del período.
+  //
+  // El dashboard es React COMPILADO: si React re-renderiza, se lleva puesto lo que
+  // inyectemos. Por eso NO se usa MutationObserver (un observer global ya rompió la fila
+  // de KPIs una vez): el bloque se vuelve a poner desde paint(), que corre en cada poll.
+  // Es idempotente — si ya está puesto y sigue en el documento, sólo actualiza los números.
+  var _RPC_ID='rp-canales';
+  function _rpcPlata(n){ try{ return '$ '+Math.round(Number(n)||0).toLocaleString('es-AR'); }catch(e){ return '$ '+(n||0); } }
+  function _rpcPct(n){ var v=Number(n)||0; return (v<0?'−':'')+Math.abs(v).toFixed(1).replace('.',',')+'%'; }
+  function _rpcNum(n){ try{ return String(Math.round(Number(n)||0)); }catch(e){ return '0'; } }
+  function _rpcCard(acc, lbl, val, sub, col){
+    var c=document.createElement('div');
+    c.style.cssText='background:#111a28;border:1px solid #1d2839;border-left:3px solid '+acc
+      +';border-radius:14px;padding:15px 17px 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 1px 2px rgba(0,0,0,.35)'
+      +';display:flex;flex-direction:column;gap:10px;min-width:0';
+    var l=document.createElement('div');
+    l.style.cssText='font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#93a0b2;text-align:right';
+    l.textContent=lbl;
+    var v=document.createElement('div');
+    v.style.cssText='font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.05;color:'+(col||'#f2f5fa');
+    v.textContent=val;
+    var b=document.createElement('div');
+    b.style.cssText='font-size:11px;color:#5f6e82;line-height:1.4';
+    b.textContent=sub;
+    c.appendChild(l); c.appendChild(v); c.appendChild(b);
+    return c;
+  }
+  function _rpcTitulo(acc, txt, n){
+    var h=document.createElement('div');
+    h.style.cssText='display:flex;align-items:center;gap:9px;margin:14px 0 10px';
+    var p=document.createElement('span');
+    p.style.cssText='width:8px;height:8px;border-radius:50%;background:'+acc;
+    var t=document.createElement('span');
+    t.style.cssText='font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:'+acc;
+    t.textContent=txt;
+    var c=document.createElement('span');
+    c.style.cssText='font-size:10px;font-weight:600;color:#52627a;background:#131d2c;border-radius:20px;padding:2px 7px';
+    c.textContent=String(n);
+    var r=document.createElement('span');
+    r.style.cssText='flex:1;height:1px;background:#1d2839';
+    h.appendChild(p); h.appendChild(t); h.appendChild(c); h.appendChild(r);
+    return h;
+  }
+  function _rpcFila(cards){
+    var g=document.createElement('div');
+    g.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px';
+    for(var i=0;i<cards.length;i++) g.appendChild(cards[i]);
+    return g;
+  }
+  function canales(){
+    if(!_raw) return false;
+    if(_canalActivo && _canalActivo()!=='Todos' && _canalActivo()!=='') { }   // filtro por canal: igual se muestra
+    var AM='#fbbf24', SH='#3ecf8e', VERDE='#34d399', ROJO='#f87171';
+    var ya=document.getElementById(_RPC_ID);
+    if(ya && !document.body.contains(ya)) ya=null;
+    var caja=ya;
+    if(!caja){
+      var cost=_hdrLeaf('costos'); if(!cost) return false;
+      // subo hasta el nodo que es hijo directo de la grilla, para insertar AL LADO y no adentro
+      var anc=cost, pa=cost.parentElement;
+      for(var k=0;k<6 && pa;k++){
+        if(/grid|flex/.test(getComputedStyle(pa).display||'')) break;
+        anc=pa; pa=pa.parentElement;
+      }
+      if(!pa) return false;
+      caja=document.createElement('div');
+      caja.id=_RPC_ID;
+      caja.style.cssText='grid-column:1/-1;width:100%;box-sizing:border-box';
+      try{ pa.insertBefore(caja, anc); }catch(e){ return false; }
+    }
+    var ml_v=+(_raw.ml_ventas||0), ml_f=+(_raw.ml_facturado||0), ml_g=+(_raw.ml_ganancia||0);
+    var w_v=+(_raw.web_ventas||0), w_f=+(_raw.web_facturado||0), w_g=+(_raw.web_ganancia||0);
+    var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
+    // firma: si nada cambió, no se vuelve a dibujar (evita trabajo en cada poll)
+    var fir=[ml_v,ml_f,ml_g,w_v,w_f,w_g,ord,fac].join('|');
+    if(caja.getAttribute('data-fir')===fir) return true;
+    caja.setAttribute('data-fir', fir);
+    caja.innerHTML='';
+    var pc=function(a,b){ return b? Math.round(a/b*100)+'%' : '0%'; };
+    caja.appendChild(_rpcTitulo(AM,'MercadoLibre',6));
+    caja.appendChild(_rpcFila([
+      _rpcCard(AM,'Ventas',_rpcNum(ml_v), pc(ml_v,ord)+' de las '+ord+' del período'),
+      _rpcCard(AM,'Facturación',_rpcPlata(ml_f), pc(ml_f,fac)+' de la facturación total'),
+      _rpcCard(AM,'Ganancia',_rpcPlata(ml_g), _rpcPlata(_raw.ml_gan_venta||0)+' por venta', ml_g<0?ROJO:VERDE)
+    ]));
+    caja.appendChild(_rpcFila([
+      _rpcCard(AM,'Margen',_rpcPct(_raw.ml_margen||0),'ganancia ÷ facturación de ML', (+(_raw.ml_margen||0))<0?ROJO:VERDE),
+      _rpcCard(AM,'Neto entrado',_rpcPlata(_raw.ml_neto||0),'menos comisión y 2,5% de adelanto'),
+      _rpcCard(AM,'Ticket (AOV)',_rpcPlata(_raw.ml_aov||0),'contra '+_rpcPlata(_raw.ticket||0)+' del total')
+    ]));
+    caja.appendChild(_rpcTitulo(SH,'Shopify',6));
+    caja.appendChild(_rpcFila([
+      _rpcCard(SH,'Ventas',_rpcNum(w_v), pc(w_v,ord)+' de las '+ord+' del período'),
+      _rpcCard(SH,'Facturación',_rpcPlata(w_f), pc(w_f,fac)+' de la facturación total'),
+      _rpcCard(SH,'Ganancia',_rpcPlata(w_g), 'después de la pauta de '+_rpcPlata(_raw.publi_ars||0), w_g<0?ROJO:VERDE)
+    ]));
+    caja.appendChild(_rpcFila([
+      _rpcCard(SH,'Margen',_rpcPct(_raw.web_margen||0),'ganancia ÷ facturación de la tienda', (+(_raw.web_margen||0))<0?ROJO:VERDE),
+      _rpcCard(SH,'Neto entrado',_rpcPlata(_raw.web_neto||0),'menos '+_rpcPlata(_raw.mp_costo_real||0)+' de MercadoPago'),
+      _rpcCard(SH,'Ticket (AOV)',_rpcPlata(_raw.web_aov||0),'contra '+_rpcPlata(_raw.ticket||0)+' del total')
+    ]));
+    return true;
+  }
   function paint(){ if(!_raw)return;
     // Recompras se piden aparte y _raw se reemplaza en cada poll de /pf-periodo → reaplico el valor cacheado
     // ANTES de pintar, así Recompras + Facturación Recompra NO parpadean entre el valor real y 0.
@@ -2302,6 +2407,7 @@ _SOLO_DASH = r"""
     var _mok=false;
     try{ costos4(); }catch(e){}
     try{ _mok=metricas(); }catch(e){}
+    try{ canales(); }catch(e){}   // NUNCA puede romper el resto del pintado
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
     try{ if(!meli){ _fixLeaf('ticket prom', money(_raw.ticket||_raw.tot_aov||0)); _fixLeaf('ganancia', money(_raw.ganancia||_raw.tot_ganancia||0)); } }catch(e){}
