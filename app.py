@@ -13414,6 +13414,16 @@ _FIN_IVA_FX = (
 )
 
 
+# En MONOTRIBUTO no hay IVA de ventas ni de compras locales, PERO la agencia de ads factura con
+# IVA discriminado desde el primer día y ese crédito igual es del dueño. Entonces V (crédito) lleva
+# sólo la parte de ads y X queda negativo = saldo a favor (la Ganancia Neta lo suma, que es lo
+# correcto: ese IVA se recupera).
+_FIN_IVA_FX_ADS = (
+    ("V", "=P{r}*0,21"),
+    ("X", "=U{r}-V{r}"),
+)
+
+
 def _fin_es_ri(conf, f) -> bool:
     """¿Este día ya entra como Responsable Inscripto? Manda la fecha 'ri_desde' si está; si no,
     el régimen suelto. Así el cambio de régimen no reescribe los días viejos."""
@@ -13462,20 +13472,24 @@ def _fin_cargar_dia(email, f) -> dict:
     extra = [{"range": "%s!M%d" % (tab, fila), "values": [[dat["envio"]]]},
              {"range": "%s!Y%d" % (tab, fila), "values": [[dat["iibb"]]]}]
     if regimen.startswith("mono"):
-        # MONOTRIBUTO: no hay IVA (ni crédito, ni débito, ni a pagar). Si estas columnas quedan
-        # con las fórmulas de Responsable Inscripto, la Ganancia Neta (=J-F-M-S-X-Y-T) resta un
-        # "IVA a pagar" que NO se paga y la ganancia queda subestimada. Por eso van en 0.
-        for col in ("G", "I", "L", "N", "Q", "U", "V", "X"):
+        # MONOTRIBUTO: no hay IVA de ventas ni de las compras locales. Si estas columnas quedan
+        # con las fórmulas de Responsable Inscripto, la Ganancia Neta resta un "IVA a pagar" que
+        # NO se paga y la ganancia queda subestimada. Por eso van en 0.
+        # EXCEPCIÓN: la agencia de ads (CP3) factura con IVA discriminado desde el primer día, y
+        # ese crédito es del dueño igual. Por eso V y X NO se ponen en 0 acá: se les escribe
+        # abajo la fórmula con la parte de ads solamente.
+        for col in ("G", "I", "L", "N", "Q", "U"):
             extra.append({"range": "%s!%s%d" % (tab, col, fila), "values": [[0]]})
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "RAW", "data": extra}, timeout=(15, 90))
-    if not regimen.startswith("mono"):
-        # RESPONSABLE INSCRIPTO: hay que VOLVER A ESCRIBIR las fórmulas de IVA. No alcanza con
-        # "no poner 0": si el día ya se cargó como monotributo, el 0 quedó pisando la fórmula.
-        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
-                  json={"valueInputOption": "USER_ENTERED",
-                        "data": [{"range": "%s!%s%d" % (tab, col, fila), "values": [[fx.format(r=fila)]]}
-                                 for col, fx in _FIN_IVA_FX]}, timeout=(15, 90))
+    # Hay que VOLVER A ESCRIBIR las fórmulas de IVA. No alcanza con "no poner 0": si el día ya se
+    # cargó antes, el 0 quedó pisando la fórmula. En monotributo se escribe sólo el crédito de la
+    # agencia de ads; en RI, todo el juego de fórmulas de la planilla.
+    fx_iva = _FIN_IVA_FX_ADS if regimen.startswith("mono") else _FIN_IVA_FX
+    sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+              json={"valueInputOption": "USER_ENTERED",
+                    "data": [{"range": "%s!%s%d" % (tab, col, fila), "values": [[fx.format(r=fila)]]}
+                             for col, fx in fx_iva]}, timeout=(15, 90))
     # COSTO MERCADERIA = UNIDADES × precio, PARTIDO POR PRODUCTO. Arreglos sobre la planilla:
     #  1) usaba N49/N50/N51 (referencia relativa que se desliza a celdas vacías → costo $0);
     #  2) multiplicaba por D (PEDIDOS), pero si un pedido lleva 3 potes el costo son 3;
