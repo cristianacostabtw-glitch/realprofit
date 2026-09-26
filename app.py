@@ -2303,6 +2303,15 @@ _SOLO_DASH = r"""
   var _RPC_ID='rp-canales';
   function _rpcPlata(n){ try{ return '$'+Math.round(Number(n)||0).toLocaleString('es-AR'); }catch(e){ return '$'+(n||0); } }
   function _rpcPct(n){ var v=Number(n)||0; return (v<0?'-':'')+Math.abs(v).toFixed(1).replace('.',',')+'%'; }
+  function _rpcCardPorLabel(lbl){
+    var L=(lbl||'').replace(/\s+/g,' ').trim().toLowerCase();
+    var a=document.querySelectorAll('span,div,p');
+    for(var i=0;i<a.length;i++){ var e=a[i];
+      if(e.children.length || _rpcMio(e)) continue;
+      if((e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase()!==L) continue;
+      if(e.offsetParent===null) continue;
+      var c=e; for(var k=0;k<9&&c;k++){ c=c.parentElement; if(c && /rounded/.test(c.className||'')) return c; } }
+    return null; }
   function _rpcHojas(c){ var o=[]; var d=c.querySelectorAll('*');
     for(var i=0;i<d.length;i++){ if(!d[i].children.length && (d[i].textContent||'').trim()) o.push(d[i]); } return o; }
   function _rpcClon(tpl, acc, ico, lbl, val, sub, col){
@@ -2344,7 +2353,9 @@ _SOLO_DASH = r"""
     var filaTit=cost.parentElement; if(!filaTit) return false;
     var grid=filaTit.parentElement;
     if(!grid || (getComputedStyle(grid).display||'')!=='grid') return false;
-    var tpl=cardByLabel('CPA')||cardByLabel('Productos')||cardByLabel('Envíos');
+    // Buscador propio: cardByLabel() esta en otro closure y desde aca tira ReferenceError,
+    // que el try/catch de paint() se tragaba en silencio. Por eso el bloque nunca aparecia.
+    var tpl=_rpcCardPorLabel('CPA')||_rpcCardPorLabel('Productos')||_rpcCardPorLabel('Envíos');
     if(!tpl) return false;
     var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
     var wv=+(_raw.web_ventas||0), wf=+(_raw.web_facturado||0), wg=+(_raw.web_ganancia||0);
@@ -2900,6 +2911,8 @@ _SOLO_DASH = r"""
   // (o + tilde combinante) → bytes distintos a mi string compuesto → el === fallaba → cardByLabel null →
   // el parche NO corría (en NINGUNA cuenta con acentos descompuestos). _na() saca acentos → matchea siempre.
   function _na(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
+  // OJO: este bloque es OTRO closure, asi que _rpcMio de arriba NO se ve aca. Se define de nuevo.
+  function _rpcMio(n){ try{ var c=document.getElementById('rp-canales'); return !!(c && c.contains(n)); }catch(e){ return false; } }
   function cardByLabel(lbl){ lbl=_na(lbl); var a=document.querySelectorAll('span,div,p');
     for(var i=0;i<a.length;i++){ var e=a[i]; if(e.children.length) continue;
       if(_rpcMio(e)) continue;
