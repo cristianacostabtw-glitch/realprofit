@@ -22305,7 +22305,9 @@ def wa_bot_config_set():
     if "mode" in request.form:
         c["bot_mode"] = "draft" if request.form.get("mode") == "draft" else "auto"
     if "instr" in request.form:
-        c["bot_instr"] = (request.form.get("instr") or "")[:6000]
+        # 12000 y no 6000: el cerebro ya estaba en 5829 y no entraban las reglas nuevas.
+        # Con el tope viejo, guardar cortaba el final del texto SIN AVISAR.
+        c["bot_instr"] = (request.form.get("instr") or "")[:12000]
     if "marca" in request.form:
         c["bot_marca"] = (request.form.get("marca") or "")[:80]
     if "pago_titular" in request.form:
