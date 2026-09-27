@@ -2167,6 +2167,13 @@ _SOLO_DASH = r"""
     try{
       if(!r) return false;
       if(!_raw) return true;
+      // OTRO PERIODO SIEMPRE GANA. El sello de tiempo esta para no pisar datos frescos con un
+      // snapshot viejo, pero comparaba SOLO por reloj: un periodo distinto (ayer) se calcula
+      // antes que el de hoy, asi que quedaba descartado por "viejo" y la pantalla seguia
+      // mostrando HOY con el selector en AYER (visto el 27-09-2026 00:24: selector 26 sep,
+      // numeros del 27). Un periodo distinto no es mas viejo: es otro.
+      var mismoPeriodo = ((r.desde||'')===(_raw.desde||'') && (r.hasta||'')===(_raw.hasta||''));
+      if(!mismoPeriodo) return true;
       var a=+(r.calc_ts||0), b=+((_raw&&_raw.calc_ts)||0);
       if(!a || !b) return true;          // alguno sin sello (blob viejo) -> no bloqueo
       return a >= b;
@@ -2258,7 +2265,9 @@ _SOLO_DASH = r"""
     function pedir(){
       intentos++;
       try{
-        _of('/pf-periodo', {credentials:'same-origin'}).then(function(res){ return res.json(); })
+        // sin fechas el server contesta HOY: si ya sabemos que periodo se esta mirando, se pide ESE
+        var _q0=(_raw&&_raw.desde)?('?desde='+encodeURIComponent(_raw.desde)+'&hasta='+encodeURIComponent(_raw.hasta||_raw.desde)):'';
+        _of('/pf-periodo'+_q0, {credentials:'same-origin'}).then(function(res){ return res.json(); })
          .then(function(j){
            var r = (j && j.raw) || j;
            if(r && (r.be_cpa!=null || r.be_roas!=null) && _rpMasNuevo(r)){
