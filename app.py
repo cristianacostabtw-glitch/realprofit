@@ -777,7 +777,15 @@ _SOLO_DASH = r"""
    <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Separar o unir etiquetas</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45"><b style="color:#cbd5e1">Un PDF</b> &rarr; te digo cu&aacute;ntas etiquetas tiene y eleg&iacute;s cu&aacute;ntas van en el primer archivo. <b style="color:#cbd5e1">Dos o m&aacute;s</b> &rarr; los uno en uno solo, reordenado. Siempre con la <b style="color:#cbd5e1">hoja PARA EMPAQUETAR</b> recalculada.</div></div>
    <button onclick="rpDClosePart()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
   </div>
-  <label style="display:block;margin-top:18px;border:1.5px dashed #2b3a52;border-radius:14px;padding:30px 18px;text-align:center;cursor:pointer"><input id="rp-d-partfile" type="file" accept="application/pdf" multiple style="display:none" onchange="rpDPartCont(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Eleg&iacute; uno para separar, o varios para unir</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">No toca las etiquetas: solo las reparte o las junta</div></label>
+  <div id="rp-d-partmodo" style="display:flex;gap:11px;margin-top:18px;flex-wrap:wrap">
+   <button onclick="rpDPartElegir('separar')" style="flex:1;min-width:190px;text-align:left;background:#0b1220;border:1.5px solid #23304a;border-radius:14px;padding:16px 17px;cursor:pointer">
+    <div style="color:#e7edf5;font-size:14px;font-weight:800">&#9986;&#65039; Separar un PDF</div>
+    <div style="color:#8493a8;font-size:12px;margin-top:4px;line-height:1.4">Te digo cu&aacute;ntas hay de cada pack y eleg&iacute;s qu&eacute; va al primer archivo.</div></button>
+   <button onclick="rpDPartElegir('unir')" style="flex:1;min-width:190px;text-align:left;background:#0b1220;border:1.5px solid #23304a;border-radius:14px;padding:16px 17px;cursor:pointer">
+    <div style="color:#e7edf5;font-size:14px;font-weight:800">&#128206; Unir varios PDF</div>
+    <div style="color:#8493a8;font-size:12px;margin-top:4px;line-height:1.4">Con SKU los reordena y arma la hoja. Sin SKU los pega y nada m&aacute;s.</div></button>
+  </div>
+  <label id="rp-d-partdrop" style="display:none;margin-top:14px;border:1.5px dashed #2b3a52;border-radius:14px;padding:30px 18px;text-align:center;cursor:pointer"><input id="rp-d-partfile" type="file" accept="application/pdf" multiple style="display:none" onchange="rpDPartCont(this)"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:30px;display:block">upload_file</span><div id="rp-d-parthint" style="color:#e7edf5;font-size:14px;font-weight:700;margin-top:6px">Eleg&iacute; el PDF</div><div style="color:#5b6b82;font-size:12px;margin-top:5px">No toca las etiquetas: solo las reparte o las junta</div></label>
   <div id="rp-d-partres" style="margin-top:14px"></div>
  </div>
 </div>
@@ -1747,6 +1755,27 @@ _SOLO_DASH = r"""
       +'<button onclick="rpDPartHacer('+t+')" style="margin-top:11px;width:100%;background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:11px;padding:10px;font-size:12.5px;font-weight:700;cursor:pointer">Separar por cantidad</button></div></div>';
    }).catch(function(e){ rpDPartMsg('⚠️ '+String(e),'#fb7185'); });
  };
+ // Paso previo: primero se elige QUE hacer y recien despues se piden los archivos. Antes el
+ // mismo cuadro servia para las dos cosas y habia que adivinar si subir uno o varios.
+ window.rpDPartElegir=function(modo){
+   window._rpPartModo=modo;
+   var inp=document.getElementById('rp-d-partfile');
+   var drop=document.getElementById('rp-d-partdrop');
+   var hint=document.getElementById('rp-d-parthint');
+   var sel=document.getElementById('rp-d-partmodo');
+   if(!inp||!drop) return;
+   if(modo==='unir'){ inp.setAttribute('multiple','multiple'); if(hint) hint.textContent='Elegí dos o más PDF para unir'; }
+   else { inp.removeAttribute('multiple'); if(hint) hint.textContent='Elegí el PDF que querés separar'; }
+   drop.style.display='block';
+   if(sel){ var bs=sel.querySelectorAll('button');
+     for(var i=0;i<bs.length;i++){ var on=(i===0)===(modo==='separar');
+       bs[i].style.borderColor = on?'#1f6b5c':'#23304a';
+       bs[i].style.background  = on?'#0d1f1b':'#0b1220'; } }
+   var r=document.getElementById('rp-d-partres'); if(r) r.innerHTML='';
+   try{ inp.value=''; }catch(e){}
+   window._rpPartFiles=null;
+   inp.click();
+ };
  window.rpDPartTot=function(){
    var ins=document.querySelectorAll('.rp-d-gcant'), n=0, tot=0;
    for(var i=0;i<ins.length;i++){
@@ -1813,8 +1842,10 @@ _SOLO_DASH = r"""
      ?('<button '+_b1+' onclick="rpDPartBajar(\''+u+'&parte=1&modo=unir\',\'etiquetas-unidas.pdf\',this)">⬇ Bajar el PDF unido</button>')
      :('<button '+_b1+' onclick="rpDPartBajar(\''+u+'&parte=1\',\'etiquetas-parte1.pdf\',this)">⬇ Primeras '+j.n+'</button>'
        +'<button '+_b2+' onclick="rpDPartBajar(\''+u+'&parte=2\',\'etiquetas-resto.pdf\',this)">⬇ Resto ('+j.resto+')</button>');
-   var pie=unir?'Quedó todo reordenado: potes primero, después potes + caps, y las caps solas al final.'
-               :'Cada archivo trae su propia hoja PARA EMPAQUETAR con los totales de esa parte.';
+   var pie=unir
+     ? (j.sin_sku ? 'Los PDF no tenían SKU estampado, así que los pegué en el orden que los subiste, sin reordenar y sin hoja PARA EMPAQUETAR.'
+                  : 'Quedó todo reordenado: potes primero, después potes + caps, y las caps solas al final.')
+     : 'Cada archivo trae su propia hoja PARA EMPAQUETAR con los totales de esa parte.';
    r.innerHTML='<div style="background:#0d2018;border:1px solid #1f5f45;border-radius:12px;padding:14px">'
     +'<div style="color:#86efac;font-size:13.5px;font-weight:800">'+tit+'</div>'
     +'<div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">'+bot+'</div>'
@@ -9359,11 +9390,12 @@ def pf_despachos_partir():
         if total == 0:
             return jsonify({"ok": False, "msg": "No encontré etiquetas en lo que subiste."})
 
-        def _armar(items):
+        def _armar(items, hoja=True):
             out = fitz.open()
             for _d, _i, _s in items:
                 out.insert_pdf(_d, from_page=_i, to_page=_i)
-            _sku_hoja_empaquetar(out, [{"sku": s} for _d, _i, s in items])
+            if hoja:
+                _sku_hoja_empaquetar(out, [{"sku": s} for _d, _i, s in items])
             b = io.BytesIO()
             out.save(b, garbage=3, deflate=True)
             out.close()
@@ -9374,6 +9406,29 @@ def pf_despachos_partir():
         # ANTES esto vivía sólo adentro de la rama de UNIR, así que al PARTIR se cortaban las
         # páginas tal como venían en el PDF: pedías "las primeras 15" esperando 15 de X2 POTES y
         # salían 12 de X2 mezcladas con 3 de X1, que es justo lo que hay que evitar al empaquetar.
+        # ¿Hay SKU estampado? Si NO, unir es sólo pegar los PDF uno atrás del otro: no se
+        # reordena (no hay con qué) y no se arma la hoja PARA EMPAQUETAR, que sin SKU saldría
+        # vacía. Con SKU sí se aplica la regla de orden y la hoja, como siempre.
+        _con_sku = any(_s for _d, _i, _s in etiquetas)
+        if len(docs) >= 2 and not _con_sku:
+            pdf_a = _armar(etiquetas, hoja=False)
+            pdf_b = None
+            modo = "unir"
+            job = _secrets.token_hex(6)
+            _PARTIR_JOBS[job] = {"a": pdf_a, "b": None}
+            try:
+                _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+                (_JOBS_DIR / (job + ".a.pdf")).write_bytes(pdf_a)
+            except Exception:
+                pass
+            for _d in docs:
+                try:
+                    _d.close()
+                except Exception:
+                    pass
+            return jsonify({"ok": True, "job": job, "modo": "unir", "total": total,
+                            "n": total, "resto": 0, "archivos": len(docs), "sin_sku": True})
+
         from collections import Counter as _CntU
         _gr = _CntU(s for _d, _i, s in etiquetas if s)
         _pri = _sku_palabra_principal(_gr)
