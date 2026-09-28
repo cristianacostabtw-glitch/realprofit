@@ -16480,6 +16480,28 @@ def _meli_clon_payload(b, stock=None):
     return p
 
 
+@app.get("/meli/lupa-destino")
+def meli_lupa_destino():
+    """Lee (solo GET) cualquier recurso de la API con el token de la cuenta DESTINO.
+    Sirve para ver como esta configurada esa cuenta sin andar adivinando."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tok, uid = _meli_ctx(email + "#destino")
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "cuenta destino no conectada"})
+    ruta = (request.args.get("ruta") or "/users/me").strip()
+    if not ruta.startswith("/"):
+        return jsonify({"ok": False, "msg": "la ruta arranca con /"})
+    ruta = ruta.replace("{uid}", str(uid))
+    try:
+        r = requests.get(MELI_API + ruta, headers={"Authorization": "Bearer " + tok}, timeout=25)
+        cuerpo = r.json() if (r.content and r.status_code < 400) else (r.text or "")[:1500]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])})
+    return jsonify({"ok": True, "ruta": ruta, "status": r.status_code, "cuerpo": cuerpo})
+
+
 @app.post("/meli/clonar")
 def meli_clonar():
     """Copia publicaciones de la cuenta conectada a la cuenta DESTINO.
@@ -16505,6 +16527,7 @@ def meli_clonar():
     aplicar = bool(d.get("aplicar"))
     pausar = d.get("pausar", True)
     stock = d.get("stock")
+    envio = (d.get("envio") or "copiar")   # copiar | auto (auto = no mandar shipping, que lo ponga ML)
     ho = {"Authorization": "Bearer " + tok_o}
     hd = {"Authorization": "Bearer " + tok_d, "Content-Type": "application/json"}
     filas, creadas = [], 0
@@ -16521,6 +16544,8 @@ def meli_clonar():
             filas.append(f); continue
         f["titulo"] = b.get("title", "")
         cuerpo = _meli_clon_payload(b, stock)
+        if envio == "auto":
+            cuerpo.pop("shipping", None)
         f["copia"] = {"fotos": len(cuerpo.get("pictures") or []),
                       "atributos": len(cuerpo.get("attributes") or []),
                       "condiciones": len(cuerpo.get("sale_terms") or []),
