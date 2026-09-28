@@ -1783,14 +1783,36 @@ _SOLO_DASH = r"""
      rpDPartPintar(j);
    }).catch(function(e){ rpDPartMsg('⚠️ '+String(e),'#fb7185'); });
  }
+ // Bajar por FETCH + blob, NO con <a href>. Con el link comun el navegador BLOQUEA la
+ // descarga desde la pagina embebida y no llega ni el pedido al server (visto 28-09-2026:
+ // la separacion salio bien pero no habia un solo GET de descarga en los logs). Este es el
+ // mismo camino que ya usa el PDF con SKU, que si baja.
+ window.rpDPartBajar=function(u,nombre,btn){
+   var txt=btn?btn.textContent:'';
+   if(btn){ btn.textContent='⏳ Bajando…'; btn.style.pointerEvents='none'; }
+   fetch(u,{credentials:'same-origin'}).then(function(r){
+     if(!r.ok) throw 'El server contestó '+r.status;
+     return r.blob();
+   }).then(function(b){
+     var o=URL.createObjectURL(b); var a=document.createElement('a');
+     a.href=o; a.download=nombre; document.body.appendChild(a); a.click(); a.remove();
+     URL.revokeObjectURL(o);
+     if(btn){ btn.textContent=txt; btn.style.pointerEvents=''; }
+   }).catch(function(e){
+     if(btn){ btn.textContent=txt; btn.style.pointerEvents=''; }
+     rpDPartMsg('⚠️ No pude bajar el archivo: '+String(e),'#fb7185');
+   });
+ };
  function rpDPartPintar(j){ var u='/pf-despachos-partir-descargar?job='+encodeURIComponent(j.job);
    var r=document.getElementById('rp-d-partres'); var unir=(j.modo==='unir');
    var tit=unir?('✅ Unidos '+j.archivos+' archivos: '+j.total+' etiquetas')
                :('✅ Listo: '+j.n+' + '+j.resto+' = '+j.total+' etiquetas');
+   var _b1='style="flex:1;min-width:150px;text-align:center;background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800;cursor:pointer"';
+   var _b2='style="flex:1;min-width:150px;text-align:center;background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800;cursor:pointer"';
    var bot=unir
-     ?('<a href="'+u+'&parte=1&modo=unir" style="flex:1;min-width:150px;text-align:center;text-decoration:none;background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800">⬇ Bajar el PDF unido</a>')
-     :('<a href="'+u+'&parte=1" style="flex:1;min-width:150px;text-align:center;text-decoration:none;background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800">⬇ Primeras '+j.n+'</a>'
-       +'<a href="'+u+'&parte=2" style="flex:1;min-width:150px;text-align:center;text-decoration:none;background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px;font-size:12.5px;font-weight:800">⬇ Resto ('+j.resto+')</a>');
+     ?('<button '+_b1+' onclick="rpDPartBajar(\''+u+'&parte=1&modo=unir\',\'etiquetas-unidas.pdf\',this)">⬇ Bajar el PDF unido</button>')
+     :('<button '+_b1+' onclick="rpDPartBajar(\''+u+'&parte=1\',\'etiquetas-parte1.pdf\',this)">⬇ Primeras '+j.n+'</button>'
+       +'<button '+_b2+' onclick="rpDPartBajar(\''+u+'&parte=2\',\'etiquetas-resto.pdf\',this)">⬇ Resto ('+j.resto+')</button>');
    var pie=unir?'Quedó todo reordenado: potes primero, después potes + caps, y las caps solas al final.'
                :'Cada archivo trae su propia hoja PARA EMPAQUETAR con los totales de esa parte.';
    r.innerHTML='<div style="background:#0d2018;border:1px solid #1f5f45;border-radius:12px;padding:14px">'
