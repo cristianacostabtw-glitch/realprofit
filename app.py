@@ -1721,15 +1721,56 @@ _SOLO_DASH = r"""
      if(!j||!j.ok){ throw (j&&j.msg)||'No pude leer el PDF.'; }
      if(j.job){ rpDPartPintar(j); return; }
      var t=j.total||0;
+     window._rpPartGrupos = j.grupos || [];
      var r=document.getElementById('rp-d-partres');
+     // DESGLOSE POR TIPO DE PACK. Se pone cuántas de CADA uno van al primer archivo; lo que
+     // sacás deja de estar en el resto (cada etiqueta se asigna una sola vez en el server).
+     var filas='';
+     (window._rpPartGrupos).forEach(function(g,ix){
+       filas+='<div style="display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid #1b2537">'
+        +'<div style="flex:1;min-width:0;color:#e7edf5;font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+g.cant+' &times; '+(g.sku||'').replace(/</g,'&lt;')+'</div>'
+        +'<input class="rp-d-gcant" data-sku="'+(g.sku||'').replace(/"/g,'&quot;')+'" type="number" min="0" max="'+g.cant+'" value="0" oninput="rpDPartTot()" '
+        +'style="width:84px;background:#0e1521;border:1px solid #23304a;color:#e7edf5;border-radius:9px;padding:7px 9px;font-size:13px;font-weight:700;text-align:center">'
+        +'<span style="color:#5b6b82;font-size:11.5px;min-width:54px">de '+g.cant+'</span></div>';
+     });
      r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:14px">'
       +'<div style="color:#e7edf5;font-size:14px;font-weight:800">Este PDF tiene '+t+' etiquetas</div>'
       +'<div style="color:#8493a8;font-size:12px;margin-top:4px">La hoja PARA EMPAQUETAR no se cuenta: se arma de nuevo en cada parte.</div>'
-      +'<div style="display:flex;gap:9px;align-items:center;margin-top:13px">'
-      +'<span style="color:#9fb3c8;font-size:12.5px;font-weight:600">En el primer archivo:</span>'
+      +(filas?('<div style="margin-top:12px"><div style="color:#9fb3c8;font-size:12px;font-weight:700;letter-spacing:.4px">CU&Aacute;NTAS DE CADA UNA AL PRIMER ARCHIVO</div>'+filas
+         +'<div id="rp-d-parttot" style="color:#8493a8;font-size:12px;margin-top:10px">Primer archivo: 0 &middot; resto: '+t+'</div>'
+         +'<button onclick="rpDPartPorTipo()" style="margin-top:11px;width:100%;background:linear-gradient(160deg,#1d5f52,#154a41);border:1px solid #1f6b5c;color:#c9f5e8;border-radius:11px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">Separar por tipo</button></div>'):'')
+      +'<div style="margin-top:14px;padding-top:12px;border-top:1px solid #1b2537">'
+      +'<div style="display:flex;gap:9px;align-items:center">'
+      +'<span style="color:#9fb3c8;font-size:12.5px;font-weight:600">O por cantidad:</span>'
       +'<input id="rp-d-partn" type="number" min="1" max="'+(t-1)+'" value="'+Math.min(20,Math.max(1,t-1))+'" style="width:92px;background:#0e1521;border:1px solid #23304a;color:#e7edf5;border-radius:9px;padding:8px 10px;font-size:13px;font-weight:700">'
       +'<span style="color:#5b6b82;font-size:12px">de '+t+'</span></div>'
-      +'<button onclick="rpDPartHacer('+t+')" style="margin-top:13px;width:100%;background:linear-gradient(160deg,#1d5f52,#154a41);border:1px solid #1f6b5c;color:#c9f5e8;border-radius:11px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">Separar en dos archivos</button></div>';
+      +'<button onclick="rpDPartHacer('+t+')" style="margin-top:11px;width:100%;background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:11px;padding:10px;font-size:12.5px;font-weight:700;cursor:pointer">Separar por cantidad</button></div></div>';
+   }).catch(function(e){ rpDPartMsg('⚠️ '+String(e),'#fb7185'); });
+ };
+ window.rpDPartTot=function(){
+   var ins=document.querySelectorAll('.rp-d-gcant'), n=0, tot=0;
+   for(var i=0;i<ins.length;i++){
+     var v=parseInt(ins[i].value,10)||0, mx=parseInt(ins[i].getAttribute('max'),10)||0;
+     if(v<0){ v=0; ins[i].value=0; } if(v>mx){ v=mx; ins[i].value=mx; }
+     n+=v; tot+=mx;
+   }
+   var d=document.getElementById('rp-d-parttot');
+   if(d) d.textContent='Primer archivo: '+n+' · resto: '+(tot-n);
+ };
+ window.rpDPartPorTipo=function(){
+   var ins=document.querySelectorAll('.rp-d-gcant'), sel={}, n=0, tot=0;
+   for(var i=0;i<ins.length;i++){
+     var v=parseInt(ins[i].value,10)||0, mx=parseInt(ins[i].getAttribute('max'),10)||0;
+     tot+=mx; if(v>0){ sel[ins[i].getAttribute('data-sku')]=v; n+=v; }
+   }
+   if(n<=0){ rpDPartMsg('Poné cuántas querés sacar de alguna.','#f0b429'); return; }
+   if(n>=tot){ rpDPartMsg('Así te queda el segundo archivo vacío.','#f0b429'); return; }
+   if(!window._rpPartFiles){ rpDPartMsg('Volvé a elegir el PDF.','#f0b429'); return; }
+   rpDPartMsg('⏳ Separando…','#c9f5e8');
+   var fd=rpDPartFd(0); fd.append('sel', JSON.stringify(sel));
+   fetch('/pf-despachos-partir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok||!j.job){ throw (j&&j.msg)||'No pude procesarlo.'; }
+     rpDPartPintar(j);
    }).catch(function(e){ rpDPartMsg('⚠️ '+String(e),'#fb7185'); });
  };
  window.rpDPartHacer=function(total){ var el=document.getElementById('rp-d-partn'); var n=parseInt(el&&el.value,10)||0;
@@ -9322,11 +9363,66 @@ def pf_despachos_partir():
             pdf_b = None
             modo = "unir"
         else:
-            if n <= 0 or n >= total:
-                return jsonify({"ok": True, "total": total, "solo_conteo": True, "modo": "partir"})
-            pdf_a = _armar(etiquetas[:n])
-            pdf_b = _armar(etiquetas[n:])
-            modo = "partir"
+            # DESGLOSE por tipo de pack (x2 POTES, x1 POTE, …), en el MISMO orden en que
+            # quedaron las páginas. Así el front puede mostrar "80 x2 POTES / 20 x1 POTE" y
+            # dejar elegir cuántas de cada uno van al primer archivo.
+            _grupos = []
+            for _d, _i, _sk in etiquetas:
+                _nom = _sk or "(sin SKU)"
+                for _g in _grupos:
+                    if _g["sku"] == _nom:
+                        _g["cant"] += 1
+                        break
+                else:
+                    _grupos.append({"sku": _nom, "cant": 1})
+
+            # SELECCION POR TIPO: {"x2 POTES": 30, "x1 POTE": 20}. Cada etiqueta se asigna UNA
+            # sola vez — lo que va al archivo 1 deja de estar en el resto, que es justo lo que
+            # no puede fallar acá: una etiqueta repetida es un paquete que se despacha dos veces.
+            _sel_raw = (request.form.get("sel") or "").strip()
+            if _sel_raw:
+                try:
+                    _sel = _json.loads(_sel_raw)
+                except Exception:
+                    return jsonify({"ok": False, "msg": "No entendí la selección."})
+                _falta = {}
+                for _k, _v in (_sel or {}).items():
+                    try:
+                        _vi = int(_v)
+                    except Exception:
+                        _vi = 0
+                    if _vi > 0:
+                        _falta[str(_k)] = _vi
+                if not _falta:
+                    return jsonify({"ok": False, "msg": "Elegí al menos una etiqueta."})
+                _hay = {}
+                for _g in _grupos:
+                    _hay[_g["sku"]] = _g["cant"]
+                for _k, _v in _falta.items():
+                    if _v > _hay.get(_k, 0):
+                        return jsonify({"ok": False,
+                                        "msg": "Pediste %d de «%s» y hay %d." % (_v, _k, _hay.get(_k, 0))})
+                _a, _b = [], []
+                for _it in etiquetas:
+                    _nom = _it[2] or "(sin SKU)"
+                    if _falta.get(_nom, 0) > 0:
+                        _falta[_nom] -= 1
+                        _a.append(_it)
+                    else:
+                        _b.append(_it)
+                if not _a or not _b:
+                    return jsonify({"ok": False, "msg": "Esa selección deja un archivo vacío."})
+                pdf_a = _armar(_a)
+                pdf_b = _armar(_b)
+                n = len(_a)
+                modo = "partir"
+            elif n <= 0 or n >= total:
+                return jsonify({"ok": True, "total": total, "solo_conteo": True,
+                                "modo": "partir", "grupos": _grupos})
+            else:
+                pdf_a = _armar(etiquetas[:n])
+                pdf_b = _armar(etiquetas[n:])
+                modo = "partir"
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])}), 500
     finally:
