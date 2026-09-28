@@ -16304,6 +16304,138 @@ def _meli_ctx(email):
     return tok, d.get("user_id")
 
 
+def _meli_items_full(tok, uid, con_desc=True):
+    """TODAS las publicaciones del vendedor con el cuerpo completo (incluye sold_quantity).
+    /users/{uid}/items/search pagina de a 100; sin filtro de status trae activas, pausadas y cerradas."""
+    h = {"Authorization": "Bearer " + tok}
+    ids, offset = [], 0
+    while True:
+        try:
+            r = requests.get("%s/users/%s/items/search" % (MELI_API, uid), headers=h,
+                             params={"limit": 100, "offset": offset}, timeout=30)
+            j = r.json() if r.content else {}
+        except Exception:
+            break
+        lote = j.get("results") or []
+        ids.extend(lote)
+        total = (j.get("paging") or {}).get("total", len(ids))
+        offset += 100
+        if len(lote) < 100 or offset >= total or offset >= 2000:
+            break
+    items = []
+    for i in range(0, len(ids), 20):
+        try:
+            rr = requests.get("%s/items" % MELI_API, headers=h,
+                              params={"ids": ",".join(ids[i:i + 20])}, timeout=30)
+            arr = rr.json() if rr.content else []
+        except Exception:
+            arr = []
+        for wrap in arr:
+            b = wrap.get("body") or {}
+            if b.get("id"):
+                items.append(b)
+    if con_desc:
+        for b in items:
+            try:
+                rd = requests.get("%s/items/%s/description" % (MELI_API, b["id"]), headers=h, timeout=20)
+                b["_descripcion"] = ((rd.json() if rd.content else {}) or {}).get("plain_text", "") or ""
+            except Exception:
+                b["_descripcion"] = ""
+    return items
+
+
+def _meli_fila(b):
+    """Aplana una publicacion a lo que hace falta para volver a publicarla en otra cuenta."""
+    sku = b.get("seller_custom_field") or ""
+    attrs = []
+    for a in (b.get("attributes") or []):
+        if a.get("id") == "SELLER_SKU" and not sku:
+            sku = a.get("value_name") or ""
+        v = a.get("value_name") or a.get("value_id") or ""
+        if v and a.get("id"):
+            attrs.append("%s=%s" % (a["id"], v))
+    fotos = [p.get("secure_url") or p.get("url") or "" for p in (b.get("pictures") or [])]
+    env = b.get("shipping") or {}
+    return {
+        "id": b.get("id", ""), "estado": b.get("status", ""), "titulo": b.get("title", ""),
+        "vendidas": b.get("sold_quantity") or 0,
+        "stock": b.get("available_quantity") or 0,
+        "precio": b.get("price"), "moneda": b.get("currency_id", ""),
+        "categoria": b.get("category_id", ""), "tipo": b.get("listing_type_id", ""),
+        "condicion": b.get("condition", ""), "modo": b.get("buying_mode", ""),
+        "sku": sku, "link": b.get("permalink", ""),
+        "envio_modo": env.get("mode", ""), "envio_gratis": bool(env.get("free_shipping")),
+        "garantia": next((a.get("value_name", "") for a in (b.get("sale_terms") or [])
+                          if a.get("id") == "WARRANTY_TIME"), ""),
+        "fotos": fotos, "atributos": attrs, "descripcion": b.get("_descripcion", ""),
+    }
+
+
+@app.get("/meli/publicaciones-ventas")
+def meli_publicaciones_ventas():
+    """Todas las publicaciones con cuantas unidades vendio cada una."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado"})
+    filas = [_meli_fila(b) for b in _meli_items_full(tok, uid, con_desc=False)]
+    filas.sort(key=lambda x: -(x["vendidas"] or 0))
+    con = [f for f in filas if (f["vendidas"] or 0) >= 1]
+    return jsonify({"ok": True, "total": len(filas), "con_ventas": len(con),
+                    "items": [{k: v for k, v in f.items() if k not in ("fotos", "atributos", "descripcion")}
+                              for f in filas]})
+
+
+@app.get("/meli/publicaciones-excel")
+def meli_publicaciones_excel():
+    """Excel con las publicaciones que vendieron al menos una unidad, con todo lo que
+    hace falta para volver a publicarlas en otra cuenta (Mercado Libre no deja subir la
+    planilla de una cuenta en otra: los MLA son de esta cuenta y esa planilla solo EDITA)."""
+    import openpyxl
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado"}), 400
+    solo_con_ventas = (request.args.get("todas") or "") != "1"
+    filas = [_meli_fila(b) for b in _meli_items_full(tok, uid)]
+    if solo_con_ventas:
+        filas = [f for f in filas if (f["vendidas"] or 0) >= 1]
+    if not filas:
+        return jsonify({"ok": False, "msg": "No encontre publicaciones con ventas."}), 400
+    filas.sort(key=lambda x: -(x["vendidas"] or 0))
+    cab = ["Publicacion", "Estado", "Vendidas", "Titulo", "Precio", "Moneda", "Stock", "SKU",
+           "Categoria", "Tipo de publicacion", "Condicion", "Modo", "Envio", "Envio gratis",
+           "Garantia", "Link", "Fotos", "Atributos", "Descripcion"]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Publicaciones con ventas"
+    ws.append(cab)
+    for f in filas:
+        ws.append([f["id"], f["estado"], f["vendidas"], f["titulo"], f["precio"], f["moneda"],
+                   f["stock"], f["sku"], f["categoria"], f["tipo"], f["condicion"], f["modo"],
+                   f["envio_modo"], "si" if f["envio_gratis"] else "no", f["garantia"], f["link"],
+                   "\n".join(f["fotos"]), "\n".join(f["atributos"]), f["descripcion"][:30000]])
+    anchos = [15, 10, 9, 60, 12, 8, 8, 16, 14, 16, 10, 10, 12, 12, 12, 40, 50, 50, 60]
+    for i, w in enumerate(anchos, start=1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    ws.freeze_panes = "A2"
+    # una fila por foto, aparte: es lo que mas cuesta de rearmar a mano
+    ws2 = wb.create_sheet("Fotos")
+    ws2.append(["Publicacion", "Titulo", "N", "URL"])
+    for f in filas:
+        for n, u in enumerate(f["fotos"], start=1):
+            ws2.append([f["id"], f["titulo"], n, u])
+    for i, w in enumerate([15, 60, 5, 90], start=1):
+        ws2.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+    out = DATA_DIR / ("Publicaciones-MELI-%s.xlsx" % _dt.datetime.now().strftime("%Y%m%d-%H%M"))
+    wb.save(str(out))
+    return send_file(str(out), as_attachment=True, download_name=out.name)
+
+
 @app.get("/meli/publicaciones")
 def meli_publicaciones():
     """Publicaciones activas con su SKU y stock, para poder emparejar/editar el SKU."""
