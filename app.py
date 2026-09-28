@@ -16568,11 +16568,19 @@ def _meli_error(r):
     partes = []
     for c in (j.get("cause") or []):
         m = c.get("message") or c.get("code") or ""
+        det = c.get("cause") or c.get("references") or c.get("department")
         if m:
-            partes.append(str(m))
+            partes.append(str(m) + ((" %s" % det) if det else ""))
     if not partes and j.get("message"):
         partes.append(str(j["message"]))
-    return ("HTTP %s · " % r.status_code) + " | ".join(partes)[:400]
+    crudo = ""
+    # si ML contesta un generico tipo "body.invalid_fields", el detalle esta en el cuerpo
+    if not partes or len(" ".join(partes)) < 60:
+        try:
+            crudo = " | crudo: " + _json.dumps(j, ensure_ascii=False)[:900]
+        except Exception:
+            crudo = " | crudo: " + (r.text or "")[:900]
+    return ("HTTP %s \u00b7 " % r.status_code) + (" | ".join(partes)[:400]) + crudo
 
 
 @app.get("/meli/publicaciones-ventas")
