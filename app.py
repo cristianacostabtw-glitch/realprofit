@@ -16408,6 +16408,10 @@ def _meli_clon_payload(b, stock=None):
         if a.get("id") == "SELLER_SKU":
             sku = sku or (a.get("value_name") or "")
             continue
+        # ML rechaza los que no son modificables al crear: "Attribute [X] ignored because
+        # it is not modifiable". Son banderas de la cuenta vendedora, no del producto.
+        if a.get("id") in ("IS_TOM_BRAND", "IS_HIGHLIGHT_BRAND"):
+            continue
         if tg.get("read_only") or tg.get("variation_attribute"):
             continue
         if a.get("value_id"):
@@ -16439,6 +16443,10 @@ def _meli_clon_payload(b, stock=None):
     # TODAS las condiciones de venta, no solo la garantia: el pedido es un clon literal.
     st = []
     for t in (b.get("sale_terms") or []):
+        # INSTALLMENTS_CAMPAIGN no se puede setear al crear ("Not allowed to modify sale term"):
+        # las cuotas las define la campana en la que esta inscripta LA CUENTA, no la publicacion.
+        if t.get("id") == "INSTALLMENTS_CAMPAIGN":
+            continue
         if (t.get("tags") or {}).get("read_only"):
             continue
         if t.get("value_id"):
