@@ -16516,6 +16516,41 @@ def meli_lupa_destino():
     return jsonify({"ok": True, "ruta": ruta, "status": r.status_code, "cuerpo": cuerpo})
 
 
+@app.post("/meli/destino-sku")
+def meli_destino_sku():
+    """Carga el SKU en una publicacion de la cuenta DESTINO. Solo toca ese campo."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tok, uid = _meli_ctx(email + "#destino")
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "cuenta destino no conectada"})
+    d = request.get_json(silent=True) or {}
+    pares = d.get("pares") or []
+    if not pares:
+        return jsonify({"ok": False, "msg": "falta 'pares': [{id, sku}]"})
+    h = {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
+    out = []
+    for p in pares[:60]:
+        iid = str(p.get("id") or "").strip().upper()
+        sku = str(p.get("sku") or "").strip()
+        if not iid or not sku:
+            out.append({"id": iid, "ok": False, "error": "falta id o sku"}); continue
+        cuerpo = {"seller_custom_field": sku,
+                  "attributes": [{"id": "SELLER_SKU", "value_name": sku}]}
+        try:
+            r = requests.put("%s/items/%s" % (MELI_API, iid), headers=h,
+                             data=_json.dumps(cuerpo), timeout=30)
+            j = r.json() if r.content else {}
+            if r.status_code < 400:
+                out.append({"id": iid, "ok": True, "sku": j.get("seller_custom_field") or sku})
+            else:
+                out.append({"id": iid, "ok": False, "error": _meli_error(r)})
+        except Exception as e:
+            out.append({"id": iid, "ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:90])})
+    return jsonify({"ok": True, "filas": out, "bien": sum(1 for x in out if x["ok"])})
+
+
 @app.post("/meli/clonar")
 def meli_clonar():
     """Copia publicaciones de la cuenta conectada a la cuenta DESTINO.
