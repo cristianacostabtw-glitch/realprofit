@@ -16412,7 +16412,7 @@ def _meli_clon_payload(b, stock=None):
         # it is not modifiable". Son banderas de la cuenta vendedora, no del producto.
         if a.get("id") in ("IS_TOM_BRAND", "IS_HIGHLIGHT_BRAND"):
             continue
-        if tg.get("read_only") or tg.get("variation_attribute"):
+        if tg.get("read_only"):
             continue
         _at = {"id": a["id"]}
         if a.get("value_id"):
@@ -16423,6 +16423,20 @@ def _meli_clon_payload(b, stock=None):
             attrs.append(_at)
     if sku:
         attrs.append({"id": "SELLER_SKU", "value_name": str(sku)[:60]})
+    # al aplanar una con variantes, el atributo que variaba (el Sabor) queda dentro de la
+    # variante: sin subirlo aca, ML rechaza con "El campo Sabor es obligatorio".
+    _ya = set(a["id"] for a in attrs)
+    for v in (b.get("variations") or []):
+        for c in (v.get("attribute_combinations") or []):
+            if c.get("id") and c["id"] not in _ya and (c.get("value_name") or c.get("value_id")):
+                _c = {"id": c["id"]}
+                if c.get("value_id"):
+                    _c["value_id"] = c["value_id"]
+                if c.get("value_name"):
+                    _c["value_name"] = str(c["value_name"])[:255]
+                attrs.append(_c)
+                _ya.add(c["id"])
+        break
     fotos = [{"source": (p.get("secure_url") or p.get("url"))} for p in (b.get("pictures") or [])
              if (p.get("secure_url") or p.get("url"))]
     env = b.get("shipping") or {}
