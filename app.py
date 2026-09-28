@@ -16419,10 +16419,13 @@ def _meli_clon_payload(b, stock=None):
     fotos = [{"source": (p.get("secure_url") or p.get("url"))} for p in (b.get("pictures") or [])
              if (p.get("secure_url") or p.get("url"))]
     env = b.get("shipping") or {}
+    _q0 = b.get("available_quantity")
+    if not _q0 and b.get("variations"):      # con variantes el stock vive en cada variante
+        _q0 = sum(int(v.get("available_quantity") or 0) for v in b["variations"])
     try:
-        qty = int(stock) if stock not in (None, "") else int(b.get("available_quantity") or 1)
+        qty = int(stock) if stock not in (None, "") else int(_q0 or 1)
     except Exception:
-        qty = int(b.get("available_quantity") or 1)
+        qty = int(_q0 or 1)
     p = {"title": b.get("title", ""), "category_id": b.get("category_id", ""),
          "price": b.get("price"), "currency_id": b.get("currency_id") or "ARS",
          "available_quantity": max(1, qty),
@@ -16450,22 +16453,13 @@ def _meli_clon_payload(b, stock=None):
         p["video_id"] = b["video_id"]
     if b.get("warranty"):
         p["warranty"] = str(b["warranty"])[:255]
-    if b.get("variations"):      # si la de origen tuviera variantes, se copian tal cual
-        vs = []
-        for v in b["variations"]:
-            vv = {"attribute_combinations": v.get("attribute_combinations") or [],
-                  "available_quantity": int(v.get("available_quantity") or 0)}
-            if v.get("price") is not None:
-                vv["price"] = v["price"]
-            at = [{"id": a["id"], "value_name": a.get("value_name")}
-                  for a in (v.get("attributes") or [])
-                  if a.get("id") and a.get("value_name") and not (a.get("tags") or {}).get("read_only")]
-            if at:
-                vv["attributes"] = at
-            vs.append(vv)
-        if vs:
-            p["variations"] = vs
-            p.pop("available_quantity", None)
+    # family_name: Mercado Libre lo exige al crear ("The body does not contains [family_name]").
+    # Se le pone uno UNICO por publicacion —el titulo mas el MLA de origen— para que cada una
+    # nazca como publicacion aparte y NO como variante de otra. Es un nombre interno del
+    # catalogo del vendedor, no el titulo que ve el comprador.
+    p["family_name"] = ("%s [%s]" % (b.get("title", ""), b.get("id", "")))[:250]
+    # Las variantes NO se copian a proposito: el pedido es que sean publicaciones distintas,
+    # y ademas Mercado Libre las rechaza junto con family_name.
     if b.get("catalog_listing") and b.get("catalog_product_id"):
         p["catalog_listing"] = True
         p["catalog_product_id"] = b["catalog_product_id"]
@@ -16520,7 +16514,8 @@ def meli_clonar():
                       "precio": cuerpo.get("price"),
                       "stock": cuerpo.get("available_quantity"),
                       "envio_gratis": bool((cuerpo.get("shipping") or {}).get("free_shipping")),
-                      "variantes": len(cuerpo.get("variations") or [])}
+                      "variantes": len(b.get("variations") or []),
+                      "familia": cuerpo.get("family_name", "")}
         try:
             if not aplicar:
                 rv = requests.post("%s/items/validate" % MELI_API, headers=hd,
