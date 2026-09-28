@@ -16068,6 +16068,11 @@ def conectar_meli():
         return ("Falta configurar MELI_CLIENT_ID en el servidor (Render → Environment).", 400)
     state = _secrets.token_urlsafe(16)
     session["meli_state"] = state
+    # ?destino=1 conecta la SEGUNDA cuenta (a donde se clonan las publicaciones) sin pisar la primera
+    if (request.args.get("destino") or "") == "1":
+        session["meli_destino"] = 1
+    else:
+        session.pop("meli_destino", None)
     qs = _url.urlencode({"response_type": "code", "client_id": cfg["client_id"],
                          "redirect_uri": cfg["redirect_uri"], "state": state})
     return redirect(MELI_AUTH + "?" + qs, code=302)
@@ -16112,7 +16117,8 @@ def meli_callback():
             j = me.json(); data["nickname"] = j.get("nickname", ""); data["user_id"] = j.get("id", data.get("user_id"))
     except Exception:
         pass
-    _meli_save_token(email, data)
+    clave = (email + "#destino") if session.pop("meli_destino", None) else email
+    _meli_save_token(clave, data)
     session.pop("meli_state", None)
     return redirect("/?integ=1", code=302)
 
@@ -16369,6 +16375,177 @@ def _meli_fila(b):
                           if a.get("id") == "WARRANTY_TIME"), ""),
         "fotos": fotos, "atributos": attrs, "descripcion": b.get("_descripcion", ""),
     }
+
+
+@app.get("/meli/estado-destino")
+def meli_estado_destino():
+    email = _user_actual()
+    d = (_meli_tokens().get((email or "") + "#destino")) or {}
+    o = (_meli_tokens().get(email) if email else None) or {}
+    return jsonify({"ok": True, "conectado": bool(d.get("access_token")),
+                    "nickname": d.get("nickname", ""), "user_id": d.get("user_id"),
+                    "origen_nick": o.get("nickname", ""), "origen_id": o.get("user_id")})
+
+
+@app.get("/desconectar-meli-destino")
+def desconectar_meli_destino():
+    email = _user_actual()
+    if email:
+        d = _meli_tokens(); d.pop(email + "#destino", None)
+        try:
+            MELI_TOKENS.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception:
+            pass
+    return redirect("/meli?clonar=1", code=302)
+
+
+def _meli_clon_payload(b, stock=None):
+    """Arma el cuerpo de POST /items a partir de una publicacion existente.
+    Se dejan afuera los atributos de solo lectura y el logistic_type: son de la cuenta vieja."""
+    attrs, sku = [], (b.get("seller_custom_field") or "")
+    for a in (b.get("attributes") or []):
+        tg = a.get("tags") or {}
+        if a.get("id") == "SELLER_SKU":
+            sku = sku or (a.get("value_name") or "")
+            continue
+        if tg.get("read_only") or tg.get("variation_attribute"):
+            continue
+        if a.get("value_id"):
+            attrs.append({"id": a["id"], "value_id": a["value_id"]})
+        elif a.get("value_name"):
+            attrs.append({"id": a["id"], "value_name": str(a["value_name"])[:255]})
+    if sku:
+        attrs.append({"id": "SELLER_SKU", "value_name": str(sku)[:60]})
+    fotos = [{"source": (p.get("secure_url") or p.get("url"))} for p in (b.get("pictures") or [])
+             if (p.get("secure_url") or p.get("url"))]
+    env = b.get("shipping") or {}
+    try:
+        qty = int(stock) if stock not in (None, "") else int(b.get("available_quantity") or 1)
+    except Exception:
+        qty = int(b.get("available_quantity") or 1)
+    p = {"title": b.get("title", ""), "category_id": b.get("category_id", ""),
+         "price": b.get("price"), "currency_id": b.get("currency_id") or "ARS",
+         "available_quantity": max(1, qty),
+         "buying_mode": b.get("buying_mode") or "buy_it_now",
+         "listing_type_id": b.get("listing_type_id") or "gold_special",
+         "condition": b.get("condition") or "new",
+         "pictures": fotos, "attributes": attrs,
+         "shipping": {"mode": env.get("mode") or "me2",
+                      "local_pick_up": bool(env.get("local_pick_up")),
+                      "free_shipping": bool(env.get("free_shipping"))}}
+    st = []
+    for t in (b.get("sale_terms") or []):
+        if t.get("id") not in ("WARRANTY_TYPE", "WARRANTY_TIME"):
+            continue
+        if t.get("value_id"):
+            st.append({"id": t["id"], "value_id": t["value_id"]})
+        elif t.get("value_name"):
+            st.append({"id": t["id"], "value_name": t["value_name"]})
+    if st:
+        p["sale_terms"] = st
+    if b.get("catalog_listing") and b.get("catalog_product_id"):
+        p["catalog_listing"] = True
+        p["catalog_product_id"] = b["catalog_product_id"]
+    return p
+
+
+@app.post("/meli/clonar")
+def meli_clonar():
+    """Copia publicaciones de la cuenta conectada a la cuenta DESTINO.
+    Sin 'aplicar' NO crea nada: pasa cada una por /items/validate y devuelve que diria ML."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tok_o, uid_o = _meli_ctx(email)
+    tok_d, uid_d = _meli_ctx(email + "#destino")
+    if not tok_o or not uid_o:
+        return jsonify({"ok": False, "msg": "La cuenta de origen no esta conectada."})
+    if not tok_d or not uid_d:
+        return jsonify({"ok": False, "msg": "Falta conectar la cuenta destino."})
+    if str(uid_o) == str(uid_d):
+        return jsonify({"ok": False, "msg": "La cuenta destino es la MISMA que la de origen. "
+                                            "Desconectala y conecta la otra (usa una ventana privada)."})
+    d = request.get_json(silent=True) or {}
+    ids = [str(x).strip().upper() for x in (d.get("ids") or []) if str(x).strip()]
+    if not ids:
+        return jsonify({"ok": False, "msg": "No marcaste ninguna publicacion."})
+    if len(ids) > 60:
+        return jsonify({"ok": False, "msg": "Son %d publicaciones. Freno por las dudas: de a 60." % len(ids)})
+    aplicar = bool(d.get("aplicar"))
+    pausar = d.get("pausar", True)
+    stock = d.get("stock")
+    ho = {"Authorization": "Bearer " + tok_o}
+    hd = {"Authorization": "Bearer " + tok_d, "Content-Type": "application/json"}
+    filas, creadas = [], 0
+    for iid in ids:
+        f = {"id": iid, "titulo": "", "ok": False, "nuevo": "", "error": ""}
+        try:
+            rb = requests.get("%s/items/%s" % (MELI_API, iid), headers=ho, timeout=25)
+            b = rb.json() if rb.content else {}
+        except Exception as e:
+            f["error"] = "no pude leer la publicacion: %s" % str(e)[:80]
+            filas.append(f); continue
+        if not b.get("id"):
+            f["error"] = "no existe en la cuenta de origen"
+            filas.append(f); continue
+        f["titulo"] = b.get("title", "")
+        cuerpo = _meli_clon_payload(b, stock)
+        try:
+            if not aplicar:
+                rv = requests.post("%s/items/validate" % MELI_API, headers=hd,
+                                   data=_json.dumps(cuerpo), timeout=40)
+                if rv.status_code in (200, 201, 204):
+                    f["ok"] = True
+                else:
+                    f["error"] = _meli_error(rv)
+            else:
+                rc = requests.post("%s/items" % MELI_API, headers=hd,
+                                   data=_json.dumps(cuerpo), timeout=60)
+                j = rc.json() if rc.content else {}
+                if rc.status_code in (200, 201) and j.get("id"):
+                    f["ok"] = True; f["nuevo"] = j["id"]; creadas += 1
+                    txt = ""
+                    try:
+                        rd = requests.get("%s/items/%s/description" % (MELI_API, iid), headers=ho, timeout=20)
+                        txt = ((rd.json() if rd.content else {}) or {}).get("plain_text", "") or ""
+                    except Exception:
+                        pass
+                    if txt:
+                        try:
+                            requests.post("%s/items/%s/description" % (MELI_API, j["id"]), headers=hd,
+                                          data=_json.dumps({"plain_text": txt}), timeout=30)
+                        except Exception:
+                            pass
+                    if pausar:
+                        try:
+                            requests.put("%s/items/%s" % (MELI_API, j["id"]), headers=hd,
+                                         data=_json.dumps({"status": "paused"}), timeout=25)
+                        except Exception:
+                            pass
+                else:
+                    f["error"] = _meli_error(rc)
+        except Exception as e:
+            f["error"] = "%s: %s" % (type(e).__name__, str(e)[:90])
+        filas.append(f)
+    return jsonify({"ok": True, "aplicado": aplicar, "creadas": creadas,
+                    "bien": sum(1 for x in filas if x["ok"]),
+                    "mal": sum(1 for x in filas if not x["ok"]), "filas": filas})
+
+
+def _meli_error(r):
+    """El mensaje REAL que devolvio Mercado Libre, no un generico."""
+    try:
+        j = r.json()
+    except Exception:
+        return "HTTP %s %s" % (r.status_code, (r.text or "")[:120])
+    partes = []
+    for c in (j.get("cause") or []):
+        m = c.get("message") or c.get("code") or ""
+        if m:
+            partes.append(str(m))
+    if not partes and j.get("message"):
+        partes.append(str(j["message"]))
+    return ("HTTP %s · " % r.status_code) + " | ".join(partes)[:400]
 
 
 @app.get("/meli/publicaciones-ventas")
@@ -17670,7 +17847,8 @@ var FEATURES=[
  {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
  {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock unificado en botellas de 30 ml. Un Pack X2 descuenta 2. Sincronizá a ML con un clic.',soon:false},
  {k:'etiquetas',ic:'🖨️',bg:'#241a10',t:'Etiquetas + SKU',d:'Tildá las ventas a despachar y bajá las etiquetas ya estampadas con el SKU (potes) y la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
- {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Reputación, nivel y salud de tu cuenta.',soon:false}
+ {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Reputación, nivel y salud de tu cuenta.',soon:false},
+ {k:'clonar',ic:'📤',bg:'#101c2e',t:'Clonar a otra cuenta',d:'Copiá tus publicaciones a una segunda cuenta de Mercado Libre. Primero probálo sin publicar: te dice qué aceptaría y qué no.',soon:false}
 ];
 function renderSide(){
  var s=document.getElementById('side');
@@ -17687,7 +17865,89 @@ function renderMain(){
  if(!CONN){ m.innerHTML='<div class="connectbox"><div style="font-size:15px;margin-bottom:14px">Conectá tu cuenta de Mercado Libre para empezar.</div><a class="btn" href="/conectar-meli" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli\');return false;}">⚡ Conectar Mercado Libre</a></div>'; return; }
  var head='<h1>'+esc(f.t)+'</h1><p class="lead">'+esc(f.d)+'</p>';
  m.innerHTML=head+(f.k==='ventas'?'<div id="mlvivo" style="margin-bottom:16px"></div>':'')+'<div class="card"><div id="mlc" style="color:var(--ink3);font-size:12.5px">Cargando…</div></div>'+(f.k==='envios'?'<div id="mlhist"></div>':'');
+ if(f.k==='clonar'){cargarClonar();return;}
  if(f.k==='ventas'){cargarVivo();cargarVentas();} else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='stkpend')cargarStkEsperando(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
+}
+var _CLON=[];
+function cargarClonar(){
+ var c=document.getElementById('mlc'); if(!c)return;
+ c.innerHTML='Cargando tus publicaciones\u2026';
+ Promise.all([
+  fetch('/meli/estado-destino').then(function(r){return r.json();}),
+  fetch('/meli/publicaciones-ventas').then(function(r){return r.json();})
+ ]).then(function(a){
+  var e=a[0]||{}, j=a[1]||{};
+  if(!j.ok){ c.innerHTML=err(j); return; }
+  _CLON=j.items||[];
+  var conVta=_CLON.filter(function(i){return (i.vendidas||0)>=1;});
+  var h='';
+  // 1) la cuenta destino
+  h+='<div style="border:1px solid #23304a;border-radius:12px;padding:14px;margin-bottom:14px;background:#0b1220">'
+   +'<div style="font-size:12px;color:#7aa2c8;margin-bottom:8px">Cuenta destino</div>';
+  if(e.conectado){
+   h+='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+    +'<span style="background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:700">Conectada \u00b7 '+esc(e.nickname||e.user_id)+'</span>'
+    +'<a href="/desconectar-meli-destino" style="color:#7aa2c8;font-size:12px">Cambiar</a></div>'
+    +'<div style="font-size:11.5px;color:#5b6b82;margin-top:7px">Desde <b>'+esc(e.origen_nick||'esta cuenta')+'</b> hacia <b>'+esc(e.nickname||'')+'</b>.</div>';
+  } else {
+   h+='<a class="btn" href="/conectar-meli?destino=1" onclick="if(window.parent!==window){window.parent.location.assign(\'/conectar-meli?destino=1\');return false;}">\u26a1 Conectar la cuenta destino</a>'
+    +'<div style="font-size:11.5px;color:#5b6b82;margin-top:9px">Ojo: si ya est\u00e1s logueado en Mercado Libre con la cuenta de siempre te va a conectar esa. Abr\u00ed RealProfit en una <b>ventana privada</b> y entr\u00e1 con la otra cuenta, o cerr\u00e1 sesi\u00f3n en Mercado Libre antes.</div>';
+  }
+  h+='</div>';
+  // 2) las publicaciones
+  h+='<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'
+   +'<b style="font-size:13px">'+conVta.length+' publicaciones con al menos una venta</b>'
+   +'<span style="color:#5b6b82;font-size:12px">de '+_CLON.length+' en total</span>'
+   +'<a href="/meli/publicaciones-excel" style="margin-left:auto;color:#7aa2c8;font-size:12px">\u2b07 Bajar Excel</a></div>';
+  h+='<div style="max-height:360px;overflow:auto;border:1px solid #1b2740;border-radius:10px">'
+   +'<table style="width:100%;border-collapse:collapse;font-size:12.5px">'
+   +'<tr style="position:sticky;top:0;background:#0d1626">'+TH+'<input type="checkbox" id="clonall" checked onchange="clonTodas(this.checked)"></th>'
+   +TH+'Vendidas</th>'+TH+'Publicaci\u00f3n</th>'+TH+'Precio</th>'+TH+'Stock</th>'+TH+'Estado</th></tr>';
+  _CLON.forEach(function(i){
+   var tiene=(i.vendidas||0)>=1;
+   h+='<tr style="border-top:1px solid #16203a'+(tiene?'':';opacity:.5')+'">'
+    +'<td><input type="checkbox" class="clonck" value="'+esc(i.id)+'"'+(tiene?' checked':'')+'></td>'
+    +'<td style="font-weight:800;color:'+(tiene?'#34d399':'#5b6b82')+'">'+(i.vendidas||0)+'</td>'
+    +'<td>'+esc((i.titulo||'').slice(0,72))+'<div style="color:#5b6b82;font-size:11px">'+esc(i.id)+'</div></td>'
+    +'<td>'+money(i.precio)+'</td><td>'+(i.stock||0)+'</td><td style="color:#7aa2c8">'+esc(i.estado)+'</td></tr>';
+  });
+  h+='</table></div>';
+  // 3) opciones y botones
+  h+='<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:13px">'
+   +'<label style="font-size:12.5px;color:#9db4cf">Stock a publicar <input id="clonstk" placeholder="igual que ahora" style="width:130px;background:#0b1220;border:1px solid #23304a;color:#e6eefc;border-radius:8px;padding:6px 9px;font-size:12.5px"></label>'
+   +'<label style="font-size:12.5px;color:#9db4cf"><input type="checkbox" id="clonpau" checked> Crearlas <b>pausadas</b> (las revis\u00e1s y las activ\u00e1s vos)</label></div>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:13px">'
+   +'<button id="clonb1" onclick="clonCorrer(false)" style="background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer">\U0001f9ea Probar sin publicar</button>'
+   +'<button id="clonb2" onclick="clonCorrer(true)" style="background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer">\U0001f4e4 Publicar en la otra cuenta</button></div>';
+  h+='<div id="clonres" style="margin-top:14px"></div>';
+  c.innerHTML=h;
+ }).catch(function(ex){ c.innerHTML=err({msg:ex.message}); });
+}
+function clonTodas(v){ var ck=document.querySelectorAll('.clonck'); for(var i=0;i<ck.length;i++) ck[i].checked=v; }
+function clonCorrer(aplicar){
+ var ids=[], ck=document.querySelectorAll('.clonck');
+ for(var i=0;i<ck.length;i++) if(ck[i].checked) ids.push(ck[i].value);
+ if(!ids.length){ alert('No marcaste ninguna publicaci\u00f3n.'); return; }
+ if(aplicar && !confirm('Voy a CREAR '+ids.length+' publicaciones reales en la otra cuenta. \u00bfDale?')) return;
+ var R=document.getElementById('clonres');
+ var b1=document.getElementById('clonb1'), b2=document.getElementById('clonb2');
+ b1.disabled=true; b2.disabled=true;
+ R.innerHTML='<div style="color:#7aa2c8;font-size:12.5px">'+(aplicar?'Publicando':'Probando')+' '+ids.length+'\u2026 esto tarda un rato.</div>';
+ var stk=(document.getElementById('clonstk')||{}).value||'';
+ post('/meli/clonar',{ids:ids,aplicar:aplicar,pausar:(document.getElementById('clonpau')||{}).checked,stock:stk})
+  .then(function(j){
+   b1.disabled=false; b2.disabled=false;
+   if(!j.ok){ R.innerHTML=err(j); return; }
+   var t='<div style="font-size:13px;font-weight:800;margin-bottom:9px">'
+     +(j.aplicado?('\u2705 Creadas '+j.creadas+' \u00b7 fallaron '+j.mal):('Pasar\u00edan '+j.bien+' \u00b7 rebotar\u00edan '+j.mal))+'</div>';
+   t+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+   (j.filas||[]).forEach(function(f){
+    t+='<tr style="border-top:1px solid #16203a"><td style="padding:5px 0;width:26px">'+(f.ok?'\u2705':'\u274c')+'</td>'
+      +'<td>'+esc((f.titulo||f.id).slice(0,64))+'<div style="color:#5b6b82;font-size:11px">'+esc(f.id)+(f.nuevo?(' \u2192 '+esc(f.nuevo)):'')+'</div></td>'
+      +'<td style="color:#e0637f">'+esc(f.error||'')+'</td></tr>';
+   });
+   R.innerHTML=t+'</table>';
+  }).catch(function(ex){ b1.disabled=false; b2.disabled=false; R.innerHTML=err({msg:ex.message}); });
 }
 function vvPlata(n){ try{ return '$ '+Number(n||0).toLocaleString('es-AR',{minimumFractionDigits:2,maximumFractionDigits:2}); }catch(e){ return '$ '+(n||0); } }
 function vvTile(lab,val,col){
