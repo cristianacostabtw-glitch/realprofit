@@ -16433,9 +16433,10 @@ def _meli_clon_payload(b, stock=None):
          "shipping": {"mode": env.get("mode") or "me2",
                       "local_pick_up": bool(env.get("local_pick_up")),
                       "free_shipping": bool(env.get("free_shipping"))}}
+    # TODAS las condiciones de venta, no solo la garantia: el pedido es un clon literal.
     st = []
     for t in (b.get("sale_terms") or []):
-        if t.get("id") not in ("WARRANTY_TYPE", "WARRANTY_TIME"):
+        if (t.get("tags") or {}).get("read_only"):
             continue
         if t.get("value_id"):
             st.append({"id": t["id"], "value_id": t["value_id"]})
@@ -16443,6 +16444,28 @@ def _meli_clon_payload(b, stock=None):
             st.append({"id": t["id"], "value_name": t["value_name"]})
     if st:
         p["sale_terms"] = st
+    if b.get("seller_custom_field"):
+        p["seller_custom_field"] = b["seller_custom_field"]
+    if b.get("video_id"):
+        p["video_id"] = b["video_id"]
+    if b.get("warranty"):
+        p["warranty"] = str(b["warranty"])[:255]
+    if b.get("variations"):      # si la de origen tuviera variantes, se copian tal cual
+        vs = []
+        for v in b["variations"]:
+            vv = {"attribute_combinations": v.get("attribute_combinations") or [],
+                  "available_quantity": int(v.get("available_quantity") or 0)}
+            if v.get("price") is not None:
+                vv["price"] = v["price"]
+            at = [{"id": a["id"], "value_name": a.get("value_name")}
+                  for a in (v.get("attributes") or [])
+                  if a.get("id") and a.get("value_name") and not (a.get("tags") or {}).get("read_only")]
+            if at:
+                vv["attributes"] = at
+            vs.append(vv)
+        if vs:
+            p["variations"] = vs
+            p.pop("available_quantity", None)
     if b.get("catalog_listing") and b.get("catalog_product_id"):
         p["catalog_listing"] = True
         p["catalog_product_id"] = b["catalog_product_id"]
@@ -16490,6 +16513,14 @@ def meli_clonar():
             filas.append(f); continue
         f["titulo"] = b.get("title", "")
         cuerpo = _meli_clon_payload(b, stock)
+        f["copia"] = {"fotos": len(cuerpo.get("pictures") or []),
+                      "atributos": len(cuerpo.get("attributes") or []),
+                      "condiciones": len(cuerpo.get("sale_terms") or []),
+                      "tipo": cuerpo.get("listing_type_id", ""),
+                      "precio": cuerpo.get("price"),
+                      "stock": cuerpo.get("available_quantity"),
+                      "envio_gratis": bool((cuerpo.get("shipping") or {}).get("free_shipping")),
+                      "variantes": len(cuerpo.get("variations") or [])}
         try:
             if not aplicar:
                 rv = requests.post("%s/items/validate" % MELI_API, headers=hd,
@@ -16507,7 +16538,8 @@ def meli_clonar():
                     txt = ""
                     try:
                         rd = requests.get("%s/items/%s/description" % (MELI_API, iid), headers=ho, timeout=20)
-                        txt = ((rd.json() if rd.content else {}) or {}).get("plain_text", "") or ""
+                        jd = (rd.json() if rd.content else {}) or {}
+                        txt = jd.get("plain_text") or jd.get("text") or ""
                     except Exception:
                         pass
                     if txt:
@@ -17941,9 +17973,12 @@ function clonCorrer(aplicar){
    var t='<div style="font-size:13px;font-weight:800;margin-bottom:9px">'
      +(j.aplicado?('\u2705 Creadas '+j.creadas+' \u00b7 fallaron '+j.mal):('Pasar\u00edan '+j.bien+' \u00b7 rebotar\u00edan '+j.mal))+'</div>';
    t+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+   t+='<div style="color:#7aa2c8;font-size:11.5px;margin-bottom:8px">El tipo de publicaci\u00f3n es lo que manda las cuotas: gold_pro = Premium (cuotas sin inter\u00e9s), gold_special = Cl\u00e1sica.</div>';
    (j.filas||[]).forEach(function(f){
     t+='<tr style="border-top:1px solid #16203a"><td style="padding:5px 0;width:26px">'+(f.ok?'\u2705':'\u274c')+'</td>'
-      +'<td>'+esc((f.titulo||f.id).slice(0,64))+'<div style="color:#5b6b82;font-size:11px">'+esc(f.id)+(f.nuevo?(' \u2192 '+esc(f.nuevo)):'')+'</div></td>'
+      +'<td>'+esc((f.titulo||f.id).slice(0,64))
+      +'<div style="color:#5b6b82;font-size:11px">'+esc(f.id)+(f.nuevo?(' \u2192 '+esc(f.nuevo)):'')+'</div>'
+      +(f.copia?('<div style="color:#6b8fb5;font-size:11px">'+f.copia.fotos+' fotos \u00b7 '+f.copia.atributos+' atributos \u00b7 '+f.copia.condiciones+' condiciones \u00b7 '+esc(f.copia.tipo)+' \u00b7 $'+f.copia.precio+' \u00b7 stock '+f.copia.stock+(f.copia.envio_gratis?(' \u00b7 env\u00edo gratis'):'')+(f.copia.variantes?(' \u00b7 '+f.copia.variantes+' VARIANTES'):'')+'</div>'):'')+'</td>'
       +'<td style="color:#e0637f">'+esc(f.error||'')+'</td></tr>';
    });
    R.innerHTML=t+'</table>';
