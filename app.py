@@ -17054,6 +17054,46 @@ def meli_item_crudo():
     })
 
 
+@app.get("/meli/cuotas-lista")
+def meli_cuotas_lista():
+    """Que cuotas muestra CADA publicacion al comprador. El numero no esta en /items:
+    hay que preguntarselo al buscador del sitio, que devuelve installments {quantity, rate}.
+    rate 0 = sin interes. Solo lectura."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado"})
+    h = {"Authorization": "Bearer " + tok}
+    filas, offset = [], 0
+    while offset < 200:
+        try:
+            r = requests.get("%s/sites/MLA/search" % MELI_API, headers=h, timeout=30,
+                             params={"seller_id": uid, "limit": 50, "offset": offset})
+            j = r.json() if r.content else {}
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:100])})
+        if r.status_code >= 400:
+            return jsonify({"ok": False, "msg": "el buscador devolvio %s: %s"
+                            % (r.status_code, (r.text or "")[:200])})
+        res = j.get("results") or []
+        for b in res:
+            ins = b.get("installments") or {}
+            filas.append({"id": b.get("id"), "titulo": (b.get("title") or "")[:52],
+                          "precio": b.get("price"), "tipo": b.get("listing_type_id"),
+                          "cuotas": ins.get("quantity"), "monto": ins.get("amount"),
+                          "interes": ins.get("rate"),
+                          "texto": ("%s cuotas %s" % (ins.get("quantity"),
+                                    "sin interes" if (ins.get("rate") in (0, 0.0)) else "con interes"))
+                                   if ins.get("quantity") else "sin cuotas"})
+        total = (j.get("paging") or {}).get("total", len(filas))
+        offset += 50
+        if len(res) < 50 or offset >= total:
+            break
+    return jsonify({"ok": True, "n": len(filas), "items": filas})
+
+
 @app.get("/meli/cuotas-diag")
 def meli_cuotas_diag():
     """DONDE VIVE EL NUMERO DE CUOTAS. En el item no esta: INSTALLMENTS_CAMPAIGN vale
