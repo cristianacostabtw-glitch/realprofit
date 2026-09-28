@@ -16414,10 +16414,13 @@ def _meli_clon_payload(b, stock=None):
             continue
         if tg.get("read_only") or tg.get("variation_attribute"):
             continue
+        _at = {"id": a["id"]}
         if a.get("value_id"):
-            attrs.append({"id": a["id"], "value_id": a["value_id"]})
-        elif a.get("value_name"):
-            attrs.append({"id": a["id"], "value_name": str(a["value_name"])[:255]})
+            _at["value_id"] = a["value_id"]
+        if a.get("value_name"):
+            _at["value_name"] = str(a["value_name"])[:255]
+        if len(_at) > 1:
+            attrs.append(_at)
     if sku:
         attrs.append({"id": "SELLER_SKU", "value_name": str(sku)[:60]})
     fotos = [{"source": (p.get("secure_url") or p.get("url"))} for p in (b.get("pictures") or [])
@@ -16438,7 +16441,7 @@ def _meli_clon_payload(b, stock=None):
          "condition": b.get("condition") or "new",
          "pictures": fotos, "attributes": attrs,
          "shipping": {"mode": env.get("mode") or "me2",
-                      "local_pick_up": bool(env.get("local_pick_up")),
+                      "local_pick_up": False,
                       "free_shipping": bool(env.get("free_shipping"))}}
     # TODAS las condiciones de venta, no solo la garantia: el pedido es un clon literal.
     st = []
