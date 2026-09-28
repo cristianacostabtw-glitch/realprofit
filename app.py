@@ -16426,7 +16426,7 @@ def _meli_clon_payload(b, stock=None):
         qty = int(stock) if stock not in (None, "") else int(_q0 or 1)
     except Exception:
         qty = int(_q0 or 1)
-    p = {"title": b.get("title", ""), "category_id": b.get("category_id", ""),
+    p = {"category_id": b.get("category_id", ""),
          "price": b.get("price"), "currency_id": b.get("currency_id") or "ARS",
          "available_quantity": max(1, qty),
          "buying_mode": b.get("buying_mode") or "buy_it_now",
@@ -16457,7 +16457,10 @@ def _meli_clon_payload(b, stock=None):
     # Se le pone uno UNICO por publicacion —el titulo mas el MLA de origen— para que cada una
     # nazca como publicacion aparte y NO como variante de otra. Es un nombre interno del
     # catalogo del vendedor, no el titulo que ve el comprador.
-    p["family_name"] = ("%s [%s]" % (b.get("title", ""), b.get("id", "")))[:250]
+    # Con family_name, Mercado Libre NO acepta "title": arma el titulo el solo a partir de la
+    # familia y los atributos ("The fields [title] are invalid for requested call"). Asi que el
+    # family_name es el titulo de la publicacion nueva.
+    p["family_name"] = (b.get("title") or "")[:250]
     # Las variantes NO se copian a proposito: el pedido es que sean publicaciones distintas,
     # y ademas Mercado Libre las rechaza junto con family_name.
     if b.get("catalog_listing") and b.get("catalog_product_id"):
