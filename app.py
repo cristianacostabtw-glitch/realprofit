@@ -2804,10 +2804,12 @@ _SOLO_DASH = r"""
       var _gr=_mold; for(var _q=0;_q<6 && _gr;_q++){ _gr=_gr.parentElement; if(_gr && /grid/.test(_gr.className||'')) break; }
       if(_gr && /grid/.test(_gr.className||'')){
         var _rw=document.createElement('div'); _rw.id='rp-ret2';
-        _rw.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px';
-        var _rc=[['Retenciones MP',_raw.retenciones_mp,'#fb923c','IIBB de provincias que ya te retuvo MercadoPago · no da IVA a favor','account_balance'],
-                 ['IIBB total',(_raw.retenciones_mp||0)+(_raw.iibb_monto||0),'#f87171','Lo retenido + el 3% del mes','receipt_long']];
-        for(var _k=0;_k<2;_k++){ var R=_rc[_k];
+        // Una sola tarjeta, del mismo ancho que las de arriba. NO va un "IIBB total" sumando
+        // retenido + 3%: lo retenido ya se lo llevaron y no vuelve, es plata aparte. El impuesto
+        // que se paga por mes es el 3% y nada mas (Cristian, 30-09-2026).
+        _rw.style.cssText='display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:16px';
+        var _rc=[['Retenciones MP',_raw.retenciones_mp,'#fb923c','IIBB de provincias que ya te retuvo MercadoPago · no vuelve','account_balance']];
+        for(var _k=0;_k<_rc.length;_k++){ var R=_rc[_k];
           var _c2=_mold.cloneNode(true); _c2.style.display=''; _c2.style.height=''; _c2.style.minHeight='';
           setCard(_c2, R[0], money(R[1]||0), R[3]);
           var _d2=_c2.querySelectorAll('div');
