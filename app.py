@@ -12455,7 +12455,12 @@ def _meli_resumen(email, desde, hasta):
     oper_monto = OPER_ORDEN * ordenes
     # Misma bolsa que en la tienda: comision del canal + retenciones + IIBB. Sin 1% de tienda,
     # que ese es de la tienda propia.
-    comision_monto = comis_ml + ret_ml + iibb_monto
+    # El CARGO POR ENVIO de ML entra ACA, no en envios: no es un envio que se pague aparte (la
+    # etiqueta la da MercadoLibre), es una retencion mas de lo que se queda ML sobre la venta.
+    # Decision de Cristian (30-09-2026): "no lo pongas como pago de envios, ponelo como comision
+    # o gasto, sin IVA". Por eso NO suma al credito fiscal (meli_comision, que si tiene IVA, sigue
+    # siendo solo el sale_fee).
+    comision_monto = comis_ml + envio_ml + ret_ml + iibb_monto
     # Adelanto Programado de MercadoPago: 3,75% (IVA incluido) sobre la plata que MP adelanta,
     # que es lo que queda DESPUES de la comision de ML (no sobre el precio de venta).
     # OJO: en MercadoLibre el adelanto para cobrar al instante es 2,5%, NO el 3,75% del
@@ -12466,16 +12471,22 @@ def _meli_resumen(email, desde, hasta):
     # retenciones. Con la base vieja (solo menos la comision de ML) se cobraba de mas: $ 194,94 en
     # una venta de $ 69.990 y $ 10.222,76 en el dia del 29-09-2026.
     adelanto_monto = (fact - comis_ml - envio_ml - ret_ml) * MELI_ADELANTO_PCT / 100.0
-    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml
+    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
     r["mp_costo_real"] = 0.0; r["mp_match"] = 0
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
-    # El envio de MELI SI se cuenta: no sale del bolsillo aparte, se descuenta de la propia venta
-    # (decision de Cristian, 30-09-2026, con el numero real de MP a la vista). Antes iba en 0.
-    r["envio_monto"] = r["meli_envio"] = round(envio_ml, 2)
-    r["envio_real"] = envio_real
+    # El envio de MELI NO entra en envio_monto: decision de Cristian (30-09-2026, reafirmada),
+    # "no lo pago yo, ya va pagado en el desglose de lo que entra". Se sigue leyendo por venta
+    # porque la base del ADELANTO lo necesita (MP adelanta el neto, que ya viene sin el envio) y
+    # para poder auditarlo en /pf-debug-meli, pero no resta de la ganancia ni suma credito de IVA.
+    # OJO si algun dia se revisa: la facturacion de MELI se cuenta al BRUTO ($ 69.990), no al neto,
+    # asi que no descontarlo deja esos $ 7.290 por venta como ganancia ($ 366.500 el 29-09-2026).
+    r["envio_monto"] = 0.0          # MELI no tiene envio propio: el cargo va en la comision
+    r["meli_envio"] = 0.0
+    r["meli_cargo_envio"] = round(envio_ml, 2)    # dentro de comision, SIN credito de IVA
+    r["envio_real"] = 0
     r["retenciones_mp"] = r["iibb_retenido"] = r["meli_retenciones"] = round(ret_ml, 2)
     r["oper_monto"] = round(oper_monto, 2)
-    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml
+    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
@@ -12496,7 +12507,9 @@ def _meli_resumen(email, desde, hasta):
     r["meli_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
     r["meli_rent"] = round(ganancia / fact * 100, 2) if fact else 0.0
     r["meli_gan_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
-    r["meli_neto"] = round(fact - comis_ml - envio_ml - ret_ml - adelanto_monto, 2)   # lo que queda
+    # Lo que de verdad queda en la mano: aca SI se resta el envio, porque MercadoPago te lo
+    # descuenta antes de liberar la plata (es el "Total a recibir" de la pantalla de MP).
+    r["meli_neto"] = round(fact - comis_ml - envio_ml - ret_ml - adelanto_monto, 2)
     r["meli_sin_costo"] = sin_costo
     r["meli_adelanto"] = round(adelanto_monto, 2)
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
@@ -12608,7 +12621,7 @@ def _combinar_resumen(a, b):
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
-                   "meli_envio", "meli_retenciones"]
+                   "meli_envio", "meli_retenciones", "meli_cargo_envio"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
     fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
@@ -16158,9 +16171,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _ml_f2 = float(r.get("meli_facturado", 0) or 0)
         _ml_deb = _ml_f2 * _F
         # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
-        # envio y adelanto de ML tambien vienen con IVA adentro. Las retenciones NO.
+        # El adelanto de ML viene con IVA adentro. Las retenciones y el cargo por envio NO.
         _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)
-                    + (r.get("meli_envio", 0) or 0)
                     + (r.get("meli_adelanto", 0) or 0)) * _F
         _ml_iva = _ml_deb - _ml_cred
         r["ml_iva_total"] = round(_ml_deb, 2)
