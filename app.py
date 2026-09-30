@@ -4933,6 +4933,23 @@ def pf_debug_ordenes():
         u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
         cp = sum(_costo_qty(costos.get(str(li.get("product_id") or "")), int(li.get("quantity") or 0))
                  for li in (o.get("line_items") or []))
+        # QUE ENTRA DE VERDAD EN LA VENTA. "unidades" suma TODAS las lineas, asi que mete la guia
+        # digital y el oxido nitrico que va de regalo con el pack grande: por eso aparecian ventas
+        # de "8 potes" a $109.990 que en realidad son 3 potes + regalos. Para agrupar hay que
+        # contar los potes de NAD aparte.
+        _nad = _oxi = _dig = 0
+        _det = []
+        for li in (o.get("line_items") or []):
+            _q = int(li.get("quantity") or 0)
+            _t = (li.get("title") or "")
+            _tl = _t.lower()
+            if "xido" in _tl or "nitrico" in _tl or "nítrico" in _tl:
+                _oxi += _q
+            elif "gu" in _tl and ("ebook" in _tl or "guia" in _tl or "guía" in _tl or "dias" in _tl or "días" in _tl):
+                _dig += _q
+            else:
+                _nad += _q
+            _det.append({"producto": _t[:46], "cant": _q})
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         # envío real o promedio
         env = emap.get(num)
@@ -4973,6 +4990,7 @@ def pf_debug_ordenes():
                     "envio": round(env, 2), "envio_fuente": env_fuente,
                     "oper": OPER_ORDEN,
                     "iibb": round(iibb, 2), "tienda": round(tienda, 2),
+                    "potes_nad": _nad, "oxido": _oxi, "digital": _dig, "detalle": _det,
                     "iva_debito": round(iva_deb, 2), "iva_favor": round(iva_cred, 2),
                     "iva_pagar": round(iva_pag, 2),
                     "break_even": round(be, 2),
@@ -4983,12 +5001,14 @@ def pf_debug_ordenes():
     import statistics as _st
     packs = {}
     for x in out:
-        k = int(x["unidades"] or 0)
+        k = int(x.get("potes_nad") or 0)      # por POTES DE NAD, no por lineas del pedido
         packs.setdefault(k, []).append(x)
     resumen = []
     for k in sorted(packs):
         bes = sorted(y["break_even"] for y in packs[k])
-        resumen.append({"potes": k, "ventas": len(bes),
+        resumen.append({"potes_nad": k, "ventas": len(bes),
+                        "con_oxido": sum(1 for y in packs[k] if y.get("oxido")),
+                        "con_guia": sum(1 for y in packs[k] if y.get("digital")),
                         "be_min": round(bes[0], 2), "be_max": round(bes[-1], 2),
                         "be_mediana": round(_st.median(bes), 2),
                         "ticket": round(_st.median([y["total"] for y in packs[k]]), 2)})
