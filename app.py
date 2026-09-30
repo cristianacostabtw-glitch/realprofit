@@ -16025,23 +16025,105 @@ _PF_LOCKS = {}                     # (email,desde,hasta) -> Lock: UNO SOLO calcu
 _PF_LOCKS_G = threading.Lock()     # candado del diccionario de candados
 
 
+PF_DIAS = DATA_DIR / "pf_dias.json"   # un dia CERRADO ya calculado: no cambia nunca mas
+
+
+def _pf_dias_cache() -> dict:
+    try:
+        return _json.loads(PF_DIAS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _pf_dias_guardar(clave, blob):
+    """Guarda FUSIONANDO, nunca reemplazando: hay 2 workers y el que escribe entero se lleva
+    puestos los dias que guardo el otro (mismo bug que ya paso con los chats de WhatsApp)."""
+    try:
+        d = _pf_dias_cache()
+        d[clave] = blob
+        if len(d) > 800:                     # no crecer sin limite: dejo los 800 mas nuevos
+            d = dict(sorted(d.items())[-800:])
+        PF_DIAS.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _pf_canales(email, desde, hasta):
+    """Los tres canales sumados, SIN la parte de ads/IVA/break even. Devuelve
+    (blob, ordenes_shopify, ordenes_tn)."""
+    blob = None
+    sh_n = tn_n = 0
+    if email in _shop_tokens():
+        sh = _shopify_resumen(email, desde, hasta)
+        if sh:
+            sh_n = int((sh.get("raw") or {}).get("ordenes", 0) or 0)
+        blob = sh
+    tn = _tn_resumen(email, desde, hasta)
+    if tn:
+        tn_n = int((tn.get("raw") or {}).get("ordenes", 0) or 0)
+        blob = _combinar_resumen(blob, tn)
+    try:   # MercadoLibre: un canal mas. NUNCA puede romper el dashboard.
+        ml = _meli_resumen(email, desde, hasta)
+        if ml:
+            blob = _combinar_resumen(blob, ml)
+    except Exception:
+        pass
+    return blob, sh_n, tn_n
+
+
+def _pf_canales_dia(email, dia):
+    """Un DIA suelto, cacheado en disco si ya cerro. Un dia pasado no cambia nunca, asi que se
+    calcula UNA vez y despues sale de disco."""
+    cerrado = _pf_cerrado(dia)
+    ck = "%s|%s" % (email, dia)
+    if cerrado:
+        g = _pf_dias_cache().get(ck)
+        if g:
+            return g.get("blob"), int(g.get("sh") or 0), int(g.get("tn") or 0)
+    blob, sh_n, tn_n = _pf_canales(email, dia, dia)
+    if cerrado and blob:
+        _pf_dias_guardar(ck, {"blob": blob, "sh": sh_n, "tn": tn_n})
+    return blob, sh_n, tn_n
+
+
+def _pf_canales_periodo(email, desde, hasta):
+    """Un periodo largo se arma SUMANDO dias, no pidiendole el rango entero a cada API. Asi los
+    dias ya cerrados salen de disco y solo el de hoy se recalcula: "ultimos 30 dias" pasa de
+    ~50 s a ~1 s despues de la primera vez. Los numeros son los MISMOS: cada dia se calcula con
+    su propio detalle real (medido 30-09-2026, el rango entero tardaba 50,5 s)."""
+    if desde == hasta:
+        return _pf_canales_dia(email, desde)
+    try:
+        d1 = _dt.datetime.strptime(desde, "%Y-%m-%d").date()
+        d2 = _dt.datetime.strptime(hasta, "%Y-%m-%d").date()
+    except Exception:
+        return _pf_canales(email, desde, hasta)
+    if (d2 - d1).days > 120:                 # rangos gigantes: como antes, de una
+        return _pf_canales(email, desde, hasta)
+    blob = None
+    sh_n = tn_n = 0
+    f = d1
+    while f <= d2:
+        try:
+            b, s1, t1 = _pf_canales_dia(email, f.isoformat())
+            if b:
+                blob = _combinar_resumen(blob, b)
+                sh_n += s1
+                tn_n += t1
+        except Exception:
+            pass
+        f += _dt.timedelta(days=1)
+    if blob:
+        blob["raw"]["desde"] = desde
+        blob["raw"]["hasta"] = hasta
+        blob["raw"]["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
+    return blob, sh_n, tn_n
+
+
 def _pf_periodo_calcular(email, desde, hasta, key, now):
     """El calculo pesado en si (Shopify + Tiendanube + Meta + MP + IVA). Lo llama SOLO
     _pf_periodo_blob, y solo un hilo a la vez por periodo."""
-    blob = None
-    sh_blob = None
-    if email in _shop_tokens():
-        sh_blob = _shopify_resumen(email, desde, hasta)
-        blob = sh_blob
-    tn_blob = _tn_resumen(email, desde, hasta)   # Tiendanube (None si no está conectada)
-    if tn_blob:
-        blob = _combinar_resumen(blob, tn_blob)
-    try:   # MercadoLibre: suma como un canal mas. NUNCA puede romper el dashboard.
-        ml_blob = _meli_resumen(email, desde, hasta)
-        if ml_blob:
-            blob = _combinar_resumen(blob, ml_blob)
-    except Exception:
-        pass
+    blob, _sh_n, _tn_n = _pf_canales_periodo(email, desde, hasta)
     if blob is None:
         blob = _blob_vacio()
     try:   # iconos por canal CONECTADO (Ventas KPI) - NUNCA puede romper el dashboard
@@ -16055,8 +16137,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         if _mtk and _muid:
             _cn.append("meli")
         blob["raw"]["canales"] = _cn
-        blob["raw"]["shopify_ordenes"] = int((sh_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
-        blob["raw"]["tn_ordenes"] = int((tn_blob or {}).get("raw", {}).get("ordenes", 0) or 0)
+        blob["raw"]["shopify_ordenes"] = int(_sh_n or 0)
+        blob["raw"]["tn_ordenes"] = int(_tn_n or 0)
         blob["raw"]["meli_ordenes"] = int((blob.get("raw") or {}).get("meli_ventas", 0) or 0)
     except Exception:
         pass
