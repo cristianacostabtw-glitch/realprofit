@@ -350,7 +350,7 @@ SECCIONES = {
 # el guardia las dejaria pasar (las rutas sin seccion se permiten, porque son el armazon de la app).
 SOLO_ADMIN = [
     "/pf-periodo", "/pf-ventas", "/pf-ordenes", "/pf-orden", "/pf-recompras", "/pf-marketing",
-    "/pf-mp-", "/pf-opciones", "/pf-cfg", "/pf-diag", "/pf-debug-ordenes", "/pf-botify",
+    "/pf-mp-", "/pf-opciones", "/pf-cfg", "/pf-diag", "/pf-debug-ordenes", "/pf-debug-meli", "/pf-botify",
     "/pf-productos", "/pf-guardar-costo", "/pf-sku-set",
     "/pf-comisiones", "/pf-cambiar-mp", "/pf-congelar-mp", "/pf-congelado-estado",
     "/pf-cambio-mp-estado",
@@ -4954,6 +4954,103 @@ def pf_pedidos_cero():
                     "perdida_total": round(sum(x["perdida"] for x in out), 2),
                     "unidades_total": sum(x["unidades"] for x in out),
                     "pedidos": out})
+
+
+@app.get("/pf-debug-meli")
+def pf_debug_meli():
+    """Desglose REAL de cada venta de MercadoLibre, para auditarla igual que las de la tienda.
+    Junta las DOS fuentes que existen:
+      - la orden de ML: total, items, sale_fee por item, envio, cupon;
+      - el pago en MercadoPago: comision, cuotas y RETENCIONES de IIBB (charges_details).
+    El segundo pedazo hoy NO entra en ningun calculo: _meli_resumen solo mira el sale_fee de ML.
+    Este endpoint existe para medir cuanto es lo que falta antes de tocar la ganancia."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False})
+    desde = request.args.get("desde") or _hoy()
+    hasta = request.args.get("hasta") or desde
+    n = int(request.args.get("n") or 10)
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": True, "meli": False})
+    h = {"Authorization": "Bearer " + tok}
+    ordenes = []
+    try:
+        off = 0
+        for _ in range(8):
+            rr = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=25, params={
+                "seller": uid, "sort": "date_desc", "limit": 50, "offset": off,
+                "order.date_created.from": desde + "T00:00:00.000-03:00",
+                "order.date_created.to": hasta + "T23:59:59.000-03:00"})
+            if rr.status_code >= 400:
+                break
+            jj = rr.json() or {}
+            ordenes += (jj.get("results") or [])
+            off += 50
+            if off >= int((jj.get("paging") or {}).get("total") or 0):
+                break
+    except Exception as e:
+        return jsonify({"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:120])})
+    # pagos de MP del periodo: aca SI me quedo con los de MELI (ref de 16 digitos que arranca 2000)
+    pagos = _mp_pagos_lista(email, desde, hasta) or []
+    mp_ml = {}
+    for p in pagos:
+        if _mp_es_de_meli(p.get("ref")):
+            mp_ml[str(p.get("ref"))] = p
+    costos = (_costos().get(email) or {})
+    out = []
+    tot_fee_ml = tot_fee_mp = tot_ret = tot_env = tot_cup = 0.0
+    for o in ordenes:
+        if (o.get("status") or "").lower() != "paid":
+            continue
+        oid = str(o.get("id") or "")
+        tot = float(o.get("total_amount") or 0)
+        com = 0.0
+        items = []
+        cp = 0.0
+        for it in (o.get("order_items") or []):
+            q = int(it.get("quantity") or 0)
+            sf = float(it.get("sale_fee") or 0)
+            com += sf * q
+            itm = it.get("item") or {}
+            sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
+            items.append({"titulo": (itm.get("title") or "")[:44], "cant": q, "sku": sku,
+                          "precio": float(it.get("unit_price") or 0), "sale_fee_u": round(sf, 2)})
+            c = costos.get("meli:%s" % sku) if sku else None
+            if c:
+                cp += _costo_qty(c, q)
+            else:
+                _b = costos.get("meli:POTE")
+                if _b:
+                    cp += _costo_num(_b) * (_meli_units_from_sku(sku) if sku else 1) * q
+        # lo que informan los PAGOS de la orden (ML los trae adentro)
+        env_ml = cup = tax_ml = 0.0
+        for pg in (o.get("payments") or []):
+            env_ml += float(pg.get("shipping_cost") or 0)
+            cup += float(pg.get("coupon_amount") or 0)
+            tax_ml += float(pg.get("taxes_amount") or 0)
+        pm = mp_ml.get(oid)
+        tot_fee_ml += com; tot_env += env_ml; tot_cup += cup
+        if pm:
+            tot_fee_mp += float(pm.get("fee") or 0)
+            tot_ret += float(pm.get("ret") or 0)
+        out.append({"orden": oid, "total": round(tot, 2), "items": items,
+                    "comision_ml": round(com, 2), "pct_comision": round(com / tot * 100, 2) if tot else 0,
+                    "costo_prod": round(cp, 2), "envio_ml": round(env_ml, 2),
+                    "cupon": round(cup, 2), "impuestos_ml": round(tax_ml, 2),
+                    "mp_encontrado": bool(pm),
+                    "mp_fee": round(float(pm.get("fee") or 0), 2) if pm else None,
+                    "mp_ret": round(float(pm.get("ret") or 0), 2) if pm else None,
+                    "mp_cargos": (pm.get("cargos") or {}) if pm else {},
+                    "mp_neto": pm.get("net") if pm else None})
+    out.sort(key=lambda x: x["orden"], reverse=True)
+    return jsonify({"ok": True, "meli": True, "ordenes": out[:n], "cantidad": len(out),
+                    "totales": {"comision_ml": round(tot_fee_ml, 2),
+                                "mp_fee": round(tot_fee_mp, 2),
+                                "mp_retenciones": round(tot_ret, 2),
+                                "envio_ml": round(tot_env, 2),
+                                "cupones": round(tot_cup, 2),
+                                "pagos_mp_encontrados": sum(1 for x in out if x["mp_encontrado"])}})
 
 
 @app.get("/pf-debug-ordenes")
