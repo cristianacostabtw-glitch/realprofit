@@ -15147,7 +15147,7 @@ def pf_ads_conjuntos_config():
             "presupuesto": int((s_.get("daily_budget") or 0)) // 100,
             "evento": (s_.get("promoted_object") or {}).get("custom_event_type"),
             "pixel": (s_.get("promoted_object") or {}).get("pixel_id"),
-            "atribucion": ["%s/%sd" % (a.get("event_type", "")[:5], a.get("window_days"))
+            "atribucion": ["%s/%sd" % (a.get("event_type", ""), a.get("window_days"))
                            for a in (s_.get("attribution_spec") or [])],
             "paises": geo, "advantage": aut.get("advantage_audience"),
             "edad": "%s-%s" % (t.get("age_min", ""), t.get("age_max", "")),
