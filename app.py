@@ -12453,14 +12453,16 @@ def _meli_resumen(email, desde, hasta):
                           "neto": round(tot - com_orden - _env_o - _ret_o, 2)})
     iibb_monto = fact * IIBB_PCT / 100.0
     oper_monto = OPER_ORDEN * ordenes
-    comision_monto = comis_ml + iibb_monto          # sin 1% de tienda: eso es de la tienda propia
+    # Misma bolsa que en la tienda: comision del canal + retenciones + IIBB. Sin 1% de tienda,
+    # que ese es de la tienda propia.
+    comision_monto = comis_ml + ret_ml + iibb_monto
     # Adelanto Programado de MercadoPago: 3,75% (IVA incluido) sobre la plata que MP adelanta,
     # que es lo que queda DESPUES de la comision de ML (no sobre el precio de venta).
     # OJO: en MercadoLibre el adelanto para cobrar al instante es 2,5%, NO el 3,75% del
     # Adelanto Programado de MercadoPago de la tienda. Con el 3,75% se le restaba de más a
     # MELI (26-09-2026: $ 30.919 en vez de $ 20.613, o sea $ 10.306 de más en un día).
     adelanto_monto = (fact - comis_ml) * MELI_ADELANTO_PCT / 100.0
-    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml - ret_ml
+    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml
     r["mp_costo_real"] = 0.0; r["mp_match"] = 0
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
     # El envio de MELI SI se cuenta: no sale del bolsillo aparte, se descuenta de la propia venta
@@ -12469,7 +12471,7 @@ def _meli_resumen(email, desde, hasta):
     r["envio_real"] = envio_real
     r["retenciones_mp"] = r["iibb_retenido"] = r["meli_retenciones"] = round(ret_ml, 2)
     r["oper_monto"] = round(oper_monto, 2)
-    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml - ret_ml
+    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
