@@ -4152,7 +4152,12 @@ def _shopify_orders(shop, token, desde, hasta, deadline=None, max_pages=80, time
     params = {"status": "any", "limit": 250,
               "created_at_min": desde + "T00:00:00-03:00",
               "created_at_max": hasta + "T23:59:59-03:00",
-              "fields": "id,order_number,name,total_price,current_total_price,financial_status,cancelled_at,line_items,refunds,created_at,shipping_lines,shipping_address"}
+              # checkout_token: es lo que MercadoPago manda como external_reference en los pagos de
+              # la tienda (ej "r7N7EaGFbPuG1hmd0x0jDF3sP"). Sin esto no habia forma de emparejar
+              # cada pago con SU pedido y todo caia al match por monto.
+              "fields": ("id,order_number,name,total_price,current_total_price,financial_status,"
+                         "cancelled_at,line_items,refunds,created_at,shipping_lines,shipping_address,"
+                         "checkout_token,checkout_id")}
     headers = {"X-Shopify-Access-Token": token}
     import time as _tsleep
     for _ in range(max_pages):
@@ -11665,6 +11670,18 @@ def pf_despachos_seg_todos():
 
 
 _MP_LISTA_CACHE = {}   # {(email,desde,hasta): (ts, out)} — pagos de MP, cache 60s: se pide en varias secciones
+
+
+def _mp_es_de_meli(ref) -> bool:
+    """True si ese pago de MercadoPago es de una venta de MERCADOLIBRE, no de la tienda.
+    MELI cobra con la MISMA cuenta de MP, y su external_reference es el numero de venta:
+    16 digitos que arrancan en 2000 (ej "2000018719128266"). Sin este filtro esos pagos caian
+    en la bolsa de la tienda y, como el match es por monto y los precios son fijos, se pegaban a
+    pedidos de Shopify del mismo importe. Medido el 29-09-2026: 26 de 124, $596.169 de comision
+    de MELI contada como comision de MercadoPago de la tienda, ADEMAS de contarse en
+    meli_comision. O sea, restada dos veces."""
+    r = str(ref or "").strip()
+    return len(r) == 16 and r.isdigit() and r.startswith("2000")
 
 
 def _mp_pagos_lista(email, desde, hasta):
