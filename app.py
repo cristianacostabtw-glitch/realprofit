@@ -2716,8 +2716,8 @@ _SOLO_DASH = r"""
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · solo tienda'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
              ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta · con MELI '+money(_raw.be_cpa_mix||0)],
-             ['Comisión CP3',money(_raw.comision_agencia||0),'10% de agencia · fuera del CPA'],
-             ['Pauta con IVA',money(_raw.publi_con_iva||0),'Lo que sale de la caja · IVA vuelve como crédito']];
+             ['Comisión CP3',money(_raw.comision_agencia||0),'10% de la pauta de CP3 · fuera del CPA'],
+             ['Facturación Recompra',money(_raw.fact_recompra||0),'(oculta)']];
     var hit=0;
     for(var j=0;j<cards.length && j<seq.length;j++){
       // True ROAS→Margen y Break Even ROAS los maneja SOLO el self-heal por-label (otro bloque). Si metricas los
@@ -2758,7 +2758,7 @@ _SOLO_DASH = r"""
       // Publicidad queda en 6: las tarjetas 7 y 8 son Recompras y Facturación Recompra, que
       // Cristian pidió sacar. Antes se ocultaban por etiqueta desde canales() y este mismo
       // barrido se las devolvía (tgt='') en cada vuelta; acá no vuelven.
-      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>8)?'none':''; }   // 8 tarjetas: 4 arriba y 4 abajo
+      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>7)?'none':''; }   // 7: 4 arriba y 3 abajo (Comision CP3 al final)
       if(el.style.display!==tgt) el.style.display=tgt; }
     // Barrido: cualquier tarjeta 'Reembolsos / cancel.' que haya quedado suelta → ocultar (no va en el diseño).
     var sp=document.querySelectorAll('span,div');
