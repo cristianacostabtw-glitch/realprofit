@@ -13928,9 +13928,11 @@ def fin_sheet_peek():
     if not _user_actual():
         return jsonify({"ok": False, "msg": "sin sesion"}), 401
     sid = _fin_sheet_id(request.args.get("id") or "")
+    if not sid:      # sin id, la planilla configurada de la cuenta (para no tener que pegarla a mano)
+        sid = ((_fin_conf().get(_user_actual()) or {}).get("sheet") or "")
     rng = (request.args.get("rango") or "").strip()
     if not sid:
-        return jsonify({"ok": False, "msg": "falta id"})
+        return jsonify({"ok": False, "msg": "no hay planilla configurada ni id en la URL"})
     try:
         sess = AuthorizedSession(_fin_sheets_creds())
         base = "https://sheets.googleapis.com/v4/spreadsheets/" + sid
