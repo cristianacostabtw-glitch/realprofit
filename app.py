@@ -4977,7 +4977,7 @@ def pf_debug_meli():
     ordenes = []
     try:
         off = 0
-        for _ in range(8):
+        for _ in range(200):          # mismo criterio que _meli_resumen: paginar hasta agotar
             rr = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=25, params={
                 "seller": uid, "sort": "date_desc", "limit": 50, "offset": off,
                 "order.date_created.from": desde + "T00:00:00.000-03:00",
@@ -12374,9 +12374,19 @@ def _meli_resumen(email, desde, hasta):
         return None
     h = {"Authorization": "Bearer " + tok}
     ordenes_ml = []
+    # PAGINADO: el tope estaba en 8 paginas = 400 ordenes POR PERIODO. Para un dia sobra, pero al
+    # pedir el MES quedaba cortado: septiembre 2026 mostraba 391 ventas de MELI cuando en un solo
+    # dia (29-09) hubo 50, o sea ~1.500 en el mes. Faltaban ~$ 70 millones de facturacion.
+    # Ahora pagina hasta agotar el total que informa ML, con un tope alto de seguridad y un
+    # limite de tiempo para no colgar la pantalla si la cuenta crece mucho.
+    import time as _tml
+    _fin_ml = _tml.time() + 75          # presupuesto de tiempo, no de paginas
     try:
         off = 0
-        for _ in range(8):                      # hasta 400 ordenes por periodo
+        _tot_ml = None
+        for _ in range(200):                    # tope duro de seguridad (10.000 ordenes)
+            if _tml.time() > _fin_ml:
+                break
             rr = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=25, params={
                 "seller": uid, "sort": "date_desc", "limit": 50, "offset": off,
                 "order.date_created.from": desde + "T00:00:00.000-03:00",
@@ -12386,8 +12396,10 @@ def _meli_resumen(email, desde, hasta):
             jj = rr.json() or {}
             res = jj.get("results") or []
             ordenes_ml += res
+            if _tot_ml is None:
+                _tot_ml = int((jj.get("paging") or {}).get("total") or 0)
             off += 50
-            if off >= int((jj.get("paging") or {}).get("total") or 0):
+            if not res or off >= (_tot_ml or 0):
                 break
     except Exception:
         return None
