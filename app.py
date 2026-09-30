@@ -4307,9 +4307,14 @@ IIBB_PCT = 3.0          # IIBB que se paga por mes. Decision de Cristian (30-09-
                         # asi que NO genera credito fiscal. De MercadoPago solo tienen IVA la
                         # comision y el costo de cuotas. Medido el 29-09-2026: $ 114.926 retenidos
                         # que generaban $ 19.946 por dia de IVA a favor que no existe.
-                        # OJO: 3% + 1,22% retenido = 4,22% efectivo sobre una alicuota nominal de
-                        # 3,5%. Queda conservador a proposito; confirmar con la contadora cuanto se
-                        # transfiere de verdad por mes.
+                        # La retencion NO tiene un % fijo ni un rango util: medido el 29-09-2026
+                        # sobre 123 ventas va de 0,12% a 4,73% (40 veces de diferencia) y son 30
+                        # tipos de retencion distintos combinandose de a uno, dos o tres por
+                        # pedido segun la provincia del comprador y las sobretasas. Por eso sale
+                        # SIEMPRE del monto real de charges_details, nunca de un porcentaje.
+                        # Aparte: 3% + lo retenido dio 4,22% efectivo ese dia, arriba del 3,5%
+                        # nominal, asi que el break even queda conservador a proposito. Confirmar
+                        # con la contadora cuanto se transfiere de verdad por mes.
                         # del comprador, asi que el total sigue quedando entre 3,73% y 6,22%.
                         # El arreglo de verdad es sumar solo (3% menos lo ya retenido).
 MELI_ADELANTO_PCT = 2.5  # MercadoLibre: cobrar al instante (confirmado por Cristian 26-09-2026)
