@@ -5139,7 +5139,7 @@ def pf_debug_ordenes():
         mp_lib = (pago.get("lib") or "") if pago else ""       # cuando se libera la plata
         iibb = tot * IIBB_PCT / 100.0
         tienda = tot * TIENDA_PCT / 100.0
-        gan = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN
+        gan = tot - cp - mp_fee - mp_ret - env - iibb - tienda - OPER_ORDEN
         # IVA DE ESTA VENTA, con los numeros de ESTA venta (nada de promedios del periodo).
         # Debito: el 21% contenido en lo que cobraste. Credito: el IVA contenido en producto,
         # envio y comision de MercadoPago. El 0,6% de Shopify y el fulfillment NO dan credito.
@@ -5150,7 +5150,7 @@ def pf_debug_ordenes():
         # BREAK EVEN DE ESTA VENTA: lo maximo que se puede pagar de publicidad por traerla.
         # Pagando exactamente esto, esta venta da CERO. Un pack de 3 deja mas que uno de 1, por
         # eso el numero es POR VENTA y no un promedio del dia.
-        be = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN - iva_pag
+        be = tot - cp - mp_fee - mp_ret - env - iibb - tienda - OPER_ORDEN - iva_pag
         out.append({"pedido": num, "total": round(tot, 2), "unidades": u,
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
@@ -5914,7 +5914,8 @@ def pf_orden():
     fee_cuotas = pago["fee_cuotas"] if pago else 0.0
     inst = pago["inst"] if pago else 1
     tienda = tot * TIENDA_PCT / 100.0
-    iibb = tot * IIBB_PCT / 100.0                       # Ingresos Brutos (3,5%)
+    iibb = tot * IIBB_PCT / 100.0                       # Ingresos Brutos (3%). La retencion que
+    # MP ya descontó no se resta de nuevo: viene adentro de pago["net"], que es de donde parte.
     # Envío: costo REAL de Envialo si el pedido está ahí; si no, promedio domicilio/sucursal.
     _real_env = _envialo_costos(email).get(num)
     envio = _real_env if _real_env is not None else _envio_costo(o)
@@ -12535,6 +12536,7 @@ def _tn_resumen(email, desde, hasta):
     r["desde"] = desde; r["hasta"] = hasta
     r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
     fact = cobr = costo_prod = envio_monto = mp_costo = 0.0
+    iibb_ret = 0.0     # IIBB que MP ya retuvo (mismo trato que en Shopify)
     unidades = ordenes = mp_match = 0
     ordenes_cero = 0   # pedidos en $0: no son ventas (ver la nota en _shopify_resumen)
     prodmap, ords_list = {}, []
@@ -12560,6 +12562,7 @@ def _tn_resumen(email, desde, hasta):
             lst = by_amt.get(round(tot))
             if lst:
                 pago = lst.pop(0); mp_costo += pago["fee"]; mp_match += 1
+                iibb_ret += float(pago.get("ret") or 0)
         for p in (o.get("products") or []):
             q = int(p.get("quantity") or 0); unidades += q
             c = costos.get("tn:%s" % p.get("product_id"))
@@ -12577,10 +12580,11 @@ def _tn_resumen(email, desde, hasta):
     if not mp_conectado:
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
-    comision_monto = mp_costo + iibb_monto + tienda_monto
+    comision_monto = mp_costo + iibb_ret + iibb_monto + tienda_monto
     oper_monto = OPER_ORDEN * (ordenes + ordenes_cero)   # ver la nota en _shopify_resumen
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
+    r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
     r["ordenes_cero"] = ordenes_cero
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
