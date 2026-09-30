@@ -4955,6 +4955,17 @@ def pf_debug_ordenes():
         iibb = tot * IIBB_PCT / 100.0
         tienda = tot * TIENDA_PCT / 100.0
         gan = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN
+        # IVA DE ESTA VENTA, con los numeros de ESTA venta (nada de promedios del periodo).
+        # Debito: el 21% contenido en lo que cobraste. Credito: el IVA contenido en producto,
+        # envio y comision de MercadoPago. El 0,6% de Shopify y el fulfillment NO dan credito.
+        _F21 = 0.21 / 1.21
+        iva_deb = tot * _F21
+        iva_cred = (cp + env + mp_fee) * _F21
+        iva_pag = iva_deb - iva_cred
+        # BREAK EVEN DE ESTA VENTA: lo maximo que se puede pagar de publicidad por traerla.
+        # Pagando exactamente esto, esta venta da CERO. Un pack de 3 deja mas que uno de 1, por
+        # eso el numero es POR VENTA y no un promedio del dia.
+        be = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN - iva_pag
         out.append({"pedido": num, "total": round(tot, 2), "unidades": u,
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
@@ -4962,8 +4973,27 @@ def pf_debug_ordenes():
                     "envio": round(env, 2), "envio_fuente": env_fuente,
                     "oper": OPER_ORDEN,
                     "iibb": round(iibb, 2), "tienda": round(tienda, 2),
+                    "iva_debito": round(iva_deb, 2), "iva_favor": round(iva_cred, 2),
+                    "iva_pagar": round(iva_pag, 2),
+                    "break_even": round(be, 2),
                     "ganancia": round(gan, 2)})
-    return jsonify({"ok": True, "shopify": True, "mp_conectado": pagos is not None, "ordenes": out})
+    # Resumen POR PACK: dentro de un pack el precio y el producto son iguales, lo unico que
+    # cambia es la zona del envio y en cuantas cuotas pago. Por eso se muestran el minimo, el
+    # maximo y la mediana REALES, no un promedio que no le corresponde a ninguna venta.
+    import statistics as _st
+    packs = {}
+    for x in out:
+        k = int(x["unidades"] or 0)
+        packs.setdefault(k, []).append(x)
+    resumen = []
+    for k in sorted(packs):
+        bes = sorted(y["break_even"] for y in packs[k])
+        resumen.append({"potes": k, "ventas": len(bes),
+                        "be_min": round(bes[0], 2), "be_max": round(bes[-1], 2),
+                        "be_mediana": round(_st.median(bes), 2),
+                        "ticket": round(_st.median([y["total"] for y in packs[k]]), 2)})
+    return jsonify({"ok": True, "shopify": True, "mp_conectado": pagos is not None,
+                    "por_pack": resumen, "ordenes": out})
 
 
 _IMG_CACHE = {}
