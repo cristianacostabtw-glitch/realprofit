@@ -16125,9 +16125,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # credito fiscal para tomar (dato del dueno, 30-09-2026). Estaba sumando ~$3.950 por dia de
     # credito inexistente. Producto, envio y las comisiones de MercadoPago y MercadoLibre SI,
     # porque esas facturas traen el IVA adentro.
+    # El ADELANTO de MercadoLibre (2,5% por cobrar antes de los ~28 dias) tiene el IVA adentro,
+    # igual que la comision: es un servicio que ML factura. Estaba quedando afuera del credito.
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
                  + (r.get("mp_costo_real", 0) or 0) \
-                 + (r.get("meli_comision", 0) or 0)
+                 + (r.get("meli_comision", 0) or 0) \
+                 + (r.get("meli_adelanto", 0) or 0)
     _iva_cred = _base_cred * _F
     # ADS DE AGENCIA (CP3): el IVA de la pauta SI es credito fiscal, y ahora se puede sumar sin
     # inflar nada porque el PAGO de ese IVA ya quedo anotado arriba (la ganancia descuenta
@@ -16155,8 +16158,10 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _ml_f2 = float(r.get("meli_facturado", 0) or 0)
         _ml_deb = _ml_f2 * _F
         # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
+        # envio y adelanto de ML tambien vienen con IVA adentro. Las retenciones NO.
         _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)
-                    + (r.get("meli_envio", 0) or 0)) * _F      # el envio de ML viene con IVA
+                    + (r.get("meli_envio", 0) or 0)
+                    + (r.get("meli_adelanto", 0) or 0)) * _F
         _ml_iva = _ml_deb - _ml_cred
         r["ml_iva_total"] = round(_ml_deb, 2)
         r["ml_iva_favor"] = round(_ml_cred, 2)
