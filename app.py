@@ -4261,10 +4261,15 @@ def _mp_freeze_end(email):
 TIENDA_PCT = 0.6        # comisión de tienda (Shopify): 0,6% por venta, no editable.
                         # Estaba en 1% y no era: Cristian lo confirmó el 26-09-2026 ("siempre fue
                         # ese"). El 0,4% de más se restaba de la ganancia de CADA venta.
-IIBB_PCT = 3.0          # IIBB. Decision de Cristian (26-09-2026): baja de 3,5% a 3% para
-                        # compensar que las RETENCIONES de IIBB ya vienen adentro del neto de MP
-                        # (van dentro de mp_costo_real) y se estaban contando dos veces. Es un
-                        # parche, no el arreglo: la retencion varia 0,73%-3,23% segun la provincia
+IIBB_PCT = 3.5          # IIBB: la alicuota REAL. Estuvo en 3,0% como parche porque las
+                        # RETENCIONES de IIBB que MP descuenta venian adentro de mp_costo_real y
+                        # el impuesto se cobraba dos veces. Ya no: las retenciones se sacan del
+                        # costo de MP (son pago a cuenta de ESTE impuesto, no comision) y se
+                        # guardan en iibb_retenido. Medido el 29-09-2026 sobre 123 pagos reales:
+                        # $ 114.926 retenidos contra $ 329.958 de IIBB real, o sea que con el
+                        # parche se cobraban $ 67.789 de mas en UN dia ($ 542 por venta de break
+                        # even). La retencion va de 0,73% a 3,23% segun la provincia y ahora sale
+                        # de charges_details, pago por pago, sin promedios.
                         # del comprador, asi que el total sigue quedando entre 3,73% y 6,22%.
                         # El arreglo de verdad es sumar solo (3% menos lo ya retenido).
 MELI_ADELANTO_PCT = 2.5  # MercadoLibre: cobrar al instante (confirmado por Cristian 26-09-2026)
@@ -11778,8 +11783,20 @@ def _mp_pagos_lista(email, desde, hasta):
         base = sum(float(f.get("amount") or 0) for f in fd if f.get("type") != "financing_fee")
         if not fd:
             base = fee; finanz = 0.0
+        # Mismo criterio que los pagos vivos: la retencion de IIBB sale del costo de MP.
+        _ret, _cargos = 0.0, {}
+        for _c in (p.get("charges_details") or []):
+            _nm = str(_c.get("name") or "")
+            _am = float(((_c.get("amounts") or {}).get("original")) or _c.get("amount") or 0)
+            _cargos[_nm] = round(_cargos.get(_nm, 0.0) + _am, 2)
+            if "payer" in _nm:
+                continue
+            if _c.get("type") == "tax" or _nm.startswith("tax_withholding") or "iibb" in _nm.lower():
+                _ret += _am
+        fee = fee - _ret
         out.append({"ref": (p.get("external_reference") or "").strip(),
                     "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
+                    "ret": round(_ret, 2), "cargos": _cargos,
                     "inst": int(p.get("installments") or 1),
                     "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                     "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
@@ -11820,8 +11837,15 @@ def _mp_pagos_lista(email, desde, hasta):
                     _nm = str(_c.get("name") or "")
                     _am = float(((_c.get("amounts") or {}).get("original")) or _c.get("amount") or 0)
                     _cargos[_nm] = round(_cargos.get(_nm, 0.0) + _am, 2)
-                    if _c.get("type") == "tax" or _nm.startswith("ret_") or "iibb" in _nm.lower():
+                    # Retenciones de IIBB (SIRTAC + regimenes provinciales). "payer" NO entra:
+                    # ese es el impuesto al cheque, que es un cargo de verdad, no un pago a cuenta.
+                    if "payer" in _nm:
+                        continue
+                    if _c.get("type") == "tax" or _nm.startswith("tax_withholding") or "iibb" in _nm.lower():
                         _ret += _am
+                # La retencion NO es comision de MercadoPago: es IIBB adelantado. Si queda adentro
+                # del "fee", el mismo impuesto se cobra dos veces (una acá y otra como IIBB_PCT).
+                fee = fee - _ret
                 out.append({"ref": (p.get("external_reference") or "").strip(),
                             "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                             "inst": int(p.get("installments") or 1),
@@ -12000,6 +12024,7 @@ def _shopify_resumen(email, desde, hasta):
         by_amt.setdefault(p["amount"], []).append(p)
     mp_costo = 0.0
     mp_match = 0
+    iibb_ret = 0.0     # IIBB que MP ya retuvo en los pagos del periodo (pago a cuenta)
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
     envio_zona = 0.0   # suma de la tabla Andreani por zona (con descuento)
     unidades = ordenes = reemb_cant = envio_real = 0
@@ -12052,6 +12077,10 @@ def _shopify_resumen(email, desde, hasta):
                 pago = _mp_tomar_cercano(by_amt.get(round(tot)), o.get("created_at"))
             if pago is not None:
                 mp_costo += pago["fee"]; mp_match += 1
+                # IIBB ya adelantado por MP en ESTE pago. No es costo aparte (el IIBB_PCT del
+                # periodo ya lo cobra entero); se guarda para poder auditarlo y ver cuanto del
+                # impuesto ya esta pago antes de la DDJJ.
+                iibb_ret += float(pago.get("ret") or 0)
         if (o.get("financial_status") or "") in ("paid", "partially_paid", "authorized"):
             cobr += tot
         for li in (o.get("line_items") or []):
@@ -12115,6 +12144,7 @@ def _shopify_resumen(email, desde, hasta):
     r["gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
     r["reemb_cantidad"] = reemb_cant
     r["reemb_monto"] = round(reemb_monto, 2)
+    r["iibb_retenido"] = round(iibb_ret, 2)
     # Totales (por ahora solo Shopify, sin MELI)
     r["tot_ordenes"] = ordenes
     r["tot_facturado"] = round(fact, 2)
@@ -12389,7 +12419,7 @@ def _combinar_resumen(a, b):
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
            "oper_monto", "ordenes", "ordenes_cero", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
-           "comision", "ganancia", "reemb_cantidad", "reemb_monto",
+           "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto"]
