@@ -3032,14 +3032,25 @@ _SOLO_DASH = r"""
         if(/text-primary|bg-primary/.test(chips[j].className||'')){ try{ todas.click(); }catch(e){} }   // estaba activo → paso a Todas
         if(chips[j].style.display!=='none') chips[j].style.display='none'; } } }
   function tick(){ if(_busy) return; try{ sacarMover(); }catch(e){} try{ matarGrafico(); }catch(e){} try{ layoutFijo(); }catch(e){} try{ sacarSecciones(); }catch(e){} try{ ocultarVacios(); }catch(e){} try{ kpiArriba(); }catch(e){} try{ estructura(); }catch(e){} try{ tablaVentas(); }catch(e){} try{ hookCur(); }catch(e){} try{ sacarCanales(); }catch(e){} if(_raw){ try{ paint(); }catch(e){} } }
-  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 220); }   // throttle: no en cada mutación
+  function schedule(){ if(_busy||_th) return; _th=setTimeout(function(){ _th=null; tick(); }, 90); }   // throttle: no en cada mutación
+  // 220ms era la ventana en la que se VEIA el numero nativo de React antes de que entrara el mio:
+  // eso es el titileo que se notaba en las tarjetas (medido 30-09-2026). Con 90ms + la reparacion
+  // sincronica de abajo no llega a pintarse.
   // En CADA mutación de React re-aplico los KPIs de PUBLICIDAD SINCRÓNICAMENTE (antes de que el navegador
   // pinte) → las etiquetas nativas (ROAS/True ROAS) nunca llegan a verse; el resto va throttleado.
   // NO llamar metricas() acá: hacía un querySelectorAll de TODO el doc en CADA mutación → tormenta que
   // jankeaba otras pantallas (Despachos). El self-heal (más abajo) reaplica los KPIs solo, cacheado.
-  try{ new MutationObserver(function(){ schedule(); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  // fixFacturacion es BARATO (cachea el nodo y solo re-escanea si React lo desconecto), asi que
+  // corre SINCRONICAMENTE en la mutacion, antes de que el navegador pinte. Antes solo lo hacia un
+  // setInterval de 1200ms: si React reseteaba "Facturacion", el numero equivocado se veia hasta
+  // 1,2 SEGUNDOS. Ese era el titileo de la tarjeta de Shopify. metricas()/paint() NO van aca:
+  // hacen querySelectorAll de todo el documento y jankean otras pantallas.
+  try{ new MutationObserver(function(){
+         if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} }
+         schedule();
+       }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
-  setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 1200);   // Facturación: auto-repara si React la resetea
+  setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 400);   // red de seguridad (el arreglo real va sincronico, arriba)
   // Fallback: NO destapo la grilla con las etiquetas nativas (ROAS mal + True ROAS). Reintento el remapeo
   // hasta que funcione y recién ahí destapo. Último recurso ~12s (por si algo raro, mejor mostrar algo).
   (function _revelar(intentos){ if(_painted) return;
