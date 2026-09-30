@@ -15705,15 +15705,21 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                  + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0)
     _iva_cred = _base_cred * _F
-    # ADS DE AGENCIA (CP3): también dan crédito fiscal. OJO, acá es ×0,21 y NO ÷1,21: la factura
-    # de la agencia discrimina el IVA POR ENCIMA del neto (gasto+comisión), o sea que ese monto
-    # NO lo trae adentro, al revés que producto/envío/comisiones.
+    # ADS DE AGENCIA (CP3): el IVA de la pauta NO suma al crédito. No es que no exista: es que
+    # QUEDA EN CERO y se estaba contando una sola pata. La agencia factura el neto (gasto+10%) y
+    # el IVA VA POR ENCIMA, o sea que Cristian pone ese 21% de su bolsillo y despues lo recupera
+    # como credito fiscal: neto, no le cuesta nada. Pero el gasto de pauta que usa el dashboard
+    # viene SIN ese IVA (solo media x 1,10), asi que sumarlo como credito regalaba el beneficio
+    # sin haber anotado el pago. Medido el 30-09-2026: inflaba la ganancia en $100.944 en un dia,
+    # y hacia que CP3 (que cuesta 10% MAS) apareciera mas barata que las cuentas en dolares.
+    # Las dos formas correctas son: gasto 1.100.000 sin credito, o gasto 1.331.000 con credito de
+    # 231.000. Se usa la primera, para que el CPA siga siendo lo que de verdad cuesta una venta.
+    # Se sigue informando el monto, para tenerlo a la vista, pero NO entra en el calculo.
     try:
         _pub_ag = _meta_spend_agencia(email, desde, hasta)
         if _pub_ag:
-            _iva_cred += _pub_ag * 0.21
             r["publi_agencia"] = round(_pub_ag, 2)
-            r["iva_ads"] = round(_pub_ag * 0.21, 2)
+            r["iva_ads"] = round(_pub_ag * 0.21, 2)   # informativo: se paga y se recupera, queda en cero
     except Exception:
         pass
     _iva_pag = _iva_deb - _iva_cred
