@@ -4978,9 +4978,9 @@ def pf_debug_ordenes():
                 if lst:
                     pago = lst.pop(0); _como = "referencia"; _ref_usada = ref; break
             if pago is None:
-                lst = by_amt.get(round(tot))
-                if lst:
-                    pago = lst.pop(0); _como = "monto"
+                pago = _mp_tomar_cercano(by_amt.get(round(tot)), o.get("created_at"))
+                if pago is not None:
+                    _como = "monto+hora"
         mp_fee = pago["fee"] if pago else 0.0
         mp_neto = pago["net"] if pago else None
         iibb = tot * IIBB_PCT / 100.0
@@ -11682,6 +11682,43 @@ def pf_despachos_seg_todos():
 _MP_LISTA_CACHE = {}   # {(email,desde,hasta): (ts, out)} — pagos de MP, cache 60s: se pide en varias secciones
 
 
+def _mp_seg(x) -> float:
+    """Segundos desde epoch de un timestamp ISO de MP o de Shopify. 0 si no se puede leer."""
+    t = str(x or "").strip()
+    if not t:
+        return 0.0
+    try:
+        t = t.replace("Z", "+00:00")
+        return _dt.datetime.fromisoformat(t).timestamp()
+    except Exception:
+        return 0.0
+
+
+def _mp_tomar_cercano(lst, cuando):
+    """De los pagos del MISMO importe, saca el que se aprobo MAS CERCA del pedido.
+    Antes se tomaba el primero de la lista: con precios fijos (59.990 / 69.990 / 79.990) hay
+    decenas de pagos identicos por dia y cada pedido se quedaba con el de otro. La comision por
+    venta salia cualquiera (se vieron 41,5% y 4,5% en pedidos del mismo precio) aunque el total
+    del dia cerrara. El pedido y su pago se crean con segundos de diferencia, asi que la hora
+    los une bien. Si no hay hora en ninguno de los dos, cae al primero, como antes."""
+    if not lst:
+        return None
+    t0 = _mp_seg(cuando)
+    if not t0:
+        return lst.pop(0)
+    mejor, mejor_d = 0, None
+    for i, p in enumerate(lst):
+        tp = _mp_seg(p.get("fecha"))
+        if not tp:
+            continue
+        d = abs(tp - t0)
+        if mejor_d is None or d < mejor_d:
+            mejor, mejor_d = i, d
+    if mejor_d is None:
+        return lst.pop(0)
+    return lst.pop(mejor)
+
+
 def _mp_es_de_meli(ref) -> bool:
     """True si ese pago de MercadoPago es de una venta de MERCADOLIBRE, no de la tienda.
     MELI cobra con la MISMA cuenta de MP, y su external_reference es el numero de venta:
@@ -11738,6 +11775,7 @@ def _mp_pagos_lista(email, desde, hasta):
         out.append({"ref": (p.get("external_reference") or "").strip(),
                     "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                     "inst": int(p.get("installments") or 1),
+                    "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                     "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
                     "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
     offset = 0
@@ -11769,6 +11807,7 @@ def _mp_pagos_lista(email, desde, hasta):
                 out.append({"ref": (p.get("external_reference") or "").strip(),
                             "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                             "inst": int(p.get("installments") or 1),
+                    "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                             "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
                             "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
@@ -11991,9 +12030,7 @@ def _shopify_resumen(email, desde, hasta):
                 if lst:
                     pago = lst.pop(0); break
             if pago is None:
-                lst = by_amt.get(round(tot))
-                if lst:
-                    pago = lst.pop(0)
+                pago = _mp_tomar_cercano(by_amt.get(round(tot)), o.get("created_at"))
             if pago is not None:
                 mp_costo += pago["fee"]; mp_match += 1
         if (o.get("financial_status") or "") in ("paid", "partially_paid", "authorized"):
