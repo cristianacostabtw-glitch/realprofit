@@ -4923,6 +4923,10 @@ def pf_debug_ordenes():
     except Exception:
         return jsonify({"ok": False, "error": "shopify"})
     orders = [o for o in orders if not o.get("cancelled_at")]
+    # MISMO filtro que el dashboard: efectivo/transferencia pendiente NO es una venta todavia.
+    # Sin esto el detalle traia pedidos que el resumen no cuenta y no cerraba contra la pantalla.
+    _PAG = ("paid", "partially_paid", "refunded", "partially_refunded")
+    orders = [o for o in orders if (o.get("financial_status") or "").lower() in _PAG]
     orders.sort(key=lambda o: int(o.get("order_number") or 0), reverse=True)
     costos = (_costos().get(email) or {})
     emap = _envialo_costos(email)
@@ -4983,6 +4987,8 @@ def pf_debug_ordenes():
                     _como = "monto+hora"
         mp_fee = pago["fee"] if pago else 0.0
         mp_neto = pago["net"] if pago else None
+        mp_ret = (pago.get("ret") or 0.0) if pago else 0.0      # IIBB/Ganancias ya retenidos
+        mp_cargos = (pago.get("cargos") or {}) if pago else {}
         iibb = tot * IIBB_PCT / 100.0
         tienda = tot * TIENDA_PCT / 100.0
         gan = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN
@@ -5001,7 +5007,7 @@ def pf_debug_ordenes():
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
                     "mp_matcheo": ("ok" if pago else "SIN MATCH"),
-                    "mp_como": _como, "mp_ref_usada": _ref_usada,
+                    "mp_ret": round(mp_ret, 2), "mp_cargos": mp_cargos, "mp_como": _como, "mp_ref_usada": _ref_usada,
                     "tok_checkout": o.get("checkout_token"), "tok_cart": o.get("cart_token"),
                     "tok_order": o.get("token"), "checkout_id": o.get("checkout_id"),
                     "mp_ref_pago": ((pago or {}).get("ref") or ""),
@@ -11804,11 +11810,24 @@ def _mp_pagos_lista(email, desde, hasta):
                 base = sum(float(f.get("amount") or 0) for f in fd if f.get("type") != "financing_fee")
                 if not fd:
                     base = fee; finanz = 0.0
+                # RETENCIONES: net_received_amount ya viene con las retenciones de IIBB y
+                # Ganancias descontadas, asi que (ta - net) NO es solo la comision de MP. Las
+                # retenciones son PAGO A CUENTA de un impuesto, no un costo nuevo: si ademas se
+                # carga el IIBB completo por afuera, ese impuesto se cobra dos veces. Se anotan
+                # aparte para poder descontarlas del IIBB en vez de tapar el bug con un %.
+                _ret, _cargos = 0.0, {}
+                for _c in (p.get("charges_details") or []):
+                    _nm = str(_c.get("name") or "")
+                    _am = float(((_c.get("amounts") or {}).get("original")) or _c.get("amount") or 0)
+                    _cargos[_nm] = round(_cargos.get(_nm, 0.0) + _am, 2)
+                    if _c.get("type") == "tax" or _nm.startswith("ret_") or "iibb" in _nm.lower():
+                        _ret += _am
                 out.append({"ref": (p.get("external_reference") or "").strip(),
                             "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                             "inst": int(p.get("installments") or 1),
                     "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                             "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
+                            "ret": round(_ret, 2), "cargos": _cargos,
                             "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
             if offset >= (data.get("paging") or {}).get("total", 0) or not res:
@@ -15985,7 +16004,11 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # La comision de la agencia sale del CPA y entra aca, como costo: asi el CPA queda igual
         # al de Meta y el veredicto no cambia (antes el 10% inflaba el CPA, ahora baja el tope).
         _com_ag_w = float(r.get("comision_agencia", 0) or 0)
-        _pre_w = (_fact_w - _prod_w - _com_w - _env_w - OPER_ORDEN * _ord_w
+        # Los pedidos en $0 (reposiciones) no son ventas pero SI se despachan, y ese
+        # fulfillment lo paga la tienda. La ganancia ya lo cobraba; la contribucion no, asi que
+        # el tope de CPA salia mas alto del real (29-09-2026: $ 77 por venta, 12 pedidos).
+        _cero_w = int(r.get("ordenes_cero", 0) or 0)
+        _pre_w = (_fact_w - _prod_w - _com_w - _env_w - OPER_ORDEN * (_ord_w + _cero_w)
                   - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w)
         # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
         r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
