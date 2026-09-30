@@ -4956,17 +4956,18 @@ def pf_debug_ordenes():
         env_fuente = "envialo" if env is not None else "promedio"
         if env is None:
             env = _envio_costo(o)
-        # match MP
-        pago = None
+        # match MP. Se anota COMO matcheo: por referencia (confiable) o por monto (puede cruzarse
+        # con otro pedido del mismo precio, que es lo que pasa con precios fijos).
+        pago = None; _como = "sin match"; _ref_usada = ""
         if pagos is not None:
             for ref in (str(o.get("id")), str(o.get("order_number")), num):
                 lst = by_ref.get(ref)
                 if lst:
-                    pago = lst.pop(0); break
+                    pago = lst.pop(0); _como = "referencia"; _ref_usada = ref; break
             if pago is None:
                 lst = by_amt.get(round(tot))
                 if lst:
-                    pago = lst.pop(0)
+                    pago = lst.pop(0); _como = "monto"
         mp_fee = pago["fee"] if pago else 0.0
         mp_neto = pago["net"] if pago else None
         iibb = tot * IIBB_PCT / 100.0
@@ -4987,6 +4988,10 @@ def pf_debug_ordenes():
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
                     "mp_matcheo": ("ok" if pago else "SIN MATCH"),
+                    "mp_como": _como, "mp_ref_usada": _ref_usada,
+                    "mp_ref_pago": ((pago or {}).get("ref") or ""),
+                    "mp_cuotas": ((pago or {}).get("inst") or 0),
+                    "mp_medio": ((pago or {}).get("medio") or ""),
                     "envio": round(env, 2), "envio_fuente": env_fuente,
                     "oper": OPER_ORDEN,
                     "iibb": round(iibb, 2), "tienda": round(tienda, 2),
