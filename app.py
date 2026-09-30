@@ -4799,6 +4799,90 @@ def pf_congelado_estado():
     return jsonify({"ok": True, "pagos": len(fr), "freeze_end": FREEZE_END, "ultimo": ult})
 
 
+@app.get("/pf-pedidos-cero")
+def pf_pedidos_cero():
+    """Los pedidos en $0 del periodo con el MOTIVO que dejo atencion en la nota.
+    No son ventas (no facturan), pero cuestan el producto, el envio y el fulfillment:
+    por eso hay que poder verlos y saber por que se cargaron. Solo lectura."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    tk = _shop_tokens().get(email)
+    if not tk or not tk.get("access_token"):
+        return jsonify({"ok": False, "msg": "Shopify no conectado"})
+    desde = request.args.get("desde") or (_dt.date.today() - _dt.timedelta(days=30)).isoformat()
+    hasta = request.args.get("hasta") or _hoy()
+    shop, token = tk["shop"], tk["access_token"]
+    H = {"X-Shopify-Access-Token": token}
+    url = "https://%s/admin/api/2026-07/orders.json" % shop
+    params = {"status": "any", "limit": 250,
+              "created_at_min": desde + "T00:00:00-03:00",
+              "created_at_max": hasta + "T23:59:59-03:00",
+              "fields": ("id,order_number,name,total_price,current_total_price,financial_status,"
+                         "cancelled_at,created_at,line_items,note,note_attributes,tags,customer,"
+                         "shipping_address,shipping_lines,gateway,payment_gateway_names")}
+    orders = []
+    for _ in range(40):
+        try:
+            r = requests.get(url, headers=H, params=params, timeout=30)
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:90])})
+        if r.status_code != 200:
+            return jsonify({"ok": False, "msg": "Shopify devolvio %s" % r.status_code})
+        orders.extend(r.json().get("orders", []))
+        link = r.headers.get("Link", "") or r.headers.get("link", "")
+        nxt = None
+        for part in link.split(","):
+            if 'rel="next"' in part and "<" in part and ">" in part:
+                nxt = part[part.find("<") + 1:part.find(">")]
+        if not nxt:
+            break
+        url, params = nxt, None
+    costos = (_costos().get(email) or {})
+    emap = _envialo_costos(email)
+    out = []
+    for o in orders:
+        if o.get("cancelled_at"):
+            continue
+        tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        if tot > 0:
+            continue
+        num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+        cp = un = 0
+        prods = []
+        for li in (o.get("line_items") or []):
+            q = int(li.get("quantity") or 0)
+            un += q
+            c = costos.get(str(li.get("product_id") or ""))
+            if c:
+                cp += _costo_qty(c, q)
+            prods.append("%s x%d" % ((li.get("title") or "?")[:40], q))
+        env = emap.get(num)
+        env_fuente = "real"
+        if env is None:
+            env = _envio_costo(o); env_fuente = "promedio"
+        cust = o.get("customer") or {}
+        nota = (o.get("note") or "").strip()
+        for na in (o.get("note_attributes") or []):
+            if na.get("value"):
+                nota += ((" · " if nota else "") + "%s: %s" % (na.get("name"), na.get("value")))
+        out.append({"pedido": num, "fecha": (o.get("created_at") or "")[:16].replace("T", " "),
+                    "cliente": ((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()
+                               or (o.get("shipping_address") or {}).get("name", ""),
+                    "estado": o.get("financial_status") or "",
+                    "unidades": un, "costo_prod": round(cp, 2),
+                    "envio": round(float(env or 0), 2), "envio_fuente": env_fuente,
+                    "fulfillment": OPER_ORDEN,
+                    "perdida": round(cp + float(env or 0) + OPER_ORDEN, 2),
+                    "tags": o.get("tags") or "", "nota": nota[:400],
+                    "productos": ", ".join(prods)[:200]})
+    out.sort(key=lambda x: x["fecha"], reverse=True)
+    return jsonify({"ok": True, "desde": desde, "hasta": hasta, "n": len(out),
+                    "perdida_total": round(sum(x["perdida"] for x in out), 2),
+                    "unidades_total": sum(x["unidades"] for x in out),
+                    "pedidos": out})
+
+
 @app.get("/pf-debug-ordenes")
 def pf_debug_ordenes():
     """Detalle de costos REALES por pedido (últimos N) para verificar el cálculo pedido-por-pedido."""
