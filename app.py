@@ -11756,6 +11756,7 @@ def _shopify_resumen(email, desde, hasta):
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
     envio_zona = 0.0   # suma de la tabla Andreani por zona (con descuento)
     unidades = ordenes = reemb_cant = envio_real = 0
+    ordenes_cero = 0   # pedidos en $0: no son ventas, pero su producto y envio si cuestan
     prodmap = {}
     ords_list = []
     # Solo cuentan las órdenes YA COBRADAS. Efectivo/transferencia pendiente, autorizado sin capturar o
@@ -11767,8 +11768,17 @@ def _shopify_resumen(email, desde, hasta):
             continue
         if (o.get("financial_status") or "").lower() not in PAGADAS:
             continue
-        ordenes += 1
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
+        # Una orden en $0 (reposicion / reenvio sin cargo) NO es una venta: no factura, asi que
+        # no genera IVA, ni IIBB, ni comision, ni el 0,6% de tienda, y tampoco lleva el
+        # fulfillment de $800. Lo UNICO que cuesta es el producto que se regalo y el envio, y
+        # eso se sigue sumando abajo como siempre. Contarla como venta metia un pedido en el
+        # divisor sin aportar un peso: el 29-09-2026 el ticket salia $68.374 en vez de $75.269
+        # y el Break Even CPA $26.631 en vez de $29.317 (12 de 131 pedidos estaban en $0).
+        if tot > 0:
+            ordenes += 1
+        else:
+            ordenes_cero += 1
         fact += tot
         # Envío: costo REAL de Envialo si el pedido ya está ahí; si no, promedio domicilio/sucursal.
         _num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
@@ -11826,6 +11836,7 @@ def _shopify_resumen(email, desde, hasta):
     r["iibb_monto"] = round(iibb_monto, 2)
     r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2)
+    r["ordenes_cero"] = ordenes_cero
     r["envio_zona_monto"] = round(envio_zona, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
     oper_monto = OPER_ORDEN * ordenes  # fulfillment $800/pedido (insumos van aparte, como gasto mensual)
@@ -12043,12 +12054,22 @@ def _tn_resumen(email, desde, hasta):
     r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
     fact = cobr = costo_prod = envio_monto = mp_costo = 0.0
     unidades = ordenes = mp_match = 0
+    ordenes_cero = 0   # pedidos en $0: no son ventas (ver la nota en _shopify_resumen)
     prodmap, ords_list = {}, []
     for o in orders:
         if (o.get("payment_status") or "").lower() != "paid":
             continue
-        ordenes += 1
         tot = float(o.get("total") or 0)
+        # Una orden en $0 (reposicion / reenvio sin cargo) NO es una venta: no factura, asi que
+        # no genera IVA, ni IIBB, ni comision, ni el 0,6% de tienda, y tampoco lleva el
+        # fulfillment de $800. Lo UNICO que cuesta es el producto que se regalo y el envio, y
+        # eso se sigue sumando abajo como siempre. Contarla como venta metia un pedido en el
+        # divisor sin aportar un peso: el 29-09-2026 el ticket salia $68.374 en vez de $75.269
+        # y el Break Even CPA $26.631 en vez de $29.317 (12 de 131 pedidos estaban en $0).
+        if tot > 0:
+            ordenes += 1
+        else:
+            ordenes_cero += 1
         fact += tot; cobr += tot
         _ez = ENVIO_ZONAS.get(_envio_zona(o)) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
         _es_suc = _tn_shipping(o).get("type") == "pickup" or _envio_suc(o)
@@ -12078,6 +12099,7 @@ def _tn_resumen(email, desde, hasta):
     oper_monto = OPER_ORDEN * ordenes  # fulfillment $800/pedido (insumos van aparte, como gasto mensual)
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
+    r["ordenes_cero"] = ordenes_cero
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
     r["oper_monto"] = round(oper_monto, 2)
@@ -12112,7 +12134,7 @@ def _combinar_resumen(a, b):
     r["fecha"] = ra.get("fecha"); r["desde"] = ra.get("desde"); r["hasta"] = ra.get("hasta")
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
-           "oper_monto", "ordenes", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
+           "oper_monto", "ordenes", "ordenes_cero", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
            "comision", "ganancia", "reemb_cantidad", "reemb_monto",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
