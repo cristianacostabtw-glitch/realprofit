@@ -13799,8 +13799,13 @@ def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=No
     p = {"name": nombre, "campaign_id": campaign_id, "billing_event": "IMPRESSIONS",
          "optimization_goal": "OFFSITE_CONVERSIONS",
          "promoted_object": {"pixel_id": pixel, "custom_event_type": "PURCHASE"},
+         # La MISMA ventana que el resto de la cuenta. Verificado el 30-09-2026 sobre los 30
+         # conjuntos de CP3: los 25 hechos desde Meta tienen las TRES ventanas, y los 5 que salieron
+         # de este subidor venian SIN engaged view. Sin esa ventana el conjunto nuevo atribuye
+         # distinto que los demas y sus resultados no se pueden comparar con los que ya corren.
          "attribution_spec": [{"event_type": "CLICK_THROUGH", "window_days": 7},
-                              {"event_type": "VIEW_THROUGH", "window_days": 1}],
+                              {"event_type": "VIEW_THROUGH", "window_days": 1},
+                              {"event_type": "ENGAGED_VIDEO_VIEW", "window_days": 1}],
          "targeting": {"geo_locations": {"countries": ["AR"]},
                        "targeting_automation": {"advantage_audience": 1}},
          "status": status}
