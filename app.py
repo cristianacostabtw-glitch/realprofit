@@ -2843,10 +2843,15 @@ _SOLO_DASH = r"""
     if(!lab || !v){   // fallback robusto: recorrer hojas de texto y decidir por estilo computado
       var all=card.querySelectorAll('span,div,p'), maxF=0, minUpF=999;
       for(var k=0;k<all.length;k++){ var e=all[k]; if(e.children.length) continue;
-        var txt=(e.textContent||'').trim(); if(!txt) continue;
+        var _cn=(e.className||'').toString();
+        if(/material-symbols/.test(_cn)) continue;        // el iconito tiene fuente grande: no es el valor
+        var txt=(e.textContent||'').trim();
         var cs; try{ cs=getComputedStyle(e); }catch(_){ continue; } var fs=parseFloat(cs.fontSize)||0;
-        var up=(/uppercase/.test(e.className||'')) || cs.textTransform==='uppercase';
-        if(!lab && up && fs<=minUpF){ lab=e; minUpF=fs; }
+        var up=(/uppercase/.test(_cn)) || cs.textTransform==='uppercase';
+        if(!lab && txt && up && fs<=minUpF){ lab=e; minUpF=fs; }
+        // El VALOR se acepta aunque venga VACIO. Antes se salteaba todo lo vacio y al iniciar la
+        // tarjeta nueva (Comision CP3) traia ese div sin texto: se escribia el titulo y el
+        // subtitulo pero NO el numero, y quedaba en blanco hasta la siguiente pasada.
         if(!v && fs>maxF){ maxF=fs; v=e; } } }
     if(lab && lab.textContent!==label) lab.textContent=label;
     if(v && v.textContent!==val) v.textContent=val;
