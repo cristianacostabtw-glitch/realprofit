@@ -15751,8 +15751,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # OJO con la comisión de MercadoLibre: _meli_resumen deja mp_costo_real en 0 y la pone en
     # meli_comision, así que si sólo se mira mp_costo_real el crédito de MELI se pierde. Esa
     # comisión (cargo por vender + costo de cuotas) trae el IVA adentro igual que la de MP.
+    # El 0,6% de Shopify NO va: no emite factura argentina con IVA discriminado, asi que no hay
+    # credito fiscal para tomar (dato del dueno, 30-09-2026). Estaba sumando ~$3.950 por dia de
+    # credito inexistente. Producto, envio y las comisiones de MercadoPago y MercadoLibre SI,
+    # porque esas facturas traen el IVA adentro.
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
-                 + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0) \
+                 + (r.get("mp_costo_real", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0)
     _iva_cred = _base_cred * _F
     # ADS DE AGENCIA (CP3): el IVA de la pauta SI es credito fiscal, y ahora se puede sumar sin
@@ -15841,6 +15845,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _com_w = r.get("mp_costo_real", 0) or 0
         _env_w = r.get("envio_monto", 0) or 0
         _iibb_w = _fact_w * (IIBB_PCT / 100.0)
+        # Misma regla que arriba: el 0,6% de Shopify no da credito, asi que NO se resta de la base.
         _iva_w = (_fact_w - _prod_w - _com_w - _env_w) * _F
         # La comision de la agencia sale del CPA y entra aca, como costo: asi el CPA queda igual
         # al de Meta y el veredicto no cambia (antes el 10% inflaba el CPA, ahora baja el tope).
