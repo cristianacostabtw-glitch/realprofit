@@ -4385,11 +4385,20 @@ ENVIO_SEGURO_PCT = 1.0                    # % del valor declarado
 ENVIO_CUPON = 0.75                        # COSTABTW: 25% sobre (envio + seguro + IVA)
 # A DOMICILIO: 5 bandas. El mapa CAMBIO respecto de la tabla vieja (ver arriba).
 ENVIO_AND2_DOM = {      # tarifa PURA (sin seguro, sin IVA, sin cupon)
-    "gba":     7954.51,   # Buenos Aires con CP 1xxx (La Plata, Quilmes...)
-    "centro":  9147.01,   # CABA + Bs As interior + Cordoba + Santa Fe + Entre Rios
+    "gba":     7954.51,   # CABA + GBA (Buenos Aires con CP 1xxx)
+    "centro":  9147.01,   # Bs As interior + Cordoba + Santa Fe + Entre Rios
     "cuyo":    9992.54,   # Cuyo, Norte, NEA, Neuquen, Rio Negro
     "extremo":10488.06,   # Salta, Jujuy, Chubut, Santa Cruz, Tierra del Fuego
-    "pampa":  10519.06,   # La Pampa: banda propia, la mas cara del pais
+    "pampa":  10519.06,   # La Pampa y los pueblos con recargo (ver ENVIO_CP_RECARGO)
+    "lejos":  11491.42,   # recargo maximo. Hoy solo Valcheta (Rio Negro, CP 8536)
+}
+# LOCALIDADES CON RECARGO, medidas el 30-09-2026 sobre los 178 destinos REALES de septiembre.
+# NO se deducen de la provincia: son pueblos sueltos que pagan la banda de arriba. Si aparece un
+# destino nuevo caro, se agrega aca (no cambiar la zona de toda la provincia por uno).
+ENVIO_CP_RECARGO = {
+    "8536": "lejos",    # VALCHETA, Rio Negro -> $ 11.081,68 (la provincia paga $ 9.721,45)
+    "3550": "pampa",    # VERA, norte de Santa Fe -> $ 10.199,26 (la provincia paga $ 8.954,13)
+    "6277": "pampa",    # BUENA ESPERANZA, San Luis -> $ 10.199,26 (la provincia paga $ 9.721,45)
 }
 # A SUCURSAL: medido el 30-09-2026 con 13 envios reales ($ 89.361,01, cierra al centavo).
 # OJO: SUCURSAL Y DOMICILIO NO AGRUPAN IGUAL, igual que pasaba con Redchat:
@@ -4483,13 +4492,17 @@ def _envio_zona2(o) -> str:
     prov, cp = _prov_cp(o)
     pn = _env_norm(prov)
     code = str(prov).strip().upper()
+    # el CP puntual manda sobre la provincia: hay pueblos con recargo propio
+    _cp4 = "".join(ch for ch in str(cp) if ch.isdigit())[:4]
+    if _cp4 in ENVIO_CP_RECARGO:
+        return ENVIO_CP_RECARGO[_cp4]
     if "la pampa" in pn or code == "L":
         return "pampa"
     if z == "amba":
-        es_caba = ("capital federal" in pn or "autonoma de buenos aires" in pn
-                   or "ciudad de buenos aires" in pn
-                   or pn in ("caba", "capital", "c.a.b.a.") or code == "C")
-        return "centro" if es_caba else "gba"
+        # CABA paga IGUAL que GBA. Lo medi mal la primera vez (un solo envio, con la provincia
+        # escrita "CAPITAL FEDERAL", dio la banda de arriba) y lo corregi con 19 CPs REALES de
+        # CABA: los 19 dieron $ 10.495,92, el mismo precio que Florida, Munro, Boulogne y El Talar.
+        return "gba"
     return z
 
 
