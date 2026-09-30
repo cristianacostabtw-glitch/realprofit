@@ -4928,7 +4928,12 @@ def pf_debug_ordenes():
     emap = _envialo_costos(email)
     pagos = _mp_pagos_lista(email, desde, hasta)
     by_ref, by_amt = {}, {}
+    # Los pagos de MERCADOLIBRE quedan FUERA de la bolsa de la tienda: su comision ya se cuenta
+    # en meli_comision y, al entrar aca, se pegaba por monto a pedidos de Shopify del mismo
+    # importe y se restaba dos veces (medido 29-09-2026: 26 pagos, $596.169 en UN dia).
     for p in (pagos or []):
+        if _mp_es_de_meli(p.get("ref")):
+            continue
         if p["ref"]:
             by_ref.setdefault(str(p["ref"]), []).append(p)
         by_amt.setdefault(p["amount"], []).append(p)
@@ -4965,7 +4970,10 @@ def pf_debug_ordenes():
         # con otro pedido del mismo precio, que es lo que pasa con precios fijos).
         pago = None; _como = "sin match"; _ref_usada = ""
         if pagos is not None:
-            for ref in (str(o.get("id")), str(o.get("order_number")), num):
+            for ref in (str(o.get("checkout_token") or ""), str(o.get("checkout_id") or ""),
+                        str(o.get("id")), str(o.get("order_number")), num):
+                if not ref:
+                    continue
                 lst = by_ref.get(ref)
                 if lst:
                     pago = lst.pop(0); _como = "referencia"; _ref_usada = ref; break
@@ -11921,7 +11929,12 @@ def _shopify_resumen(email, desde, hasta):
     pagos = _mp_pagos_lista(email, desde, hasta)
     mp_conectado = pagos is not None
     by_ref, by_amt = {}, {}
+    # Los pagos de MERCADOLIBRE quedan FUERA de la bolsa de la tienda: su comision ya se cuenta
+    # en meli_comision y, al entrar aca, se pegaba por monto a pedidos de Shopify del mismo
+    # importe y se restaba dos veces (medido 29-09-2026: 26 pagos, $596.169 en UN dia).
     for p in (pagos or []):
+        if _mp_es_de_meli(p.get("ref")):
+            continue
         if p["ref"]:
             by_ref.setdefault(str(p["ref"]), []).append(p)
         by_amt.setdefault(p["amount"], []).append(p)
@@ -11965,7 +11978,13 @@ def _shopify_resumen(email, desde, hasta):
         # MP: matcheo este pedido con su pago real (por referencia; fallback por monto exacto).
         pago = None
         if mp_conectado:
-            for ref in (str(o.get("id")), str(o.get("order_number")), _num):
+            # El checkout_token PRIMERO: es lo que MP manda de external_reference en esta tienda
+            # (ej "r7N7EaGFbPuG1hmd0x0jDF3sP"). Sin el, NINGUN pedido matcheaba por referencia y
+            # los 124 del 29-09-2026 caian al match por MONTO, que con precios fijos se cruza.
+            for ref in (str(o.get("checkout_token") or ""), str(o.get("checkout_id") or ""),
+                        str(o.get("id")), str(o.get("order_number")), _num):
+                if not ref:
+                    continue
                 lst = by_ref.get(ref)
                 if lst:
                     pago = lst.pop(0); break
@@ -12358,7 +12377,12 @@ def _shopify_ordenes(email, dias=90):
     orders = [o for o in orders if not o.get("cancelled_at")]
     pagos = _mp_pagos_lista(email, desde, hasta)   # para el neto real por pedido
     by_ref, by_amt = {}, {}
+    # Los pagos de MERCADOLIBRE quedan FUERA de la bolsa de la tienda: su comision ya se cuenta
+    # en meli_comision y, al entrar aca, se pegaba por monto a pedidos de Shopify del mismo
+    # importe y se restaba dos veces (medido 29-09-2026: 26 pagos, $596.169 en UN dia).
     for p in (pagos or []):
+        if _mp_es_de_meli(p.get("ref")):
+            continue
         if p["ref"]:
             by_ref.setdefault(str(p["ref"]), []).append(p)
         by_amt.setdefault(p["amount"], []).append(p)
