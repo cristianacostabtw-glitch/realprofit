@@ -2459,45 +2459,27 @@ _SOLO_DASH = r"""
     var _filaTit0=_cost0.parentElement; if(!_filaTit0) return false;
     var _grid0=_filaTit0.parentElement;
     if(!_grid0 || (getComputedStyle(_grid0).display||'')!=='grid') return false;
-    // PUBLICIDAD: 7 tarjetas, 4 arriba y 3 abajo. Una grilla de 4 columnas no puede repartir 3
-    // tarjetas parejas, asi que se pasa a 12 COLUMNAS, que es divisible por 4 y por 3: las de
-    // arriba van "span 3" (4 x 3 = 12) y las 3 de abajo "span 4" (3 x 4 = 12). Las dos filas
-    // llegan de punta a punta y la de abajo queda centrada por construccion.
-    // OJO: en esta MISMA grilla viven tambien los titulos de seccion, el bloque de canales y las
-    // tarjetas de Costos, asi que a TODAS las visibles hay que darles su span o quedarian de
-    // 1/12 de ancho. Los titulos y el bloque de canales usan "1 / -1" y siguen funcionando.
-    // Solo en pantalla ancha: abajo de 900px la grilla de Tailwind es de 2 columnas y meterle 12
-    // la rompe. Si la ventana se achica, se devuelve todo a como estaba.
+    // PUBLICIDAD: 7 tarjetas, 4 arriba y 3 abajo. La fila de abajo se llena con los SPAN de las
+    // tarjetas (2+1+1 = 4), NO cambiando la grilla.
+    // Se probo pasarla a 12 columnas (4x3 y 3x4, mas parejo) y TITILA: React rehace las tarjetas
+    // de la grilla cada tanto —medido el 30-09-2026, un childList con los 23 hijos de una— y las
+    // nuevas nacen SIN el span. Con la grilla en 12, por un frame cada tarjeta mide 1/12 y los
+    // titulos tambien: todo se apelmaza contra el bloque de MercadoLibre hasta la proxima pasada.
+    // Con la grilla nativa en 4, una tarjeta sin span mide 1/4, que es lo normal: no se rompe nada.
     try{
-      var _G=_grid0;
-      if(_G){
-        var _ancho=_G.getBoundingClientRect().width;
-        if(_ancho>=900){
-          if(_G.style.gridTemplateColumns!=='repeat(12,minmax(0,1fr))')
-            _G.style.gridTemplateColumns='repeat(12,minmax(0,1fr))';
-          var _anchas=['cpa','break even cpa','comisión cp3','comision cp3'];
-          [].slice.call(_G.children).forEach(function(c){
-            var dsp=getComputedStyle(c).display;
-            if(dsp==='none') return;                                   // ocultas: no ocupan
-            var gc=c.style.gridColumn||'';
-            if(gc.indexOf('-1')>=0) return;                            // el bloque de canales, ya full
-            // Los TITULOS de seccion (PUBLICIDAD / COSTOS) son flex y ocupaban la fila entera por
-            // su clase. Al pasar la grilla a 12 columnas esa clase deja de alcanzar y quedaban de
-            // 284px, asi que se les pone el ancho completo a mano. Las tarjetas son 'block'.
-            if(dsp!=='block'){ if(c.style.gridColumn!=='1 / -1') c.style.gridColumn='1 / -1'; return; }
-            var t=(c.innerText||'').replace(/\s+/g,' ').trim().toLowerCase();
-            var esAncha=_anchas.some(function(x){ return t.indexOf(x)>=0; });
-            var q=esAncha?'span 4':'span 3';
-            if(c.style.gridColumn!==q) c.style.gridColumn=q;
-          });
-        } else if(_G.style.gridTemplateColumns){
-          _G.style.gridTemplateColumns='';
-          [].slice.call(_G.children).forEach(function(c){
-            var gc=c.style.gridColumn||'';
-            if(gc==='span 3'||gc==='span 4') c.style.gridColumn='';
-          });
+      var _spans={'cpa':'span 2','break even cpa':'span 1','comisión cp3':'span 1','comision cp3':'span 1'};
+      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
+        if(e.children.length || _rpcMio(e)) return;
+        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+        var q=_spans[t]; if(!q) return;
+        var p=e;
+        for(var k=0;k<9&&p;k++){
+          if(p.parentElement===_grid0){ if(p.style.gridColumn!==q) p.style.gridColumn=q; break; }
+          p=p.parentElement;
         }
-      }
+      });
+      // por si quedo puesta de la version anterior
+      if(_grid0 && _grid0.style.gridTemplateColumns) _grid0.style.gridTemplateColumns='';
     }catch(e){}
     var cost=_cost0, filaTit=_filaTit0, grid=_grid0;
     // Buscador propio: cardByLabel() esta en otro closure y desde aca tira ReferenceError,
