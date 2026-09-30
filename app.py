@@ -14399,7 +14399,15 @@ def _fin_cargar_dia(email, f) -> dict:
     _ox = int(dat.get("unidades_ox") or 0)
     _nad = max(int(dat.get("unidades") or 0) - _ox, 0)
     _fx = ("=%d*$N$49+%d*$M$49" % (_nad, _ox)) if _ox else ("=%d*$N$49" % _nad)
-    fx_extra = [{"range": "%s!F%d" % (tab, fila), "values": [[_fx]]},
+    # AA = COMISION AGENCIA META: el 10% que cobra la agencia por la pauta de CP3, solo.
+    # P (ADS ARS AGENCIA) ya viene con ese 10% adentro, asi que la comision sola es P/11
+    # (P = media x 1,10 -> comision = P x 0,10/1,10 = P/11). Se escribe como formula para que
+    # siga a P sola si el dia se recarga. Va partido por 11 y no por "0,1/1,1" a proposito: la
+    # planilla usa ";" de separador (locale con coma decimal) y un "0.1" se leeria mal.
+    # OJO: es informativa. La Ganancia Neta ya descuenta la comision adentro de P, asi que esta
+    # columna NO se resta de nuevo en W.
+    fx_extra = [{"range": "%s!AA%d" % (tab, fila), "values": [["=IFERROR(P%d/11;\"\")" % fila]]},
+                {"range": "%s!F%d" % (tab, fila), "values": [[_fx]]},
                 # P = ADS ARS AGENCIA (igual que S para los ads directos)
                 {"range": "%s!P%d" % (tab, fila), "values": [["=O%d*$D$3" % fila]]},
                 # GANANCIA NETA: la fórmula original restaba S (ads directos) pero NO P, así que
@@ -14409,6 +14417,15 @@ def _fin_cargar_dia(email, f) -> dict:
     sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
               json={"valueInputOption": "USER_ENTERED",
                     "data": fx_extra}, timeout=(15, 60))
+    # El encabezado de AA. Se reescribe siempre: es una celda, sale gratis, y asi la pestaña de
+    # un mes nuevo queda con el titulo sin tener que acordarse de ponerlo a mano.
+    try:
+        sess.post("https://sheets.googleapis.com/v4/spreadsheets/%s/values:batchUpdate" % sid,
+                  json={"valueInputOption": "RAW",
+                        "data": [{"range": "%s!AA5" % tab,
+                                  "values": [["COMISION AGENCIA META"]]}]}, timeout=(15, 45))
+    except Exception:
+        pass
     dat.update({"ok": True, "pestana": tab, "fila": fila, "regimen": regimen})
     return dat
 
