@@ -2782,16 +2782,41 @@ _SOLO_DASH = r"""
   function costos4(){ if(!_raw)return;
     // SOLO la sección COSTOS: busco cada tarjeta por su etiqueta propia (nunca toca Finanzas).
     var viejo=document.getElementById('rp-costos4'); if(viejo) viejo.remove();
-    var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-(_raw.tienda_monto||0);
+    // El neto REAL que entra: MP tambien te descuenta las retenciones de provincias, asi que
+    // van restadas aca (antes quedaban afuera y el neto salia mas alto de lo que se cobra).
+    var _retmp=_raw.retenciones_mp||0;
+    var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-_retmp-(_raw.tienda_monto||0);
     var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment $1000/pedido
     var slots=[
       [['Costo producto','Productos'],'Productos',_raw.costo_prod,'Costo de los productos vendidos'],
       [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($1.000/pedido)'],
-      [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Impuesto a pagar al mes (3,5%)'],
+      [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Lo que se transfiere por mes (3%)'],
       [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
     ];
     for(var s=0;s<slots.length;s++){ var card=cardByAny(slots[s][0]);
       if(card){ if(card.style.display==='none') card.style.display=''; setCard(card, slots[s][1], money(slots[s][2]||0), slots[s][3]); } }
+    // === RETENCIONES DE MERCADOPAGO: fila propia de 2 KPIs (clonadas del mismo molde) ===
+    // Antes venian escondidas adentro de "comision de MercadoPago" y ademas generaban IVA a favor
+    // que no existe (son impuesto, no factura). Ahora se ven y no tocan el IVA.
+    var _retOld=document.getElementById('rp-ret2'); if(_retOld) _retOld.remove();
+    var _mold=cardByAny(['Costo producto','Productos']);
+    if(_mold && (_raw.retenciones_mp||0)>0){
+      var _gr=_mold; for(var _q=0;_q<6 && _gr;_q++){ _gr=_gr.parentElement; if(_gr && /grid/.test(_gr.className||'')) break; }
+      if(_gr && /grid/.test(_gr.className||'')){
+        var _rw=document.createElement('div'); _rw.id='rp-ret2';
+        _rw.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px';
+        var _rc=[['Retenciones MP',_raw.retenciones_mp,'#fb923c','IIBB de provincias que ya te retuvo MercadoPago · no da IVA a favor','account_balance'],
+                 ['IIBB total',(_raw.retenciones_mp||0)+(_raw.iibb_monto||0),'#f87171','Lo retenido + el 3% del mes','receipt_long']];
+        for(var _k=0;_k<2;_k++){ var R=_rc[_k];
+          var _c2=_mold.cloneNode(true); _c2.style.display=''; _c2.style.height=''; _c2.style.minHeight='';
+          setCard(_c2, R[0], money(R[1]||0), R[3]);
+          var _d2=_c2.querySelectorAll('div');
+          for(var _z=0;_z<_d2.length;_z++){ var _cc=_d2[_z].className||''; if(/font-bold/.test(_cc)&&/(text-2xl|text-xl|text-3xl)/.test(_cc)){ _d2[_z].style.color=R[2]; break; } }
+          var _i2=_c2.querySelector('.material-symbols-outlined'); if(_i2){ _i2.textContent=R[4]; _i2.style.color=R[2]; }
+          _rw.appendChild(_c2); }
+        if(_gr.parentElement) _gr.parentElement.insertBefore(_rw, _gr.nextSibling);
+      }
+    }
     // === IVA (Responsable Inscripto): fila propia de 3 KPIs (clonadas → diseño idéntico) ===
     var _ivaOld=document.getElementById('rp-iva3'); if(_ivaOld) _ivaOld.remove();
     var _pc = _raw.ri ? cardByAny(['Costo producto','Productos']) : null;   // solo si es RI
@@ -2801,7 +2826,7 @@ _SOLO_DASH = r"""
         var _row=document.createElement('div'); _row.id='rp-iva3';
         _row.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px';
         var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA contenido en la facturación','percent'],
-                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito: producto + envío + comisiones + ads de agencia','savings'],
+                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito: producto + envío + comisiones + ads · las retenciones NO cuentan','savings'],
                     ['IVA a pagar',_raw.iva_pagar,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
         for(var _i=0;_i<3;_i++){ var C=_cards[_i];
           var _cl=_pc.cloneNode(true); _cl.style.display=''; _cl.style.height=''; _cl.style.minHeight='';
@@ -4272,15 +4297,17 @@ def _mp_freeze_end(email):
 TIENDA_PCT = 0.6        # comisión de tienda (Shopify): 0,6% por venta, no editable.
                         # Estaba en 1% y no era: Cristian lo confirmó el 26-09-2026 ("siempre fue
                         # ese"). El 0,4% de más se restaba de la ganancia de CADA venta.
-IIBB_PCT = 3.5          # IIBB: la alicuota REAL. Estuvo en 3,0% como parche porque las
-                        # RETENCIONES de IIBB que MP descuenta venian adentro de mp_costo_real y
-                        # el impuesto se cobraba dos veces. Ya no: las retenciones se sacan del
-                        # costo de MP (son pago a cuenta de ESTE impuesto, no comision) y se
-                        # guardan en iibb_retenido. Medido el 29-09-2026 sobre 123 pagos reales:
-                        # $ 114.926 retenidos contra $ 329.958 de IIBB real, o sea que con el
-                        # parche se cobraban $ 67.789 de mas en UN dia ($ 542 por venta de break
-                        # even). La retencion va de 0,73% a 3,23% segun la provincia y ahora sale
-                        # de charges_details, pago por pago, sin promedios.
+IIBB_PCT = 3.0          # IIBB que se paga por mes. Decision de Cristian (30-09-2026): queda en
+                        # 3% y NO se toca. Las RETENCIONES de provincias que MP descuenta van
+                        # aparte, en "retenciones_mp", y siguen restando igual que antes (estaban
+                        # escondidas adentro de mp_costo_real, disfrazadas de comision).
+                        # Lo que SI cambia es el IVA: la retencion es un impuesto, no una factura,
+                        # asi que NO genera credito fiscal. De MercadoPago solo tienen IVA la
+                        # comision y el costo de cuotas. Medido el 29-09-2026: $ 114.926 retenidos
+                        # que generaban $ 19.946 por dia de IVA a favor que no existe.
+                        # OJO: 3% + 1,22% retenido = 4,22% efectivo sobre una alicuota nominal de
+                        # 3,5%. Queda conservador a proposito; confirmar con la contadora cuanto se
+                        # transfiere de verdad por mes.
                         # del comprador, asi que el total sigue quedando entre 3,73% y 6,22%.
                         # El arreglo de verdad es sumar solo (3% menos lo ya retenido).
 MELI_ADELANTO_PCT = 2.5  # MercadoLibre: cobrar al instante (confirmado por Cristian 26-09-2026)
@@ -12121,7 +12148,10 @@ def _shopify_resumen(email, desde, hasta):
     if not mp_conectado:
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
-    comision_monto = mp_costo + iibb_monto + tienda_monto
+    # RETENCIONES DE MP (IIBB de provincias: SIRTAC, CABA y regimenes locales). Es plata que no
+    # entra, asi que resta igual que siempre; lo que cambia es que ahora se ve como linea propia
+    # en vez de venir disfrazada de comision de MercadoPago, y que NO suma al IVA a favor.
+    comision_monto = mp_costo + iibb_ret + iibb_monto + tienda_monto
     r["mp_costo_real"] = round(mp_costo, 2)
     r["mp_match"] = mp_match            # pedidos que matchearon su pago de MP (comisión exacta)
     r["iibb_monto"] = round(iibb_monto, 2)
@@ -12155,7 +12185,7 @@ def _shopify_resumen(email, desde, hasta):
     r["gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
     r["reemb_cantidad"] = reemb_cant
     r["reemb_monto"] = round(reemb_monto, 2)
-    r["iibb_retenido"] = round(iibb_ret, 2)
+    r["iibb_retenido"] = r["retenciones_mp"] = round(iibb_ret, 2)
     # Totales (por ahora solo Shopify, sin MELI)
     r["tot_ordenes"] = ordenes
     r["tot_facturado"] = round(fact, 2)
@@ -12430,7 +12460,7 @@ def _combinar_resumen(a, b):
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
            "oper_monto", "ordenes", "ordenes_cero", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
-           "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido",
+           "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido", "retenciones_mp",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto"]
@@ -16037,10 +16067,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # desglose de una venta real daba 30.908). Esta forma es auditable contra el desglose:
         # precio − producto − comisión − envío − fulfillment − IIBB − 1% tienda − IVA.
         _prod_w = (r.get("costo_prod", 0) or 0) - (r.get("meli_costo", 0) or 0)
-        _com_w = r.get("mp_costo_real", 0) or 0
+        _com_w = r.get("mp_costo_real", 0) or 0          # SOLO comision+cuotas: esto tiene IVA
+        _ret_w = r.get("retenciones_mp", 0) or 0        # retenciones: plata que sale, SIN IVA
         _env_w = r.get("envio_monto", 0) or 0
         _iibb_w = _fact_w * (IIBB_PCT / 100.0)
         # Misma regla que arriba: el 0,6% de Shopify no da credito, asi que NO se resta de la base.
+        # La retencion NO va en esta base: es impuesto, no factura, no da credito fiscal.
         _iva_w = (_fact_w - _prod_w - _com_w - _env_w) * _F
         # La comision de la agencia sale del CPA y entra aca, como costo: asi el CPA queda igual
         # al de Meta y el veredicto no cambia (antes el 10% inflaba el CPA, ahora baja el tope).
@@ -16049,7 +16081,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # fulfillment lo paga la tienda. La ganancia ya lo cobraba; la contribucion no, asi que
         # el tope de CPA salia mas alto del real (29-09-2026: $ 77 por venta, 12 pedidos).
         _cero_w = int(r.get("ordenes_cero", 0) or 0)
-        _pre_w = (_fact_w - _prod_w - _com_w - _env_w - OPER_ORDEN * (_ord_w + _cero_w)
+        _pre_w = (_fact_w - _prod_w - _com_w - _ret_w - _env_w - OPER_ORDEN * (_ord_w + _cero_w)
                   - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w)
         # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
         r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
