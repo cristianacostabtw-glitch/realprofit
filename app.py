@@ -12378,11 +12378,24 @@ def _meli_resumen(email, desde, hasta):
     except Exception:
         return None
     costos = (_costos().get(email) or {})
+    # PAGOS DE MP DE LAS VENTAS DE MELI. El sale_fee que informa ML es SOLO "cargos de Mercado
+    # Libre" (cargo por vender + costo de cuotas). MercadoPago le saca dos cosas mas a la misma
+    # venta, y las dos salen de la plata de la venta:
+    #   - shp_* : el CARGO POR ENVIO (ej shp_dropoff $ 7.290 en una venta de $ 69.990)
+    #   - tax_withholding_* : las RETENCIONES de IIBB de provincias
+    # Sin esto la ganancia de MELI salia ~27% mas alta de la real (29-09-2026: $ 408.910 en un
+    # dia). Cada venta tiene su numero propio: sale del pago, nunca de un promedio.
+    _pg_ml = {}
+    for _p in (_mp_pagos_lista(email, desde, hasta) or []):
+        if _mp_es_de_meli(_p.get("ref")):
+            _pg_ml[str(_p.get("ref"))] = _p
     r = resumen_vacio()
     r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
     r["desde"] = desde; r["hasta"] = hasta
     r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
     fact = costo_prod = comis_ml = 0.0
+    envio_ml = ret_ml = 0.0
+    envio_real = 0
     unidades = ordenes = sin_costo = 0
     prodmap, ords_list = {}, []
     for o in ordenes_ml:
@@ -12421,9 +12434,23 @@ def _meli_resumen(email, desde, hasta):
         # BUG que introduje y corrijo: comis_ml es el ACUMULADOR de todas las comisiones, no la
         # de esta orden. Usarlo aca hacia que el neto de cada orden restara el total acumulado y
         # que la ganancia del dashboard CAMBIARA entre dos lecturas del mismo periodo.
+        # ENVIO y RETENCIONES de ESTA venta, del pago real de MercadoPago.
+        _env_o = _ret_o = 0.0
+        _pm = _pg_ml.get(str(o.get("id") or ""))
+        if _pm:
+            for _nm, _am in (_pm.get("cargos") or {}).items():
+                _n = str(_nm).lower()
+                if _n.startswith("shp") or "shipping" in _n:
+                    _env_o += float(_am or 0)
+            _ret_o = float(_pm.get("ret") or 0)
+            if _env_o:
+                envio_real += 1
+        envio_ml += _env_o
+        ret_ml += _ret_o
         ords_list.append({"num": str(o.get("id") or ""), "origen": "MercadoLibre",
                           "estado": "Pagado", "fecha": (o.get("date_created") or ""),
-                          "total": round(tot, 2), "neto": round(tot - com_orden, 2)})
+                          "total": round(tot, 2),
+                          "neto": round(tot - com_orden - _env_o - _ret_o, 2)})
     iibb_monto = fact * IIBB_PCT / 100.0
     oper_monto = OPER_ORDEN * ordenes
     comision_monto = comis_ml + iibb_monto          # sin 1% de tienda: eso es de la tienda propia
@@ -12433,12 +12460,16 @@ def _meli_resumen(email, desde, hasta):
     # Adelanto Programado de MercadoPago de la tienda. Con el 3,75% se le restaba de más a
     # MELI (26-09-2026: $ 30.919 en vez de $ 20.613, o sea $ 10.306 de más en un día).
     adelanto_monto = (fact - comis_ml) * MELI_ADELANTO_PCT / 100.0
-    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
+    ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml - ret_ml
     r["mp_costo_real"] = 0.0; r["mp_match"] = 0
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
-    r["envio_monto"] = 0.0; r["envio_real"] = 0     # envio NO se suma
+    # El envio de MELI SI se cuenta: no sale del bolsillo aparte, se descuenta de la propia venta
+    # (decision de Cristian, 30-09-2026, con el numero real de MP a la vista). Antes iba en 0.
+    r["envio_monto"] = r["meli_envio"] = round(envio_ml, 2)
+    r["envio_real"] = envio_real
+    r["retenciones_mp"] = r["iibb_retenido"] = r["meli_retenciones"] = round(ret_ml, 2)
     r["oper_monto"] = round(oper_monto, 2)
-    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
+    _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml - ret_ml
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
@@ -12459,7 +12490,7 @@ def _meli_resumen(email, desde, hasta):
     r["meli_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
     r["meli_rent"] = round(ganancia / fact * 100, 2) if fact else 0.0
     r["meli_gan_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
-    r["meli_neto"] = round(fact - comis_ml - adelanto_monto, 2)   # lo que queda de verdad
+    r["meli_neto"] = round(fact - comis_ml - envio_ml - ret_ml - adelanto_monto, 2)   # lo que queda
     r["meli_sin_costo"] = sin_costo
     r["meli_adelanto"] = round(adelanto_monto, 2)
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
@@ -12570,7 +12601,8 @@ def _combinar_resumen(a, b):
            "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido", "retenciones_mp",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
-           "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto"]
+           "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
+                   "meli_envio", "meli_retenciones"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
     fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
@@ -16117,7 +16149,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _ml_f2 = float(r.get("meli_facturado", 0) or 0)
         _ml_deb = _ml_f2 * _F
         # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
-        _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)) * _F
+        _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)
+                    + (r.get("meli_envio", 0) or 0)) * _F      # el envio de ML viene con IVA
         _ml_iva = _ml_deb - _ml_cred
         r["ml_iva_total"] = round(_ml_deb, 2)
         r["ml_iva_favor"] = round(_ml_cred, 2)
@@ -16175,8 +16208,10 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # precio − producto − comisión − envío − fulfillment − IIBB − 1% tienda − IVA.
         _prod_w = (r.get("costo_prod", 0) or 0) - (r.get("meli_costo", 0) or 0)
         _com_w = r.get("mp_costo_real", 0) or 0          # SOLO comision+cuotas: esto tiene IVA
-        _ret_w = r.get("retenciones_mp", 0) or 0        # retenciones: plata que sale, SIN IVA
-        _env_w = r.get("envio_monto", 0) or 0
+        # OJO: envio_monto y retenciones_mp ahora suman los DOS canales (MELI tambien descuenta
+        # envio y retenciones de cada venta). Al break even de la TIENDA solo le va su parte.
+        _ret_w = (r.get("retenciones_mp", 0) or 0) - (r.get("meli_retenciones", 0) or 0)
+        _env_w = (r.get("envio_monto", 0) or 0) - (r.get("meli_envio", 0) or 0)
         _iibb_w = _fact_w * (IIBB_PCT / 100.0)
         # Misma regla que arriba: el 0,6% de Shopify no da credito, asi que NO se resta de la base.
         # La retencion NO va en esta base: es impuesto, no factura, no da credito fiscal.
