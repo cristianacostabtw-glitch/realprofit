@@ -4157,7 +4157,7 @@ def _shopify_orders(shop, token, desde, hasta, deadline=None, max_pages=80, time
               # cada pago con SU pedido y todo caia al match por monto.
               "fields": ("id,order_number,name,total_price,current_total_price,financial_status,"
                          "cancelled_at,line_items,refunds,created_at,shipping_lines,shipping_address,"
-                         "checkout_token,checkout_id")}
+                         "checkout_token,checkout_id,cart_token,token")}
     headers = {"X-Shopify-Access-Token": token}
     import time as _tsleep
     for _ in range(max_pages):
@@ -5002,6 +5002,8 @@ def pf_debug_ordenes():
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
                     "mp_matcheo": ("ok" if pago else "SIN MATCH"),
                     "mp_como": _como, "mp_ref_usada": _ref_usada,
+                    "tok_checkout": o.get("checkout_token"), "tok_cart": o.get("cart_token"),
+                    "tok_order": o.get("token"), "checkout_id": o.get("checkout_id"),
                     "mp_ref_pago": ((pago or {}).get("ref") or ""),
                     "mp_cuotas": ((pago or {}).get("inst") or 0),
                     "mp_medio": ((pago or {}).get("medio") or ""),
