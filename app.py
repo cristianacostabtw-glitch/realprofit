@@ -3954,7 +3954,14 @@ _SOLO_DASH = r"""
   var c=(window._ADSCTAS||[]).filter(function(x){return x.key==k;})[0]||{};
   $('rpa-copy').value=c.copy||''; if(c.titulo)$('rpa-titulo').value=c.titulo; if(c.subtitulo)$('rpa-sub').value=c.subtitulo;
   if(c.presupuesto)$('rpa-presup').value=c.presupuesto; if(c.landing)$('rpa-url').value=c.landing;
-  fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){if(!j||!j.ok)return;
+  // La moneda es POR CUENTA y antes SOLO se seteaba adentro del fetch: al cambiar de cuenta la
+  // etiqueta seguia mostrando la de la anterior. El 29-09-2026 CP3 (que esta en PESOS) aparecia
+  // como (USD) porque venia de CP1, y al tocar ABO se repintaba con la moneda equivocada. Ahora
+  // se pone al toque la cacheada de ESA cuenta, y si no se conoce queda vacia hasta que llegue.
+  try{ MONEDA=(window._MONEDAS&&window._MONEDAS[k])||''; }catch(e){ MONEDA=''; }
+  rpaPresupLb();
+  fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){ MONEDA=''; rpaPresupLb(); return; }
    MONEDA=j.moneda||''; try{ window._MONEDAS[k]=MONEDA; window._MINDIA[k]=j.min_diario||0; }catch(e){} rpaPresupLb();
    if(window._MULTI){ rpaMultiLista(); }
    $('rpa-page').innerHTML=opt(j.pages.map(function(p){return {v:p.id,t:p.name};}));
@@ -4031,7 +4038,8 @@ _SOLO_DASH = r"""
  window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
   var cmpName=CMP=='nueva'?(_fechaCamp()+' '+ang):((CMPS.find(function(c){return c.id==$('rpa-cmp').value;})||{}).name||'(existente)');
   $('rpa-rcmp').textContent=cmpName;
-  $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO $'+p:'ABO $'+p+'/conjunto')+(TIPO=='abo'&&SHARE?' · comparte 20%':''));
+  var _mn=MONEDA?(' '+MONEDA):'';   // el resumen es lo ultimo que se mira antes de lanzar: sin la moneda, 50000 puede ser pesos o dolares
+  $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO $'+p+_mn:'ABO $'+p+_mn+'/conjunto')+(TIPO=='abo'&&SHARE?' · comparte 20%':''));
   $('rpa-rconj').textContent=(CMP=='exist'&&CJ=='usar')?'usar 1':NCONJ;
   $('rpa-rvids').textContent=VIDS;$('rpa-adsx').textContent=VIDS;
   $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
