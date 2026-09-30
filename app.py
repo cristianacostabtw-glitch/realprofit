@@ -11839,7 +11839,10 @@ def _shopify_resumen(email, desde, hasta):
     r["ordenes_cero"] = ordenes_cero
     r["envio_zona_monto"] = round(envio_zona, 2)
     r["envio_real"] = envio_real       # cuántos pedidos usaron el costo REAL de Envialo
-    oper_monto = OPER_ORDEN * ordenes  # fulfillment $800/pedido (insumos van aparte, como gasto mensual)
+    # fulfillment $800 por PAQUETE, incluidos los pedidos en $0: la reposicion se arma y se
+    # despacha igual, asi que ese trabajo se paga. Lo que NO cuentan es como venta (no van al
+    # divisor del ticket ni del CPA). Insumos van aparte, como gasto mensual.
+    oper_monto = OPER_ORDEN * (ordenes + ordenes_cero)
     r["oper_monto"] = round(oper_monto, 2)
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     # Break-even: contribución ANTES de ads (lo que queda para pagar publicidad).
@@ -12096,7 +12099,7 @@ def _tn_resumen(email, desde, hasta):
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
     comision_monto = mp_costo + iibb_monto + tienda_monto
-    oper_monto = OPER_ORDEN * ordenes  # fulfillment $800/pedido (insumos van aparte, como gasto mensual)
+    oper_monto = OPER_ORDEN * (ordenes + ordenes_cero)   # ver la nota en _shopify_resumen
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["ordenes_cero"] = ordenes_cero
