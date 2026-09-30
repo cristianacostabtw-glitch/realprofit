@@ -11977,26 +11977,36 @@ def _mp_pagos_lista(email, desde, hasta):
                 # retenciones son PAGO A CUENTA de un impuesto, no un costo nuevo: si ademas se
                 # carga el IIBB completo por afuera, ese impuesto se cobra dos veces. Se anotan
                 # aparte para poder descontarlas del IIBB en vez de tapar el bug con un %.
-                _ret, _cargos = 0.0, {}
+                _ret, _perc, _cargos = 0.0, 0.0, {}
                 for _c in (p.get("charges_details") or []):
                     _nm = str(_c.get("name") or "")
                     _am = float(((_c.get("amounts") or {}).get("original")) or _c.get("amount") or 0)
                     _cargos[_nm] = round(_cargos.get(_nm, 0.0) + _am, 2)
-                    # Retenciones de IIBB (SIRTAC + regimenes provinciales). "payer" NO entra:
-                    # ese es el impuesto al cheque, que es un cargo de verdad, no un pago a cuenta.
+                    # RETENCION de IIBB != PERCEPCION de IVA. Son impuestos distintos y no se
+                    # computan igual (confirmado por soporte de MercadoPago, 30-09-2026):
+                    #   - retencion de IIBB -> pago a cuenta de IIBB, NO da credito de IVA
+                    #   - percepcion de IVA -> SI es credito fiscal de IVA
+                    # Hoy esta cuenta no tiene ni una percepcion de IVA: medido sobre 10 dias
+                    # (20 al 29-09-2026), 36 tipos de cargo, las 34 fiscales son todas IIBB. Queda
+                    # separado igual para que el dia que aparezca una entre sola donde va.
+                    # "payer" NO entra: ese es el impuesto al cheque, un cargo real, no pago a cuenta.
                     if "payer" in _nm:
                         continue
-                    if _c.get("type") == "tax" or _nm.startswith("tax_withholding") or "iibb" in _nm.lower():
+                    _low = _nm.lower()
+                    if "iva" in _low or "percep" in _low:
+                        _perc += _am
+                    elif _c.get("type") == "tax" or _nm.startswith("tax_withholding") or "iibb" in _low:
                         _ret += _am
                 # La retencion NO es comision de MercadoPago: es IIBB adelantado. Si queda adentro
                 # del "fee", el mismo impuesto se cobra dos veces (una acá y otra como IIBB_PCT).
-                fee = fee - _ret
+                # La percepcion de IVA tampoco es comision, pero esa SI da credito fiscal.
+                fee = fee - _ret - _perc
                 out.append({"ref": (p.get("external_reference") or "").strip(),
                             "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                             "inst": int(p.get("installments") or 1),
                     "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                             "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
-                            "ret": round(_ret, 2), "cargos": _cargos,
+                            "ret": round(_ret, 2), "perc_iva": round(_perc, 2), "cargos": _cargos,
                     "lib": (p.get("money_release_date") or ""),
                             "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
@@ -12171,6 +12181,7 @@ def _shopify_resumen(email, desde, hasta):
     mp_costo = 0.0
     mp_match = 0
     iibb_ret = 0.0     # IIBB que MP ya retuvo en los pagos del periodo (pago a cuenta)
+    perc_iva = 0.0     # PERCEPCION de IVA: otro impuesto, este SI es credito fiscal
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
     envio_zona = 0.0   # suma de la tabla Andreani por zona (con descuento)
     unidades = ordenes = reemb_cant = envio_real = 0
@@ -12227,6 +12238,7 @@ def _shopify_resumen(email, desde, hasta):
                 # periodo ya lo cobra entero); se guarda para poder auditarlo y ver cuanto del
                 # impuesto ya esta pago antes de la DDJJ.
                 iibb_ret += float(pago.get("ret") or 0)
+                perc_iva += float(pago.get("perc_iva") or 0)
         if (o.get("financial_status") or "") in ("paid", "partially_paid", "authorized"):
             cobr += tot
         for li in (o.get("line_items") or []):
@@ -12259,7 +12271,7 @@ def _shopify_resumen(email, desde, hasta):
     # RETENCIONES DE MP (IIBB de provincias: SIRTAC, CABA y regimenes locales). Es plata que no
     # entra, asi que resta igual que siempre; lo que cambia es que ahora se ve como linea propia
     # en vez de venir disfrazada de comision de MercadoPago, y que NO suma al IVA a favor.
-    comision_monto = mp_costo + iibb_ret + iibb_monto + tienda_monto
+    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + tienda_monto
     r["mp_costo_real"] = round(mp_costo, 2)
     r["mp_match"] = mp_match            # pedidos que matchearon su pago de MP (comisión exacta)
     r["iibb_monto"] = round(iibb_monto, 2)
@@ -12294,6 +12306,7 @@ def _shopify_resumen(email, desde, hasta):
     r["reemb_cantidad"] = reemb_cant
     r["reemb_monto"] = round(reemb_monto, 2)
     r["iibb_retenido"] = r["retenciones_mp"] = round(iibb_ret, 2)
+    r["percep_iva"] = round(perc_iva, 2)
     # Totales (por ahora solo Shopify, sin MELI)
     r["tot_ordenes"] = ordenes
     r["tot_facturado"] = round(fact, 2)
@@ -12537,6 +12550,7 @@ def _tn_resumen(email, desde, hasta):
     r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
     fact = cobr = costo_prod = envio_monto = mp_costo = 0.0
     iibb_ret = 0.0     # IIBB que MP ya retuvo (mismo trato que en Shopify)
+    perc_iva = 0.0     # PERCEPCION de IVA (mismo trato que en Shopify)
     unidades = ordenes = mp_match = 0
     ordenes_cero = 0   # pedidos en $0: no son ventas (ver la nota en _shopify_resumen)
     prodmap, ords_list = {}, []
@@ -12563,6 +12577,7 @@ def _tn_resumen(email, desde, hasta):
             if lst:
                 pago = lst.pop(0); mp_costo += pago["fee"]; mp_match += 1
                 iibb_ret += float(pago.get("ret") or 0)
+                perc_iva += float(pago.get("perc_iva") or 0)
         for p in (o.get("products") or []):
             q = int(p.get("quantity") or 0); unidades += q
             c = costos.get("tn:%s" % p.get("product_id"))
@@ -12580,11 +12595,12 @@ def _tn_resumen(email, desde, hasta):
     if not mp_conectado:
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
-    comision_monto = mp_costo + iibb_ret + iibb_monto + tienda_monto
+    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + tienda_monto
     oper_monto = OPER_ORDEN * (ordenes + ordenes_cero)   # ver la nota en _shopify_resumen
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
+    r["percep_iva"] = round(perc_iva, 2)
     r["ordenes_cero"] = ordenes_cero
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
@@ -12621,7 +12637,7 @@ def _combinar_resumen(a, b):
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
            "oper_monto", "ordenes", "ordenes_cero", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
-           "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido", "retenciones_mp",
+           "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido", "retenciones_mp", "percep_iva",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
@@ -16151,7 +16167,9 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                  + (r.get("mp_costo_real", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0) \
                  + (r.get("meli_adelanto", 0) or 0)
-    _iva_cred = _base_cred * _F
+    # La PERCEPCION de IVA se suma ENTERA, no dividida por 1,21: ya es IVA, no un precio que lo
+    # contiene. La RETENCION de IIBB no entra aca: es otro impuesto (ver la nota en IIBB_PCT).
+    _iva_cred = _base_cred * _F + (r.get("percep_iva", 0) or 0)
     # ADS DE AGENCIA (CP3): el IVA de la pauta SI es credito fiscal, y ahora se puede sumar sin
     # inflar nada porque el PAGO de ese IVA ya quedo anotado arriba (la ganancia descuenta
     # media + comision + IVA). Las dos patas anotadas = queda en cero, que es lo que pasa de
