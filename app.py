@@ -2459,19 +2459,18 @@ _SOLO_DASH = r"""
     var _filaTit0=_cost0.parentElement; if(!_filaTit0) return false;
     var _grid0=_filaTit0.parentElement;
     if(!_grid0 || (getComputedStyle(_grid0).display||'')!=='grid') return false;
-    // PUBLICIDAD: fuera Recompras y Facturacion Recompra (son las DOS ULTIMAS de la secuencia
-    // de metricas(), asi que ocultarlas no corre el mapeo de las otras seis), y las dos que
-    // quedan se estiran a 2 columnas para que la fila llegue de punta a punta.
+    // PUBLICIDAD: 8 tarjetas, 4 y 4. Antes eran 6 (Recompras y Facturacion Recompra afuera) y
+    // habia que estirar las dos de abajo a "span 2" para que la fila llegara de punta a punta.
+    // Con Comision CP3 y Pauta con IVA la fila se llena sola, asi que ese estirado se saca:
+    // dejarlo puesto con 4 tarjetas daba 2+2+1+1 = 6 columnas en una grilla de 4 y rompia la fila.
     try{
       [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
         if(e.children.length || _rpcMio(e)) return;
         var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-        // Recompras y Facturación Recompra las saca el barrido de arriba (pub>6): hacerlo
-        // acá no servía, porque ese barrido les devolvía display='' en cada vuelta.
         if(t!=='cpa' && t!=='break even cpa') return;
         var p=e;
         for(var k=0;k<9&&p;k++){
-          if(p.parentElement===_grid0){ if(p.style.gridColumn!=='span 2') p.style.gridColumn='span 2'; break; }
+          if(p.parentElement===_grid0){ if(p.style.gridColumn) p.style.gridColumn=''; break; }
           p=p.parentElement;
         }
       });
@@ -2717,8 +2716,8 @@ _SOLO_DASH = r"""
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · solo tienda'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
              ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta · con MELI '+money(_raw.be_cpa_mix||0)],
-             ['Recompras',String(_raw.recompras||0),'Clientes que recompraron'],
-             ['Facturación Recompra',money(_raw.fact_recompra||0),'Ventas de clientes que volvieron']];
+             ['Comisión CP3',money(_raw.comision_agencia||0),'10% de agencia · fuera del CPA'],
+             ['Pauta con IVA',money(_raw.publi_con_iva||0),'Lo que sale de la caja · IVA vuelve como crédito']];
     var hit=0;
     for(var j=0;j<cards.length && j<seq.length;j++){
       // True ROAS→Margen y Break Even ROAS los maneja SOLO el self-heal por-label (otro bloque). Si metricas los
@@ -2759,7 +2758,7 @@ _SOLO_DASH = r"""
       // Publicidad queda en 6: las tarjetas 7 y 8 son Recompras y Facturación Recompra, que
       // Cristian pidió sacar. Antes se ocultaban por etiqueta desde canales() y este mismo
       // barrido se las devolvía (tgt='') en cada vuelta; acá no vuelven.
-      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>6)?'none':''; }
+      else if(/Publicidad/.test(sec)){ pub++; tgt = (pub>8)?'none':''; }   // 8 tarjetas: 4 arriba y 4 abajo
       if(el.style.display!==tgt) el.style.display=tgt; }
     // Barrido: cualquier tarjeta 'Reembolsos / cancel.' que haya quedado suelta → ocultar (no va en el diseño).
     var sp=document.querySelectorAll('span,div');
@@ -15641,9 +15640,30 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         if ordenes_web < 0:
             ordenes_web = 0
         r["ordenes_web"] = ordenes_web          # para poder mostrarlo/auditarlo
-        r["publi_ars"] = round(spend, 2)
-        r["publi_cuenta"] = round(spend, 2)
-        r["ganancia"] = round(r.get("ganancia", fact) - spend, 2)
+        # CP3 va por agencia: el gasto que devuelve _meta_spend ya viene con el 10% de comision
+        # adentro. Se lo saco para que el CPA y el ROAS usen la MEDIA PURA, la misma que muestra
+        # el Ads Manager. Sin esto, CP3 aparecia 10% mas cara que CP1/CP2 sin rendir peor, y el
+        # CPA de la pantalla nunca coincidia con el de Meta.
+        _com_ag = 0.0
+        _iva_ag = 0.0
+        try:
+            _neto_ag = _meta_spend_agencia(email, desde, hasta)   # media x 1,10
+            if _neto_ag:
+                _com_ag = _neto_ag * (0.10 / 1.10)   # la comision sola
+                _iva_ag = _neto_ag * 0.21            # el IVA va POR ENCIMA del neto
+        except Exception:
+            pass
+        _spend_medios = spend - _com_ag              # lo que Meta reporta, sin recargos
+        if _spend_medios < 0:
+            _spend_medios = 0.0
+        r["publi_ars"] = round(_spend_medios, 2)
+        r["publi_cuenta"] = round(_spend_medios, 2)
+        r["comision_agencia"] = round(_com_ag, 2)    # tarjeta propia: "Comision CP3"
+        r["publi_con_iva"] = round(_spend_medios + _com_ag + _iva_ag, 2)   # lo que sale de la caja
+        # La ganancia descuenta la CAJA ENTERA (media + comision + IVA). El IVA vuelve mas abajo
+        # como credito fiscal, asi que neto pesa media + comision, que es el costo real.
+        r["ganancia"] = round(r.get("ganancia", fact) - _spend_medios - _com_ag - _iva_ag, 2)
+        spend = _spend_medios                        # de aca en adelante, CPA y ROAS con la media pura
         r["margen"] = round(r["ganancia"] / fact * 100, 2) if fact else 0.0
         # ROAS: mismo criterio que el CPA de acá arriba, SOLO la facturación de la tienda. Las
         # ventas de Mercado Libre llegan por el tráfico del marketplace, no por los anuncios;
@@ -15705,21 +15725,18 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                  + (r.get("mp_costo_real", 0) or 0) + (r.get("tienda_monto", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0)
     _iva_cred = _base_cred * _F
-    # ADS DE AGENCIA (CP3): el IVA de la pauta NO suma al crédito. No es que no exista: es que
-    # QUEDA EN CERO y se estaba contando una sola pata. La agencia factura el neto (gasto+10%) y
-    # el IVA VA POR ENCIMA, o sea que Cristian pone ese 21% de su bolsillo y despues lo recupera
-    # como credito fiscal: neto, no le cuesta nada. Pero el gasto de pauta que usa el dashboard
-    # viene SIN ese IVA (solo media x 1,10), asi que sumarlo como credito regalaba el beneficio
-    # sin haber anotado el pago. Medido el 30-09-2026: inflaba la ganancia en $100.944 en un dia,
-    # y hacia que CP3 (que cuesta 10% MAS) apareciera mas barata que las cuentas en dolares.
-    # Las dos formas correctas son: gasto 1.100.000 sin credito, o gasto 1.331.000 con credito de
-    # 231.000. Se usa la primera, para que el CPA siga siendo lo que de verdad cuesta una venta.
-    # Se sigue informando el monto, para tenerlo a la vista, pero NO entra en el calculo.
+    # ADS DE AGENCIA (CP3): el IVA de la pauta SI es credito fiscal, y ahora se puede sumar sin
+    # inflar nada porque el PAGO de ese IVA ya quedo anotado arriba (la ganancia descuenta
+    # media + comision + IVA). Las dos patas anotadas = queda en cero, que es lo que pasa de
+    # verdad: se paga por encima del neto y se recupera al liquidar.
+    # OJO: es x0,21 sobre el NETO (media + 10% de comision) y NO /1,21, porque la agencia lo
+    # discrimina por encima. Sobre 1.000.000 de media son 231.000, no 210.000.
     try:
         _pub_ag = _meta_spend_agencia(email, desde, hasta)
         if _pub_ag:
+            _iva_cred += _pub_ag * 0.21
             r["publi_agencia"] = round(_pub_ag, 2)
-            r["iva_ads"] = round(_pub_ag * 0.21, 2)   # informativo: se paga y se recupera, queda en cero
+            r["iva_ads"] = round(_pub_ag * 0.21, 2)
     except Exception:
         pass
     _iva_pag = _iva_deb - _iva_cred
@@ -15777,7 +15794,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # MercadoPago de las ventas de MELI y el break even daba $593 de más por venta (gastando
         # justo el "break even" se perdían $67.038 en vez de quedar en cero). Definido de esta
         # forma cierra por construcción: si gastás exactamente esto, la ganancia da 0.
-        _pre_ri = (r.get("ganancia", 0) or 0) + spend
+        _pre_ri = ((r.get("ganancia", 0) or 0) + (r.get("publi_con_iva", 0) or r.get("publi_ars", 0) or 0))
         # Y el break even va SOLO sobre la tienda: en MercadoLibre no se gasta un peso de ads,
         # así que su contribución no es "plata para bancar pauta" sino ganancia directa. Si se
         # mezcla, el ROAS mínimo sale más bajo del real y parece que se puede gastar de más.
@@ -15795,8 +15812,11 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _env_w = r.get("envio_monto", 0) or 0
         _iibb_w = _fact_w * (IIBB_PCT / 100.0)
         _iva_w = (_fact_w - _prod_w - _com_w - _env_w) * _F
+        # La comision de la agencia sale del CPA y entra aca, como costo: asi el CPA queda igual
+        # al de Meta y el veredicto no cambia (antes el 10% inflaba el CPA, ahora baja el tope).
+        _com_ag_w = float(r.get("comision_agencia", 0) or 0)
         _pre_w = (_fact_w - _prod_w - _com_w - _env_w - OPER_ORDEN * _ord_w
-                  - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w)
+                  - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w)
         # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
         r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
         # BREAK EVEN CPA: el de la TIENDA. Cada venta tiene el suyo segun su ticket; este es el
