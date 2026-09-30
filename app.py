@@ -5034,6 +5034,7 @@ def pf_debug_ordenes():
         mp_neto = pago["net"] if pago else None
         mp_ret = (pago.get("ret") or 0.0) if pago else 0.0      # IIBB/Ganancias ya retenidos
         mp_cargos = (pago.get("cargos") or {}) if pago else {}
+        mp_lib = (pago.get("lib") or "") if pago else ""       # cuando se libera la plata
         iibb = tot * IIBB_PCT / 100.0
         tienda = tot * TIENDA_PCT / 100.0
         gan = tot - cp - mp_fee - env - iibb - tienda - OPER_ORDEN
@@ -5052,7 +5053,7 @@ def pf_debug_ordenes():
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
                     "mp_matcheo": ("ok" if pago else "SIN MATCH"),
-                    "mp_ret": round(mp_ret, 2), "mp_cargos": mp_cargos, "mp_como": _como, "mp_ref_usada": _ref_usada,
+                    "mp_ret": round(mp_ret, 2), "mp_cargos": mp_cargos, "mp_liberado": mp_lib, "mp_como": _como, "mp_ref_usada": _ref_usada,
                     "tok_checkout": o.get("checkout_token"), "tok_cart": o.get("cart_token"),
                     "tok_order": o.get("token"), "checkout_id": o.get("checkout_id"),
                     "mp_ref_pago": ((pago or {}).get("ref") or ""),
@@ -11837,6 +11838,7 @@ def _mp_pagos_lista(email, desde, hasta):
         out.append({"ref": (p.get("external_reference") or "").strip(),
                     "amount": round(ta), "net": round(net, 2), "fee": round(fee, 2),
                     "ret": round(_ret, 2), "cargos": _cargos,
+                    "lib": (p.get("money_release_date") or ""),
                     "inst": int(p.get("installments") or 1),
                     "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                     "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
@@ -11892,6 +11894,7 @@ def _mp_pagos_lista(email, desde, hasta):
                     "fecha": (p.get("date_approved") or p.get("date_created") or ""),
                             "fee_mp": round(base, 2), "fee_cuotas": round(finanz, 2),
                             "ret": round(_ret, 2), "cargos": _cargos,
+                    "lib": (p.get("money_release_date") or ""),
                             "medio": (p.get("payment_method_id") or p.get("payment_type_id") or "")})
             offset += 100
             if offset >= (data.get("paging") or {}).get("total", 0) or not res:
