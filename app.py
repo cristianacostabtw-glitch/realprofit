@@ -2477,9 +2477,14 @@ _SOLO_DASH = r"""
             _G.style.gridTemplateColumns='repeat(12,minmax(0,1fr))';
           var _anchas=['cpa','break even cpa','comisión cp3','comision cp3'];
           [].slice.call(_G.children).forEach(function(c){
-            if(getComputedStyle(c).display==='none') return;          // ocultas: no ocupan
+            var dsp=getComputedStyle(c).display;
+            if(dsp==='none') return;                                   // ocultas: no ocupan
             var gc=c.style.gridColumn||'';
-            if(gc.indexOf('-1')>=0) return;                            // titulos y bloque de canales
+            if(gc.indexOf('-1')>=0) return;                            // el bloque de canales, ya full
+            // Los TITULOS de seccion (PUBLICIDAD / COSTOS) son flex y ocupaban la fila entera por
+            // su clase. Al pasar la grilla a 12 columnas esa clase deja de alcanzar y quedaban de
+            // 284px, asi que se les pone el ancho completo a mano. Las tarjetas son 'block'.
+            if(dsp!=='block'){ if(c.style.gridColumn!=='1 / -1') c.style.gridColumn='1 / -1'; return; }
             var t=(c.innerText||'').replace(/\s+/g,' ').trim().toLowerCase();
             var esAncha=_anchas.some(function(x){ return t.indexOf(x)>=0; });
             var q=esAncha?'span 4':'span 3';
