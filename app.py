@@ -15108,6 +15108,56 @@ def pf_ads_campanas():
         return jsonify({"ok": False, "msg": str(e), "campanas": []})
 
 
+@app.get("/pf-ads-conjuntos-config")
+def pf_ads_conjuntos_config():
+    """La configuracion REAL de los conjuntos de una cuenta, para comparar si son todos iguales.
+    Solo lectura: no crea ni modifica nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesion"}), 400
+    cfg = _ADS_CUENTAS.get(request.args.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"]
+    acct = cfg["ad_account"]
+    if not acct:
+        return jsonify({"ok": False, "msg": "cuenta no configurada"})
+    try:
+        lim = max(1, min(60, int(request.args.get("n") or 25)))
+    except Exception:
+        lim = 25
+    F = ("name,status,effective_status,billing_event,optimization_goal,bid_strategy,daily_budget,"
+         "attribution_spec,promoted_object,destination_type,pacing_type,optimization_sub_event,"
+         "targeting,created_time,campaign{name}")
+    try:
+        j = _ads_call("GET", "act_%s/adsets" % acct,
+                      params={"fields": F, "limit": lim,
+                              "date_preset": "last_30d"}) or {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:110])})
+    out = []
+    for s_ in (j.get("data") or []):
+        t = s_.get("targeting") or {}
+        geo = (t.get("geo_locations") or {}).get("countries") or []
+        aut = (t.get("targeting_automation") or {})
+        out.append({
+            "id": s_.get("id"), "nombre": (s_.get("name") or "")[:46],
+            "campana": ((s_.get("campaign") or {}).get("name") or "")[:34],
+            "estado": s_.get("effective_status") or s_.get("status"),
+            "creado": (s_.get("created_time") or "")[:10],
+            "billing": s_.get("billing_event"), "meta": s_.get("optimization_goal"),
+            "puja": s_.get("bid_strategy"),
+            "presupuesto": int((s_.get("daily_budget") or 0)) // 100,
+            "evento": (s_.get("promoted_object") or {}).get("custom_event_type"),
+            "pixel": (s_.get("promoted_object") or {}).get("pixel_id"),
+            "atribucion": ["%s/%sd" % (a.get("event_type", "")[:5], a.get("window_days"))
+                           for a in (s_.get("attribution_spec") or [])],
+            "paises": geo, "advantage": aut.get("advantage_audience"),
+            "edad": "%s-%s" % (t.get("age_min", ""), t.get("age_max", "")),
+            "sexos": t.get("genders") or "todos",
+            "intereses": len(((t.get("flexible_spec") or [{}])[0] or {}).get("interests") or []),
+            "destino": s_.get("destination_type"), "pacing": s_.get("pacing_type"),
+        })
+    return jsonify({"ok": True, "n": len(out), "conjuntos": out})
+
+
 @app.get("/pf-ads-conjuntos")
 def pf_ads_conjuntos():
     """Conjuntos (adsets) REALES de una campaña, para elegir cuál duplicar / al que sumar ads."""
