@@ -2459,21 +2459,40 @@ _SOLO_DASH = r"""
     var _filaTit0=_cost0.parentElement; if(!_filaTit0) return false;
     var _grid0=_filaTit0.parentElement;
     if(!_grid0 || (getComputedStyle(_grid0).display||'')!=='grid') return false;
-    // PUBLICIDAD: 8 tarjetas, 4 y 4. Antes eran 6 (Recompras y Facturacion Recompra afuera) y
-    // habia que estirar las dos de abajo a "span 2" para que la fila llegara de punta a punta.
-    // Con Comision CP3 y Pauta con IVA la fila se llena sola, asi que ese estirado se saca:
-    // dejarlo puesto con 4 tarjetas daba 2+2+1+1 = 6 columnas en una grilla de 4 y rompia la fila.
+    // PUBLICIDAD: 7 tarjetas, 4 arriba y 3 abajo. Una grilla de 4 columnas no puede repartir 3
+    // tarjetas parejas, asi que se pasa a 12 COLUMNAS, que es divisible por 4 y por 3: las de
+    // arriba van "span 3" (4 x 3 = 12) y las 3 de abajo "span 4" (3 x 4 = 12). Las dos filas
+    // llegan de punta a punta y la de abajo queda centrada por construccion.
+    // OJO: en esta MISMA grilla viven tambien los titulos de seccion, el bloque de canales y las
+    // tarjetas de Costos, asi que a TODAS las visibles hay que darles su span o quedarian de
+    // 1/12 de ancho. Los titulos y el bloque de canales usan "1 / -1" y siguen funcionando.
+    // Solo en pantalla ancha: abajo de 900px la grilla de Tailwind es de 2 columnas y meterle 12
+    // la rompe. Si la ventana se achica, se devuelve todo a como estaba.
     try{
-      [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
-        if(e.children.length || _rpcMio(e)) return;
-        var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
-        if(t!=='cpa' && t!=='break even cpa') return;
-        var p=e;
-        for(var k=0;k<9&&p;k++){
-          if(p.parentElement===_grid0){ if(p.style.gridColumn) p.style.gridColumn=''; break; }
-          p=p.parentElement;
+      var _G=_grid0;
+      if(_G){
+        var _ancho=_G.getBoundingClientRect().width;
+        if(_ancho>=900){
+          if(_G.style.gridTemplateColumns!=='repeat(12,minmax(0,1fr))')
+            _G.style.gridTemplateColumns='repeat(12,minmax(0,1fr))';
+          var _anchas=['cpa','break even cpa','comisión cp3','comision cp3'];
+          [].slice.call(_G.children).forEach(function(c){
+            if(getComputedStyle(c).display==='none') return;          // ocultas: no ocupan
+            var gc=c.style.gridColumn||'';
+            if(gc.indexOf('-1')>=0) return;                            // titulos y bloque de canales
+            var t=(c.innerText||'').replace(/\s+/g,' ').trim().toLowerCase();
+            var esAncha=_anchas.some(function(x){ return t.indexOf(x)>=0; });
+            var q=esAncha?'span 4':'span 3';
+            if(c.style.gridColumn!==q) c.style.gridColumn=q;
+          });
+        } else if(_G.style.gridTemplateColumns){
+          _G.style.gridTemplateColumns='';
+          [].slice.call(_G.children).forEach(function(c){
+            var gc=c.style.gridColumn||'';
+            if(gc==='span 3'||gc==='span 4') c.style.gridColumn='';
+          });
         }
-      });
+      }
     }catch(e){}
     var cost=_cost0, filaTit=_filaTit0, grid=_grid0;
     // Buscador propio: cardByLabel() esta en otro closure y desde aca tira ReferenceError,
