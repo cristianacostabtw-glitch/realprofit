@@ -14540,7 +14540,10 @@ def _fin_datos_dia(email, f) -> dict:
     # NO se usa la liquidación diaria de MP: esa mezcla pagos de otros días y da comisiones
     # negativas (pasó: -36%, -56%), porque el ingreso y el facturado quedan en marcos distintos.
     mp = {"ok": False, "bruto": 0.0, "pagos": int(raw.get("mp_match") or 0)}
-    limpio = fact - float(raw.get("mp_costo_real") or 0)
+    # Las RETENCIONES de IIBB tambien salen del deposito: desde el 30-09-2026 ya no viven adentro
+    # de mp_costo_real (ver IIBB_PCT), asi que hay que restarlas aparte o el "ingreso limpio" de la
+    # planilla queda mas alto que lo que de verdad entro a la cuenta.
+    limpio = fact - float(raw.get("mp_costo_real") or 0) - float(raw.get("retenciones_mp") or 0)
     # OXIDO NITRICO: va de REGALO con el pack de 6 potes, pero igual figura como un renglon mas
     # en la orden de Shopify. Se cuenta en UNIDADES (ya venia contado) y en COSTO, pero a SU
     # precio (M49), no al del NAD (N49) — si no, cada regalo se costea de mas.
