@@ -4364,6 +4364,53 @@ ENVIO_RC_DESDE = "2026-09-15"   # desde este día (00:00) rige la lista de Redch
 # mañana anteriores a las 10 salieron con la logística anterior. Nada de antes se toca.
 ENVIO_AND_VUELVE = "2026-09-24T10:00"
 
+# === TARIFA ANDREANI MEDIDA EL 30-09-2026 (cuenta Acosta, origen Suc. Merlo) ==================
+# No es una cotizacion: se cargaron 27 envios REALES a una localidad por provincia y se leyeron
+# los precios del resumen de pedido. Cierra al centavo contra el total de Andreani ($ 256.902,40).
+#
+# COMO SE ARMA EL PRECIO (verificado sobre los 27):
+#     final = (tarifa_zona + 1% del VALOR DECLARADO) x 1,21 (IVA) x 0,75 (cupon COSTABTW)
+# El precio que Andreani muestra por envio YA trae seguro e IVA pero NO el cupon; el cupon se
+# aplica una sola vez sobre el total y se carga SOLO (dice "Cupon COSTABTW ingresado con exito").
+# El seguro es 1% del valor declarado, o sea que sube con el ticket: por eso no puede ser un fijo.
+#
+# EL MAPA DE ZONAS CAMBIO, no solo los precios:
+#   - CABA se despego de GBA: paga como Cordoba/Rosario, NO como La Plata/Quilmes (+25,8% vs la
+#     tabla vieja, y es uno de los destinos mas frecuentes).
+#   - LA PAMPA es la mas cara del pais, mas que Ushuaia. Estaba en "centro" (+27,5%).
+#   - Mar del Plata y Bahia Blanca pagan igual que Cordoba y Rosario.
+# El resto quedo subvaluado entre 10,6% y 11,9% parejo.
+ENVIO_AND2_DESDE = "2026-09-30T00:00"     # desde aca rige esta tabla; lo de antes NO se toca
+ENVIO_SEGURO_PCT = 1.0                    # % del valor declarado
+ENVIO_CUPON = 0.75                        # COSTABTW: 25% sobre (envio + seguro + IVA)
+# A DOMICILIO: 5 bandas. El mapa CAMBIO respecto de la tabla vieja (ver arriba).
+ENVIO_AND2_DOM = {      # tarifa PURA (sin seguro, sin IVA, sin cupon)
+    "gba":     7954.51,   # Buenos Aires con CP 1xxx (La Plata, Quilmes...)
+    "centro":  9147.01,   # CABA + Bs As interior + Cordoba + Santa Fe + Entre Rios
+    "cuyo":    9992.54,   # Cuyo, Norte, NEA, Neuquen, Rio Negro
+    "extremo":10488.06,   # Salta, Jujuy, Chubut, Santa Cruz, Tierra del Fuego
+    "pampa":  10519.06,   # La Pampa: banda propia, la mas cara del pais
+}
+# A SUCURSAL: medido el 30-09-2026 con 13 envios reales ($ 89.361,01, cierra al centavo).
+# OJO: SUCURSAL Y DOMICILIO NO AGRUPAN IGUAL, igual que pasaba con Redchat:
+#   - CABA a sucursal paga como GBA (lo mas barato). A domicilio paga como Cordoba.
+#   - LA PAMPA a sucursal paga como Cordoba. A domicilio es la mas cara del pais.
+# Por eso sucursal usa el mapa VIEJO (_envio_zona) y domicilio el nuevo (_envio_zona2).
+ENVIO_AND2_SUC = {
+    "amba":   5371.19,    # GBA + CABA
+    "centro": 6670.67,    # Bs As interior, Cordoba, Santa Fe, Entre Rios y LA PAMPA
+    "cuyo":   7338.48,
+    "extremo":7666.95,
+}
+
+
+def _envio_final_and2(zona, valor_declarado, suc=False) -> int:
+    """Lo que se paga de verdad por un envio con la tarifa medida el 30-09-2026."""
+    tabla = ENVIO_AND2_SUC if suc else ENVIO_AND2_DOM
+    t = tabla.get(zona) or tabla["centro"]
+    seg = float(valor_declarado or 0) * ENVIO_SEGURO_PCT / 100.0
+    return int(round((t + seg) * 1.21 * ENVIO_CUPON))
+
 _ENV_ACC = str.maketrans("áéíóúüàèìòùÁÉÍÓÚÜÑñ", "aeiouuaeiouAEIOUUNn")
 def _env_norm(s):
     return str(s or "").translate(_ENV_ACC).lower().strip()
@@ -4424,6 +4471,27 @@ def _envio_zona(o) -> str:
         if k in pn:
             return z
     return "amba" if cp[:1] == "1" else "centro"   # último fallback por CP
+
+def _envio_zona2(o) -> str:
+    """Zona para la tabla del 30-09-2026. NO reemplaza a _envio_zona: esa sigue devolviendo las
+    4 zonas viejas (amba/centro/cuyo/extremo) porque las tablas historicas dependen de ellas.
+    Acá se refinan los dos cortes que la medicion mostro que cambiaron:
+      - CABA deja de ir con GBA y pasa a pagar como Cordoba/Rosario ("centro").
+      - LA PAMPA se separa de "centro" a su propia banda, la mas cara del pais.
+    """
+    z = _envio_zona(o)
+    prov, cp = _prov_cp(o)
+    pn = _env_norm(prov)
+    code = str(prov).strip().upper()
+    if "la pampa" in pn or code == "L":
+        return "pampa"
+    if z == "amba":
+        es_caba = ("capital federal" in pn or "autonoma de buenos aires" in pn
+                   or "ciudad de buenos aires" in pn
+                   or pn in ("caba", "capital", "c.a.b.a.") or code == "C")
+        return "centro" if es_caba else "gba"
+    return z
+
 
 def _txt_es_sucursal(txt) -> bool:
     """ÚNICA fuente de verdad para clasificar sucursal por el TEXTO del método de envío.
@@ -4496,6 +4564,19 @@ def _envio_costo(o) -> int:
     z = _envio_zona(o)
     fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
     _hora = _envio_hora_ar(o)
+    if _hora and _hora >= ENVIO_AND2_DESDE:
+        # Tarifa medida el 30-09-2026. El seguro es 1% del VALOR DECLARADO, asi que el costo sube
+        # con el ticket y no puede salir de un numero fijo por zona.
+        _val = 0.0
+        for _k in ("total_price", "current_total_price", "total", "total_amount"):
+            try:
+                _val = float(o.get(_k) or 0)
+            except Exception:
+                _val = 0.0
+            if _val:
+                break
+        # sucursal agrupa distinto que domicilio: cada uno con SU mapa de zonas.
+        return _envio_final_and2(_envio_zona(o) if suc else _envio_zona2(o), _val, suc)
     if _hora and _hora >= ENVIO_AND_VUELVE:     # volvimos a Andreani
         z3 = ENVIO_ZONAS.get(z) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
         return z3["sucursal"] if suc else z3["domicilio"]
