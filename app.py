@@ -12461,7 +12461,11 @@ def _meli_resumen(email, desde, hasta):
     # OJO: en MercadoLibre el adelanto para cobrar al instante es 2,5%, NO el 3,75% del
     # Adelanto Programado de MercadoPago de la tienda. Con el 3,75% se le restaba de más a
     # MELI (26-09-2026: $ 30.919 en vez de $ 20.613, o sea $ 10.306 de más en un día).
-    adelanto_monto = (fact - comis_ml) * MELI_ADELANTO_PCT / 100.0
+    # El 2,5% se cobra sobre lo que MP VA A LIBERAR (el "Total a recibir el 28/oct" de la pantalla
+    # de MercadoPago), que es la venta menos TODO lo que ya se descuento: cargos de ML, envio y
+    # retenciones. Con la base vieja (solo menos la comision de ML) se cobraba de mas: $ 194,94 en
+    # una venta de $ 69.990 y $ 10.222,76 en el dia del 29-09-2026.
+    adelanto_monto = (fact - comis_ml - envio_ml - ret_ml) * MELI_ADELANTO_PCT / 100.0
     ganancia = fact - costo_prod - comision_monto - oper_monto - adelanto_monto - envio_ml
     r["mp_costo_real"] = 0.0; r["mp_match"] = 0
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
