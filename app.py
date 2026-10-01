@@ -3822,7 +3822,7 @@ _SOLO_DASH = r"""
     <div class="seg" style="margin-bottom:12px"><div class="s on" id="rpa-fdrive" onclick="rpaFuente('drive')">Google Drive</div><div class="s" id="rpa-farch" onclick="rpaFuente('arch')">Mis archivos</div></div>
     <div id="rpa-srcdrive">
      <span class="lb">Link de carpeta de Google Drive</span>
-     <div style="display:flex;gap:9px"><input class="in" id="rpa-drive" style="flex:1" placeholder="https://drive.google.com/drive/folders/…" oninput="rpaReset()">
+     <div style="display:flex;gap:9px"><textarea class="in" id="rpa-drive" rows="1" style="flex:1;resize:vertical;min-height:38px;font-family:inherit" placeholder="https://drive.google.com/drive/folders/…  (podés pegar VARIOS, uno por línea: cada uno sale como su propia tanda)" oninput="rpaReset();rpaTandas()"></textarea>
       <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar</button></div>
     </div>
     <div id="rpa-srcarch" style="display:none">
@@ -4065,7 +4065,7 @@ _SOLO_DASH = r"""
   $('rpa-progbox').style.display=EST=='activa'?'flex':'none';rpaCalc();};
  window.rpaReset=function(){$('rpa-vids').innerHTML='';VIDS=0;UPLOAD_ID='';$('rpa-vc').textContent='cargá tus videos';rpaCalc();};
  window.rpaBuscar=function(){var b=$('rpa-btnb');b.textContent='Buscando…';b.disabled=true;
-  fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:$('rpa-drive').value})}).then(function(r){return r.json();}).then(function(j){
+  fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:rpaDrives()[0]||''})}).then(function(r){return r.json();}).then(function(j){
    b.textContent='Buscar videos';b.disabled=false;
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style="color:#fb7185;font-size:12.5px;margin-top:10px">'+((j&&j.msg)||'no pude leer el Drive')+'</div>';VIDS=0;rpaCalc();return;}
    VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
@@ -4096,12 +4096,27 @@ _SOLO_DASH = r"""
   var rw=$('rpa-repwrap');if(rw)rw.style.display=(CMP=='nueva'&&NCONJ>1)?'flex':'none';
   if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi){if(rep){var cnt=[],k;for(k=1;k<=NCONJ;k++)cnt[k]=0;for(k=0;k<VLIST.length;k++){var cc=RMAP[k]||1;cnt[cc]=(cnt[cc]||0)+1;}var pp=[];for(k=1;k<=NCONJ;k++)pp.push('C'+k+': '+(cnt[k]||0));hi.innerHTML='Repartir — '+pp.join(' · ')+'  (elegí en cada video).';}else hi.innerHTML='Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).';}}
   $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;};
+ // Links de Drive del campo: uno por linea (tambien tolera comas o espacios).
+ window.rpaDrives=function(){ var t=(($('rpa-drive')||{}).value||'');
+   return t.split(/[\n,\s]+/).map(function(x){return x.trim();}).filter(function(x){return x.indexOf('http')===0;}); };
+ // Avisa cuantas tandas van a salir. El conteo de videos es el de la PRIMERA carpeta.
+ window.rpaTandas=function(){ var n=rpaDrives().length, e=$('rpa-tandas');
+   if(!e){ var d=$('rpa-drive'); if(!d||!d.parentElement||!d.parentElement.parentElement) return;
+     e=document.createElement('div'); e.id='rpa-tandas';
+     e.style.cssText='margin-top:6px;font-size:12px;color:#fbbf24';
+     d.parentElement.parentElement.appendChild(e); }
+   e.textContent = n>1 ? ('↳ '+n+' tandas: se crea un conjunto y un job por cada carpeta (y por cada cuenta elegida).') : '';
+ };
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
-  var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
+  var _dv=rpaDrives();
+  var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:(_dv[0]||''),upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
+  // VARIAS TANDAS: un Drive por linea. Cada una es un conjunto propio y un job propio, asi que
+  // si una falla las demas siguen. Con una sola linea se manda como siempre (sin "tandas").
+  if(_dv.length>1){ body.tandas=_dv.map(function(u){ return {drive:u}; }); }
   // MULTI-CUENTA: mando la lista y el presupuesto de CADA una (cada cuenta tiene su moneda).
   var _ks=rpaCuentasElegidas();
   if(_ks.length>1){
@@ -15848,21 +15863,39 @@ def pf_ads_lanzar():
     if not vistas:
         return jsonify({"ok": False, "msg": "no reconocí la cuenta elegida"}), 400
     presups = data.get("presupuestos") or {}
+    # TANDAS: varios Drive (o varias cargas) en una sola corrida. Cada tanda es una config que se
+    # pisa encima de la base, asi que puede traer su propio drive/upload_id, nombre de conjunto,
+    # angulo o presupuesto. Se lanza UN job por (tanda x cuenta): los jobs son independientes, si
+    # una tanda falla las otras siguen. Sin "tandas" se comporta igual que siempre.
+    tandas = [t for t in (data.get("tandas") or []) if isinstance(t, dict)]
+    if not tandas:
+        tandas = [{}]
     jobs = []
-    for c in vistas:
-        d = dict(data)
-        d["cuenta"] = c
-        d.pop("cuentas", None); d.pop("presupuestos", None)
-        if presups.get(c):
-            d["presupuesto"] = presups[c]
-        d["_token"] = _ads_token_para_cuenta(c)   # token que REALMENTE puede usar esa cuenta (no cruza cuentas)
-        job = uuid.uuid4().hex[:12]
-        _ads_lastcfg_set(_user_actual(), c, d)    # recordar la config para la próxima subida
-        _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
-        _job_put(job, _ADS_JOBS[job])   # a DISCO: si el worker se recicla, el progreso no se pierde
-        threading.Thread(target=_ads_run, args=(job, d), daemon=True).start()
-        jobs.append({"job": job, "cuenta": c,
-                     "nombre": (_ADS_CUENTAS.get(c) or {}).get("nombre", c)})
+    for ti, t in enumerate(tandas, 1):
+        for c in vistas:
+            d = dict(data)
+            d.pop("cuentas", None); d.pop("presupuestos", None); d.pop("tandas", None)
+            d.update({k: v for k, v in t.items() if v not in (None, "")})
+            d["cuenta"] = c
+            if presups.get(c) and not t.get("presupuesto"):
+                d["presupuesto"] = presups[c]
+            if len(tandas) > 1 and not t.get("conjunto_nombre"):
+                # sin nombre propio, que no queden todos los conjuntos llamados igual
+                _base = (data.get("conjunto_nombre") or "").strip()
+                d["conjunto_nombre"] = ("%s T%d" % (_base, ti)) if _base else ("Tanda %d" % ti)
+            if not (str(d.get("drive") or "").strip() or str(d.get("upload_id") or "").strip()):
+                continue
+            d["_token"] = _ads_token_para_cuenta(c)   # token que REALMENTE puede usar esa cuenta
+            job = uuid.uuid4().hex[:12]
+            _ads_lastcfg_set(_user_actual(), c, d)    # recordar la config para la próxima subida
+            _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+            _job_put(job, _ADS_JOBS[job])   # a DISCO: si el worker se recicla, el progreso no se pierde
+            threading.Thread(target=_ads_run, args=(job, d), daemon=True).start()
+            jobs.append({"job": job, "cuenta": c, "tanda": ti,
+                         "nombre": ((_ADS_CUENTAS.get(c) or {}).get("nombre", c)
+                                    + (" · tanda %d" % ti if len(tandas) > 1 else ""))})
+    if not jobs:
+        return jsonify({"ok": False, "msg": "ninguna tanda tenia videos (Drive o archivos)"}), 400
     return jsonify({"ok": True, "job": jobs[0]["job"], "jobs": jobs})
 
 
