@@ -10243,11 +10243,26 @@ def _meli_envios_listos(email, sids=None):
     # lista NI en el total de potes. Mismo bug que tenia el stock con Shopify.
     res = []
     try:
+        import time as _tml
         _off = 0
         while _off < 400:
-            r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
-                             params={"seller": uid, "sort": "date_desc",
-                                     "limit": 50, "offset": _off})
+            r = None
+            for _try in range(3):          # 429/5xx: reintentar, NO dar la lista por vacia
+                r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
+                                 params={"seller": uid, "sort": "date_desc",
+                                         "limit": 50, "offset": _off})
+                if r.status_code < 400:
+                    break
+                _tml.sleep(1.2 * (_try + 1))
+            # SI ML CONTESTA MAL, NO SE DEVUELVE UNA LISTA VACIA. Antes el codigo miraba
+            # directamente r.json()["results"]: con un 429 (pedir dos veces seguidas alcanza)
+            # quedaba [], cortaba el while y la pantalla decia "0 para despachar" como si no
+            # hubiera nada. Es el peor error posible aca: se dejan de despachar ventas reales.
+            # Medido el 30-09-2026: 3 llamadas seguidas -> 55, 0, 0.
+            if r is None or r.status_code >= 400:
+                if _off == 0:
+                    return [], "MercadoLibre contesto %s al pedir las ventas. No es que no haya nada para despachar: volve a intentar en un minuto." % (r.status_code if r is not None else "nada")
+                break                       # ya tengo paginas: sigo con lo que junte
             _lote = (r.json() if r.content else {}).get("results", [])
             res += _lote
             if len(_lote) < 50:
