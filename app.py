@@ -3822,7 +3822,7 @@ _SOLO_DASH = r"""
     <div class="seg" style="margin-bottom:12px"><div class="s on" id="rpa-fdrive" onclick="rpaFuente('drive')">Google Drive</div><div class="s" id="rpa-farch" onclick="rpaFuente('arch')">Mis archivos</div></div>
     <div id="rpa-srcdrive">
      <span class="lb">Link de carpeta de Google Drive</span>
-     <div style="display:flex;gap:9px"><textarea class="in" id="rpa-drive" rows="1" style="flex:1;resize:vertical;min-height:38px;font-family:inherit" placeholder="https://drive.google.com/drive/folders/…  (podés pegar VARIOS, uno por línea: cada uno sale como su propia tanda)" oninput="rpaReset();rpaTandas()"></textarea>
+     <div style="display:flex;gap:9px"><input class="in" id="rpa-drive" style="flex:1" placeholder="https://drive.google.com/drive/folders/…" oninput="rpaReset()">
       <button id="rpa-btnb" onclick="rpaBuscar()" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 18px;font-weight:800;cursor:pointer;white-space:nowrap">Buscar</button></div>
     </div>
     <div id="rpa-srcarch" style="display:none">
@@ -3831,6 +3831,11 @@ _SOLO_DASH = r"""
      <div style="color:#5b6678;font-size:11.5px;margin-top:6px">Pod&eacute;s elegir varios de una, o subir el <b>.zip</b> que te baja Google Drive (lo descomprimo solo y saco los videos).</div>
     </div>
     <div id="rpa-vids"></div>
+    <div id="rpa-tandas-box" style="margin-top:14px;border-top:1px solid #1f2937;padding-top:12px">
+     <div id="rpa-tandas-list"></div>
+     <button onclick="rpaAddTanda()" style="background:transparent;border:1px dashed #3b4657;color:#9aa6b8;border-radius:10px;padding:9px 14px;font-weight:700;cursor:pointer;font-size:12.5px">+ Agregar otra tanda</button>
+     <div style="color:#5b6678;font-size:11.5px;margin-top:7px">Cada tanda es su propio conjunto: su carpeta de Drive <b>o</b> sus archivos. Se lanza un job por tanda (y por cuenta elegida).</div>
+    </div>
    </div>
    <div class="card">
     <div class="ch"><div class="cn">3</div><div class="ct">Campa&ntilde;a</div></div>
@@ -4065,7 +4070,7 @@ _SOLO_DASH = r"""
   $('rpa-progbox').style.display=EST=='activa'?'flex':'none';rpaCalc();};
  window.rpaReset=function(){$('rpa-vids').innerHTML='';VIDS=0;UPLOAD_ID='';$('rpa-vc').textContent='cargá tus videos';rpaCalc();};
  window.rpaBuscar=function(){var b=$('rpa-btnb');b.textContent='Buscando…';b.disabled=true;
-  fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:rpaDrives()[0]||''})}).then(function(r){return r.json();}).then(function(j){
+  fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:$('rpa-drive').value})}).then(function(r){return r.json();}).then(function(j){
    b.textContent='Buscar videos';b.disabled=false;
    if(!j||!j.ok){$('rpa-vids').innerHTML='<div style="color:#fb7185;font-size:12.5px;margin-top:10px">'+((j&&j.msg)||'no pude leer el Drive')+'</div>';VIDS=0;rpaCalc();return;}
    VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
@@ -4089,34 +4094,67 @@ _SOLO_DASH = r"""
   var _mn=MONEDA?(' '+MONEDA):'';   // el resumen es lo ultimo que se mira antes de lanzar: sin la moneda, 50000 puede ser pesos o dolares
   $('rpa-rtipo').textContent=CMP=='exist'?'(la de la campaña)':((TIPO=='cbo'?'CBO $'+p+_mn:'ABO $'+p+_mn+'/conjunto')+(TIPO=='abo'&&SHARE?' · comparte 20%':''));
   $('rpa-rconj').textContent=(CMP=='exist'&&CJ=='usar')?'usar 1':NCONJ;
-  $('rpa-rvids').textContent=VIDS;$('rpa-adsx').textContent=VIDS;
+  var _vt=(window.rpaVidsTotal?rpaVidsTotal():VIDS), _nt=(window.rpaTandasPayload?rpaTandasPayload().length:1);
+  $('rpa-rvids').textContent=(_nt>1?(_vt+' en '+_nt+' tandas'):_vt);$('rpa-adsx').textContent=_vt;
   $('rpa-rest').textContent=EST=='activa'?('Prog. '+schedTxt()):'Pausada';
   var rep=REPARTIR&&NCONJ>1&&CMP=='nueva';
   $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(rep?VIDS:(VIDS*NCONJ));
   var rw=$('rpa-repwrap');if(rw)rw.style.display=(CMP=='nueva'&&NCONJ>1)?'flex':'none';
   if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi){if(rep){var cnt=[],k;for(k=1;k<=NCONJ;k++)cnt[k]=0;for(k=0;k<VLIST.length;k++){var cc=RMAP[k]||1;cnt[cc]=(cnt[cc]||0)+1;}var pp=[];for(k=1;k<=NCONJ;k++)pp.push('C'+k+': '+(cnt[k]||0));hi.innerHTML='Repartir — '+pp.join(' · ')+'  (elegí en cada video).';}else hi.innerHTML='Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).';}}
   $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;};
- // Links de Drive del campo: uno por linea (tambien tolera comas o espacios).
- window.rpaDrives=function(){ var t=(($('rpa-drive')||{}).value||'');
-   return t.split(/[\n,\s]+/).map(function(x){return x.trim();}).filter(function(x){return x.indexOf('http')===0;}); };
- // Avisa cuantas tandas van a salir. El conteo de videos es el de la PRIMERA carpeta.
- window.rpaTandas=function(){ var n=rpaDrives().length, e=$('rpa-tandas');
-   if(!e){ var d=$('rpa-drive'); if(!d||!d.parentElement||!d.parentElement.parentElement) return;
-     e=document.createElement('div'); e.id='rpa-tandas';
-     e.style.cssText='margin-top:6px;font-size:12px;color:#fbbf24';
-     d.parentElement.parentElement.appendChild(e); }
-   e.textContent = n>1 ? ('↳ '+n+' tandas: se crea un conjunto y un job por cada carpeta (y por cada cuenta elegida).') : '';
+ // ---- TANDAS EXTRA: cada una con SU carpeta de Drive o SUS archivos ----
+ var TAN=[];
+ window.rpaAddTanda=function(){
+  var id='t'+(Date.now()%100000)+Math.floor(Math.random()*99);
+  TAN.push({id:id, drive:'', upload_id:'', vids:0});
+  var w=document.createElement('div'); w.id='tw-'+id;
+  w.style.cssText='border:1px solid #1f2937;border-radius:12px;padding:11px;margin-bottom:10px;background:#0f141c';
+  w.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+   '<b style="font-size:12.5px;color:#c4b5fd">Tanda '+(TAN.length+1)+'</b>'+
+   '<span id="tc-'+id+'" style="font-size:12px;color:#5b6678">sin creativos</span>'+
+   '<button onclick="rpaDelTanda(\''+id+'\')" style="background:transparent;border:none;color:#fb7185;cursor:pointer;font-size:12px;font-weight:700">quitar</button></div>'+
+   '<div style="display:flex;gap:8px;margin-bottom:8px">'+
+   '<input class="in" id="td-'+id+'" style="flex:1" placeholder="link de carpeta de Drive...">'+
+   '<button onclick="rpaBuscarTanda(\''+id+'\')" style="flex:none;background:#137fec;border:none;color:#fff;border-radius:10px;padding:0 15px;font-weight:800;cursor:pointer">Buscar</button></div>'+
+   '<div style="color:#5b6678;font-size:11px;margin-bottom:5px">o subi los archivos de esta tanda:</div>'+
+   '<input class="in" id="tf-'+id+'" type="file" accept="video/*,image/*,.mp4,.mov,.m4v,.jpg,.jpeg,.png,.webp,.zip" multiple style="width:100%;box-sizing:border-box;padding:7px;font-size:12px" onchange="rpaSubirTanda(\''+id+'\')">';
+  $('rpa-tandas-list').appendChild(w);
  };
- window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
-  var _dv=rpaDrives();
-  var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:(_dv[0]||''),upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
+ window.rpaDelTanda=function(id){ TAN=TAN.filter(function(t){return t.id!=id;}); var w=$('tw-'+id); if(w) w.remove(); rpaCalc(); };
+ function _tan(id){ for(var i=0;i<TAN.length;i++) if(TAN[i].id==id) return TAN[i]; return null; }
+ window.rpaBuscarTanda=function(id){ var t=_tan(id); if(!t) return;
+  var u=($('td-'+id)||{}).value||''; if(u.indexOf('http')!==0){ alert('Pega el link de la carpeta.'); return; }
+  $('tc-'+id).textContent='buscando...';
+  fetch('/pf-ads-drive-listar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({drive:u})})
+   .then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ $('tc-'+id).textContent=(j&&j.msg)||'no pude leer'; t.drive=''; t.vids=0; rpaCalc(); return; }
+     t.drive=u; t.upload_id=''; t.vids=(j.videos||[]).length;
+     $('tc-'+id).textContent=t.vids+' creativos'; rpaCalc();
+   }).catch(function(){ $('tc-'+id).textContent='error'; }); };
+ window.rpaSubirTanda=function(id){ var t=_tan(id); if(!t) return;
+  var inp=$('tf-'+id); if(!inp.files||!inp.files.length) return;
+  var fd=new FormData(); for(var i=0;i<inp.files.length;i++) fd.append('videos',inp.files[i]);
+  $('tc-'+id).textContent='subiendo...';
+  fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(!j||!j.ok){ $('tc-'+id).textContent=(j&&j.msg)||'no pude subir'; return; }
+    t.upload_id=j.upload_id; t.drive=''; t.vids=(j.videos||[]).length;
+    $('tc-'+id).textContent=t.vids+' creativos'; rpaCalc();
+  }).catch(function(){ $('tc-'+id).textContent='error subiendo'; }); };
+ window.rpaTandasPayload=function(){ var out=[];
+  if(VIDS>0) out.push({drive:(($('rpa-drive')||{}).value||''), upload_id:UPLOAD_ID});
+  TAN.forEach(function(t){ if(t.vids>0) out.push({drive:t.drive, upload_id:t.upload_id}); });
+  return out; };
+ window.rpaVidsTotal=function(){ var n=VIDS; TAN.forEach(function(t){ n+=t.vids||0; }); return n; };
+ window.rpaLanzar=function(){ if((window.rpaVidsTotal?rpaVidsTotal():VIDS)<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
+  var _tp=rpaTandasPayload();
+  var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:($('rpa-drive')||{}).value||'',upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   // VARIAS TANDAS: un Drive por linea. Cada una es un conjunto propio y un job propio, asi que
   // si una falla las demas siguen. Con una sola linea se manda como siempre (sin "tandas").
-  if(_dv.length>1){ body.tandas=_dv.map(function(u){ return {drive:u}; }); }
+  if(_tp.length>1){ body.tandas=_tp; }
   // MULTI-CUENTA: mando la lista y el presupuesto de CADA una (cada cuenta tiene su moneda).
   var _ks=rpaCuentasElegidas();
   if(_ks.length>1){
