@@ -8966,9 +8966,16 @@ def pf_despachos_excel():
     faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
     revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
     por_envialo = []             # pedidos que van por Envialo (no coincidían) → los saco del Excel de Andreani
+    unificados = []              # viajan DENTRO del paquete de otro pedido → NO se cargan en Andreani
     for r in sel:
         if str(r["num"]) in envialo_excl:   # no coincidía con Envialo → se despacha por Envialo, no lo meto acá
             por_envialo.append(str(r["num"]))
+            continue
+        # Envio unificado: este pedido va dentro del paquete de otro (ver ENVIOS_UNIFICADOS).
+        # Lo saco del Excel aunque venga tildado: si entrara, Andreani cobraria un flete que no
+        # corresponde. Solo se carga el pedido que efectivamente lleva el paquete.
+        if not _envio_unificado_paga(r["num"]):
+            unificados.append(str(r["num"]))
             continue
         nom, ape = _split_nombre(r["nombre"])
         nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
@@ -9024,6 +9031,7 @@ def pf_despachos_excel():
     wb.save(buf)
     wb.close()
     buf.seek(0)
+
     return send_file(buf, as_attachment=True, download_name="Andreani.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
