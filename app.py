@@ -4413,6 +4413,25 @@ ENVIO_AND2_SUC = {
 }
 
 
+# Envios UNIFICADOS: varios pedidos del mismo cliente que se despachan en UN SOLO paquete.
+# No es una regla general ni se deduce sola: es una decision puntual de Cristian, cargada a mano.
+# Paga el envio el pedido de numero MAS BAJO del grupo; los demas suman 0, porque el flete se
+# pago una sola vez. Si no estuviera esto, 4 pedidos de un mismo cliente cobraban 4 fletes y
+# hundian la ganancia de ese dia sin que nadie hubiera pagado esos envios.
+ENVIOS_UNIFICADOS = [
+    {"7039", "7040", "7042", "7044"},   # Leonardo Gallo, 03-10-2026: 4 unidades en 1 paquete
+]
+
+
+def _envio_unificado_paga(num) -> bool:
+    """False si este pedido viaja dentro del paquete de otro: no debe sumar envio."""
+    n = str(num or "").replace("#", "").strip()
+    for g in ENVIOS_UNIFICADOS:
+        if n in g:
+            return n == min(g)
+    return True
+
+
 def _envio_final_and2(zona, valor_declarado, suc=False) -> int:
     """Lo que se paga de verdad por un envio con la tarifa medida el 30-09-2026."""
     tabla = ENVIO_AND2_SUC if suc else ENVIO_AND2_DOM
@@ -12320,12 +12339,14 @@ def _shopify_resumen(email, desde, hasta):
         fact += tot
         # Envío: costo REAL de Envialo si el pedido ya está ahí; si no, promedio domicilio/sucursal.
         _num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-        envio_zona += _envio_costo(o)   # SIEMPRE la tabla Andreani por zona (con descuento)
-        _real = emap.get(_num)
-        if _real is not None:
-            envio_monto += _real; envio_real += 1
-        else:
-            envio_monto += _envio_costo(o)
+        if _envio_unificado_paga(_num):
+            envio_zona += _envio_costo(o)   # SIEMPRE la tabla Andreani por zona (con descuento)
+            _real = emap.get(_num)
+            if _real is not None:
+                envio_monto += _real; envio_real += 1
+            else:
+                envio_monto += _envio_costo(o)
+        # else: viaja dentro del paquete de otro pedido (ver ENVIOS_UNIFICADOS) -> no suma envio
         # MP: matcheo este pedido con su pago real (por referencia; fallback por monto exacto).
         pago = None
         if mp_conectado:
