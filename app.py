@@ -2718,10 +2718,10 @@ _SOLO_DASH = r"""
     var cards=_pubCards(); if(cards.length<4) return false;   // <4 = grilla todavía no montada → no destapar
     var seq=[['Inversión Ads',money(_raw.publi_ars||0),'Inversión en anuncios'],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
-             ['ROAS',num(_raw.roas)+'x','Solo tienda · con MELI '+num(_raw.roas_total||_raw.roas)+'x'],
-             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · solo tienda'],
+             ['ROAS',num(_raw.roas)+'x','Facturación de la tienda ÷ ads · sin MELI'],
+             ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · sin MELI'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
-             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta · con MELI '+money(_raw.be_cpa_mix||0)],
+             ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta para no perder · sin MELI'],
              ['Comisión CP3',money(_raw.comision_agencia||0),'10% de la pauta de CP3 · fuera del CPA'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'(oculta)']];
     var hit=0;
@@ -16341,14 +16341,16 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         if _fact_web < 0:
             _fact_web = 0.0
         r["facturado_web"] = round(_fact_web, 2)
-        # ROAS: facturación de TODOS los canales sobre el gasto de Meta (decisión de
-        # Cristian, 26-09-2026). El de la tienda sola queda al lado como referencia.
-        # ⚠️ OJO al comparar: "be_roas" se calcula SÓLO con la tienda, así que enfrentar
-        # roas (con MELI) contra be_roas (sin MELI) dice que ganás cuando podés estar
-        # perdiendo. Para esa comparación está "be_roas_total", acá abajo.
-        r["roas"] = round(fact / spend, 2) if spend else 0.0
-        r["roas_web"] = round(_fact_web / spend, 2) if spend else 0.0
-        r["roas_total"] = r["roas"]
+        # ROAS: SOLO la facturación de la tienda sobre el gasto de Meta. Decisión de Cristian
+        # (04-10-2026): MELI NO suma acá. Los ads no traen las ventas de MercadoLibre, y
+        # metiendolas el ROAS se enfrentaba contra un break even calculado SIN MELI, o sea
+        # comparaba peras con manzanas y daba "ganás" cuando en realidad estabas debajo.
+        # El 04-10-2026 el ROAS mostrado era 2,82 (con MELI) contra un break even de 2,37:
+        # parecia holgado. El real era 2,20, o sea POR DEBAJO del break even.
+        # roas_total queda con todos los canales, pero sólo como referencia interna.
+        r["roas"] = round(_fact_web / spend, 2) if spend else 0.0
+        r["roas_web"] = r["roas"]
+        r["roas_total"] = round(fact / spend, 2) if spend else 0.0
         r["cpa"] = round(spend / ordenes_web, 2) if ordenes_web else 0.0
         r["gan_por_venta"] = round(r["ganancia"] / ordenes, 2) if ordenes else 0.0
         r["tot_ganancia"] = r["ganancia"]
