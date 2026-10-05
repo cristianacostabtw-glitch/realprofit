@@ -2722,7 +2722,7 @@ _SOLO_DASH = r"""
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · SOLO tienda (sin MELI)'],
              ['CPA',money(_raw.cpa||0),'Costo por cada venta'],
              ['Break Even CPA',money(_raw.be_cpa||0),'Tope por venta para no perder · sin MELI'],
-             ['Comisión CP3',money(_raw.comision_agencia||0),'10% de la pauta de CP3 · fuera del CPA'],
+             ['Comisión CP3',money(_raw.comision_agencia||0),'10% de la pauta de CP3 · fuera del break even · ya restada de la ganancia'],
              ['Facturación Recompra',money(_raw.fact_recompra||0),'(oculta)']];
     var hit=0;
     for(var j=0;j<cards.length && j<seq.length;j++){
@@ -16500,9 +16500,15 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # Misma regla que arriba: el 0,6% de Shopify no da credito, asi que NO se resta de la base.
         # La retencion NO va en esta base: es impuesto, no factura, no da credito fiscal.
         _iva_w = (_fact_w - _prod_w - _com_w - _env_w) * _F
-        # La comision de la agencia sale del CPA y entra aca, como costo: asi el CPA queda igual
-        # al de Meta y el veredicto no cambia (antes el 10% inflaba el CPA, ahora baja el tope).
-        _com_ag_w = float(r.get("comision_agencia", 0) or 0)
+        # La comision de la agencia (10% de la pauta de CP3) NO entra en el break even.
+        # Decision de Cristian (05-10-2026): "sin agregarlo al cpa breakeven, pero restalo como
+        # algo a la ganancia si tiene su tarjetita y se sabe cuanto se resta".
+        # Se resta de la GANANCIA (mas abajo, junto con la pauta y su IVA) y se muestra sola en
+        # la tarjeta "Comision CP3", para que se vea cuanto es.
+        # ⚠️ Consecuencia asumida: el CPA real tampoco la lleva, asi que ni el tope ni el CPA
+        # la contemplan. El dia da ~$383.000 mejor de lo que cierra la caja (04-10-2026). Esa
+        # plata aparece restada en la ganancia y en su tarjeta, no en el break even.
+        _com_ag_w = 0.0
         # Los pedidos en $0 (reposiciones) no son ventas pero SI se despachan, y ese
         # fulfillment lo paga la tienda. La ganancia ya lo cobraba; la contribucion no, asi que
         # el tope de CPA salia mas alto del real (29-09-2026: $ 77 por venta, 12 pedidos).
