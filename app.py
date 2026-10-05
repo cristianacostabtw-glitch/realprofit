@@ -1921,7 +1921,8 @@ _SOLO_DASH = r"""
    var STORE=(_dSegTienda==='shopify'?'Shopify':'TiendaNube');
    var r={ambos:0,solo_tn:0,solo_wpp:0,nada:0}; _dSeg.forEach(function(o){ if(o.tn&&o.wpp)r.ambos++; else if(o.tn)r.solo_tn++; else if(o.wpp)r.solo_wpp++; else r.nada++; });
    var _vis=_dSeg.filter(function(o){ return !o.tn || (_dSegWppOn && !o.wpp); });   // en la tabla, SOLO las que faltan
-   var filas=_vis.map(function(o){ var tpl=(o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—');
+   var _nflex=_dSeg.filter(function(o){return o.carrier==='envialo';}).length, _nand=_dSeg.length-_nflex;
+   var filas=_vis.map(function(o){ var tpl=(o.carrier==='envialo')?('⚡ flex · '+(o.unidades||0)+'u'):((o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—'));
      var st=!o.wa_id?' <span style="color:#fb7185;font-size:10px">sin tel</span>':'';
      return '<tr><td style="padding:8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;color:#e7edf5">'+_dEsc(o.nombre||'')+st+'</td>'
@@ -1929,6 +1930,8 @@ _SOLO_DASH = r"""
        +'<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.tn,'#5aa2f5')+'</td>'
        +(_dSegWppOn?('<td style="padding:8px;border-top:1px solid #141c2a;text-align:center">'+_dSegChip(o.wpp,'#34d399')+'</td>'):'')+'</tr>'; }).join('');
    var al='';
+   if(_nflex&&_nand) al+='<div style="color:#c4b5fd;font-size:12px;margin-bottom:4px">📦 PDF mezclado: <b>'+_nand+' de Andreani</b> y <b>'+_nflex+' de Envialo Flex</b> — a cada uno le va su link y su plantilla.</div>';
+   else if(_nflex) al+='<div style="color:#c4b5fd;font-size:12px;margin-bottom:4px">⚡ Etiquetas de <b>Envialo Flex</b> — link de RedChat y plantilla <b>seguimiento_flex</b> (avisa 24/48 hs).</div>';
    if(r.ambos>0) al+='<div style="color:#f0b429;font-size:12px;margin-bottom:4px">⚠ '+r.ambos+' ya enviados por WhatsApp Y '+STORE+' — se descartan, no se repiten.</div>';
    if(r.solo_tn>0) al+='<div style="color:#5aa2f5;font-size:12px;margin-bottom:4px">🔵 '+r.solo_tn+' ya en '+STORE+(_dSegWppOn?', falta WhatsApp':'')+'.</div>';
    if(r.solo_wpp>0) al+='<div style="color:#34d399;font-size:12px;margin-bottom:4px">🟢 '+r.solo_wpp+' ya por WhatsApp, falta '+STORE+'.</div>';
@@ -11206,23 +11209,49 @@ def _seg_tel_real(o: dict) -> str:
     return ""
 
 
+def _seg_url_track(it) -> str:
+    """El link que ve el cliente. NO es el mismo para las dos etiquetas."""
+    if (it.get("carrier") or "") == "envialo":
+        return "https://app.redchat.com.ar/seguimiento/%s" % it["seguimiento"]
+    return "https://www.andreani.com/envio/%s" % it["seguimiento"]
+
+
 def _seg_leer_pdf(fp) -> list:
-    """Saca de cada etiqueta de Andreani: N° Interno (pedido) + N° de seguimiento. Igual que el Mac."""
+    """Saca de cada etiqueta el pedido + el seguimiento, detectando SOLO el transportista.
+
+    Son dos etiquetas distintas y NO se pueden mezclar: cada una tiene su link de seguimiento
+    y su plantilla de WhatsApp (la de Flex promete 24/48 hs, la de Andreani no promete plazo).
+    Se decide PAGINA POR PAGINA, asi que un PDF mezclado tambien sale bien.
+
+      - Andreani:       'N° Interno: #7210'  +  'seguimiento: 360000...'
+      - Envialo Flex:   'Rte.:ENVIALO'  +  'Venta: 7210'  +  'Envio: e0037804'
+        El codigo de RedChat son los digitos del 'Envio' SIN el 'e00' de adelante
+        (e0037804 -> 37804 -> app.redchat.com.ar/seguimiento/37804, verificado 05-10-2026).
+        Ojo: en la etiqueta de Envialo el nombre va en el renglon de ABAJO de 'Destinatario',
+        no en la misma linea como en Andreani.
+    """
     import fitz, re
     doc = fitz.open(fp)
     out, vistos = [], set()
     for pg in doc:
         t = pg.get_text()
-        ped = re.search(r"N[°ºo]?\s*Interno\s*:\s*#?\s*(\d+)", t) or re.search(r"\bId:\s*#?\s*(\d+)", t, re.I)
-        seg = re.search(r"seguimiento:\s*(\d+)", t, re.I) or re.search(r"\b(3600\d{9,13})\b", t)
+        if re.search(r"Rte\.?\s*:\s*ENVIALO", t, re.I) or re.search(r"Envio:\s*e\d{5,}", t, re.I):
+            carrier = "envialo"
+            ped = re.search(r"Venta:\s*#?\s*(\d+)", t, re.I)
+            seg = re.search(r"Envio:\s*e0*(\d+)", t, re.I)
+            dest = re.search(r"Destinatario\s*\n\s*(.+)", t)
+        else:
+            carrier = "andreani"
+            ped = re.search(r"N[°ºo]?\s*Interno\s*:\s*#?\s*(\d+)", t) or re.search(r"\bId:\s*#?\s*(\d+)", t, re.I)
+            seg = re.search(r"seguimiento:\s*(\d+)", t, re.I) or re.search(r"\b(3600\d{9,13})\b", t)
+            dest = re.search(r"Destinatario:\s*(.+)", t)
         if not (seg and ped):
             continue
         num = ped.group(1)
         if num in vistos:
             continue
         vistos.add(num)
-        dest = re.search(r"Destinatario:\s*(.+)", t)
-        out.append({"pedido": num, "seguimiento": seg.group(1),
+        out.append({"pedido": num, "seguimiento": seg.group(1), "carrier": carrier,
                     "dest": dest.group(1).strip() if dest else ""})
     doc.close()
     return out
@@ -11724,7 +11753,7 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
             wpp_ok = bool(wpp_env.get(str(it["pedido"])))
             pedidos.append({
                 "num": it["pedido"], "nombre": nombre, "track": it["seguimiento"],
-                "url": "https://www.andreani.com/envio/%s" % it["seguimiento"],
+                "url": _seg_url_track(it), "carrier": it.get("carrier") or "andreani",
                 "wa_id": _seg_e164(tel) if tel else "", "unidades": u,
                 "order_id": oid, "fo_id": fo_id, "es_sucursal": es_suc,
                 "tn": tn_ok, "wpp": wpp_ok, "match": match, "tienda": tienda,
@@ -11841,7 +11870,12 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         # El template combo es OPCIONAL por cuenta (bot_tpl_combo). Si la cuenta no lo tiene
         # (ej NoxaLab, que solo tiene 'seguimiento_despacho'), se usa SIEMPRE el base.
         combo_tpl = (c.get("bot_tpl_combo") or "").strip()
-        if u >= 2 and combo_tpl:
+        if (p.get("carrier") or "") == "envialo":
+            # Flex pago por Envialo: link de RedChat y plantilla propia, que SI avisa 24/48 hs.
+            # No se mezcla nunca con la de Andreani, que no promete plazo.
+            name = "seguimiento_flex"
+            params = [n, num, link]
+        elif u >= 2 and combo_tpl:
             name = combo_tpl
             params = [n, num, link, _seg_presentacion(u)]
         else:
@@ -11864,7 +11898,9 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         num, wa, n, link, name, params, combo_tpl, p, _snd = t
         try:
             r, j = _snd(name, params)
-            if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and combo_tpl and name == combo_tpl:
+            # 132001 = la plantilla no existe o todavia no esta APPROVED. Cae a la base, que
+            # siempre esta aprobada, con el MISMO link (se pierde la linea de 24/48 hs, nada mas).
+            if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and name != "seguimiento_despacho":
                 name = "seguimiento_despacho"; params = [n, num, link]
                 r, j = _snd(name, params)
             return (t, r, j, None)
