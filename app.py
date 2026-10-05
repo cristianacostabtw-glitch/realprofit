@@ -11216,6 +11216,23 @@ def _seg_url_track(it) -> str:
     return "https://www.andreani.com/envio/%s" % it["seguimiento"]
 
 
+def _seg_track_info(p) -> dict:
+    """El trackingInfo que se le carga a Shopify, segun el transportista de la etiqueta.
+
+    Para Andreani NO hace falta mandar la url: Shopify la arma sola a partir del company
+    (verificado 05-10-2026: queda andreani.com/envio/<trk>). Para Envialo Flex SI hay que
+    mandarla, porque Shopify no conoce ese transportista; y sobre todo porque si se cargara
+    como "Andreani" el cliente recibiria por mail un link andreani.com con un numero de
+    5 digitos, que no existe. Casi siempre Envialo ya cargo el tracking el mismo (bien, con
+    company "Envialo Flex") y estos pedidos se saltean; esto es para cuando no lo hizo.
+    """
+    trk = p.get("track")
+    if (p.get("carrier") or "") == "envialo":
+        return {"company": "Envialo Flex", "number": trk,
+                "url": p.get("url") or ("https://app.redchat.com.ar/seguimiento/%s" % trk)}
+    return {"company": "Andreani", "number": trk}
+
+
 def _seg_leer_pdf(fp) -> list:
     """Saca de cada etiqueta el pedido + el seguimiento, detectando SOLO el transportista.
 
@@ -11491,7 +11508,8 @@ def _seg_shop_tel(o):
 
 
 def _seg_enviar_shopify(email, pedidos) -> dict:
-    """Carga el tracking de Andreani en Shopify + avisa al cliente por mail. Doble vía:
+    """Carga el tracking (Andreani o Envialo Flex, ver _seg_track_info) en Shopify + avisa al
+    cliente por mail. Doble vía:
     (1) si hay fulfillment order ABIERTO → fulfillmentCreate (crea el fulfillment con tracking);
     (2) si la orden YA está preparada (fulfillment creado a mano/app, sin tracking) →
         fulfillmentTrackingInfoUpdate al fulfillment existente. Salta los que ya tienen ese tracking."""
@@ -11558,7 +11576,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             variables = {"f": {
                 "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
                 "notifyCustomer": True,
-                "trackingInfo": {"company": "Andreani", "number": p.get("track")}}}
+                "trackingInfo": _seg_track_info(p)}}
             try:
                 gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=15)
                 j = gr.json() if gr.content else {}
@@ -11582,7 +11600,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             return ("fail", {"num": num, "msg": "sin fulfillment ni FO abierto (FO: %s)" % estados})
         if str(ff.get("tracking_number") or "") == str(p.get("track") or ""):
             return ("salt", None)
-        v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": {"company": "Andreani", "number": p.get("track")}}
+        v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": _seg_track_info(p)}
         try:
             gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=15)
             j = gr.json() if gr.content else {}
