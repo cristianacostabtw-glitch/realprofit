@@ -9135,7 +9135,23 @@ def _sku_id(texto):
     return m.group(1) if m else ""
 
 
+def _sku_es_flex(texto) -> bool:
+    """Etiqueta de Flex (Correo e-Flet / Envialo). Los marcadores NO se pisan con los de
+    Andreani, asi que un PDF mezclado se resuelve pagina por pagina."""
+    t = texto or ""
+    return ("e-Flet" in t) or bool(_re_and.search(r"Rte\.?\s*:\s*ENVIALO", t, _re_and.I)) \
+        or bool(_re_and.search(r"Envio:\s*e\d{5,}", t, _re_and.I))
+
+
+def _sku_venta(texto):
+    """Flex escribe el numero de pedido como 'Venta: 7373' (Andreani usa 'N° Interno')."""
+    m = _re_and.search(r"Venta:\s*#?\s*(\d+)", texto, _re_and.I)
+    return m.group(1) if m else ""
+
+
 def _sku_pedido(texto, nuevo):
+    if _sku_es_flex(texto):
+        return _sku_venta(texto)
     return _sku_nint(texto) if nuevo else _sku_id(texto)
 
 
@@ -9151,6 +9167,23 @@ def _sku_estampar_nuevo(pg, sku):
     w = fitz.get_text_length(sku, fontname="hebo", fontsize=fs)
     x0 = xr - w; cap = fs * 0.70; pad_x, pad_y = 3.0, 2.0
     caja = fitz.Rect(x0 - pad_x, y - cap - pad_y, xr + pad_x, y + pad_y)
+    pg.draw_rect(caja, fill=(0, 0, 0), color=(0, 0, 0), width=0)
+    pg.insert_text(fitz.Point(x0, y), sku, fontsize=fs, fontname="hebo", color=(1, 1, 1))
+
+
+def _sku_estampar_flex(pg, sku):
+    """Flex (Correo e-Flet): caja negra grande en el hueco libre, debajo de 'Tipo de servicio'.
+    La etiqueta mide 283x425pt y de y=310 para abajo no hay nada impreso."""
+    import fitz
+    anc = pg.search_for("Tipo de servicio")
+    y0 = (anc[0].y1 + 16.0) if anc else 320.0
+    fs = 17.0
+    w = fitz.get_text_length(sku, fontname="hebo", fontsize=fs)
+    cx = pg.rect.width / 2.0
+    x0 = cx - w / 2.0
+    cap = fs * 0.72; pad_x, pad_y = 9.0, 6.0
+    y = y0 + cap
+    caja = fitz.Rect(x0 - pad_x, y - cap - pad_y, x0 + w + pad_x, y + pad_y)
     pg.draw_rect(caja, fill=(0, 0, 0), color=(0, 0, 0), width=0)
     pg.insert_text(fitz.Point(x0, y), sku, fontsize=fs, fontname="hebo", color=(1, 1, 1))
 
@@ -9208,7 +9241,11 @@ def _sku_nombre_coincide(label_nom, pedido_nom):
 
 
 def _sku_label_nombre(texto):
-    """Nombre del destinatario que figura en la etiqueta (para verificar el match)."""
+    """Nombre del destinatario que figura en la etiqueta (para verificar el match).
+    En Andreani va en la MISMA linea ('Destinatario: Juan'); en Flex va en la de ABAJO."""
+    if _sku_es_flex(texto):
+        m = _re_and.search(r"Destinatario\s*\n\s*(.+)", texto)
+        return m.group(1).strip() if m else ""
     m = _re_and.search(r"Destinatario\s*:\s*(.+)", texto, _re_and.I)
     return m.group(1).strip() if m else ""
 
@@ -9472,7 +9509,9 @@ def _sku_run(job, data, email):
             detalle.append({"pedido": ped or "?", "sku": sku})
             if not sku:
                 orden.append(((999997, 0, ""), i)); continue
-            if nuevo:
+            if _sku_es_flex(texto):
+                _sku_estampar_flex(pg, sku)
+            elif nuevo:
                 _sku_estampar_nuevo(pg, sku)
             elif "ENCOMIENDA" in texto:
                 _sku_estampar_ecom(pg, sku, texto)
