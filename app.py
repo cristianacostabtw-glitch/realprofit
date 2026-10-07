@@ -21107,6 +21107,7 @@ def wa_resolver():
 #   - pagado         -> transactions kind=sale; si no queda "paid", Despachos lo IGNORA
 # Nada se crea solo: el bot no toca esto. El de atencion revisa los datos y aprieta el boton.
 _WA_PROD_NAD = 9490859393212          # NoxaLab(R) Complejo de NAD+ 7 en 1 en Polvo (el que usan las ventas reales)
+_WA_PROD_CAPS = 9526897541308         # NoxaLab(R) Oxido Nitrico — el que se regala con los packs grandes
 _WA_PRECIO_PACK = {1: 49990.0, 2: 59990.0, 3: 74990.0}   # verificado contra los pedidos del dia
 
 
@@ -21498,6 +21499,7 @@ def wa_pedido_extraer():
     d["nombre"] = (d.get("nombre") or conv.get("name") or "").strip()
     d["dni"] = _solo_dig(d.get("dni"))
     d["tel"] = _solo_dig(d.get("tel")) or _solo_dig(wid)
+    d["caps"] = 0          # el Oxido Nitrico de regalo NO se adivina del chat: lo pone el que carga
     d["ya_cargado"] = conv.get("pedido_shopify", "")
     return jsonify({"ok": True, "datos": d})
 
@@ -21542,6 +21544,22 @@ def wa_pedido_crear():
         return jsonify({"ok": False, "msg": "no pude leer el producto en Shopify: " + str(e)[:90]})
     if not vid:
         return jsonify({"ok": False, "msg": "no encontré la variante del producto en Shopify"})
+    # OXIDO NITRICO de regalo. Si es 0 (lo normal) no cambia NADA respecto de antes.
+    try:
+        caps = int(float(f.get("caps") or 0))
+    except Exception:
+        caps = 0
+    vid_caps = None
+    if caps > 0:
+        # Se resuelve ANTES de crear la orden: si falla, no queremos media orden cargada.
+        try:
+            rc = requests.get("https://%s/admin/api/2026-07/products/%s.json" % (shop, _WA_PROD_CAPS),
+                              headers=H, params={"fields": "id,title,variants"}, timeout=25)
+            vid_caps = (((rc.json().get("product") or {}).get("variants") or [{}])[0]).get("id")
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "no pude leer el Oxido Nitrico en Shopify: " + str(e)[:90]})
+        if not vid_caps:
+            return jsonify({"ok": False, "msg": "no encontré la variante del Oxido Nitrico en Shopify"})
     # OJO: este título es lo que después decide sucursal vs domicilio (_txt_es_sucursal busca la
     # PALABRA ENTERA). Si dice "domicilio" nunca se clasifica como sucursal, y viceversa.
     if tipo == "sucursal":
@@ -21561,7 +21579,8 @@ def wa_pedido_crear():
     payload = {"order": {
         "email": (f.get("email") or "").strip(),
         "currency": "ARS",
-        "line_items": [{"variant_id": vid, "quantity": potes, "price": "%.2f" % round(total / potes, 2)}],
+        "line_items": ([{"variant_id": vid, "quantity": potes, "price": "%.2f" % round(total / potes, 2)}]
+                       + ([{"variant_id": vid_caps, "quantity": caps, "price": "0.00"}] if vid_caps else [])),
         "shipping_address": addr, "billing_address": addr,
         "shipping_lines": [{"title": env_tit, "price": "0.00"}],
         "note": "Venta cerrada por WhatsApp, pagada por transferencia.",
@@ -22418,7 +22437,7 @@ function pintarPedido(d){
   +'<div id="ped_sucwrap" style="display:'+(suc?'block':'none')+'">'+_pfld('sucursal','Sucursal o punto Andreani',d.sucursal)+'</div>'
   +_pfld('calle','Calle',d.calle)+_pfld('numero','N&uacute;mero',d.numero)+_pfld('extra','Piso / depto (opcional)',d.extra)
   +_pfld('localidad','Localidad',d.localidad)+_pfld('provincia','Provincia',d.provincia)+_pfld('cp','C&oacute;digo postal',d.cp)+'</div>'
-  +'<div class="bcard"><b>Pedido</b>'+_pfld('potes','Cantidad de potes',d.potes)+_pfld('total','Total transferido',d.total)
+  +'<div class="bcard"><b>Pedido</b>'+_pfld('potes','Cantidad de potes',d.potes)+_pfld('caps','&Oacute;xido N&iacute;trico de regalo (0 si no lleva)',d.caps)+_pfld('total','Total transferido',d.total)
   +'<small style="color:var(--mut)">Entra como PAGADO por transferencia, con el env&iacute;o sin cargo. Va directo a Despachos.</small></div>'
   +'<div id="pedmsg"></div>'
   +'<button class="b g" style="width:100%;margin-top:12px" onclick="crearPedido(this)">Crear el pedido en Shopify</button>';
@@ -22429,7 +22448,7 @@ function tipoPedido(){
 }
 function crearPedido(btn){
  var o={wa_id:SEL, tipo:document.getElementById('ped_tipo').value};
- ['nombre','dni','tel','email','calle','numero','extra','localidad','provincia','cp','sucursal','potes','total'].forEach(function(k){
+ ['nombre','dni','tel','email','calle','numero','extra','localidad','provincia','cp','sucursal','potes','caps','total'].forEach(function(k){
   var e=document.getElementById('ped_'+k); o[k]=e?e.value:'';
  });
  var m=document.getElementById('pedmsg');
