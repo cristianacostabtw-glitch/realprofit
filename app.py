@@ -688,10 +688,7 @@ _SOLO_DASH = r"""
     <div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(160deg,#12233b,#0c1626);border:1px solid #1d3350;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:24px">local_shipping</span></div>
     <div><h1 style="margin:0;font-size:23px;color:#f1f5f9">Despachos</h1><div style="color:#8493a8;font-size:13px;margin-top:4px;max-width:640px;line-height:1.4">Eleg&iacute; los pedidos que vas a despachar, export&aacute; el Excel de Andreani y marc&aacute; los que ya enviaste. Solo aparecen las ventas <b style="color:#cbd5e1">pagadas</b>.</div></div>
    </div>
-   <div style="flex:none;display:flex;gap:8px;align-items:center">
-    <a href="/flex" target="_blank" title="Env&iacute;os Flex (CABA y GBA)" style="text-decoration:none;background:#111c2b;border:1px solid #1e2b3d;color:#7fbaff;height:38px;display:inline-flex;align-items:center;gap:7px;padding:0 13px;border-radius:10px;font-size:13px;font-weight:700">&#9889; Flex</a>
-    <button onclick="rpDesp(false)" title="Cerrar" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
-   </div>
+   <button onclick="rpDesp(false)" title="Cerrar" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
   </div>
 
   <div id="rp-d-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin:20px 0">
