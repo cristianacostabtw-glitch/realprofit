@@ -25902,7 +25902,7 @@ def _flex_esc(s) -> str:
             .replace('"', "&quot;"))
 
 
-_FLEX_WPP_AYUDA = "5491123460702"     # el numero humano de NoxaLab (WhatsApp Web)
+_FLEX_WPP_AYUDA = "5491155756770"     # NoxaLab Argentina, +54 9 11 5575-6770 (el que atiende gente)
 
 _FLEX_FAQ = [
     ("¿Por qué no cambió todavía el estado de mi envío?",
