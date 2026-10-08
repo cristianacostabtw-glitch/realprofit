@@ -25487,10 +25487,41 @@ cargar(0);
 
 RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
 FLEX_DB = DATA_DIR / "flex_envios.json"     # {email: {"seq": n, "envios": {cod: {...}}}}
-FLEX_SEQ_INICIAL = 1        # los REALES arrancan en el 00002: el 00001 es el de muestra
-FLEX_DEMO_COD = "00001"     # envio de prueba, fijo. Sirve para ver como responde la pagina y el
-#                             escaner sin tener que generar un envio de verdad. NO se guarda en
-#                             ningun lado: se arma al vuelo cada vez que lo piden.
+FLEX_SEQ_INICIAL = 5        # los REALES arrancan en el 00006
+# Del 00001 al 00005 son envios de MUESTRA, fijos. Sirven para probar la pagina, el escaner y la
+# impresion de etiquetas sin generar un envio de verdad. NO se guardan en ningun lado: se arman
+# al vuelo cada vez que los piden, y el contador nunca se los asigna a un envio real.
+# Son cinco y no uno porque cada uno pone a prueba una cosa distinta: las tres zonas, los tres
+# estados, con y sin piso, con y sin observaciones, y una nota larga que hay que recortar.
+_FLEX_DEMOS = [
+    {"cod": "00001", "num": "7457", "nombre": "Gabriel Pollola", "zona": "gba1",
+     "loc": "Lomas de Zamora", "prov": "Buenos Aires", "cp": "1832",
+     "calle": "Av. Hipólito Yrigoyen 8299", "extra": "Piso 3, Depto B", "tel": "1154629118",
+     "unidades": 2, "sku": "X2 POTES", "estado": "camino",
+     "nota": "Bicicletería Tonino. Atienden de lunes a sábado de 10 a 13 y de 14 a 18 hs. "
+             "Tocar el timbre de al lado."},
+    {"cod": "00002", "num": "7458", "nombre": "María Elena Suárez", "zona": "caba",
+     "loc": "Villa Crespo", "prov": "Ciudad Autónoma de Buenos Aires", "cp": "1414",
+     "calle": "Av. Corrientes 5420", "extra": "", "tel": "1147882210",
+     "unidades": 1, "sku": "X1 POTE", "estado": "registrado", "nota": ""},
+    {"cod": "00003", "num": "7459", "nombre": "Rodolfo Maidana", "zona": "gba2",
+     "loc": "Moreno", "prov": "Buenos Aires", "cp": "1744",
+     "calle": "Int. Corvalan 1150", "extra": "Lote 7", "tel": "1166554433",
+     "unidades": 3, "sku": "X3 POTES", "estado": "entregado",
+     "nota": "Casa con reja verde, al fondo."},
+    {"cod": "00004", "num": "7460", "nombre": "Ana Paz", "zona": "gba1",
+     "loc": "Quilmes Oeste", "prov": "Buenos Aires", "cp": "1879",
+     "calle": "Mitre 12", "extra": "Torre B, Piso 11, Depto 4", "tel": "1130001111",
+     "unidades": 1, "sku": "X1 POTE", "estado": "registrado", "nota": ""},
+    {"cod": "00005", "num": "7461", "nombre": "Jorge Luis Etcheverry", "zona": "gba2",
+     "loc": "Florencio Varela", "prov": "Buenos Aires", "cp": "1888",
+     "calle": "Avenida Presidente Juan Domingo Perón 14520", "extra": "Manzana 42, Lote 7",
+     "tel": "1122334455", "unidades": 6, "sku": "X6 POTES", "estado": "fallido",
+     "nota": "Barrio cerrado Los Alamos, entrar por la guardia de la calle lateral y avisar al "
+             "encargado. Si no hay nadie dejar con el vecino del 14518. No tocar bocina después "
+             "de las 20 hs por favor."},
+]
+FLEX_DEMO_CODS = tuple(d["cod"] for d in _FLEX_DEMOS)
 FLEX_COD_DIG = 5            # siempre 5 digitos, con los ceros adelante (00001, 00042, 01337)
 
 # --- Zonas por codigo postal -------------------------------------------------------------
@@ -25667,7 +25698,7 @@ def _flex_crear(email, filas) -> list:
             out.append(envios[por_num[num]])
             continue
         cuenta["seq"] = int(cuenta.get("seq") or FLEX_SEQ_INICIAL) + 1
-        while _flex_cod(cuenta["seq"]) == FLEX_DEMO_COD:      # el de muestra no se reparte
+        while _flex_cod(cuenta["seq"]) in FLEX_DEMO_CODS:    # los de muestra no se reparten
             cuenta["seq"] += 1
         cod = _flex_cod(cuenta["seq"])
         ahora = _flex_ahora()
@@ -25709,23 +25740,22 @@ def _flex_set(email, cods, estado=None, zona=None) -> int:
     return n
 
 
-def _flex_demo(estado="camino") -> dict:
-    """El envio de muestra. Las horas se calculan desde AHORA para atras, asi la linea de tiempo
-    siempre se ve creible y no queda con fechas viejas."""
+def _flex_demo(cod=None, estado=None) -> dict:
+    """Devuelve uno de los envios de muestra. Las horas de la linea de tiempo se calculan desde
+    AHORA hacia atras, asi nunca se ve con fechas viejas por mas que pasen meses."""
+    k = _flex_norm(cod) if cod else FLEX_DEMO_CODS[0]
+    base = next((d for d in _FLEX_DEMOS if d["cod"] == k), _FLEX_DEMOS[0])
+    est = estado if (estado in _FLEX_EST) else base["estado"]
     ahora = _dt.datetime.now(_ARG)
-    orden = [k for k in FLEX_ORDEN]
-    i = orden.index(estado) if estado in orden else orden.index("camino")
-    hist = [{"e": k, "ts": (ahora - _dt.timedelta(hours=(i - n) * 7 + 2)).strftime("%Y-%m-%d %H:%M")}
-            for n, k in enumerate(orden[:i + 1])]
-    if estado == "fallido":
-        hist.append({"e": "fallido", "ts": ahora.strftime("%Y-%m-%d %H:%M")})
-    return {"cod": FLEX_DEMO_COD, "num": "7457", "nombre": "Gabriel Pollola", "zona": "gba1",
-            "loc": "Lomas de Zamora", "prov": "Buenos Aires", "cp": "1832",
-            "calle": "Av. Hip\u00f3lito Yrigoyen 8299", "extra": "Piso 3, Depto B",
-            "tel": "", "unidades": 2, "sku": "X2 POTES",
-            "nota": "Bicicleter\u00eda Tonino. Atienden de lunes a s\u00e1bado de 10 a 13 y de 14 a 18 hs.",
-            "estado": estado if estado in _FLEX_EST else "camino",
-            "creado": hist[0]["ts"], "hist": hist, "demo": True}
+    cumplidos = [x for x in FLEX_ORDEN if FLEX_ORDEN.index(x) <= FLEX_ORDEN.index(est)] \
+        if est in FLEX_ORDEN else ["registrado", "camino"]
+    hist = [{"e": x, "ts": (ahora - _dt.timedelta(hours=(len(cumplidos) - 1 - n) * 7 + 2)).strftime("%Y-%m-%d %H:%M")}
+            for n, x in enumerate(cumplidos)]
+    if est == "fallido":
+        hist.append({"e": "fallido", "ts": ahora.strftime("%Y-%m-%d %H:%M"), "por": "muestra"})
+    e = dict(base)
+    e.update({"estado": est, "creado": hist[0]["ts"], "hist": hist, "demo": True})
+    return e
 
 
 def _flex_url(cod) -> str:
@@ -25842,7 +25872,7 @@ def _flex_buscar(cod):
         e = (c.get("envios") or {}).get(k)
         if e:
             return e
-    return _flex_demo() if k == FLEX_DEMO_COD else None
+    return _flex_demo(k) if k in FLEX_DEMO_CODS else None
 
 
 @app.get("/seguimiento/")
@@ -26203,123 +26233,238 @@ function rpCopiar(b,t){var s=b.firstElementChild;if(!s||b.dataset.c)return;
 
 _FLEX_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Flex</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#070b12">
+<title>Flex &middot; RealProfit</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap">
 <style>
-:root{--bg:#080c15;--panel:#101a2c;--panel2:#0b1220;--line:#1b2536;--line2:#25344a;
- --ink:#f1f5f9;--ink2:#93a3ba;--ink3:#5b6b82;--accent:#137fec;
- --ok:#34d399;--ok-bg:rgba(52,211,153,.13);--move:#54a8f0;--move-bg:rgba(84,168,240,.13);
- --wait:#e8b13e;--wait-bg:rgba(232,177,62,.14);--hoy:#fb923c;--hoy-bg:rgba(251,146,60,.14);
- --bad:#f0637f;--bad-bg:rgba(240,99,127,.13)}
+:root{
+ --acc:#4a9bff; --acc2:#7fbaff; --acc3:#2b7fe0; --acc-sb:rgba(74,155,255,.1); --acc-ln:rgba(74,155,255,.28);
+ --tinta:#e9eff8; --tinta2:#96a4b8; --tinta3:#64748b;
+ --fondo:#070b12; --papel:#101925; --papel2:#18222f; --linea:#1f2c3d; --linea2:#18222f;
+ --ok:#4ade80; --ok-sb:rgba(74,222,128,.1); --ok-ln:rgba(74,222,128,.26);
+ --esp:#eabd63; --esp-sb:rgba(234,189,99,.1); --esp-ln:rgba(234,189,99,.26);
+ --mal:#f87171; --mal-sb:rgba(248,113,113,.1); --mal-ln:rgba(248,113,113,.26);
+ --r-xl:20px; --r-l:15px; --r-m:12px; --r-s:9px;
+ --s1:0 1px 2px rgba(0,0,0,.35);
+ --s2:0 1px 2px rgba(0,0,0,.35), 0 12px 26px -14px rgba(0,0,0,.8);
+ --s3:0 1px 2px rgba(0,0,0,.4), 0 24px 50px -24px rgba(0,0,0,.95);
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
- font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1280px;margin:0 auto;padding:26px 16px 70px;display:flex;flex-direction:column;gap:18px}
-header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;
- border-bottom:1px solid var(--line2);padding-bottom:16px}
-h1{font-family:Archivo,system-ui,sans-serif;font-size:28px;font-weight:700;margin:0;letter-spacing:-.025em}
-.sub{color:var(--ink2);font-size:13px;margin:5px 0 0;max-width:620px}
+body{margin:0;background:var(--fondo);color:var(--tinta);font-size:14px;line-height:1.55;
+ font-family:Inter,system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;
+ -webkit-font-smoothing:antialiased;position:relative;min-height:100vh}
+body:before{content:"";position:fixed;inset:0 0 auto 0;height:420px;pointer-events:none;z-index:0;
+ background:radial-gradient(85% 150% at 50% -45%, rgba(74,155,255,.13), transparent 70%)}
+a{color:inherit}
+h1,h2,.marca,.kv{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
+.wrap{max-width:1180px;margin:0 auto;padding:26px 20px 70px;position:relative;z-index:1;
+ display:flex;flex-direction:column;gap:16px}
+
+/* ---- cabecera ---- */
+header{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.tit{display:flex;align-items:flex-start;gap:13px}
+.mk{width:38px;height:38px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
+ background:linear-gradient(145deg,var(--acc2),var(--acc3));margin-top:3px;
+ box-shadow:0 5px 16px -4px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.3)}
+h1{font-size:28px;font-weight:800;margin:0;line-height:1.1}
+.sub{color:var(--tinta2);font-size:13px;margin:6px 0 0;max-width:620px;line-height:1.5}
+.sub b{color:var(--tinta);font-weight:600}
+.sub code{font-family:"IBM Plex Mono",monospace;color:var(--acc);font-size:12.5px}
 .acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.btn{background:var(--accent);border:1px solid transparent;color:#fff;border-radius:9px;padding:10px 15px;
- font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
-.btn.g{background:#0e1521;border-color:var(--line2);color:var(--ink)}
-.btn.ok{background:rgba(52,211,153,.14);border-color:#1f5a3d;color:var(--ok)}
-.btn:disabled{opacity:.42;cursor:default}
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
-@media(max-width:820px){.cards{grid-template-columns:repeat(2,1fr)}}
-.c{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
-.c .l{color:var(--ink3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px}
-.c .v{font-size:25px;font-weight:800;margin-top:9px;line-height:1}
-.c.z1 .v{color:var(--wait)} .c.z2 .v{color:var(--move)} .c.z3 .v{color:var(--hoy)} .c.z4 .v{color:var(--ok)}
-.panel{background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-.ph{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
- padding:14px 16px;border-bottom:1px solid var(--line)}
-.ph h2{font-family:Archivo,sans-serif;font-size:16px;margin:0;font-weight:600}
-.ph .n{color:var(--ink3);font-size:12.5px}
+
+/* ---- botones ---- */
+.btn{border:1px solid var(--linea);background:var(--papel);color:var(--tinta);border-radius:var(--r-m);
+ padding:10px 15px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;
+ text-decoration:none;display:inline-flex;align-items:center;gap:7px;box-shadow:var(--s1);
+ transition:transform .15s,border-color .15s,background .15s}
+.btn:hover{transform:translateY(-1px);border-color:#2a3a50}
+.btn:disabled{opacity:.4;cursor:default;transform:none}
+.btn.pri{border-color:transparent;color:#07101c;background:linear-gradient(145deg,var(--acc2),var(--acc3));
+ box-shadow:0 5px 16px -6px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.26)}
+.btn.ok{border-color:var(--ok-ln);color:var(--ok);background:var(--ok-sb)}
+.btn.mal{border-color:var(--mal-ln);color:var(--mal);background:var(--mal-sb)}
+
+/* ---- tarjetas de numeros ---- */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+@media(max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.k{background:var(--papel);border:1px solid var(--linea);border-radius:var(--r-xl);padding:16px 18px;
+ box-shadow:var(--s2);position:relative;overflow:hidden}
+.k:before{content:"";position:absolute;inset:0;pointer-events:none;
+ background:linear-gradient(160deg,var(--tono-sb),transparent 55%)}
+.k .ic{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+ background:var(--tono-sb);color:var(--tono);position:relative}
+.k .l{color:var(--tinta3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;
+ margin-top:13px;position:relative}
+.kv{font-size:30px;font-weight:800;margin-top:5px;line-height:1;color:var(--tono);position:relative}
+.k.a{--tono:var(--esp);--tono-sb:var(--esp-sb)} .k.b{--tono:var(--acc);--tono-sb:var(--acc-sb)}
+.k.c{--tono:#fb923c;--tono-sb:rgba(251,146,60,.1)} .k.d{--tono:var(--ok);--tono-sb:var(--ok-sb)}
+
+/* ---- paneles ---- */
+.panel{background:var(--papel);border:1px solid var(--linea);border-radius:var(--r-xl);
+ box-shadow:var(--s2);overflow:hidden}
+.ph{display:flex;align-items:center;gap:12px;padding:16px 18px 14px}
+.ph h2{font-size:16px;margin:0;font-weight:700}
+.cnt{background:var(--papel2);border:1px solid var(--linea);color:var(--tinta2);border-radius:999px;
+ padding:3px 11px;font-size:11.5px;font-weight:600}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 18px;
+ background:linear-gradient(var(--papel2),transparent);border-top:1px solid var(--linea2);
+ border-bottom:1px solid var(--linea2)}
+.bar .q{color:var(--tinta2);font-size:13px;margin-right:auto}
+.bar .q b{color:var(--tinta)}
+select{background:var(--papel2);border:1px solid var(--linea);color:var(--tinta);border-radius:var(--r-s);
+ padding:9px 10px;font-size:13px;font-family:inherit;cursor:pointer}
+select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-sb)}
+
+/* ---- tablas ---- */
 .tw{overflow-x:auto}
-table{width:100%;border-collapse:collapse;min-width:900px}
-th{text-align:left;color:var(--ink3);font-size:11px;font-weight:700;text-transform:uppercase;
- letter-spacing:.6px;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
-td{padding:10px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
-tbody tr:last-child td{border-bottom:none}
-tbody tr:hover{background:rgba(255,255,255,.02)}
-td.num{font-weight:700} td.dim{color:var(--ink2);font-size:13px}
-.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;
- font-size:11.5px;font-weight:700;white-space:nowrap}
-.p-ok{background:var(--ok-bg);color:var(--ok)} .p-move{background:var(--move-bg);color:var(--move)}
-.p-wait{background:var(--wait-bg);color:var(--wait)} .p-hoy{background:var(--hoy-bg);color:var(--hoy)}
-.p-bad{background:var(--bad-bg);color:var(--bad)}
-.zp{background:rgba(19,127,236,.12);color:#7fbaff;border:1px solid #1e4f8a}
-select{background:#0e1521;border:1px solid var(--line2);color:var(--ink);border-radius:8px;
- padding:6px 8px;font-size:12.5px;font-family:inherit;cursor:pointer}
-input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
-a.lk{color:#7fbaff;text-decoration:none;font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
+table{width:100%;border-collapse:collapse;min-width:880px}
+th{text-align:left;color:var(--tinta3);font-size:10.5px;font-weight:700;text-transform:uppercase;
+ letter-spacing:.09em;padding:11px 14px;white-space:nowrap}
+td{padding:12px 14px;border-top:1px solid var(--linea2);vertical-align:middle}
+tbody tr{transition:background .13s}
+tbody tr:hover{background:rgba(255,255,255,.022)}
+td.num{font-weight:700;font-size:14.5px}
+td.mono{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:14px;letter-spacing:.05em}
+td.dim{color:var(--tinta2);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;
+ font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;
+ background:var(--tono-sb);color:var(--tono);border:1px solid var(--tono-ln)}
+.p-esp{--tono:var(--esp);--tono-sb:var(--esp-sb);--tono-ln:var(--esp-ln)}
+.p-mov{--tono:var(--acc);--tono-sb:var(--acc-sb);--tono-ln:var(--acc-ln)}
+.p-ok{--tono:var(--ok);--tono-sb:var(--ok-sb);--tono-ln:var(--ok-ln)}
+.p-mal{--tono:var(--mal);--tono-sb:var(--mal-sb);--tono-ln:var(--mal-ln)}
+.zp{--tono:var(--acc);--tono-sb:var(--acc-sb);--tono-ln:var(--acc-ln)}
+input[type=checkbox]{width:17px;height:17px;accent-color:var(--acc);cursor:pointer}
+a.lk{color:var(--acc);text-decoration:none;font-family:"IBM Plex Mono",monospace;font-size:12.5px}
 a.lk:hover{text-decoration:underline}
-.vacio{padding:34px 18px;text-align:center;color:var(--ink3)}
-.msg{border-radius:10px;padding:11px 14px;font-size:13.5px;display:none}
+.vacio{padding:42px 20px;text-align:center;color:var(--tinta3);font-size:13.5px}
+.vacio b{display:block;color:var(--tinta2);font-size:15px;font-weight:650;margin-bottom:5px;
+ font-family:Archivo,sans-serif}
+
+/* ---- avisos ---- */
+.msg{border-radius:var(--r-l);padding:13px 16px;font-size:13.5px;display:none;box-shadow:var(--s2);
+ border:1px solid var(--tono-ln);background:var(--tono-sb);color:var(--tono)}
 .msg.on{display:block}
-.msg.e{background:var(--bad-bg);color:#ffc2cd;border:1px solid #5a2a35}
-.msg.b{background:var(--ok-bg);color:#aef0d4;border:1px solid #1f5a3d}
-.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);
- background:rgba(19,127,236,.05)}
-.bar .q{color:var(--ink2);font-size:13px;margin-right:auto}
+.msg.e{--tono:var(--mal);--tono-sb:var(--mal-sb);--tono-ln:var(--mal-ln)}
+.msg.b{--tono:var(--ok);--tono-sb:var(--ok-sb);--tono-ln:var(--ok-ln)}
+
+/* ---- modal repartidores ---- */
+.ov{position:fixed;inset:0;z-index:50;background:rgba(4,8,14,.78);backdrop-filter:blur(6px);
+ display:none;align-items:center;justify-content:center;padding:20px}
+.ov.on{display:flex}
+.ov .box{width:100%;max-width:620px;max-height:88vh;overflow:auto;background:var(--papel);
+ border:1px solid var(--linea);border-radius:var(--r-xl);box-shadow:var(--s3);padding:22px}
+.ov h2{font-size:19px;margin:0}
+.ov .d{color:var(--tinta2);font-size:13px;margin:6px 0 18px}
+.alta{display:flex;gap:8px;margin-bottom:16px}
+.alta input{flex:1;min-width:0;background:var(--papel2);border:1px solid var(--linea);color:var(--tinta);
+ border-radius:var(--r-m);padding:12px 14px;font-size:14.5px;font-family:inherit}
+.alta input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-sb)}
+.repa{display:flex;gap:15px;align-items:flex-start;background:var(--papel2);border:1px solid var(--linea);
+ border-radius:var(--r-l);padding:14px;margin-bottom:10px}
+.repa img{width:92px;height:92px;flex:none;border-radius:var(--r-m);background:#fff;padding:6px}
+.repa .ii{flex:1;min-width:0}
+.repa .nm{font-weight:700;font-size:16px;font-family:Archivo,sans-serif;letter-spacing:-.02em}
+.repa .st{color:var(--tinta3);font-size:12px;margin-top:3px}
+.repa .url{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--tinta2);margin-top:9px;
+ word-break:break-all;line-height:1.45}
+.repa .bs{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}
+.repa .bs .btn{padding:7px 12px;font-size:12.5px}
+.cerrar{float:right;background:var(--papel2);border:1px solid var(--linea);color:var(--tinta2);
+ width:32px;height:32px;border-radius:var(--r-s);cursor:pointer;font-size:15px;line-height:1}
 </style></head><body>
 <div class="wrap">
  <header>
-  <div><h1>Flex</h1><div class="sub">Env&iacute;o propio a <b>CABA</b>, <b>GBA 1</b> y <b>GBA 2</b>.
-   Gener&aacute; el c&oacute;digo, mov&eacute; el estado y el cliente lo ve en
-   <span style="color:#7fbaff" id="ej">realprofitapp.com/seguimiento/&hellip;</span>. Lo que no entra en zona
-   sigue saliendo por Andreani.</div></div>
+  <div class="tit">
+   <span class="mk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#07101c"
+    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span>
+   <div><h1>Flex</h1>
+    <p class="sub">Env&iacute;o propio a <b>CABA</b>, <b>GBA 1</b> y <b>GBA 2</b>. Gener&aacute; el
+     c&oacute;digo, imprim&iacute; la etiqueta y el cliente sigue su pedido en
+     <code id="ej">realprofitapp.com/seguimiento/&hellip;</code>. Lo que no entra en zona sigue
+     saliendo por Andreani.</p></div>
+  </div>
   <div class="acts">
-   <button class="btn g" onclick="cargar(1)">Sincronizar</button>
-   <a class="btn g" href="/seguimiento" target="_blank" style="text-decoration:none">Ver p&aacute;gina p&uacute;blica</a>
-   <button class="btn g" onclick="repas()">Repartidores</button>
+   <button class="btn" onclick="cargar(1)">Sincronizar</button>
+   <a class="btn" href="/seguimiento/00001" target="_blank">Ver un env&iacute;o</a>
+   <button class="btn pri" onclick="abrirRepas()">Repartidores</button>
   </div>
  </header>
+
  <div id="msg" class="msg"></div>
- <div class="cards">
-  <div class="c z1"><div class="l">En zona, sin c&oacute;digo</div><div class="v" id="k-pend">&mdash;</div></div>
-  <div class="c z2"><div class="l">En preparaci&oacute;n</div><div class="v" id="k-prep">&mdash;</div></div>
-  <div class="c z3"><div class="l">En la calle</div><div class="v" id="k-calle">&mdash;</div></div>
-  <div class="c z4"><div class="l">Entregados</div><div class="v" id="k-ok">&mdash;</div></div>
+
+ <div class="kpis">
+  <div class="k a"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+   stroke="currentColor" stroke-width="2"><path d="M3 7h18M3 12h18M3 17h10"/></svg></span>
+   <div class="l">En zona, sin c&oacute;digo</div><div class="kv" id="k-pend">&mdash;</div></div>
+  <div class="k b"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+   stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/>
+   <path d="M3 9h18"/></svg></span>
+   <div class="l">En preparaci&oacute;n</div><div class="kv" id="k-prep">&mdash;</div></div>
+  <div class="k c"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+   stroke="currentColor" stroke-width="2"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/>
+   <circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span>
+   <div class="l">En la calle</div><div class="kv" id="k-calle">&mdash;</div></div>
+  <div class="k d"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+   stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+   <path d="m5 13 4 4L19 7"/></svg></span>
+   <div class="l">Entregados</div><div class="kv" id="k-ok">&mdash;</div></div>
  </div>
 
- <div class="panel" id="pan-pend">
-  <div class="ph"><h2>Pedidos en zona sin c&oacute;digo</h2><span class="n" id="n-pend"></span></div>
-  <div class="bar"><span class="q" id="q-pend">Eleg&iacute; los que vas a llevar vos.</span>
-   <button class="btn" id="b-crear" onclick="crear()" disabled>Generar c&oacute;digos</button></div>
+ <div class="panel">
+  <div class="ph"><h2>Pedidos en zona sin c&oacute;digo</h2><span class="cnt" id="n-pend">&mdash;</span></div>
+  <div class="bar"><span class="q">Eleg&iacute; los que vas a llevar vos.</span>
+   <button class="btn pri" id="b-crear" onclick="crear()" disabled>Generar c&oacute;digos</button></div>
   <div class="tw"><table>
-   <thead><tr><th style="width:34px"><input type="checkbox" onclick="todos(this,'p')"></th>
+   <thead><tr><th style="width:38px"><input type="checkbox" onclick="todos(this,'p')"></th>
     <th>Pedido</th><th>Cliente</th><th>Zona</th><th>Destino</th><th>CP</th><th>U.</th></tr></thead>
    <tbody id="tb-pend"><tr><td colspan="7" class="vacio">Cargando&hellip;</td></tr></tbody>
   </table></div>
  </div>
 
  <div class="panel">
-  <div class="ph"><h2>Env&iacute;os Flex</h2><span class="n" id="n-env"></span></div>
+  <div class="ph"><h2>Env&iacute;os Flex</h2><span class="cnt" id="n-env">&mdash;</span></div>
   <div class="bar"><span class="q">Seleccionados: <b id="q-sel">0</b></span>
    <select id="mover"><option value="">Mover a&hellip;</option></select>
-   <button class="btn g" id="b-mover" onclick="mover()" disabled>Aplicar</button>
-   <button class="btn g" id="b-etiq" onclick="etiquetas()" disabled>Etiquetas</button>
-   <button class="btn g" id="b-shop" onclick="avisar(1,0)" disabled>Cargar en Shopify</button>
+   <button class="btn" id="b-mover" onclick="mover()" disabled>Aplicar</button>
+   <button class="btn" id="b-etiq" onclick="etiquetas()" disabled>Etiquetas</button>
+   <button class="btn" id="b-shop" onclick="avisar(1,0)" disabled>Cargar en Shopify</button>
    <button class="btn ok" id="b-wpp" onclick="avisar(0,1)" disabled>Avisar por WhatsApp</button></div>
   <div class="tw"><table>
-   <thead><tr><th style="width:34px"><input type="checkbox" onclick="todos(this,'e')"></th>
+   <thead><tr><th style="width:38px"><input type="checkbox" onclick="todos(this,'e')"></th>
     <th>C&oacute;digo</th><th>Pedido</th><th>Cliente</th><th>Zona</th><th>Destino</th>
     <th>Estado</th><th>Link</th></tr></thead>
    <tbody id="tb-env"><tr><td colspan="8" class="vacio">Cargando&hellip;</td></tr></tbody>
   </table></div>
  </div>
 </div>
+
+<div class="ov" id="ov-repas" onclick="if(event.target===this)cerrarRepas()">
+ <div class="box">
+  <button class="cerrar" onclick="cerrarRepas()">&#10005;</button>
+  <h2>Repartidores</h2>
+  <div class="d">Cada uno tiene su propio acceso al esc&aacute;ner. Que apunte el celular
+   al QR y queda adentro: no hace falta mandarle nada.</div>
+  <div class="alta"><input id="r-nombre" placeholder="Nombre del repartidor" autocomplete="off"
+   onkeydown="if(event.key==='Enter')altaRepa()">
+   <button class="btn pri" onclick="altaRepa()">Dar de alta</button></div>
+  <div id="r-lista"></div>
+ </div>
+</div>
+
 <script>
 var ZN={caba:"CABA",gba1:"GBA 1",gba2:"GBA 2"};
-var EST=__ESTADOS__;            // [[clave,titulo,chip,texto,color], ...]
-var ECOL={},ENOM={};
+var EST=__ESTADOS__;
+var ECOL={},ENOM={},PILL={wait:"p-esp",move:"p-mov",ok:"p-ok",bad:"p-mal",hoy:"p-esp"};
 EST.forEach(function(e){ECOL[e[0]]=e[4];ENOM[e[0]]=e[2];});
 var PEND=[],ENV=[],BASE="";
+function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
-function aviso(t,clase){var m=document.getElementById("msg");
+function aviso(t,clase){var m=$("msg");
  if(!t){m.className="msg";m.textContent="";return;}
  m.className="msg on "+(clase||"b");m.textContent=t;}
 function selP(){return [].slice.call(document.querySelectorAll(".ck-p:checked")).map(function(c){return c.value;});}
@@ -26327,68 +26472,41 @@ function selE(){return [].slice.call(document.querySelectorAll(".ck-e:checked"))
 function todos(c,k){[].slice.call(document.querySelectorAll(".ck-"+k)).forEach(function(x){x.checked=c.checked;});refrescar();}
 function refrescar(){
  var np=selP().length,ne=selE().length;
- document.getElementById("b-crear").disabled=!np;
- document.getElementById("q-sel").textContent=ne;
- ["b-mover","b-etiq","b-shop","b-wpp"].forEach(function(id){document.getElementById(id).disabled=!ne;});
+ $("b-crear").disabled=!np; $("q-sel").textContent=ne;
+ ["b-mover","b-etiq","b-shop","b-wpp"].forEach(function(id){$(id).disabled=!ne;});
 }
 function pintar(){
- var tp=document.getElementById("tb-pend");
- if(!PEND.length){tp.innerHTML='<tr><td colspan="7" class="vacio">No hay pedidos pagados en CABA / GBA sin c\\u00f3digo.</td></tr>';}
+ var tp=$("tb-pend");
+ if(!PEND.length){tp.innerHTML='<tr><td colspan="7" class="vacio"><b>Nada en zona por ahora</b>'
+  +'No hay pedidos pagados en CABA ni GBA esperando c\\u00f3digo.</td></tr>';}
  else{tp.innerHTML=PEND.map(function(p){
   return '<tr><td><input type="checkbox" class="ck-p" value="'+esc(p.num)+'" onchange="refrescar()"></td>'
    +'<td class="num">#'+esc(p.num)+'</td><td>'+esc(p.nombre)+'</td>'
    +'<td><span class="pill zp">'+esc(ZN[p.zona]||p.zona)+'</span></td>'
    +'<td class="dim">'+esc(p.localidad)+'</td><td class="dim">'+esc(p.cp)+'</td>'
    +'<td class="dim">'+esc(p.unidades)+'</td></tr>';}).join("");}
- document.getElementById("n-pend").textContent=PEND.length+" pedido"+(PEND.length==1?"":"s");
+ $("n-pend").textContent=PEND.length+(PEND.length==1?" pedido":" pedidos");
 
- var te=document.getElementById("tb-env");
- if(!ENV.length){te.innerHTML='<tr><td colspan="8" class="vacio">Todav\\u00eda no generaste ning\\u00fan env\\u00edo Flex.</td></tr>';}
+ var te=$("tb-env");
+ if(!ENV.length){te.innerHTML='<tr><td colspan="8" class="vacio"><b>Todav\\u00eda no generaste ninguno</b>'
+  +'Tild\\u00e1 pedidos arriba y toc\\u00e1 Generar c\\u00f3digos.</td></tr>';}
  else{te.innerHTML=ENV.map(function(e){
   var op=EST.map(function(x){return '<option value="'+x[0]+'"'+(x[0]==e.estado?" selected":"")+'>'+x[1]+'</option>';}).join("");
   var zp=Object.keys(ZN).map(function(z){return '<option value="'+z+'"'+(z==e.zona?" selected":"")+'>'+ZN[z]+'</option>';}).join("");
-  var u=BASE+"/seguimiento/"+e.cod;
   return '<tr><td><input type="checkbox" class="ck-e" value="'+esc(e.cod)+'" onchange="refrescar()"></td>'
-   +'<td class="num">'+esc(e.cod)+'</td><td class="dim">#'+esc(e.num)+'</td><td>'+esc(e.nombre)+'</td>'
+   +'<td class="mono">'+esc(e.cod)+'</td><td class="dim">#'+esc(e.num)+'</td><td>'+esc(e.nombre)+'</td>'
    +'<td><select onchange="unaZona(\\''+esc(e.cod)+'\\',this.value)">'+zp+'</select></td>'
    +'<td class="dim">'+esc(e.loc)+'</td>'
-   +'<td><span class="pill p-'+(ECOL[e.estado]||"wait")+'" style="margin-right:7px">'+esc(ENOM[e.estado]||e.estado)+'</span>'
+   +'<td><span class="pill '+(PILL[ECOL[e.estado]]||"p-esp")+'" style="margin-right:8px">'+esc(ENOM[e.estado]||e.estado)+'</span>'
    +'<select onchange="unoEstado(\\''+esc(e.cod)+'\\',this.value)">'+op+'</select></td>'
-   +'<td><a class="lk" href="'+u+'" target="_blank">/seguimiento/'+esc(e.cod)+'</a></td></tr>';}).join("");}
- document.getElementById("n-env").textContent=ENV.length+" env\\u00edo"+(ENV.length==1?"":"s");
+   +'<td><a class="lk" href="'+BASE+'/seguimiento/'+esc(e.cod)+'" target="_blank">/s/'+esc(e.cod)+'</a></td></tr>';}).join("");}
+ $("n-env").textContent=ENV.length+(ENV.length==1?" env\\u00edo":" env\\u00edos");
  var pr=0,ca=0,ok=0;
  ENV.forEach(function(e){ if(e.estado=="entregado")ok++; else if(e.estado=="registrado")pr++; else ca++; });
- document.getElementById("k-pend").textContent=PEND.length;
- document.getElementById("k-prep").textContent=pr;
- document.getElementById("k-calle").textContent=ca;
- document.getElementById("k-ok").textContent=ok;
- if(ENV.length) document.getElementById("ej").textContent=BASE.replace(/^https?:\\/\\//,"")+"/seguimiento/"+ENV[0].cod;
+ $("k-pend").textContent=PEND.length; $("k-prep").textContent=pr;
+ $("k-calle").textContent=ca; $("k-ok").textContent=ok;
+ if(ENV.length) $("ej").textContent=BASE.replace(/^https?:\\/\\//,"")+"/seguimiento/"+ENV[0].cod;
  refrescar();
-}
-function repas(){
- fetch("/flex-repas").then(function(r){return r.json();}).then(function(j){
-  var l=(j.repas||[]).filter(function(x){return x.activo;});
-  var t=l.length?l.map(function(x){return "\u2022 "+x.nombre+"  \u2192  "+j.base+"/escaner?t="+x.token;}).join("\n")
-                :"(todav\u00eda no diste de alta a nadie)";
-  var q=prompt("Repartidores con acceso al esc\u00e1ner:\n\n"+t
-   +"\n\nPara dar de alta a uno nuevo, escrib\u00ed su nombre.\nPara dar de baja, escrib\u00ed  baja: <nombre>","");
-  if(q===null||!q.trim())return;
-  q=q.trim();
-  if(q.toLowerCase().indexOf("baja:")===0){
-   var nm=q.slice(5).trim().toLowerCase();
-   var r2=l.filter(function(x){return (x.nombre||"").toLowerCase()===nm;})[0];
-   if(!r2){aviso("No encontr\u00e9 un repartidor con ese nombre.","e");return;}
-   fetch("/flex-repas",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({baja:r2.token})}).then(function(){aviso("Listo: "+r2.nombre+" ya no entra al esc\u00e1ner.","b");});
-   return;
-  }
-  fetch("/flex-repas",{method:"POST",headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({nombre:q})}).then(function(r){return r.json();}).then(function(k){
-   if(!k.ok){aviso(k.msg||"No se pudo","e");return;}
-   try{navigator.clipboard.writeText(k.url);}catch(e){}
-   aviso("Link de "+q+" copiado al portapapeles: "+k.url+" \u2014 pasaselo por WhatsApp.","b");
-  });
- }).catch(function(e){aviso("Error: "+e,"e");});
 }
 function cargar(ref){
  fetch("/flex-datos"+(ref?"?refresh=1":"")).then(function(r){return r.json();}).then(function(j){
@@ -26400,7 +26518,7 @@ function cargar(ref){
 function crear(){
  var ns=selP(),filas=PEND.filter(function(p){return ns.indexOf(p.num)>=0;});
  if(!filas.length)return;
- document.getElementById("b-crear").disabled=true;
+ $("b-crear").disabled=true;
  fetch("/flex-crear",{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({filas:filas})}).then(function(r){return r.json();}).then(function(j){
   if(!j.ok){aviso("No se pudieron generar","e");return;}
@@ -26414,7 +26532,7 @@ function setear(cods,estado,zona){
 function unoEstado(c,v){setear([c],v,null).then(function(){cargar(0);});}
 function unaZona(c,v){setear([c],null,v).then(function(){cargar(0);});}
 function mover(){
- var v=document.getElementById("mover").value;if(!v){aviso("Eleg\\u00ed a qu\\u00e9 estado mover.","e");return;}
+ var v=$("mover").value;if(!v){aviso("Eleg\\u00ed a qu\\u00e9 estado mover.","e");return;}
  var cods=selE();if(!cods.length)return;
  setear(cods,v,null).then(function(j){aviso(j.tocados+" env\\u00edo(s) movidos a \\""+ENOM[v]+"\\".","b");cargar(0);});
 }
@@ -26425,7 +26543,7 @@ function etiquetas(){
 function avisar(sh,wp){
  var cods=selE();if(!cods.length)return;
  if(wp && !confirm("Mandar la plantilla de WhatsApp a "+cods.length+" cliente(s)?"))return;
- ["b-shop","b-wpp"].forEach(function(id){document.getElementById(id).disabled=true;});
+ ["b-shop","b-wpp"].forEach(function(id){$(id).disabled=true;});
  aviso("Mandando\\u2026","b");
  fetch("/flex-avisar",{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({cods:cods,shopify:!!sh,wpp:!!wp})}).then(function(r){return r.json();}).then(function(j){
@@ -26438,8 +26556,45 @@ function avisar(sh,wp){
   aviso(t.join(" \\u00b7 "),er.length?"e":"b");refrescar();
  }).catch(function(e){aviso("Error: "+e,"e");refrescar();});
 }
+
+/* ---- repartidores ---- */
+function abrirRepas(){ $("ov-repas").classList.add("on"); verRepas(); }
+function cerrarRepas(){ $("ov-repas").classList.remove("on"); }
+function verRepas(){
+ fetch("/flex-repas").then(function(r){return r.json();}).then(function(j){
+  var l=(j.repas||[]).filter(function(x){return x.activo;});
+  if(!l.length){ $("r-lista").innerHTML='<div class="vacio" style="padding:26px 0">'
+   +'<b>Todav\\u00eda no diste de alta a nadie</b>Pon\\u00e9 un nombre arriba y list\\u00f3.</div>'; return; }
+  $("r-lista").innerHTML=l.map(function(x){
+   var u=j.base+"/escaner?t="+x.token;
+   var st=x.escaneos? (x.escaneos+" escaneo"+(x.escaneos==1?"":"s")+(x.ultimo?(" \\u00b7 \\u00faltimo "+x.ultimo):""))
+                    : "todav\\u00eda no escane\\u00f3 nada";
+   return '<div class="repa"><img src="/flex-repa-qr?t='+encodeURIComponent(x.token)+'" alt="QR">'
+    +'<div class="ii"><div class="nm">'+esc(x.nombre)+'</div><div class="st">'+esc(st)+'</div>'
+    +'<div class="url">'+esc(u)+'</div><div class="bs">'
+    +'<button class="btn" onclick="copiar(\\''+esc(u)+'\\')">Copiar link</button>'
+    +'<a class="btn" href="'+u+'" target="_blank">Probar</a>'
+    +'<button class="btn mal" onclick="bajaRepa(\\''+esc(x.token)+'\\',\\''+esc(x.nombre)+'\\')">Dar de baja</button>'
+    +'</div></div></div>';}).join("");
+ }).catch(function(e){aviso("Error: "+e,"e");});
+}
+function altaRepa(){
+ var n=($("r-nombre").value||"").trim(); if(!n)return;
+ fetch("/flex-repas",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({nombre:n})}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){aviso(j.msg||"No se pudo","e");return;}
+  $("r-nombre").value=""; verRepas();
+ });
+}
+function bajaRepa(t,n){
+ if(!confirm("Dar de baja a "+n+"? Su link deja de funcionar al instante."))return;
+ fetch("/flex-repas",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({baja:t})}).then(function(){verRepas();});
+}
+function copiar(u){ try{navigator.clipboard.writeText(u);aviso("Link copiado.","b");}catch(e){} }
+
 EST.forEach(function(e){var o=document.createElement("option");o.value=e[0];o.textContent=e[1];
- document.getElementById("mover").appendChild(o);});
+ $("mover").appendChild(o);});
 cargar(0);
 </script></body></html>"""
 _FLEX_HTML = _FLEX_HTML.replace("__ESTADOS__", _json.dumps(
@@ -26665,8 +26820,8 @@ def flex_etiquetas():
     # el orden de impresion es por ZONA y despues por localidad: salen agrupadas como se
     # cargan en la moto, no mezcladas.
     # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
-    sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo()
-           for c in cods if _flex_norm(c) in envios or _flex_norm(c) == FLEX_DEMO_COD]
+    sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo(_flex_norm(c))
+           for c in cods if _flex_norm(c) in envios or _flex_norm(c) in FLEX_DEMO_CODS]
     sel.sort(key=lambda e: (list(FLEX_ZONAS).index(e.get("zona")) if e.get("zona") in FLEX_ZONAS else 9,
                             (e.get("loc") or "").lower(), int(_flex_norm(e["cod"]) or 0)))
     if not sel:
@@ -26728,9 +26883,10 @@ def _flex_repa(token):
 def _flex_mover(email, cod, estado, por="") -> dict:
     """Mueve UN envio y devuelve como quedo. Deja asentado QUIEN lo movio: si manana un cliente
     dice que no se lo entregaron, el historial tiene el nombre y la hora."""
-    if _flex_norm(cod) == FLEX_DEMO_COD and FLEX_DEMO_COD not in ((_flex_all().get(email) or {}).get("envios") or {}):
-        # practica con el de muestra: contesta igual que uno real pero NO toca el disco
-        return {"ok": True, "envio": _flex_demo(estado)}
+    _k = _flex_norm(cod)
+    if _k in FLEX_DEMO_CODS and _k not in ((_flex_all().get(email) or {}).get("envios") or {}):
+        # practica con los de muestra: contesta igual que uno real pero NO toca el disco
+        return {"ok": True, "envio": _flex_demo(_k, estado)}
     todo = _flex_all()
     envios = (todo.get(email) or {}).get("envios") or {}
     e = envios.get(_flex_norm(cod))
@@ -26749,6 +26905,9 @@ def _flex_mover(email, cod, estado, por="") -> dict:
 def _flex_deshacer(email, cod, por="") -> dict:
     """Vuelve atras el ULTIMO paso. Es la red para el escaneo de mas: sin esto, marcar
     'entregado' por error no se podia arreglar desde la calle."""
+    _k = _flex_norm(cod)
+    if _k in FLEX_DEMO_CODS and _k not in ((_flex_all().get(email) or {}).get("envios") or {}):
+        return {"ok": True, "envio": _flex_demo(_k)}      # la muestra vuelve a como viene de fabrica
     todo = _flex_all()
     envios = (todo.get(email) or {}).get("envios") or {}
     e = envios.get(_flex_norm(cod))
@@ -26823,10 +26982,41 @@ def flex_repas_list():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
-    out = [{"token": t, **{k: v for k, v in r.items() if k != "email"}}
-           for t, r in _flex_repas().items() if r.get("email") == email]
-    out.sort(key=lambda x: x.get("creado") or "", reverse=True)
+    # cuantos escaneos lleva cada uno y cuando fue el ultimo: sale del historial de los envios,
+    # que ya guarda el nombre de quien movio cada estado (no hace falta otro archivo).
+    hechos = {}
+    for e in (_flex_de(email) or {}).values():
+        for h in (e.get("hist") or []):
+            q = h.get("por")
+            if not q or q in ("oficina", "muestra"):
+                continue
+            d = hechos.setdefault(q, {"n": 0, "ult": ""})
+            d["n"] += 1
+            if (h.get("ts") or "") > d["ult"]:
+                d["ult"] = h.get("ts") or ""
+    out = []
+    for t, r in _flex_repas().items():
+        if r.get("email") != email:
+            continue
+        d = hechos.get(r.get("nombre") or "", {"n": 0, "ult": ""})
+        out.append({"token": t, "nombre": r.get("nombre"), "creado": r.get("creado"),
+                    "activo": r.get("activo"), "escaneos": d["n"], "ultimo": d["ult"]})
+    out.sort(key=lambda x: (not x.get("activo"), x.get("creado") or ""), reverse=False)
     return jsonify({"ok": True, "repas": out, "base": RP_BASE.rstrip("/")})
+
+
+@app.get("/flex-repa-qr")
+def flex_repa_qr():
+    """El QR del link de acceso. Asi el repartidor llega al deposito, apunta el celular al
+    monitor y queda adentro: ni WhatsApp ni copiar y pegar."""
+    email = _user_actual()
+    if not email:
+        return Response(status=403)
+    t = request.args.get("t") or ""
+    r = _flex_repas().get(t)
+    if not r or r.get("email") != email:
+        return Response(status=404)
+    return Response(_fx_qr("%s/escaner?t=%s" % (RP_BASE.rstrip("/"), t)), mimetype="image/png")
 
 
 @app.post("/flex-repas")
