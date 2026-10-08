@@ -25582,13 +25582,15 @@ def _flex_zona(cp, prov="", loc="") -> str:
 # (clave, titulo en la linea de tiempo, texto del chip, frase para el cliente, color)
 FLEX_ESTADOS = [
     ("registrado", "Pedido registrado",   "En preparación", "Estamos preparando tu pedido para despacharlo.", "wait"),
-    ("despachado", "Despachado",          "Despachado",          "Tu pedido ya salió de nuestro depósito.", "move"),
-    ("camino",     "En camino",           "En camino",           "Tu pedido está viajando hacia tu domicilio.", "move"),
-    ("reparto",    "Con el repartidor",   "En reparto",          "Tu pedido está con el repartidor. Llega hoy.", "hoy"),
-    ("entregado",  "Entregado",           "Entregado",           "Tu pedido fue entregado. ¡Gracias por tu compra!", "ok"),
-    ("fallido",    "No se pudo entregar", "Reprogramado",        "No pudimos entregarlo. Vamos a reintentar la entrega.", "bad"),
+    ("camino",     "En camino",           "En camino",         "Tu pedido ya salió y está en camino a tu domicilio.", "move"),
+    ("entregado",  "Entregado",           "Entregado",         "Tu pedido fue entregado. ¡Gracias por tu compra!", "ok"),
+    ("fallido",    "No se pudo entregar", "Reprogramado",      "No pudimos entregarlo. Vamos a reintentar la entrega.", "bad"),
 ]
 _FLEX_EST = {k: (tit, chip, txt, col) for k, tit, chip, txt, col in FLEX_ESTADOS}
+# Red por si quedo algun envio con los estados viejos: se leen como "en camino" en vez de
+# caer al fallback de "registrado", que seria mentirle al cliente.
+_FLEX_EST["despachado"] = _FLEX_EST["camino"]
+_FLEX_EST["reparto"] = _FLEX_EST["camino"]
 FLEX_ORDEN = [k for k, _t, _c, _x, _co in FLEX_ESTADOS if k != "fallido"]
 
 
@@ -26702,7 +26704,7 @@ FLEX_REPAS = DATA_DIR / "flex_repartidores.json"   # {token: {email, nombre, cre
 
 # Lo que puede poner el repartidor. 'fallido' esta a proposito: si no pudo entregar tiene que
 # poder decirlo en el momento, si no el cliente ve "en camino" para siempre.
-FLEX_REPA_ESTADOS = ("despachado", "camino", "entregado", "fallido")
+FLEX_REPA_ESTADOS = ("camino", "entregado", "fallido")
 
 
 def _flex_repas() -> dict:
@@ -26900,7 +26902,7 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
 .modo small{font-size:9.5px;font-weight:600;opacity:.7;letter-spacing:.06em;text-transform:uppercase}
 .modo.on{background:var(--tono);color:#07101c}
 .modo.on small{opacity:.75}
-#m-despachado{--tono:var(--acc2)} #m-camino{--tono:var(--esp)} #m-entregado{--tono:var(--ok)}
+#m-camino{--tono:var(--acc2)} #m-entregado{--tono:var(--ok)} #m-fallido{--tono:var(--mal)}
 
 /* ---- visor ---- */
 .visor{position:relative;width:100%;aspect-ratio:1;max-height:40vh;margin:0 auto;
@@ -27003,9 +27005,9 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
 
  <div id="main" style="display:none;flex:1;flex-direction:column">
   <div class="modos">
-   <button class="modo on" id="m-despachado" onclick="modo('despachado')"><span>Retir&eacute;</span><small>sali&oacute;</small></button>
-   <button class="modo" id="m-camino" onclick="modo('camino')"><span>En viaje</span><small>yendo</small></button>
+   <button class="modo on" id="m-camino" onclick="modo('camino')"><span>Sal&iacute;</span><small>en camino</small></button>
    <button class="modo" id="m-entregado" onclick="modo('entregado')"><span>Entregu&eacute;</span><small>lleg&oacute;</small></button>
+   <button class="modo" id="m-fallido" onclick="modo('fallido')"><span>No pude</span><small>reprogramar</small></button>
   </div>
 
   <div class="visor" id="visor">
@@ -27030,13 +27032,11 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
  </div>
 </div>
 <script>
-var TOK=null, MODO="despachado", ULT=null, N=0, COLA=[], ultCod="", ultT=0, scanning=false;
-var EST={despachado:{t:"var(--acc2)",sb:"rgba(74,155,255,.13)"},
-         camino:{t:"var(--esp)",sb:"var(--esp-sb)"},
+var TOK=null, MODO="camino", ULT=null, N=0, COLA=[], ultCod="", ultT=0, scanning=false;
+var EST={camino:{t:"var(--acc2)",sb:"rgba(74,155,255,.13)"},
          entregado:{t:"var(--ok)",sb:"var(--ok-sb)"},
-         registrado:{t:"var(--esp)",sb:"var(--esp-sb)"},
-         reparto:{t:"var(--esp)",sb:"var(--esp-sb)"},
-         fallido:{t:"var(--mal)",sb:"var(--mal-sb)"}};
+         fallido:{t:"var(--mal)",sb:"var(--mal-sb)"},
+         registrado:{t:"var(--esp)",sb:"var(--esp-sb)"}};
 function $(i){return document.getElementById(i);}
 function g(k){try{return localStorage.getItem(k);}catch(e){return null;}}
 function s_(k,v){try{localStorage.setItem(k,v);}catch(e){}}
@@ -27074,10 +27074,10 @@ function entrar(){ var v=($("tok").value||"").trim(); if(!v)return;
 
 /* ---- modo ---- */
 function modo(m){ MODO=m;
- ["despachado","camino","entregado"].forEach(function(k){ $("m-"+k).classList.toggle("on",k===m); });
+ ["camino","entregado","fallido"].forEach(function(k){ $("m-"+k).classList.toggle("on",k===m); });
  var c=EST[m]; $("visor").style.setProperty("--tono",c.t); $("flash").style.setProperty("--tono",c.t);
 }
-modo("despachado");
+modo("camino");
 
 /* ---- camara + lectura ---- */
 var video=$("cam"), lienzo=document.createElement("canvas"), ctx=lienzo.getContext("2d",{willReadFrequently:true});
