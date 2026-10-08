@@ -363,7 +363,7 @@ SOLO_ADMIN = [
 
 # Rutas que puede tocar cualquiera que este logueado (la app no arranca sin esto).
 _LIBRES = ("/login", "/logout", "/registro", "/pf-version", "/static", "/favicon", "/rp",
-           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/")
+           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/", "/escaner")
 
 
 def _seccion_de(path):
@@ -25695,7 +25695,7 @@ def _flex_set(email, cods, estado=None, zona=None) -> int:
             e["zona"] = zona
         if estado in _FLEX_EST and e.get("estado") != estado:
             e["estado"] = estado
-            e.setdefault("hist", []).append({"e": estado, "ts": _flex_ahora()})
+            e.setdefault("hist", []).append({"e": estado, "ts": _flex_ahora(), "por": "oficina"})
         n += 1
     if n:
         _flex_save(todo)
@@ -26243,6 +26243,7 @@ a.lk:hover{text-decoration:underline}
   <div class="acts">
    <button class="btn g" onclick="cargar(1)">Sincronizar</button>
    <a class="btn g" href="/seguimiento" target="_blank" style="text-decoration:none">Ver p&aacute;gina p&uacute;blica</a>
+   <button class="btn g" onclick="repas()">Repartidores</button>
   </div>
  </header>
  <div id="msg" class="msg"></div>
@@ -26333,6 +26334,31 @@ function pintar(){
  document.getElementById("k-ok").textContent=ok;
  if(ENV.length) document.getElementById("ej").textContent=BASE.replace(/^https?:\\/\\//,"")+"/seguimiento/"+ENV[0].cod;
  refrescar();
+}
+function repas(){
+ fetch("/flex-repas").then(function(r){return r.json();}).then(function(j){
+  var l=(j.repas||[]).filter(function(x){return x.activo;});
+  var t=l.length?l.map(function(x){return "\u2022 "+x.nombre+"  \u2192  "+j.base+"/escaner?t="+x.token;}).join("\n")
+                :"(todav\u00eda no diste de alta a nadie)";
+  var q=prompt("Repartidores con acceso al esc\u00e1ner:\n\n"+t
+   +"\n\nPara dar de alta a uno nuevo, escrib\u00ed su nombre.\nPara dar de baja, escrib\u00ed  baja: <nombre>","");
+  if(q===null||!q.trim())return;
+  q=q.trim();
+  if(q.toLowerCase().indexOf("baja:")===0){
+   var nm=q.slice(5).trim().toLowerCase();
+   var r2=l.filter(function(x){return (x.nombre||"").toLowerCase()===nm;})[0];
+   if(!r2){aviso("No encontr\u00e9 un repartidor con ese nombre.","e");return;}
+   fetch("/flex-repas",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({baja:r2.token})}).then(function(){aviso("Listo: "+r2.nombre+" ya no entra al esc\u00e1ner.","b");});
+   return;
+  }
+  fetch("/flex-repas",{method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({nombre:q})}).then(function(r){return r.json();}).then(function(k){
+   if(!k.ok){aviso(k.msg||"No se pudo","e");return;}
+   try{navigator.clipboard.writeText(k.url);}catch(e){}
+   aviso("Link de "+q+" copiado al portapapeles: "+k.url+" \u2014 pasaselo por WhatsApp.","b");
+  });
+ }).catch(function(e){aviso("Error: "+e,"e");});
 }
 function cargar(ref){
  fetch("/flex-datos"+(ref?"?refresh=1":"")).then(function(r){return r.json();}).then(function(j){
@@ -26631,6 +26657,521 @@ def flex_url_corta(cod):
     """El QR de la etiqueta apunta aca. Es corto a proposito: menos caracteres = menos modulos
     = cuadraditos mas grandes = escanea de mas lejos y con peor impresion."""
     return redirect("/seguimiento/%s" % _flex_norm(cod), code=302)
+
+
+# ─────────────────── REPARTIDOR: escaner de QR en el celular (sin login) ───────────────────
+# El motomensajero NO es usuario de RealProfit: entra UNA vez por un link secreto que le pasa el
+# duenio y despues abre realprofitapp.com/escaner a secas. Ese link SOLO mueve estados de esa cuenta;
+# no ve pedidos, ni plata, ni nada mas. Se revoca de la pantalla de Flex y el link muere.
+#
+# Como se usa: elige el modo (RETIRE / EN VIAJE / ENTREGUE), apunta la camara al QR de la
+# etiqueta y listo. Cada escaneo cae al instante y el cliente lo ve en su pagina de seguimiento.
+# Lo que escanea sin senal queda en una cola en el propio celular y se manda solo al volver.
+
+FLEX_REPAS = DATA_DIR / "flex_repartidores.json"   # {token: {email, nombre, creado, activo}}
+
+# Lo que puede poner el repartidor. 'fallido' esta a proposito: si no pudo entregar tiene que
+# poder decirlo en el momento, si no el cliente ve "en camino" para siempre.
+FLEX_REPA_ESTADOS = ("despachado", "camino", "entregado", "fallido")
+
+
+def _flex_repas() -> dict:
+    try:
+        return _json.loads(FLEX_REPAS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _flex_repas_save(d) -> None:
+    tmp = FLEX_REPAS.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(FLEX_REPAS)
+
+
+def _flex_repa(token):
+    r = _flex_repas().get(str(token or ""))
+    return r if (r and r.get("activo")) else None
+
+
+def _flex_mover(email, cod, estado, por="") -> dict:
+    """Mueve UN envio y devuelve como quedo. Deja asentado QUIEN lo movio: si manana un cliente
+    dice que no se lo entregaron, el historial tiene el nombre y la hora."""
+    todo = _flex_all()
+    envios = (todo.get(email) or {}).get("envios") or {}
+    e = envios.get(_flex_norm(cod))
+    if not e:
+        return {"ok": False, "msg": "Ese código no existe"}
+    if estado not in _FLEX_EST:
+        return {"ok": False, "msg": "Estado desconocido"}
+    if e.get("estado") == estado:
+        return {"ok": True, "repetido": True, "envio": e}    # ya estaba: no ensucio el historial
+    e["estado"] = estado
+    e.setdefault("hist", []).append({"e": estado, "ts": _flex_ahora(), "por": por})
+    _flex_save(todo)
+    return {"ok": True, "envio": e}
+
+
+def _flex_deshacer(email, cod, por="") -> dict:
+    """Vuelve atras el ULTIMO paso. Es la red para el escaneo de mas: sin esto, marcar
+    'entregado' por error no se podia arreglar desde la calle."""
+    todo = _flex_all()
+    envios = (todo.get(email) or {}).get("envios") or {}
+    e = envios.get(_flex_norm(cod))
+    if not e:
+        return {"ok": False, "msg": "Ese código no existe"}
+    h = e.get("hist") or []
+    if len(h) < 2:
+        return {"ok": False, "msg": "No hay nada para deshacer"}
+    h.pop()
+    e["estado"] = h[-1]["e"]
+    _flex_save(todo)
+    return {"ok": True, "envio": e}
+
+
+def _flex_repa_resumen(e) -> dict:
+    """Lo MINIMO que necesita ver el repartidor: es lo mismo que ya tiene impreso en la etiqueta
+    que esta sosteniendo, ni un dato mas."""
+    tit, chip, _frase, col = _FLEX_EST.get(e.get("estado") or "registrado", _FLEX_EST["registrado"])
+    return {"cod": e["cod"], "num": e.get("num"), "nombre": e.get("nombre"),
+            "calle": e.get("calle"), "extra": e.get("extra"), "loc": e.get("loc"),
+            "cp": e.get("cp"), "zona": FLEX_ZONAS.get(e.get("zona"), ""),
+            "tel": e.get("tel"), "estado": e.get("estado"), "chip": chip, "color": col,
+            "puede_deshacer": len(e.get("hist") or []) > 1}
+
+
+@app.get("/escaner")
+def flex_escaner():
+    """La URL que usa el repartidor: realprofitapp.com/escaner, a secas.
+
+    El token NO va en la direccion: la primera vez entra por el link que le pasan
+    (/escaner?t=<token>), el celular se lo guarda y la barra queda limpia. De ahi en mas
+    el tipo abre 'realprofitapp.com/escaner' y ya esta adentro."""
+    return Response(_FLEX_ESC_HTML, mimetype="text/html")
+
+
+@app.post("/escaner/entrar")
+def flex_escaner_entrar():
+    """Valida el token y dice de quien es. Lo unico que devuelve es el nombre."""
+    t = (request.get_json(silent=True) or {}).get("token") or ""
+    r = _flex_repa(t)
+    if not r:
+        return jsonify({"ok": False, "msg": "El link ya no sirve. Ped\u00edle uno nuevo a tu jefe."}), 403
+    return jsonify({"ok": True, "nombre": r.get("nombre") or "Repartidor"})
+
+
+@app.post("/escaner/marcar")
+def flex_escaner_marcar():
+    d = request.get_json(silent=True) or {}
+    r = _flex_repa(d.get("token") or "")
+    if not r:
+        return jsonify({"ok": False, "msg": "El link ya no sirve"}), 403
+    cod = _flex_norm(d.get("cod"))
+    if not cod:
+        return jsonify({"ok": False, "msg": "C\u00f3digo vac\u00edo"})
+    quien = r.get("nombre") or "repartidor"
+    if d.get("deshacer"):
+        res = _flex_deshacer(r["email"], cod, quien)
+    else:
+        est = str(d.get("estado") or "")
+        if est not in FLEX_REPA_ESTADOS:
+            return jsonify({"ok": False, "msg": "Estado no permitido"})
+        res = _flex_mover(r["email"], cod, est, quien)
+    if not res.get("ok"):
+        return jsonify(res)
+    return jsonify({"ok": True, "repetido": bool(res.get("repetido")),
+                    "envio": _flex_repa_resumen(res["envio"])})
+
+
+# ---- alta y baja de repartidores (desde la pantalla del duenio) ----
+@app.get("/flex-repas")
+def flex_repas_list():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    out = [{"token": t, **{k: v for k, v in r.items() if k != "email"}}
+           for t, r in _flex_repas().items() if r.get("email") == email]
+    out.sort(key=lambda x: x.get("creado") or "", reverse=True)
+    return jsonify({"ok": True, "repas": out, "base": RP_BASE.rstrip("/")})
+
+
+@app.post("/flex-repas")
+def flex_repas_abm():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    todo = _flex_repas()
+    if d.get("baja"):
+        r = todo.get(str(d["baja"]))
+        if r and r.get("email") == email:
+            r["activo"] = False                 # se desactiva, no se borra: el historial dice quien fue
+            _flex_repas_save(todo)
+        return jsonify({"ok": True})
+    nombre = (d.get("nombre") or "").strip()[:40]
+    if not nombre:
+        return jsonify({"ok": False, "msg": "Ponéle un nombre"})
+    import secrets
+    tok = secrets.token_urlsafe(12)
+    todo[tok] = {"email": email, "nombre": nombre, "creado": _flex_ahora(), "activo": True}
+    _flex_repas_save(todo)
+    return jsonify({"ok": True, "token": tok, "url": "%s/escaner?t=%s" % (RP_BASE.rstrip("/"), tok)})
+
+
+# La pantalla del repartidor. Oscura a proposito: el visor de la camara es el protagonista y
+# con el marco claro se lavaba. Todo el tamanio esta pensado para una mano, con guantes y en
+# movimiento: ningun boton mide menos de 48 px de alto.
+_FLEX_ESC_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#070b12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Esc&aacute;ner &middot; RealProfit</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{
+ --acc:#4a9bff; --acc2:#7fbaff; --acc3:#2b7fe0; --acc-sb:rgba(74,155,255,.12); --acc-ln:rgba(74,155,255,.3);
+ --tinta:#e9eff8; --tinta2:#96a4b8; --tinta3:#64748b;
+ --fondo:#070b12; --papel:#111a26; --papel2:#18222f; --linea:#223044;
+ --ok:#4ade80; --ok-sb:rgba(74,222,128,.13);
+ --esp:#eabd63; --esp-sb:rgba(234,189,99,.13);
+ --mal:#f87171; --mal-sb:rgba(248,113,113,.13);
+ --r-xl:22px; --r-l:16px; --r-m:13px;
+ --s2:0 1px 2px rgba(0,0,0,.4), 0 14px 30px -16px rgba(0,0,0,.85);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{margin:0;background:var(--fondo);color:var(--tinta);font-size:15px;line-height:1.5;
+ font-family:Inter,system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;
+ -webkit-font-smoothing:antialiased;overscroll-behavior:none}
+h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
+.app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;
+ padding:calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 16px)}
+
+/* ---- barra ---- */
+.top{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.mk{width:28px;height:28px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;
+ background:linear-gradient(145deg,var(--acc2),var(--acc3));box-shadow:0 3px 10px -3px var(--acc-ln)}
+.marca{font-weight:800;font-size:15px}.marca em{font-style:normal;color:var(--acc)}
+.yo{margin-left:auto;display:flex;align-items:center;gap:7px;color:var(--tinta2);font-size:12.5px;font-weight:600}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-sb);flex:none}
+.dot.off{background:var(--esp);box-shadow:0 0 0 3px var(--esp-sb)}
+
+/* ---- modos ---- */
+.modos{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:var(--papel);
+ border:1px solid var(--linea);border-radius:var(--r-l);padding:5px;margin-bottom:13px}
+.modo{border:0;background:transparent;color:var(--tinta2);border-radius:11px;padding:11px 4px;
+ font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;letter-spacing:.02em;
+ display:flex;flex-direction:column;align-items:center;gap:3px;min-height:52px;justify-content:center;
+ transition:background .16s,color .16s}
+.modo small{font-size:9.5px;font-weight:600;opacity:.7;letter-spacing:.06em;text-transform:uppercase}
+.modo.on{background:var(--tono);color:#07101c}
+.modo.on small{opacity:.75}
+#m-despachado{--tono:var(--acc2)} #m-camino{--tono:var(--esp)} #m-entregado{--tono:var(--ok)}
+
+/* ---- visor ---- */
+.visor{position:relative;width:100%;aspect-ratio:1;max-height:40vh;margin:0 auto;
+ border-radius:var(--r-xl);overflow:hidden;
+ background:#000;border:1px solid var(--linea);box-shadow:var(--s2)}
+.visor video{width:100%;height:100%;object-fit:cover;display:block}
+.visor .velo{position:absolute;inset:0;background:
+ linear-gradient(rgba(7,11,18,.55),transparent 22%,transparent 78%,rgba(7,11,18,.55));pointer-events:none}
+.marco{position:absolute;inset:16%;pointer-events:none}
+.marco i{position:absolute;width:30px;height:30px;border:3px solid var(--tono,#fff);border-radius:6px}
+.marco i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0}
+.marco i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0}
+.marco i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0}
+.marco i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0}
+.barrido{position:absolute;left:16%;right:16%;height:2px;background:var(--tono,#fff);
+ box-shadow:0 0 14px var(--tono,#fff);opacity:.85;pointer-events:none}
+@media (prefers-reduced-motion:no-preference){
+ .barrido{animation:barre 2.4s ease-in-out infinite}
+ @keyframes barre{0%,100%{top:17%}50%{top:82%}}
+}
+.visor.pausa .barrido{display:none}
+.aviso{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:12px;padding:26px;text-align:center;background:var(--papel)}
+.aviso .t{font-weight:700;font-size:16px}.aviso .d{color:var(--tinta2);font-size:13.5px}
+.flash{position:absolute;inset:0;background:var(--tono,#fff);opacity:0;pointer-events:none}
+.flash.on{animation:fl .5s ease-out}
+@keyframes fl{0%{opacity:.55}100%{opacity:0}}
+
+/* ---- resultado ---- */
+.res{margin-top:13px;background:var(--papel);border:1px solid var(--linea);border-radius:var(--r-xl);
+ box-shadow:var(--s2);overflow:hidden;position:relative}
+.res:before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--tono,var(--linea))}
+.res .cab{display:flex;align-items:center;gap:10px;padding:15px 16px 0}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 12px;font-size:11px;
+ font-weight:700;letter-spacing:.07em;text-transform:uppercase;background:var(--tono-sb);color:var(--tono)}
+.cod{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:15px;letter-spacing:.1em;
+ color:var(--tinta2)}
+.res .cuerpo{padding:11px 16px 15px}
+.loc{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--tinta3)}
+.calle{font-family:Archivo,sans-serif;font-weight:700;font-size:19px;line-height:1.2;margin-top:4px;
+ letter-spacing:-.02em}
+.sub{color:var(--tinta2);font-size:13.5px;margin-top:5px}
+.quien{display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--linea)}
+.quien .n{font-weight:650;font-size:14.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quien a{flex:none;background:var(--acc-sb);border:1px solid var(--acc-ln);color:var(--acc);border-radius:10px;
+ padding:8px 13px;font-size:12.5px;font-weight:700;text-decoration:none}
+.deshacer{display:block;width:100%;margin-top:11px;background:transparent;border:1px solid var(--linea);
+ color:var(--tinta2);border-radius:var(--r-m);padding:12px;font-family:inherit;font-size:13.5px;
+ font-weight:600;cursor:pointer;min-height:46px}
+.deshacer:active{background:var(--papel2)}
+.vacio{padding:26px 18px;text-align:center;color:var(--tinta3);font-size:13.5px}
+
+/* ---- pie ---- */
+.pie{margin-top:auto;padding-top:14px;display:flex;align-items:center;gap:10px}
+.cuenta{display:flex;align-items:baseline;gap:7px}
+.cuenta b{font-family:Archivo,sans-serif;font-size:22px;font-weight:800}
+.cuenta span{color:var(--tinta3);font-size:12px}
+.mano{margin-left:auto;background:var(--papel);border:1px solid var(--linea);color:var(--tinta);
+ border-radius:var(--r-m);padding:12px 16px;font-family:inherit;font-size:13.5px;font-weight:650;
+ cursor:pointer;min-height:48px}
+.cola{color:var(--esp);font-size:12px;font-weight:600;display:none}
+.cola.on{display:block}
+
+/* ---- alta ---- */
+.entrar{margin:auto 0;text-align:center;padding:10px 4px}
+.entrar h1{font-size:25px;margin:0 0 8px}
+.entrar p{color:var(--tinta2);font-size:14px;margin:0 0 20px}
+.entrar input{width:100%;background:var(--papel);border:1px solid var(--linea);color:var(--tinta);
+ border-radius:var(--r-m);padding:15px 16px;font-size:16px;font-family:"IBM Plex Mono",monospace;
+ text-align:center;letter-spacing:.06em}
+.entrar input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 4px var(--acc-sb)}
+.btn{width:100%;margin-top:10px;border:0;border-radius:var(--r-m);padding:15px;font-family:inherit;
+ font-size:15px;font-weight:700;color:#07101c;cursor:pointer;min-height:52px;
+ background:linear-gradient(145deg,var(--acc2),var(--acc3));box-shadow:0 6px 18px -7px var(--acc-ln)}
+.err{color:var(--mal);font-size:13.5px;margin-top:12px;min-height:19px}
+</style></head><body>
+<div class="app" id="app">
+ <div class="top" id="barra" style="display:none">
+  <span class="mk"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#07101c"
+   stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+   <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span>
+  <span class="marca">Real<em>Profit</em></span>
+  <span class="yo"><span class="dot" id="dot"></span><span id="yo"></span></span>
+ </div>
+
+ <div id="alta" class="entrar" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:22px">
+   <span class="mk"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#07101c"
+    stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span>
+   <span class="marca">Real<em>Profit</em></span></div>
+  <h1>Esc&aacute;ner de paquetes</h1>
+  <p>Peg&aacute; el c&oacute;digo de acceso que te pasaron.</p>
+  <input id="tok" placeholder="c&oacute;digo de acceso" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button class="btn" onclick="entrar()">Entrar</button>
+  <div class="err" id="err-alta"></div>
+ </div>
+
+ <div id="main" style="display:none;flex:1;flex-direction:column">
+  <div class="modos">
+   <button class="modo on" id="m-despachado" onclick="modo('despachado')"><span>Retir&eacute;</span><small>sali&oacute;</small></button>
+   <button class="modo" id="m-camino" onclick="modo('camino')"><span>En viaje</span><small>yendo</small></button>
+   <button class="modo" id="m-entregado" onclick="modo('entregado')"><span>Entregu&eacute;</span><small>lleg&oacute;</small></button>
+  </div>
+
+  <div class="visor" id="visor">
+   <video id="cam" playsinline muted autoplay></video>
+   <div class="velo"></div>
+   <div class="marco"><i></i><i></i><i></i><i></i></div>
+   <div class="barrido"></div>
+   <div class="flash" id="flash"></div>
+   <div class="aviso" id="aviso">
+    <div class="t">Encendiendo la c&aacute;mara&hellip;</div>
+    <div class="d">Si te pide permiso, dale <b>Permitir</b>.</div>
+   </div>
+  </div>
+
+  <div class="res" id="res"><div class="vacio">Apunt&aacute; al QR de la etiqueta</div></div>
+
+  <div class="pie">
+   <span class="cuenta"><b id="n">0</b><span>escaneados</span></span>
+   <span class="cola" id="cola"></span>
+   <button class="mano" onclick="aMano()">Escribir c&oacute;digo</button>
+  </div>
+ </div>
+</div>
+<script>
+var TOK=null, MODO="despachado", ULT=null, N=0, COLA=[], ultCod="", ultT=0, scanning=false;
+var EST={despachado:{t:"var(--acc2)",sb:"rgba(74,155,255,.13)"},
+         camino:{t:"var(--esp)",sb:"var(--esp-sb)"},
+         entregado:{t:"var(--ok)",sb:"var(--ok-sb)"},
+         registrado:{t:"var(--esp)",sb:"var(--esp-sb)"},
+         reparto:{t:"var(--esp)",sb:"var(--esp-sb)"},
+         fallido:{t:"var(--mal)",sb:"var(--mal-sb)"}};
+function $(i){return document.getElementById(i);}
+function g(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function s_(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function esc(x){return String(x==null?"":x).replace(/[&<>"]/g,function(c){
+ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+
+/* ---- entrada ---- */
+var qs=new URLSearchParams(location.search);
+if(qs.get("t")){ s_("rp_esc_tok", qs.get("t")); history.replaceState(null,"","/escaner"); }
+TOK=g("rp_esc_tok");
+if(TOK) validar(TOK); else $("alta").style.display="";
+
+function validar(t){
+ fetch("/escaner/entrar",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({token:t})}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){ TOK=null; try{localStorage.removeItem("rp_esc_tok");}catch(e){}
+   $("alta").style.display=""; $("err-alta").textContent=j.msg||"No sirve"; return; }
+  TOK=t; s_("rp_esc_tok",t);
+  $("alta").style.display="none"; $("barra").style.display=""; $("main").style.display="flex";
+  $("yo").textContent=j.nombre;
+  var hoy=new Date().toISOString().slice(0,10);
+  if(g("rp_esc_dia")===hoy){ N=parseInt(g("rp_esc_n")||"0",10)||0; } else { s_("rp_esc_dia",hoy); s_("rp_esc_n","0"); }
+  $("n").textContent=N;
+  try{ COLA=JSON.parse(g("rp_esc_cola")||"[]"); }catch(e){ COLA=[]; }
+  pintarCola(); camara();
+ }).catch(function(){ $("alta").style.display=""; $("err-alta").textContent="Sin conexi\\u00f3n"; });
+}
+function entrar(){ var v=($("tok").value||"").trim(); if(!v)return;
+ var m=v.match(/[?&]t=([^&\\s]+)/); if(m)v=decodeURIComponent(m[1]);   // pegan el link entero
+ $("err-alta").textContent=""; validar(v); }
+
+/* ---- modo ---- */
+function modo(m){ MODO=m;
+ ["despachado","camino","entregado"].forEach(function(k){ $("m-"+k).classList.toggle("on",k===m); });
+ var c=EST[m]; $("visor").style.setProperty("--tono",c.t); $("flash").style.setProperty("--tono",c.t);
+}
+modo("despachado");
+
+/* ---- camara + lectura ---- */
+var video=$("cam"), lienzo=document.createElement("canvas"), ctx=lienzo.getContext("2d",{willReadFrequently:true});
+var detector=null;
+function camara(){
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ falloCam("Este navegador no abre la c\\u00e1mara. Prob\\u00e1 con Chrome o Safari."); return; }
+ navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},
+   width:{ideal:1280},height:{ideal:1280}},audio:false})
+ .then(function(st){ video.srcObject=st; return video.play(); })
+ .then(function(){ $("aviso").style.display="none"; scanning=true;
+   if("BarcodeDetector" in window){ try{ detector=new BarcodeDetector({formats:["qr_code"]}); }catch(e){} }
+   if(!detector){ var sc=document.createElement("script");
+     sc.src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"; document.head.appendChild(sc); }
+   requestAnimationFrame(leer);
+ }).catch(function(e){
+   falloCam(String(e&&e.name)==="NotAllowedError"
+     ? "No nos diste permiso para la c\\u00e1mara. Activalo en los ajustes del navegador y record\\u00e1 la p\\u00e1gina."
+     : "No pudimos abrir la c\\u00e1mara ("+(e&&e.name||e)+").");
+ });
+}
+function falloCam(m){ $("aviso").style.display="";
+ $("aviso").innerHTML='<div class="t">C\\u00e1mara no disponible</div><div class="d">'+esc(m)
+  +'</div><button class="mano" onclick="aMano()">Escribir el c\\u00f3digo</button>'; }
+function leer(){
+ if(!scanning){ requestAnimationFrame(leer); return; }
+ if(video.readyState===video.HAVE_ENOUGH_DATA){
+  var w=video.videoWidth,h=video.videoHeight;
+  if(w&&h){
+   if(detector){
+    detector.detect(video).then(function(cs){ if(cs&&cs.length) visto(cs[0].rawValue); }).catch(function(){});
+   } else if(window.jsQR){
+    var lado=Math.min(w,h); lienzo.width=lienzo.height=420;
+    ctx.drawImage(video,(w-lado)/2,(h-lado)/2,lado,lado,0,0,420,420);
+    var d=ctx.getImageData(0,0,420,420);
+    var c=jsQR(d.data,420,420,{inversionAttempts:"dontInvert"});
+    if(c&&c.data) visto(c.data);
+   }
+  }
+ }
+ requestAnimationFrame(leer);
+}
+function visto(txt){
+ var m=String(txt).match(/(\\d{4,6})\\s*$/);     // .../s/00001 -> 00001
+ if(!m) return;
+ var cod=m[1];
+ var ahora=Date.now();
+ if(cod===ultCod && ahora-ultT<2500) return;   // mismo paquete frente a la camara: una sola vez
+ ultCod=cod; ultT=ahora;
+ marcar(cod,MODO);
+}
+
+/* ---- marcar ---- */
+function marcar(cod,estado){
+ bip(); flash();
+ if(!navigator.onLine){ encolar({cod:cod,estado:estado}); return; }
+ fetch("/escaner/marcar",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({token:TOK,cod:cod,estado:estado})})
+ .then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){ error(j.msg||"No se pudo",cod); return; }
+  ULT=j.envio; if(!j.repetido){ N++; s_("rp_esc_n",String(N)); $("n").textContent=N; }
+  pintar(j.envio,j.repetido);
+ }).catch(function(){ encolar({cod:cod,estado:estado}); });
+}
+function pintar(e,repetido){
+ var c=EST[e.estado]||EST.registrado;
+ var dir=esc(e.calle||"\\u2014");
+ var sub=[]; if(e.extra)sub.push(esc(e.extra)); if(e.cp)sub.push("CP "+esc(e.cp));
+ var tel=e.tel?('<a href="tel:'+esc(String(e.tel).replace(/[^\\d+]/g,""))+'">Llamar</a>'):"";
+ $("res").style.setProperty("--tono",c.t); $("res").style.setProperty("--tono-sb",c.sb);
+ $("res").innerHTML='<div class="cab"><span class="chip">'+esc(e.chip)+'</span>'
+  +(repetido?'<span style="color:var(--tinta3);font-size:12px">ya estaba</span>':'')
+  +'<span class="cod">'+esc(e.cod)+'</span></div>'
+  +'<div class="cuerpo"><div class="loc">'+esc(e.loc||"")+(e.zona?(" \\u00b7 "+esc(e.zona)):"")+'</div>'
+  +'<div class="calle">'+dir+'</div>'
+  +(sub.length?'<div class="sub">'+sub.join(" \\u00b7 ")+'</div>':'')
+  +'<div class="quien"><span class="n">'+esc(e.nombre||"")+'</span>'+tel+'</div>'
+  +(e.puede_deshacer?'<button class="deshacer" onclick="deshacer(\\''+esc(e.cod)+'\\')">Deshacer este escaneo</button>':'')
+  +'</div>';
+}
+function error(msg,cod){
+ $("res").style.setProperty("--tono","var(--mal)"); $("res").style.setProperty("--tono-sb","var(--mal-sb)");
+ $("res").innerHTML='<div class="cab"><span class="chip">Error</span><span class="cod">'+esc(cod||"")+'</span></div>'
+  +'<div class="cuerpo"><div class="calle" style="font-size:16px">'+esc(msg)+'</div></div>';
+}
+function deshacer(cod){
+ fetch("/escaner/marcar",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({token:TOK,cod:cod,deshacer:1})})
+ .then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){ error(j.msg||"No se pudo deshacer",cod); return; }
+  ultCod=""; pintar(j.envio,false);
+ }).catch(function(){ error("Sin conexi\\u00f3n",cod); });
+}
+function aMano(){
+ var v=prompt("C\\u00f3digo de seguimiento (los 5 n\\u00fameros):");
+ if(!v)return; var d=String(v).replace(/\\D/g,""); if(!d)return;
+ ultCod=""; marcar(d,MODO);
+}
+
+/* ---- sin senal: se guarda en el celular y sale solo al volver ---- */
+function encolar(it){ COLA.push(it); s_("rp_esc_cola",JSON.stringify(COLA)); pintarCola();
+ $("res").style.setProperty("--tono","var(--esp)"); $("res").style.setProperty("--tono-sb","var(--esp-sb)");
+ $("res").innerHTML='<div class="cab"><span class="chip">Guardado</span><span class="cod">'+esc(it.cod)+'</span></div>'
+  +'<div class="cuerpo"><div class="calle" style="font-size:16px">Sin se\\u00f1al</div>'
+  +'<div class="sub">Se manda solo cuando vuelva internet.</div></div>'; }
+function pintarCola(){ var c=$("cola");
+ c.textContent=COLA.length?(COLA.length+" sin mandar"):""; c.classList.toggle("on",!!COLA.length);
+ $("dot").classList.toggle("off",!navigator.onLine||!!COLA.length); }
+function vaciarCola(){
+ if(!COLA.length||!navigator.onLine||!TOK)return;
+ var it=COLA[0];
+ fetch("/escaner/marcar",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({token:TOK,cod:it.cod,estado:it.estado})})
+ .then(function(r){return r.json();}).then(function(j){
+  if(j&&(j.ok||j.msg)){ COLA.shift(); s_("rp_esc_cola",JSON.stringify(COLA)); pintarCola(); vaciarCola(); }
+ }).catch(function(){});
+}
+window.addEventListener("online",function(){ pintarCola(); vaciarCola(); });
+window.addEventListener("offline",pintarCola);
+setInterval(vaciarCola,15000);
+
+/* ---- aviso sonoro + visual: con guantes y en la calle no se mira la pantalla ---- */
+var actx=null;
+function bip(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+ var o=actx.createOscillator(),g2=actx.createGain();
+ o.frequency.value=880; o.connect(g2); g2.connect(actx.destination);
+ g2.gain.setValueAtTime(.001,actx.currentTime);
+ g2.gain.exponentialRampToValueAtTime(.18,actx.currentTime+.01);
+ g2.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.14);
+ o.start(); o.stop(actx.currentTime+.15); }catch(e){}
+ try{ navigator.vibrate&&navigator.vibrate(45); }catch(e){} }
+function flash(){ var f=$("flash"); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on"); }
+document.addEventListener("visibilitychange",function(){ scanning=!document.hidden; });
+</script></body></html>"""
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
