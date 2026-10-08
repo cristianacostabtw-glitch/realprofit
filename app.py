@@ -363,7 +363,7 @@ SOLO_ADMIN = [
 
 # Rutas que puede tocar cualquiera que este logueado (la app no arranca sin esto).
 _LIBRES = ("/login", "/logout", "/registro", "/pf-version", "/static", "/favicon", "/rp",
-           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/")
+           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/")
 
 
 def _seccion_de(path):
@@ -25625,6 +25625,24 @@ def _flex_dmy(ts) -> str:
     return s
 
 
+def _flex_datos_orden(email, num) -> dict:
+    """Nota del cliente + SKU a empaquetar, del cache de Despachos. Si no esta, devuelve vacio:
+    la etiqueta sale igual, solo sin esas dos filas."""
+    try:
+        _desp_cache_load()
+        c = _DESP_CACHE.get(email) or {}
+        for o in (c.get("orders") or []):
+            if str(o.get("order_number") or "").strip() == str(num):
+                items = [(str(li.get("product_id") or ""), int(li.get("quantity") or 0),
+                          li.get("title") or li.get("name") or "")
+                         for li in (o.get("line_items") or [])]
+                return {"nota": (o.get("note") or "").strip(),
+                        "sku": _sku_de_items(items, _skus_map(email))}
+    except Exception:
+        pass
+    return {"nota": "", "sku": ""}
+
+
 def _flex_crear(email, filas) -> list:
     """Le da codigo a cada pedido. Si el pedido YA tiene uno, lo devuelve (no duplica nunca)."""
     todo = _flex_all()
@@ -25649,6 +25667,7 @@ def _flex_crear(email, filas) -> list:
             "loc": f.get("localidad") or "", "prov": f.get("provincia") or "", "cp": str(f.get("cp") or ""),
             "calle": f.get("calle") or "", "extra": f.get("extra") or "",
             "tel": f.get("tel") or "", "unidades": int(f.get("unidades") or 0),
+            "nota": f.get("nota") or "", "sku": f.get("sku") or "",
             "estado": "registrado", "creado": ahora,
             "hist": [{"e": "registrado", "ts": ahora}],
         }
@@ -25683,6 +25702,11 @@ def _flex_url(cod) -> str:
     return "%s/seguimiento/%s" % (RP_BASE.rstrip("/"), cod)
 
 
+def _flex_url_corta(cod) -> str:
+    """La del QR: mas corta = modulos mas grandes = escanea mejor."""
+    return "%s/s/%s" % (RP_BASE.rstrip("/"), cod)
+
+
 # --------------------------------- pantalla del duenio ---------------------------------
 @app.get("/flex-datos")
 def flex_datos():
@@ -25706,7 +25730,8 @@ def flex_datos():
                          "localidad": r.get("localidad") or "", "cp": str(r.get("cp") or ""),
                          "provincia": r.get("provincia") or "", "calle": r.get("calle") or "",
                          "extra": r.get("extra") or "", "tel": r.get("tel") or "",
-                         "unidades": int(r.get("unidades") or 0), "total": r.get("total") or 0})
+                         "unidades": int(r.get("unidades") or 0), "total": r.get("total") or 0,
+                         **_flex_datos_orden(email, r.get("num"))})
     except Exception as e:
         return jsonify({"ok": True, "pend": [], "envios": sorted(envios.values(),
                         key=lambda x: int(_flex_norm(x["cod"]) or 0), reverse=True),
@@ -26240,6 +26265,7 @@ a.lk:hover{text-decoration:underline}
   <div class="bar"><span class="q">Seleccionados: <b id="q-sel">0</b></span>
    <select id="mover"><option value="">Mover a&hellip;</option></select>
    <button class="btn g" id="b-mover" onclick="mover()" disabled>Aplicar</button>
+   <button class="btn g" id="b-etiq" onclick="etiquetas()" disabled>Etiquetas</button>
    <button class="btn g" id="b-shop" onclick="avisar(1,0)" disabled>Cargar en Shopify</button>
    <button class="btn ok" id="b-wpp" onclick="avisar(0,1)" disabled>Avisar por WhatsApp</button></div>
   <div class="tw"><table>
@@ -26268,7 +26294,7 @@ function refrescar(){
  var np=selP().length,ne=selE().length;
  document.getElementById("b-crear").disabled=!np;
  document.getElementById("q-sel").textContent=ne;
- ["b-mover","b-shop","b-wpp"].forEach(function(id){document.getElementById(id).disabled=!ne;});
+ ["b-mover","b-etiq","b-shop","b-wpp"].forEach(function(id){document.getElementById(id).disabled=!ne;});
 }
 function pintar(){
  var tp=document.getElementById("tb-pend");
@@ -26332,6 +26358,10 @@ function mover(){
  var cods=selE();if(!cods.length)return;
  setear(cods,v,null).then(function(j){aviso(j.tocados+" env\\u00edo(s) movidos a \\""+ENOM[v]+"\\".","b");cargar(0);});
 }
+function etiquetas(){
+ var cods=selE(); if(!cods.length)return;
+ window.open("/flex-etiquetas?cods="+encodeURIComponent(cods.join(",")),"_blank");
+}
 function avisar(sh,wp){
  var cods=selE();if(!cods.length)return;
  if(wp && !confirm("Mandar la plantilla de WhatsApp a "+cods.length+" cliente(s)?"))return;
@@ -26354,6 +26384,249 @@ cargar(0);
 </script></body></html>"""
 _FLEX_HTML = _FLEX_HTML.replace("__ESTADOS__", _json.dumps(
     [[k, t, c, x, co] for k, t, c, x, co in FLEX_ESTADOS], ensure_ascii=False))
+
+
+# ─────────────────────── ETIQUETAS FLEX (PDF 10x15 cm, monocromo) ───────────────────────
+# Pensada para impresora termica / laser blanco y negro:
+#   - nada de grises claros para texto (en termica salen lavados): lo secundario baja de TAMANO
+#   - la jerarquia la hacen los filetes, los bloques en negativo y el cuerpo de letra
+#   - el QR lleva su zona de silencio DENTRO de la imagen, si no muchos lectores no enganchan
+# La geometria se calcula DESDE EL PIE hacia arriba con un tope duro: una nota de 300 caracteres
+# o un apellido larguisimo NO pueden comerse el telefono, que es lo que el repartidor necesita
+# cuando no encuentra la casa.
+
+FLEX_ET_W, FLEX_ET_H = 283.46, 425.20      # 10 x 15 cm en puntos
+_FX_N, _FX_B = (0, 0, 0), (1, 1, 1)
+_FX_G = (0.38, 0.38, 0.38)
+_FX_HB, _FX_HV = "hebo", "helv"
+
+
+def _fx_qr(dato):
+    import segno, io
+    b = io.BytesIO()
+    segno.make(dato, error="m").save(b, kind="png", scale=16, border=3)
+    return b.getvalue()
+
+
+def _fx_w(t, f=_FX_HV, s=10):
+    import fitz
+    return fitz.get_text_length(str(t), fontname=f, fontsize=s)
+
+
+def _fx_txt(pg, x, y, t, f=_FX_HV, s=10, c=_FX_N, al=0, a=0):
+    """al: 0 izquierda, 1 centrado, 2 derecha (dentro de un ancho `a`)."""
+    if al:
+        x = x + (a - _fx_w(t, f, s)) / (2 if al == 1 else 1)
+    pg.insert_text((x, y), str(t), fontname=f, fontsize=s, color=c)
+
+
+def _fx_micro(pg, x, y, t, c=_FX_N, s=6.4, esp=1.2):
+    """Rotulito en VERSALES con interletrado: es lo que hace que se lea como documento."""
+    cx = x
+    for ch in str(t):
+        pg.insert_text((cx, y), ch, fontname=_FX_HB, fontsize=s, color=c)
+        cx += _fx_w(ch, _FX_HB, s) + esp
+
+
+def _fx_encajar(t, f, s, a, mini=7.0):
+    while _fx_w(t, f, s) > a and s > mini:
+        s -= .4
+    return s
+
+
+def _fx_cortar(t, f, s, a):
+    """Una linea y punta. Achica hasta un minimo y despues corta: un nombre largo NO puede
+    pisar el telefono."""
+    t = str(t or "").strip()
+    while s > 9.5 and _fx_w(t, f, s) > a:
+        s -= .4
+    if _fx_w(t, f, s) <= a:
+        return t, s
+    while t and _fx_w(t + "...", f, s) > a:
+        t = t[:-1]
+    return t.rstrip() + "...", s
+
+
+def _fx_envolver(t, f, s, a):
+    out, ln = [], ""
+    for p in str(t or "").split():
+        q = (ln + " " + p).strip()
+        if _fx_w(q, f, s) <= a:
+            ln = q
+        else:
+            if ln:
+                out.append(ln)
+            ln = p
+    if ln:
+        out.append(ln)
+    return out
+
+
+def _fx_partir_calle(c):
+    """Separa la altura del nombre de la calle: el que reparte busca PRIMERO el numero
+    en la puerta, no el nombre."""
+    m = _re_and.search(r"^(.*?)(\d+[A-Za-z]?)\s*$", str(c or "").strip())
+    return (m.group(1).strip(), m.group(2)) if m else (str(c or "").strip(), "")
+
+
+def _fx_marca(pg, x, y, alto):
+    import fitz
+    r = fitz.Rect(x, y, x + alto, y + alto)
+    pg.draw_rect(r, color=None, fill=_FX_N, radius=0.28)
+    cx, cy = r.x0 + alto * .18, r.y0 + alto * .66
+    pg.draw_polyline([(cx, cy), (cx + alto * .26, cy - alto * .28), (cx + alto * .44, cy - alto * .10),
+                      (cx + alto * .68, cy - alto * .42)], color=_FX_B, width=alto * .11, lineCap=1, lineJoin=1)
+    pg.draw_polyline([(cx + alto * .50, cy - alto * .42), (cx + alto * .68, cy - alto * .42),
+                      (cx + alto * .68, cy - alto * .24)], color=_FX_B, width=alto * .11, lineCap=1, lineJoin=1)
+    _fx_txt(pg, x + alto + alto * .32, y + alto * .77, "RealProfit", _FX_HB, alto * .74, _FX_N)
+
+
+def _flex_etiqueta(pg, e):
+    """Dibuja UNA etiqueta. `e` es el registro de flex_envios.json."""
+    import fitz
+    W, H = FLEX_ET_W, FLEX_ET_H
+    M = 16
+    A = W - 2 * M
+    N, B, G, HB, HV = _FX_N, _FX_B, _FX_G, _FX_HB, _FX_HV
+
+    # ── lo de abajo es fijo: se calcula primero y despues el medio se acomoda ──
+    CAJA_H = 86
+    caja_y = H - 16 - CAJA_H
+    tel_y = caja_y - 14
+    nom_y = tel_y - 19
+    lbl_y = nom_y - 16
+    reg_y = lbl_y - 13
+    TOPE = reg_y - 9                      # ni un pixel del medio pasa de aca
+
+    # 1 · la marca: un renglon y se corre (es el dato menos importante de la etiqueta)
+    _fx_marca(pg, M, 15, 13)
+    t = "FLEX · 24 a 48 HS"
+    _fx_txt(pg, W - M - _fx_w(t, HB, 7), 25, t, HB, 7, G)
+    pg.draw_line((M, 35), (W - M, 35), color=N, width=.8)
+
+    # 2 · a donde va: localidad en negativo y la zona en recuadro blanco (se ve de lejos)
+    y, bh, zb = 44, 44, 56
+    pg.draw_rect(fitz.Rect(M, y, W - M, y + bh), color=None, fill=N)
+    pg.draw_rect(fitz.Rect(W - M - zb - 5, y + 5, W - M - 5, y + bh - 5), color=None, fill=B)
+    tl, sl = _fx_cortar((e.get("loc") or "—").upper(), HB, 16, A - zb - 26)
+    _fx_txt(pg, M + 11, y + 24, tl, HB, sl, B)
+    _fx_txt(pg, M + 11, y + 37, ("CP " + str(e.get("cp") or "")).strip(), HB, 10, B)
+    _fx_txt(pg, W - M - zb - 5, y + 19, "ZONA", HB, 6, N, 1, zb)
+    _fx_txt(pg, W - M - zb - 5, y + 33, FLEX_ZONAS.get(e.get("zona"), ""), HB, 12.5, N, 1, zb)
+
+    # 3 · la direccion: la altura va aparte y enorme
+    y += bh + 17
+    _fx_micro(pg, M, y, "DIRECCION")
+    y += 21
+    nom, alt = _fx_partir_calle(e.get("calle"))
+    tn, sn = _fx_cortar(nom or "—", HB, 17.5, A)
+    _fx_txt(pg, M, y, tn, HB, sn, N)
+    if alt:
+        sa = _fx_encajar(alt, HB, 34, A * .62)
+        _fx_txt(pg, M, y + sa * .94, alt, HB, sa, N)
+        y += sa * .94
+    y += 4
+
+    # 4 · piso / depto (address2 de la tienda): un renglon, recortado
+    piso = str(e.get("extra") or "").strip()
+    if piso and y + 18 <= TOPE:
+        y += 18
+        _fx_micro(pg, M, y, "PISO / DEPTO")
+        tp, sp = _fx_cortar(piso, HB, 12.5, A - 78)
+        _fx_txt(pg, M + 78, y + .5, tp, HB, sp, N)
+
+    # 5 · la nota que escribio el cliente al comprar. Entra lo que entra; si no entra nada,
+    #     no se dibuja ni el rotulo (mejor nada que medio renglon pisando el telefono).
+    obs = str(e.get("nota") or "").strip()
+    if obs:
+        fs, lh = 9.8, 12.2
+        caben = int((TOPE - (y + 34)) / lh) + 1
+        if caben >= 1:
+            y += 20
+            _fx_micro(pg, M, y, "OBSERVACIONES DEL CLIENTE")
+            y += 14
+            ls = _fx_envolver(obs, HV, fs, A - 13)
+            if len(ls) > caben:
+                ls = ls[:caben]
+                ls[-1] = _fx_cortar(ls[-1] + " ...", HV, fs, A - 13)[0]
+            pg.draw_line((M + 1.5, y - 8), (M + 1.5, y + (len(ls) - 1) * lh + 3), color=N, width=1.6)
+            for i, l in enumerate(ls):
+                _fx_txt(pg, M + 13, y + i * lh, l, HV, fs, N)
+
+    # 6 · quien recibe. Nombre y telefono en renglones SEPARADOS.
+    pg.draw_line((M, reg_y), (W - M, reg_y), color=N, width=.8)
+    _fx_micro(pg, M, lbl_y, "RECIBE")
+    tnm, snm = _fx_cortar(e.get("nombre") or "—", HB, 14.5, A)
+    _fx_txt(pg, M, nom_y, tnm, HB, snm, N)
+    if str(e.get("tel") or "").strip():
+        _fx_micro(pg, M, tel_y - 1, "TELEFONO")
+        _fx_txt(pg, M + 56, tel_y, e["tel"], HB, 14.5, N)
+
+    # 7 · el paquete, cercado aparte para que no se mezcle con la entrega
+    pg.draw_rect(fitz.Rect(M, caja_y, W - M, caja_y + CAJA_H), color=N, fill=B, width=1.1)
+    qs = CAJA_H - 20
+    pg.insert_image(fitz.Rect(M + 10, caja_y + 10, M + 10 + qs, caja_y + 10 + qs),
+                    stream=_fx_qr(_flex_url_corta(e["cod"])))
+    rx = M + 10 + qs + 15
+    _fx_micro(pg, rx, caja_y + 18, "SEGUIMIENTO")
+    _fx_txt(pg, rx, caja_y + 38, e["cod"], HB, 18, N)
+    _fx_micro(pg, rx, caja_y + 54, "PEDIDO")
+    _fx_txt(pg, rx, caja_y + 70, "#" + str(e.get("num") or ""), HB, 14.5, N)
+    sku = str(e.get("sku") or "").strip()
+    if sku:
+        _fx_micro(pg, W - M - 10 - _fx_w("CONTENIDO", HB, 6.4) - 7, caja_y + 18, "CONTENIDO")
+        ts, ss = _fx_cortar(sku, HB, 13, A - qs - 100)
+        _fx_txt(pg, W - M - 10 - _fx_w(ts, HB, ss), caja_y + 38, ts, HB, ss, N)
+    fch = str(e.get("creado") or "")[:10]
+    if len(fch) == 10:
+        fch = "%s/%s/%s" % (fch[8:10], fch[5:7], fch[0:4])
+    _fx_txt(pg, W - M - 10 - _fx_w(fch, HV, 8.5), caja_y + 70, fch, HV, 8.5, G)
+    _fx_txt(pg, M, H - 7, "realprofitapp.com/s/" + e["cod"], HV, 6.6, G)
+
+
+def _flex_etiquetas_pdf(envios) -> bytes:
+    """Una pagina de 10x15 por envio, en el orden que vienen."""
+    import fitz
+    doc = fitz.open()
+    for e in envios:
+        _flex_etiqueta(doc.new_page(width=FLEX_ET_W, height=FLEX_ET_H), e)
+    out = doc.tobytes()
+    doc.close()
+    return out
+
+
+@app.get("/flex-etiquetas")
+def flex_etiquetas():
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    cods = [c.strip() for c in (request.args.get("cods") or "").split(",") if c.strip()]
+    envios = _flex_de(email)
+    # el orden de impresion es por ZONA y despues por localidad: salen agrupadas como se
+    # cargan en la moto, no mezcladas.
+    sel = [envios[_flex_norm(c)] for c in cods if _flex_norm(c) in envios]
+    sel.sort(key=lambda e: (list(FLEX_ZONAS).index(e.get("zona")) if e.get("zona") in FLEX_ZONAS else 9,
+                            (e.get("loc") or "").lower(), int(_flex_norm(e["cod"]) or 0)))
+    if not sel:
+        return Response("No hay envíos para etiquetar.", status=400, mimetype="text/plain")
+    try:
+        pdf = _flex_etiquetas_pdf(sel)
+    except Exception as e:
+        import traceback as _tb
+        _t = _tb.extract_tb(e.__traceback__)
+        _ln = (" @ %s:%d" % (_t[-1].name, _t[-1].lineno)) if _t else ""
+        return Response("No se pudieron generar las etiquetas — %s: %s%s"
+                        % (type(e).__name__, str(e)[:200], _ln), status=500, mimetype="text/plain")
+    nom = "etiquetas-flex-%s.pdf" % _dt.datetime.now(_ARG).strftime("%Y%m%d-%H%M")
+    return Response(pdf, mimetype="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="%s"' % nom})
+
+
+@app.get("/s/<cod>")
+def flex_url_corta(cod):
+    """El QR de la etiqueta apunta aca. Es corto a proposito: menos caracteres = menos modulos
+    = cuadraditos mas grandes = escanea de mas lejos y con peor impresion."""
+    return redirect("/seguimiento/%s" % _flex_norm(cod), code=302)
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).

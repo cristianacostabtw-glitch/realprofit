@@ -8,3 +8,4 @@ google-auth>=2.23
 google-api-python-client>=2.100
 anthropic>=0.40
 imageio-ffmpeg>=0.5
+segno>=1.6
