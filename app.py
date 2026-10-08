@@ -11273,7 +11273,7 @@ def _seg_track_info(p) -> dict:
     trk = p.get("track")
     if (p.get("carrier") or "") == "rpflex":
         # Flex propio: Shopify no conoce el transportista, asi que la url va SI o SI.
-        return {"company": "NoxaLab Flex", "number": trk,
+        return {"company": "Flex", "number": trk,
                 "url": p.get("url") or _flex_url(trk)}
     if (p.get("carrier") or "") == "envialo":
         return {"company": "Envialo Flex", "number": trk,
@@ -25805,95 +25805,175 @@ def pagina_seguimiento(cod):
 # pintarla). Asi abre instantanea en el celular, que es donde la abre el 95% de la gente.
 _FLEX_PUB_CSS = """
 :root{
- --tinta:#101722; --tinta2:#5a6779; --tinta3:#8d99a9;
- --fondo:#f4f6f8; --papel:#ffffff; --linea:#e4e8ee; --linea2:#eef1f5;
- --marca:#121e30; --marca-sb:#f0f3f8;
- --ok:#15803d; --ok-bg:#eaf6ee; --move:#1d4ed8; --move-bg:#eaf0fe;
- --wait:#8a6410; --wait-bg:#fbf2df; --hoy:#9a4a06; --hoy-bg:#fdeee0;
- --bad:#b42318; --bad-bg:#fdecea;
+ --acc:#137fec; --acc2:#3d93ff; --acc3:#0f5fc4;
+ --acc-sb:rgba(19,127,236,.075); --acc-ln:rgba(19,127,236,.2);
+ --tinta:#0a1424; --tinta2:#55657c; --tinta3:#8695aa;
+ --fondo:#f2f5fa; --papel:#ffffff; --linea:#e7ecf4; --linea2:#f0f4f9; --hueco:#d8e0ec;
+ --ok:#15803d; --ok-sb:#e9f6ed; --mov:#1368d8; --mov-sb:#e9f1fe;
+ --esp:#8a6410; --esp-sb:#fcf4e1; --hoy:#9a4a06; --hoy-sb:#fdefe2;
+ --mal:#b42318; --mal-sb:#fdedec;
+ --s1:0 1px 2px rgba(10,20,36,.05);
+ --s2:0 1px 2px rgba(10,20,36,.04), 0 10px 22px -12px rgba(10,20,36,.16);
+ --s3:0 1px 2px rgba(10,20,36,.05), 0 18px 40px -20px rgba(10,20,36,.28);
+ --glow:rgba(19,127,236,.1);
+ --r-xl:22px; --r-l:18px; --r-m:14px; --r-s:11px;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
- --tinta:#eef2f7; --tinta2:#9aa7b8; --tinta3:#6b7889;
- --fondo:#0b1017; --papel:#131a24; --linea:#222c3a; --linea2:#1b232e;
- --marca:#dfe7f2; --marca-sb:#19222e;
- --ok:#4ade80; --ok-bg:rgba(74,222,128,.12); --move:#7cb0ff; --move-bg:rgba(124,176,255,.13);
- --wait:#e8bb62; --wait-bg:rgba(232,187,98,.13); --hoy:#f8a35e; --hoy-bg:rgba(248,163,94,.13);
- --bad:#f87a72; --bad-bg:rgba(248,122,114,.12);
+ --acc:#4a9bff; --acc2:#7fbaff; --acc3:#2b7fe0;
+ --acc-sb:rgba(74,155,255,.1); --acc-ln:rgba(74,155,255,.26);
+ --tinta:#e9eff8; --tinta2:#96a4b8; --tinta3:#67748a;
+ --fondo:#060a11; --papel:#101925; --linea:#1f2c3d; --linea2:#18222f; --hueco:#2a394f;
+ --ok:#4ade80; --ok-sb:rgba(74,222,128,.1); --mov:#5aa2f5; --mov-sb:rgba(90,162,245,.11);
+ --esp:#eabd63; --esp-sb:rgba(234,189,99,.11); --hoy:#fb923c; --hoy-sb:rgba(251,146,60,.11);
+ --mal:#f87171; --mal-sb:rgba(248,113,113,.11);
+ --s1:0 1px 2px rgba(0,0,0,.35);
+ --s2:0 1px 2px rgba(0,0,0,.35), 0 12px 26px -14px rgba(0,0,0,.75);
+ --s3:0 1px 2px rgba(0,0,0,.4), 0 22px 46px -22px rgba(0,0,0,.9);
+ --glow:rgba(74,155,255,.13);
 }}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--fondo);color:var(--tinta);font-size:15px;line-height:1.55;
- font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;
- -webkit-font-smoothing:antialiased}
+ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;
+ -webkit-font-smoothing:antialiased;position:relative}
+/* un resplandor muy suave arriba: le da profundidad sin que se note el truco */
+body:before{content:"";position:fixed;inset:0 0 auto 0;height:380px;pointer-events:none;z-index:0;
+ background:radial-gradient(90% 150% at 50% -40%, var(--glow), transparent 70%)}
 a{color:inherit}
-.top{background:var(--papel);border-bottom:1px solid var(--linea);padding:14px 16px}
-.top .in{max-width:620px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.logo{font-weight:800;letter-spacing:.14em;font-size:14px;color:var(--marca);text-decoration:none}
-.logo b{font-weight:800}
-.top .nav{color:var(--tinta3);font-size:13px;font-weight:600}
-.wrap{max-width:620px;margin:0 auto;padding:26px 16px 64px;display:flex;flex-direction:column;gap:14px}
-h1{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:0;text-wrap:balance}
-.lead{color:var(--tinta2);font-size:14px;margin:6px 0 10px}
-.card{background:var(--papel);border:1px solid var(--linea);border-radius:14px}
-.pad{padding:16px 17px}
+h1,h2,.marca,.cod{font-family:Archivo,Inter,system-ui,sans-serif}
+h1,h2,.marca{letter-spacing:-.025em}
+
+/* ---- barra de arriba ---- */
+.top{background:color-mix(in srgb, var(--papel) 82%, transparent);
+ -webkit-backdrop-filter:saturate(180%) blur(14px);backdrop-filter:saturate(180%) blur(14px);
+ border-bottom:1px solid var(--linea);position:sticky;top:0;z-index:5}
+.top .in{max-width:580px;margin:0 auto;padding:13px 18px;display:flex;align-items:center;
+ justify-content:space-between;gap:12px}
+.marca{display:flex;align-items:center;gap:10px;text-decoration:none;font-weight:800;font-size:16.5px}
+.marca .mk{width:30px;height:30px;border-radius:10px;flex:none;display:flex;align-items:center;
+ justify-content:center;background:linear-gradient(145deg,var(--acc2),var(--acc3));
+ box-shadow:0 4px 12px -3px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.3)}
+.marca .mk svg{display:block}
+.marca em{font-style:normal;color:var(--acc)}
+.top .nav{color:var(--tinta3);font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
+
+.wrap{max-width:580px;margin:0 auto;padding:26px 18px 60px;display:flex;flex-direction:column;gap:14px;
+ position:relative;z-index:1}
+h1{font-size:29px;font-weight:800;margin:0;line-height:1.14;text-wrap:balance}
+.bajada{color:var(--tinta2);font-size:14px;margin:9px 0 0}
+.bajada b{color:var(--tinta);font-weight:600}
+
+.card{background:var(--papel);border:1px solid var(--linea);border-radius:var(--r-xl);
+ box-shadow:var(--s2);position:relative;overflow:hidden}
+.pad{padding:19px 20px}
 .sep{border-top:1px solid var(--linea2)}
 .fila{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.chip{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:6px 13px;
- font-size:12.5px;font-weight:700;letter-spacing:.02em}
-.chip .pt{width:7px;height:7px;border-radius:50%;background:currentColor}
-.c-ok{background:var(--ok-bg);color:var(--ok)} .c-move{background:var(--move-bg);color:var(--move)}
-.c-wait{background:var(--wait-bg);color:var(--wait)} .c-hoy{background:var(--hoy-bg);color:var(--hoy)}
-.c-bad{background:var(--bad-bg);color:var(--bad)}
-.frase{color:var(--tinta2);font-size:14px;margin-top:9px}
-.cod{display:inline-flex;align-items:center;gap:9px;background:var(--marca);color:#fff;
- border:0;border-radius:9px;padding:8px 13px;font-size:15px;font-weight:700;letter-spacing:.06em;
- font-family:ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .cod{color:#0b1017}}
-.cod svg{opacity:.65}
-.k{color:var(--tinta3);font-size:13px}
-.ttl{font-weight:700;font-size:14.5px}
-.meta{color:var(--tinta2);font-size:13.5px;margin-top:3px}
-.linea{margin-top:16px;display:flex;flex-direction:column}
-.paso{display:grid;grid-template-columns:22px 1fr;gap:12px;position:relative;padding-bottom:17px}
+
+/* ---- estado: la tarjeta que el cliente abrio a ver ---- */
+.card.estado{box-shadow:var(--s3)}
+.card.estado .cab{background:linear-gradient(180deg,var(--tono-sb),transparent)}
+.chip{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:7px 14px 7px 11px;
+ font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+ background:var(--papel);color:var(--tono);box-shadow:var(--s1);border:1px solid var(--linea)}
+.chip .pt{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none;
+ box-shadow:0 0 0 3px var(--tono-sb)}
+.e-ok{--tono:var(--ok);--tono-sb:var(--ok-sb)} .e-mov{--tono:var(--mov);--tono-sb:var(--mov-sb)}
+.e-esp{--tono:var(--esp);--tono-sb:var(--esp-sb)} .e-hoy{--tono:var(--hoy);--tono-sb:var(--hoy-sb)}
+.e-mal{--tono:var(--mal);--tono-sb:var(--mal-sb)}
+.frase{font-size:16px;margin-top:13px;line-height:1.42;font-weight:500;letter-spacing:-.008em}
+.otro{background:var(--papel);border:1px solid var(--linea);color:var(--tinta2);border-radius:999px;
+ padding:7px 14px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;
+ box-shadow:var(--s1);transition:color .16s,border-color .16s,transform .16s}
+.otro:hover{border-color:var(--hueco);color:var(--tinta);transform:translateY(-1px)}
+.k{color:var(--tinta3);font-size:12.5px;font-weight:500}
+.cod{display:inline-flex;align-items:center;gap:10px;border:0;cursor:pointer;
+ background:linear-gradient(145deg,var(--acc2),var(--acc3));color:#fff;
+ border-radius:var(--r-m);padding:10px 15px;font-size:16px;font-weight:700;letter-spacing:.13em;
+ box-shadow:0 5px 16px -6px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.26);
+ transition:transform .16s, box-shadow .16s}
+.cod:hover{transform:translateY(-1px);box-shadow:0 8px 20px -6px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.26)}
+.cod:active{transform:translateY(0)}
+.cod svg{opacity:.75;flex:none}
+.cod span{font-variant-numeric:tabular-nums}
+
+/* ---- linea de tiempo ---- */
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:17px}
+.hd .t{font-weight:700;font-size:14.5px;letter-spacing:-.01em}
+.via{color:var(--tinta3);font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+ background:var(--linea2);border-radius:999px;padding:5px 11px}
+.paso{display:grid;grid-template-columns:22px 1fr;gap:14px;position:relative;padding-bottom:20px}
 .paso:last-child{padding-bottom:0}
-.paso .bolas{position:relative;display:flex;justify-content:center}
-.paso .bo{width:11px;height:11px;border-radius:50%;background:var(--linea);margin-top:5px;z-index:1}
-.paso.on .bo{background:var(--move)}
-.paso.ult .bo{box-shadow:0 0 0 4px var(--move-bg)}
-.paso.ok .bo{background:var(--ok)} .paso.ok.ult .bo{box-shadow:0 0 0 4px var(--ok-bg)}
-.paso.bad .bo{background:var(--bad)} .paso.bad.ult .bo{box-shadow:0 0 0 4px var(--bad-bg)}
-.paso:not(:last-child) .bolas:after{content:"";position:absolute;top:16px;bottom:-17px;width:2px;
- background:var(--linea);border-radius:2px}
-.paso.on:not(:last-child) .bolas:after{background:var(--move)}
-.paso.ok:not(:last-child) .bolas:after{background:var(--ok)}
-.paso .nm{font-weight:700;font-size:14px}
-.paso.off .nm{color:var(--tinta3);font-weight:600}
-.paso .ds{color:var(--tinta2);font-size:13.5px}
-.paso .ts{color:var(--tinta3);font-size:12.5px;margin-top:2px;font-variant-numeric:tabular-nums}
-.wa{display:flex;align-items:center;gap:13px;text-decoration:none}
-.wa .ic{width:38px;height:38px;border-radius:50%;background:#25d366;display:flex;align-items:center;
- justify-content:center;flex:none}
-.wa .t1{color:var(--tinta2);font-size:13px} .wa .t2{font-weight:700;font-size:14.5px}
-h2{font-size:16px;font-weight:800;margin:14px 0 2px;letter-spacing:-.01em}
-details{background:var(--papel);border:1px solid var(--linea);border-radius:12px;margin-top:9px}
-details summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:600;font-size:14px;
- display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bolas{position:relative;display:flex;justify-content:center}
+.bo{width:12px;height:12px;border-radius:50%;margin-top:4px;z-index:1;
+ background:var(--papel);box-shadow:inset 0 0 0 2px var(--hueco)}
+.paso.hecho .bo{background:var(--tono);box-shadow:0 0 0 3px var(--tono-sb)}
+.paso.ahora .bo{box-shadow:0 0 0 5px var(--tono-sb)}
+.paso:not(:last-child) .bolas:after{content:"";position:absolute;top:18px;bottom:-20px;width:2px;
+ background:var(--hueco);border-radius:2px}
+.paso.hecho:not(:last-child) .bolas:after{background:var(--tono);opacity:.5}
+.nm{font-weight:650;font-size:14.5px;letter-spacing:-.008em}
+.paso.falta .nm{color:var(--tinta3);font-weight:600}
+.paso.falta .ds{color:var(--tinta3)}
+.ds{color:var(--tinta2);font-size:13.5px;line-height:1.45}
+.ts{color:var(--tinta3);font-size:12px;margin-top:4px;font-weight:500}
+@media (prefers-reduced-motion:no-preference){
+ .paso.ahora:not(.fin) .bo{animation:lat 2.6s ease-in-out infinite}
+ @keyframes lat{0%,100%{box-shadow:0 0 0 5px var(--tono-sb)}50%{box-shadow:0 0 0 11px transparent}}
+}
+
+/* ---- ayuda ---- */
+.wa{display:flex;align-items:center;gap:14px;text-decoration:none}
+.wa .ic{width:42px;height:42px;border-radius:var(--r-m);flex:none;display:flex;align-items:center;
+ justify-content:center;background:linear-gradient(145deg,#2ee070,#1aa851);
+ box-shadow:0 5px 14px -5px rgba(37,211,102,.65), inset 0 1px 0 rgba(255,255,255,.3)}
+.wa .t1{color:var(--tinta2);font-size:12.5px} .wa .t2{font-weight:700;font-size:15px;letter-spacing:-.01em}
+.wa .fl{margin-left:auto;color:var(--tinta3);flex:none;transition:transform .18s}
+.card:hover .wa .fl{transform:translateX(3px)}
+
+h2{font-size:15.5px;font-weight:700;margin:14px 0 0}
+details{background:var(--papel);border:1px solid var(--linea);border-radius:var(--r-l);margin-top:9px;
+ box-shadow:var(--s2);overflow:hidden;transition:box-shadow .18s}
+details:hover{box-shadow:var(--s3)}
+details summary{list-style:none;cursor:pointer;padding:15px 17px;font-weight:600;font-size:14px;
+ display:flex;align-items:center;justify-content:space-between;gap:13px;letter-spacing:-.008em;
+ position:relative}
 details summary::-webkit-details-marker{display:none}
-details summary:after{content:"+";color:var(--tinta3);font-size:18px;font-weight:400;line-height:1}
-details[open] summary:after{content:"\\2013"}
-details .rta{padding:0 16px 15px;color:var(--tinta2);font-size:13.5px}
-form.buscar{display:flex;gap:9px;margin-top:4px}
+details summary:after{content:"";flex:none;width:22px;height:22px;border-radius:50%;
+ background:
+  linear-gradient(var(--tinta2),var(--tinta2)) center/9px 1.7px no-repeat,
+  linear-gradient(var(--tinta2),var(--tinta2)) center/1.7px 9px no-repeat,
+  var(--linea2);
+ transition:transform .25s cubic-bezier(.4,0,.2,1), background-color .2s}
+details[open] summary:after{transform:rotate(135deg);
+ background:
+  linear-gradient(var(--acc),var(--acc)) center/9px 1.7px no-repeat,
+  linear-gradient(var(--acc),var(--acc)) center/1.7px 9px no-repeat,
+  var(--acc-sb)}
+details[open] summary{padding-bottom:8px}
+details .rta{padding:0 17px 16px;color:var(--tinta2);font-size:13.5px}
+summary:focus-visible,.cod:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible{
+ outline:2px solid var(--acc);outline-offset:3px}
+
+/* ---- buscador ---- */
+form.buscar{display:flex;gap:9px}
 form.buscar input{flex:1;min-width:0;background:var(--papel);border:1px solid var(--linea);color:var(--tinta);
- border-radius:10px;padding:12px 14px;font-size:15px;font-family:inherit}
-form.buscar input:focus{outline:2px solid var(--marca);outline-offset:1px}
-form.buscar button{background:var(--marca);color:var(--papel);border:0;border-radius:10px;padding:12px 18px;
- font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) form.buscar button{color:#0b1017}}
-.otro{background:var(--marca-sb);border:1px solid var(--linea);color:var(--tinta2);border-radius:9px;
- padding:7px 13px;font-size:12.5px;font-weight:600;text-decoration:none;white-space:nowrap}
-.vacio{text-align:center;padding:30px 18px}
-.vacio .em{font-size:34px}
-.pie{color:var(--tinta3);font-size:12px;text-align:center;margin-top:8px}
+ border-radius:var(--r-m);padding:15px 17px;font-size:16px;font-family:inherit;box-shadow:var(--s2);
+ letter-spacing:.04em;transition:border-color .16s, box-shadow .16s}
+form.buscar input::placeholder{color:var(--tinta3);letter-spacing:0}
+form.buscar input:focus{outline:none;border-color:var(--acc);box-shadow:var(--s2),0 0 0 4px var(--acc-sb)}
+form.buscar button{border:0;border-radius:var(--r-m);padding:15px 22px;font-size:14.5px;font-weight:700;
+ cursor:pointer;font-family:inherit;white-space:nowrap;color:#fff;
+ background:linear-gradient(145deg,var(--acc2),var(--acc3));
+ box-shadow:0 6px 18px -7px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.26);
+ transition:transform .16s}
+form.buscar button:hover{transform:translateY(-1px)}
+.vacio{text-align:center;padding:30px 22px}
+.vacio .ic{width:48px;height:48px;border-radius:var(--r-m);background:var(--esp-sb);color:var(--esp);
+ display:inline-flex;align-items:center;justify-content:center;margin-bottom:13px}
+.vacio .t{font-weight:700;font-size:16px;letter-spacing:-.012em}
+.vacio .d{color:var(--tinta2);font-size:13.5px;margin-top:7px}
+.pie{color:var(--tinta3);font-size:11.5px;text-align:center;margin-top:14px;letter-spacing:.03em}
+.pie b{color:var(--tinta2);font-weight:650}
 """
 
 
@@ -25902,14 +25982,16 @@ def _flex_esc(s) -> str:
             .replace('"', "&quot;"))
 
 
-_FLEX_WPP_AYUDA = "5491155756770"     # NoxaLab Argentina, +54 9 11 5575-6770 (el que atiende gente)
+# El WhatsApp de ayuda es el HUMANO, a proposito: el numero de la API (el que manda las
+# plantillas) no lo lee nadie. Si manana atiende otro, se cambia aca y listo.
+_FLEX_WPP_AYUDA = "5491155756770"     # NoxaLab Argentina, +54 9 11 5575-6770
 
 _FLEX_FAQ = [
     ("¿Por qué no cambió todavía el estado de mi envío?",
      "El estado se actualiza cuando el paquete pasa por cada etapa real. Entre una y otra pueden pasar "
      "algunas horas sin movimiento: es normal y no significa que el envío esté detenido."),
     ("¿Cuándo voy a recibir mi pedido?",
-     "Los envíos propios a CABA y Gran Buenos Aires llegan dentro de las 24 a 48 horas hábiles "
+     "Las entregas propias en CABA y Gran Buenos Aires llegan dentro de las 24 a 48 horas hábiles "
      "desde que el paquete sale del depósito."),
     ("¿Qué hago si veo algo raro en el seguimiento?",
      "Escribinos por WhatsApp con tu código de seguimiento y lo revisamos al momento."),
@@ -25918,49 +26000,71 @@ _FLEX_FAQ = [
      "cambiar la dirección, avisanos por WhatsApp."),
 ]
 
+# el color de cada estado, en las clases del CSS
+_FLEX_TONO = {"ok": "e-ok", "move": "e-mov", "wait": "e-esp", "hoy": "e-hoy", "bad": "e-mal"}
+
+_SVG_WA = ('<svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 '
+           '11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 '
+           '0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm5.8 14.17c-.25.69-1.45 1.32-2 1.37-.51.05-1.16.07'
+           '-1.87-.12a16.9 16.9 0 0 1-1.7-.63c-2.98-1.29-4.93-4.3-5.08-4.5-.15-.2-1.22-1.62-1.22-3.09 0-1.47.77'
+           '-2.19 1.04-2.49.27-.3.59-.37.79-.37h.57c.18 0 .43-.07.67.51.25.6.84 2.07.91 2.22.07.15.12.32.02.52'
+           '-.1.2-.15.32-.3.5-.15.17-.31.39-.45.52-.15.15-.3.31-.13.61.17.3.76 1.25 1.63 2.03 1.12 1 2.06 1.3 '
+           '2.36 1.45.3.15.47.12.65-.07.17-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.74.82 2.04.97.3.15.5.22.57'
+           '.35.07.12.07.72-.18 1.41z"/></svg>')
+_SVG_COPIAR = ('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+               'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+               '<rect x="9" y="9" width="12" height="12" rx="2"/>'
+               '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>')
+_SVG_FLECHA = ('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+               'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>')
+_SVG_LUPA = ('<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+             'stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>')
+
+
+def _flex_prov_corta(prov) -> str:
+    """CABA y Buenos Aires escritas enteras ocupan dos renglones al lado de la localidad."""
+    pn = _env_norm(prov or "")
+    if ("autonoma de buenos aires" in pn or "capital federal" in pn
+            or "ciudad de buenos aires" in pn or pn in ("caba", "capital")):
+        return "CABA"
+    return str(prov or "")
+
 
 def _flex_pub_html(env, cod="") -> str:
-    """Arma la pagina del cliente. env=None → buscador / 'no encontramos ese codigo'."""
+    """La pagina del cliente, armada en el servidor. env=None → buscador / 'no lo encontramos'."""
     E = _flex_esc
-    wa_href = "https://wa.me/%s?text=%s" % (
-        _FLEX_WPP_AYUDA,
-        _url.quote("Hola! Consulta por mi envío %s" % (cod or "")) if cod else _url.quote("Hola! Consulta por mi envío"))
-    wa_svg = ('<svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 '
-              '11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 '
-              '0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm5.8 14.17c-.25.69-1.45 1.32-2 1.37-.51.05-1.16.07'
-              '-1.87-.12a16.9 16.9 0 0 1-1.7-.63c-2.98-1.29-4.93-4.3-5.08-4.5-.15-.2-1.22-1.62-1.22-3.09 0-1.47.77'
-              '-2.19 1.04-2.49.27-.3.59-.37.79-.37h.57c.18 0 .43-.07.67.51.25.6.84 2.07.91 2.22.07.15.12.32.02.52'
-              '-.1.2-.15.32-.3.5-.15.17-.31.39-.45.52-.15.15-.3.31-.13.61.17.3.76 1.25 1.63 2.03 1.12 1 2.06 1.3 '
-              '2.36 1.45.3.15.47.12.65-.07.17-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.74.82 2.04.97.3.15.5.22.57'
-              '.35.07.12.07.72-.18 1.41z"/></svg>')
-
+    txt = "Hola! Consulta por mi envío %s" % cod if cod else "Hola! Consulta por mi envío"
+    wa_href = "https://wa.me/%s?text=%s" % (_FLEX_WPP_AYUDA, _url.quote(txt))
     faq = "".join('<details><summary>%s</summary><div class="rta">%s</div></details>'
                   % (E(q), E(r)) for q, r in _FLEX_FAQ)
     ayuda = ('<div class="card pad"><a class="wa" href="%s" target="_blank" rel="noopener">'
              '<span class="ic">%s</span><span><span class="t1">¿Necesitás ayuda con tu envío?</span>'
-             '<br><span class="t2">Escribinos por WhatsApp</span></span></a></div>' % (wa_href, wa_svg))
-
-    buscar = ('<form class="buscar" method="get" action="/seguimiento" '
-              'onsubmit="var v=this.cod.value.replace(/\\D/g,\'\');if(!v)return false;'
-              'window.location.href=\'/seguimiento/\'+v;return false;">'
-              '<input name="cod" inputmode="numeric" autocomplete="off" placeholder="Ingresá tu código de seguimiento" '
-              'value="%s"><button type="submit">Buscar</button></form>' % E(cod))
+             '<br><span class="t2">Escribinos por WhatsApp</span></span>'
+             '<span class="fl">%s</span></a></div>' % (wa_href, _SVG_WA, _SVG_FLECHA))
+    pie = ('<div class="pie">Seguimiento provisto por <b>RealProfit</b></div>')
 
     if not env:
+        buscar = ('<form class="buscar" onsubmit="var v=this.cod.value.replace(/\\D/g,\'\');'
+                  'if(!v)return false;window.location.href=\'/seguimiento/\'+v;return false;">'
+                  '<input name="cod" inputmode="numeric" autocomplete="off" aria-label="Código de seguimiento" '
+                  'placeholder="Tu código, ej. 00001" value="%s">'
+                  '<button type="submit">Buscar</button></form>' % E(cod))
         aviso = ""
         if cod:
-            aviso = ('<div class="card vacio"><div class="em">\U0001f50d</div>'
-                     '<div class="ttl" style="margin-top:8px">No encontramos el código %s</div>'
-                     '<div class="frase">Revisá que esté bien escrito. Si lo copiaste del mail o del '
-                     'WhatsApp que te mandamos, escribinos y lo buscamos nosotros.</div></div>' % E(cod))
-        cuerpo = ('<h1>Seguí tu pedido</h1>'
-                  '<p class="lead">Poné el código que te mandamos por WhatsApp o por mail.</p>'
-                  + buscar + aviso + ayuda
-                  + '<h2>Preguntas frecuentes</h2>' + faq)
+            aviso = ('<div class="card vacio"><div class="ic">%s</div>'
+                     '<div class="t">No encontramos el código %s</div>'
+                     '<div class="d">Fijate que esté bien escrito. Si lo copiaste del mail o del WhatsApp '
+                     'que te mandamos y sigue sin aparecer, escribinos y lo buscamos nosotros.</div></div>'
+                     % (_SVG_LUPA, E(cod)))
+        cuerpo = ('<div><h1>Seguí tu pedido</h1>'
+                  '<p class="bajada">Poné el código que te mandamos por WhatsApp o por mail '
+                  'y te decimos en qué anda.</p></div>'
+                  + buscar + aviso + ayuda + '<h2>Preguntas frecuentes</h2>' + faq + pie)
         return _flex_shell("Seguimiento", cuerpo)
 
     est = env.get("estado") or "registrado"
     tit, chip, frase, col = _FLEX_EST.get(est, _FLEX_EST["registrado"])
+    tono = _FLEX_TONO.get(col, "e-esp")
     hist = env.get("hist") or [{"e": "registrado", "ts": env.get("creado") or ""}]
     hechos = {h["e"]: h.get("ts") for h in hist}
     # La linea de tiempo muestra TODOS los pasos: los cumplidos con su hora real y los que faltan
@@ -25968,42 +26072,44 @@ def _flex_pub_html(env, cod="") -> str:
     secuencia = list(FLEX_ORDEN)
     if est == "fallido":
         secuencia = [k for k in FLEX_ORDEN if k in hechos] + ["fallido"]
-    ult = max((i for i, k in enumerate(secuencia) if k in hechos), default=0)
+    ahora = max((i for i, k in enumerate(secuencia) if k in hechos), default=0)
     pasos = []
     for i, k in enumerate(secuencia):
         t2, _c2, x2, co2 = _FLEX_EST[k]
         cumplido = k in hechos
-        cls = ("%s %s" % (co2 if co2 in ("ok", "bad") else "on", "ult" if i == ult else "")).strip() \
-            if cumplido else "off"
+        actual = cumplido and i == ahora
+        cls = ["hecho" if cumplido else "falta",
+               _FLEX_TONO.get(co2, "e-esp") if actual else "e-mov"]
+        if actual:
+            cls.append("ahora")
+            if k in ("entregado", "fallido"):
+                cls.append("fin")
         ts = ('<div class="ts">%s</div>' % E(_flex_dmy(hechos[k]))) if cumplido else ""
         pasos.append('<div class="paso %s"><div class="bolas"><div class="bo"></div></div>'
                      '<div><div class="nm">%s</div><div class="ds">%s</div>%s</div></div>'
-                     % (cls, E(t2), E(x2), ts))
+                     % (" ".join(cls), E(t2), E(x2), ts))
 
-    destino = ", ".join(x for x in (env.get("loc"), env.get("prov")) if x)
+    destino = ", ".join(x for x in (env.get("loc"), _flex_prov_corta(env.get("prov"))) if x)
+    # El pedido y el destino van en la bajada del titulo, no en otra tarjeta: es lo primero que
+    # el cliente chequea ("¿es el mio?") y asi no hay que bajar para verlo.
+    sub = "Pedido <b>#%s</b>" % E(env.get("num") or "—")
+    if destino:
+        sub += " · %s" % E(destino)
     cuerpo = (
-        '<h1>Seguí tu pedido</h1>'
-        '<p class="lead">Seguimiento simple y claro del estado de tu envío.</p>'
-        '<div class="card">'
-        '<div class="pad"><div class="fila">'
-        '<span class="chip c-%s"><span class="pt"></span>%s</span>'
+        '<div><h1>Seguí tu pedido</h1><p class="bajada">%s</p></div>'
+        '<div class="card estado %s">'
+        '<div class="pad cab"><div class="fila">'
+        '<span class="chip"><span class="pt"></span>%s</span>'
         '<a class="otro" href="/seguimiento">Buscar otro</a></div>'
         '<div class="frase">%s</div></div>'
         '<div class="pad sep fila"><span class="k">Código de seguimiento</span>'
-        '<button class="cod" onclick="rpCopiar(this,\'%s\')">%s'
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
-        '<rect x="9" y="9" width="12" height="12" rx="2"/>'
-        '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>'
-        '</div>'
-        '<div class="card pad">'
-        '<div class="fila"><span class="ttl">Detalle del envío</span>'
-        '<span class="k">Pedido #%s</span></div>'
-        '<div class="meta">Transportista: NoxaLab Flex%s</div>'
-        '<div class="linea">%s</div></div>'
-    ) % (col, E(chip), E(frase), E(env["cod"]), E(env["cod"]), E(env.get("num") or "—"),
-         ("<br>Destino: " + E(destino)) if destino else "", "".join(pasos))
-    cuerpo += (ayuda + '<h2>Preguntas frecuentes</h2>' + faq
-               + '<div class="pie">Envío propio · CABA y Gran Buenos Aires</div>')
+        '<button class="cod" type="button" onclick="rpCopiar(this,\'%s\')" '
+        'aria-label="Copiar el código %s"><span>%s</span>%s</button></div></div>'
+        '<div class="card pad %s"><div class="hd"><span class="t">Seguimiento</span>'
+        '<span class="via">Flex · 24 a 48 hs</span></div>%s</div>'
+    ) % (sub, tono, E(chip), E(frase), E(env["cod"]), E(env["cod"]), E(env["cod"]), _SVG_COPIAR,
+         tono, "".join(pasos))
+    cuerpo += ayuda + '<h2>Preguntas frecuentes</h2>' + faq + pie
     return _flex_shell("Envío %s" % E(env["cod"]), cuerpo)
 
 
@@ -26016,18 +26122,23 @@ def _flex_shell(titulo, cuerpo) -> str:
 _FLEX_PUB_SHELL = """<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#121e30" media="(prefers-color-scheme:light)">
-<meta name="theme-color" content="#0b1017" media="(prefers-color-scheme:dark)">
-<title>@@TITULO@@ · NoxaLab</title>
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#0f1826" media="(prefers-color-scheme:dark)">
+<title>@@TITULO@@ &middot; RealProfit</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap">
 <style>@@CSS@@</style></head><body>
-<div class="top"><div class="in"><a class="logo" href="/seguimiento">NOXA<b>LAB</b></a>
-<span class="nav">Seguimiento</span></div></div>
+<div class="top"><div class="in">
+ <a class="marca" href="/seguimiento"><span class="mk"><svg width="16" height="16" viewBox="0 0 24 24"
+  fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span><span>Real<em>Profit</em></span></a>
+ <span class="nav">Seguimiento</span></div></div>
 <div class="wrap">@@CUERPO@@</div>
 <script>
-function rpCopiar(b,t){try{navigator.clipboard.writeText(t);var o=b.innerHTML;
-b.innerHTML='\\u00a1Copiado!';setTimeout(function(){b.innerHTML=o;},1300);}catch(e){}}
+function rpCopiar(b,t){var s=b.firstElementChild;if(!s||b.dataset.c)return;
+ try{navigator.clipboard.writeText(t);}catch(e){return;}
+ var v=s.textContent;b.dataset.c=1;s.textContent='\\u00a1Copiado!';
+ setTimeout(function(){s.textContent=v;delete b.dataset.c;},1400);}
 </script></body></html>"""
 
 
