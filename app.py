@@ -6045,7 +6045,7 @@ def pf_orden():
     return jsonify({"ok": True, "orden": {
         "num": num, "origen": "Shopify", "estado": _ESTADO_TXT.get((o.get("financial_status") or "").lower(), "—"),
         "fecha": o.get("created_at") or "",
-        "cliente": (cust.get("first_name", "") + " " + cust.get("last_name", "")).strip() or (o.get("contact_email") or ""),
+        "cliente": ((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip() or (o.get("contact_email") or ""),
         "email": o.get("contact_email") or cust.get("email") or "",
         "medio": medio, "items": items,
         "total": round(tot, 2), "descuento": round(desc, 2),
@@ -6903,7 +6903,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         sa = _D(o.get("shipping_address"))
         cust = o.get("customer") or {}
-        nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip())
+        nombre = (sa.get("name") or (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip())
                   or o.get("contact_email") or "—")
         suc = _es_sucursal_ship(o)
         unidades = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
@@ -8303,7 +8303,7 @@ def _facturacion_orders(email, desde=None, hasta=None):
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         ba = _D(o.get("billing_address")) or _D(o.get("shipping_address"))
         cust = o.get("customer") or {}
-        nombre = (ba.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip())
+        nombre = (ba.get("name") or (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip())
                   or o.get("contact_email") or "—")
         names = o.get("payment_gateway_names") or []
         gw = (names[0] if names else (o.get("gateway") or "")).lower()
@@ -9338,7 +9338,7 @@ def _sku_pedidos_map(email, prog=None):
                                       li.get("title") or li.get("name") or ""))
                     sa = _D(o.get("shipping_address"))
                     cu = o.get("customer") or {}
-                    nom = (sa.get("name") or ((cu.get("first_name", "") + " " + cu.get("last_name", "")).strip()))
+                    nom = (sa.get("name") or (((cu.get("first_name") or "") + " " + (cu.get("last_name") or "")).strip()))
                     mapa.setdefault(num, []).append({"nom": nom, "items": items, "tienda": "shopify"})
                 _p("Shopify: %d pedidos leídos" % (len(mapa) - _n_tn))
             except Exception as _e:
@@ -23283,7 +23283,7 @@ def pf_diag_excel():
             if str(n) in excluir:
                 continue                                         # ya tiene etiqueta buena para reusar
             sa = _D(o.get("shipping_address")); cust = o.get("customer") or {}
-            nombre = (sa.get("name") or ((cust.get("first_name", "") + " " + cust.get("last_name", "")).strip()) or "—")
+            nombre = (sa.get("name") or (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()) or "—")
             sel.append({"num": str(n), "nombre": nombre.strip(),
                         "tipo": "sucursal" if _es_sucursal_ship(o) else "domicilio",
                         "cp": sa.get("zip") or "", "provincia": sa.get("province") or "",
@@ -25665,6 +25665,16 @@ def _flex_dmy(ts) -> str:
     return s
 
 
+def _fx_linea(e) -> str:
+    """ ' @ funcion:linea ' del error real. Un 'TypeError' pelado no dice donde buscar."""
+    try:
+        import traceback as _tb
+        t = _tb.extract_tb(e.__traceback__)
+        return (" @ %s:%d" % (t[-1].name, t[-1].lineno)) if t else ""
+    except Exception:
+        return ""
+
+
 def _flex_datos_orden(email, num) -> dict:
     """Nota del cliente + SKU a empaquetar, del cache de Despachos. Si no esta, devuelve vacio:
     la etiqueta sale igual, solo sin esas dos filas."""
@@ -25795,7 +25805,7 @@ def flex_datos():
     except Exception as e:
         return jsonify({"ok": True, "pend": [], "envios": sorted(envios.values(),
                         key=lambda x: int(_flex_norm(x["cod"]) or 0), reverse=True),
-                        "err_detalle": "%s: %s" % (type(e).__name__, str(e)[:160])})
+                        "err_detalle": "%s: %s%s" % (type(e).__name__, str(e)[:160], _fx_linea(e))})
     lst = sorted(envios.values(), key=lambda x: int(_flex_norm(x["cod"]) or 0), reverse=True)
     return jsonify({"ok": True, "pend": pend, "envios": lst, "base": RP_BASE.rstrip("/"),
                     "wpp_on": bool((_wa_conf(email) or {}).get("token"))})
