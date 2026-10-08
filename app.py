@@ -25487,7 +25487,10 @@ cargar(0);
 
 RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
 FLEX_DB = DATA_DIR / "flex_envios.json"     # {email: {"seq": n, "envios": {cod: {...}}}}
-FLEX_SEQ_INICIAL = 0        # el primero es el 00001
+FLEX_SEQ_INICIAL = 1        # los REALES arrancan en el 00002: el 00001 es el de muestra
+FLEX_DEMO_COD = "00001"     # envio de prueba, fijo. Sirve para ver como responde la pagina y el
+#                             escaner sin tener que generar un envio de verdad. NO se guarda en
+#                             ningun lado: se arma al vuelo cada vez que lo piden.
 FLEX_COD_DIG = 5            # siempre 5 digitos, con los ceros adelante (00001, 00042, 01337)
 
 # --- Zonas por codigo postal -------------------------------------------------------------
@@ -25662,6 +25665,8 @@ def _flex_crear(email, filas) -> list:
             out.append(envios[por_num[num]])
             continue
         cuenta["seq"] = int(cuenta.get("seq") or FLEX_SEQ_INICIAL) + 1
+        while _flex_cod(cuenta["seq"]) == FLEX_DEMO_COD:      # el de muestra no se reparte
+            cuenta["seq"] += 1
         cod = _flex_cod(cuenta["seq"])
         ahora = _flex_ahora()
         env = {
@@ -25700,6 +25705,25 @@ def _flex_set(email, cods, estado=None, zona=None) -> int:
     if n:
         _flex_save(todo)
     return n
+
+
+def _flex_demo(estado="camino") -> dict:
+    """El envio de muestra. Las horas se calculan desde AHORA para atras, asi la linea de tiempo
+    siempre se ve creible y no queda con fechas viejas."""
+    ahora = _dt.datetime.now(_ARG)
+    orden = [k for k in FLEX_ORDEN]
+    i = orden.index(estado) if estado in orden else orden.index("camino")
+    hist = [{"e": k, "ts": (ahora - _dt.timedelta(hours=(i - n) * 7 + 2)).strftime("%Y-%m-%d %H:%M")}
+            for n, k in enumerate(orden[:i + 1])]
+    if estado == "fallido":
+        hist.append({"e": "fallido", "ts": ahora.strftime("%Y-%m-%d %H:%M")})
+    return {"cod": FLEX_DEMO_COD, "num": "7457", "nombre": "Gabriel Pollola", "zona": "gba1",
+            "loc": "Lomas de Zamora", "prov": "Buenos Aires", "cp": "1832",
+            "calle": "Av. Hip\u00f3lito Yrigoyen 8299", "extra": "Piso 3, Depto B",
+            "tel": "", "unidades": 2, "sku": "X2 POTES",
+            "nota": "Bicicleter\u00eda Tonino. Atienden de lunes a s\u00e1bado de 10 a 13 y de 14 a 18 hs.",
+            "estado": estado if estado in _FLEX_EST else "camino",
+            "creado": hist[0]["ts"], "hist": hist, "demo": True}
 
 
 def _flex_url(cod) -> str:
@@ -25816,7 +25840,7 @@ def _flex_buscar(cod):
         e = (c.get("envios") or {}).get(k)
         if e:
             return e
-    return None
+    return _flex_demo() if k == FLEX_DEMO_COD else None
 
 
 @app.get("/seguimiento/")
@@ -26138,6 +26162,10 @@ def _flex_pub_html(env, cod="") -> str:
         '<span class="via">Flex · 24 a 48 hs</span></div>%s</div>'
     ) % (sub, tono, E(chip), E(frase), E(env["cod"]), E(env["cod"]), E(env["cod"]), _SVG_COPIAR,
          tono, "".join(pasos))
+    if env.get("demo"):
+        cuerpo += ('<div class="card pad" style="border-style:dashed"><div class="k">'
+                   'Este es un envío de <b>muestra</b>, para probar la página. '
+                   'No corresponde a ninguna compra.</div></div>')
     cuerpo += ayuda + '<h2>Preguntas frecuentes</h2>' + faq + pie
     return _flex_shell("Envío %s" % E(env["cod"]), cuerpo)
 
@@ -26634,7 +26662,9 @@ def flex_etiquetas():
     envios = _flex_de(email)
     # el orden de impresion es por ZONA y despues por localidad: salen agrupadas como se
     # cargan en la moto, no mezcladas.
-    sel = [envios[_flex_norm(c)] for c in cods if _flex_norm(c) in envios]
+    # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
+    sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo()
+           for c in cods if _flex_norm(c) in envios or _flex_norm(c) == FLEX_DEMO_COD]
     sel.sort(key=lambda e: (list(FLEX_ZONAS).index(e.get("zona")) if e.get("zona") in FLEX_ZONAS else 9,
                             (e.get("loc") or "").lower(), int(_flex_norm(e["cod"]) or 0)))
     if not sel:
@@ -26696,6 +26726,9 @@ def _flex_repa(token):
 def _flex_mover(email, cod, estado, por="") -> dict:
     """Mueve UN envio y devuelve como quedo. Deja asentado QUIEN lo movio: si manana un cliente
     dice que no se lo entregaron, el historial tiene el nombre y la hora."""
+    if _flex_norm(cod) == FLEX_DEMO_COD and FLEX_DEMO_COD not in ((_flex_all().get(email) or {}).get("envios") or {}):
+        # practica con el de muestra: contesta igual que uno real pero NO toca el disco
+        return {"ok": True, "envio": _flex_demo(estado)}
     todo = _flex_all()
     envios = (todo.get(email) or {}).get("envios") or {}
     e = envios.get(_flex_norm(cod))
