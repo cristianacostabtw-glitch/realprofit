@@ -25483,7 +25483,8 @@ cargar(0);
 
 RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
 FLEX_DB = DATA_DIR / "flex_envios.json"     # {email: {"seq": n, "envios": {cod: {...}}}}
-FLEX_SEQ_INICIAL = 50000                    # arranca en 50.000: 5 digitos y sin pisar los de Envialo
+FLEX_SEQ_INICIAL = 0        # el primero es el 00001
+FLEX_COD_DIG = 5            # siempre 5 digitos, con los ceros adelante (00001, 00042, 01337)
 
 # --- Zonas por codigo postal -------------------------------------------------------------
 # El CP manda sobre el nombre de la localidad: "Quilmes Oeste", "Bernal Este" y "Don Bosco" son
@@ -25584,6 +25585,17 @@ _FLEX_EST = {k: (tit, chip, txt, col) for k, tit, chip, txt, col in FLEX_ESTADOS
 FLEX_ORDEN = [k for k, _t, _c, _x, _co in FLEX_ESTADOS if k != "fallido"]
 
 
+def _flex_cod(n) -> str:
+    """El codigo que ve el cliente: 5 digitos con ceros adelante. El primero es el 00001."""
+    return str(int(n)).zfill(FLEX_COD_DIG)
+
+
+def _flex_norm(cod) -> str:
+    """Lo que escribe el cliente -> el codigo real. Si pone '1' o '1 ' o '#00001', es el 00001."""
+    d = "".join(ch for ch in str(cod or "") if ch.isdigit())
+    return _flex_cod(d) if d else ""
+
+
 def _flex_all() -> dict:
     try:
         return _json.loads(FLEX_DB.read_text(encoding="utf-8"))
@@ -25628,7 +25640,7 @@ def _flex_crear(email, filas) -> list:
             out.append(envios[por_num[num]])
             continue
         cuenta["seq"] = int(cuenta.get("seq") or FLEX_SEQ_INICIAL) + 1
-        cod = str(cuenta["seq"])
+        cod = _flex_cod(cuenta["seq"])
         ahora = _flex_ahora()
         env = {
             "cod": cod, "num": num,
@@ -25697,9 +25709,9 @@ def flex_datos():
                          "unidades": int(r.get("unidades") or 0), "total": r.get("total") or 0})
     except Exception as e:
         return jsonify({"ok": True, "pend": [], "envios": sorted(envios.values(),
-                        key=lambda x: int(x["cod"]), reverse=True),
+                        key=lambda x: int(_flex_norm(x["cod"]) or 0), reverse=True),
                         "err_detalle": "%s: %s" % (type(e).__name__, str(e)[:160])})
-    lst = sorted(envios.values(), key=lambda x: int(x["cod"]), reverse=True)
+    lst = sorted(envios.values(), key=lambda x: int(_flex_norm(x["cod"]) or 0), reverse=True)
     return jsonify({"ok": True, "pend": pend, "envios": lst, "base": RP_BASE.rstrip("/"),
                     "wpp_on": bool((_wa_conf(email) or {}).get("token"))})
 
@@ -25768,8 +25780,11 @@ def pagina_flex():
 # --------------------------------- pagina publica del cliente ---------------------------------
 def _flex_buscar(cod):
     """El codigo es unico en toda la app: lo busco en todas las cuentas (el cliente no se loguea)."""
+    k = _flex_norm(cod)
+    if not k:
+        return None
     for _em, c in (_flex_all() or {}).items():
-        e = (c.get("envios") or {}).get(str(cod))
+        e = (c.get("envios") or {}).get(k)
         if e:
             return e
     return None
