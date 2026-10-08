@@ -363,7 +363,7 @@ SOLO_ADMIN = [
 
 # Rutas que puede tocar cualquiera que este logueado (la app no arranca sin esto).
 _LIBRES = ("/login", "/logout", "/registro", "/pf-version", "/static", "/favicon", "/rp",
-           "/wa-webhook", "/wa-web-hook", "/c/")
+           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/")
 
 
 def _seccion_de(path):
@@ -688,7 +688,10 @@ _SOLO_DASH = r"""
     <div style="width:46px;height:46px;border-radius:12px;background:linear-gradient(160deg,#12233b,#0c1626);border:1px solid #1d3350;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:24px">local_shipping</span></div>
     <div><h1 style="margin:0;font-size:23px;color:#f1f5f9">Despachos</h1><div style="color:#8493a8;font-size:13px;margin-top:4px;max-width:640px;line-height:1.4">Eleg&iacute; los pedidos que vas a despachar, export&aacute; el Excel de Andreani y marc&aacute; los que ya enviaste. Solo aparecen las ventas <b style="color:#cbd5e1">pagadas</b>.</div></div>
    </div>
-   <button onclick="rpDesp(false)" title="Cerrar" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
+   <div style="flex:none;display:flex;gap:8px;align-items:center">
+    <a href="/flex" target="_blank" title="Env&iacute;os Flex (CABA y GBA)" style="text-decoration:none;background:#111c2b;border:1px solid #1e2b3d;color:#7fbaff;height:38px;display:inline-flex;align-items:center;gap:7px;padding:0 13px;border-radius:10px;font-size:13px;font-weight:700">&#9889; Flex</a>
+    <button onclick="rpDesp(false)" title="Cerrar" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
+   </div>
   </div>
 
   <div id="rp-d-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin:20px 0">
@@ -11250,6 +11253,8 @@ def _seg_tel_real(o: dict) -> str:
 
 def _seg_url_track(it) -> str:
     """El link que ve el cliente. NO es el mismo para las dos etiquetas."""
+    if (it.get("carrier") or "") == "rpflex":
+        return _flex_url(it["seguimiento"])
     if (it.get("carrier") or "") == "envialo":
         return "https://app.redchat.com.ar/seguimiento/%s" % it["seguimiento"]
     return "https://www.andreani.com/envio/%s" % it["seguimiento"]
@@ -11266,6 +11271,10 @@ def _seg_track_info(p) -> dict:
     company "Envialo Flex") y estos pedidos se saltean; esto es para cuando no lo hizo.
     """
     trk = p.get("track")
+    if (p.get("carrier") or "") == "rpflex":
+        # Flex propio: Shopify no conoce el transportista, asi que la url va SI o SI.
+        return {"company": "NoxaLab Flex", "number": trk,
+                "url": p.get("url") or _flex_url(trk)}
     if (p.get("carrier") or "") == "envialo":
         return {"company": "Envialo Flex", "number": trk,
                 "url": p.get("url") or ("https://app.redchat.com.ar/seguimiento/%s" % trk)}
@@ -11927,8 +11936,8 @@ def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
         # El template combo es OPCIONAL por cuenta (bot_tpl_combo). Si la cuenta no lo tiene
         # (ej NoxaLab, que solo tiene 'seguimiento_despacho'), se usa SIEMPRE el base.
         combo_tpl = (c.get("bot_tpl_combo") or "").strip()
-        if (p.get("carrier") or "") == "envialo":
-            # Flex pago por Envialo: link de RedChat y plantilla propia, que SI avisa 24/48 hs.
+        if (p.get("carrier") or "") in ("envialo", "rpflex"):
+            # Flex (de Envialo o propio): plantilla propia, que SI avisa 24/48 hs.
             # No se mezcla nunca con la de Andreani, que no promete plazo.
             name = "seguimiento_flex"
             params = [n, num, link]
@@ -25462,6 +25471,763 @@ function cargar(refresh){
 }
 cargar(0);
 </script></body></html>"""
+
+
+# ============================ FLEX PROPIO (CABA · GBA 1 · GBA 2) ============================
+# Seguimiento propio, sin depender de Envialo/RedChat. Tres piezas:
+#   1) /flex              → pantalla del duenio: que pedidos caen en zona, generar codigo, mover estado
+#   2) /seguimiento/<cod> → la pagina PUBLICA que ve el cliente (sin login, mobile first)
+#   3) el codigo viaja a Shopify (trackingInfo) y por WhatsApp con la plantilla de 24/48 hs
+# Solo se despacha por Flex en CABA, GBA 1 y GBA 2. Todo lo demas sigue yendo por Andreani:
+# esta seccion NO toca nada de Despachos ni del flujo de etiquetas.
+
+RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
+FLEX_DB = DATA_DIR / "flex_envios.json"     # {email: {"seq": n, "envios": {cod: {...}}}}
+FLEX_SEQ_INICIAL = 50000                    # arranca en 50.000: 5 digitos y sin pisar los de Envialo
+
+# --- Zonas por codigo postal -------------------------------------------------------------
+# El CP manda sobre el nombre de la localidad: "Quilmes Oeste", "Bernal Este" y "Don Bosco" son
+# el mismo partido y se escriben de 10 formas. Los sets son por PARTIDO, 4 digitos.
+_FLEX_CP_GBA1 = set(map(str, (
+    # Vicente Lopez
+    1602, 1603, 1604, 1605, 1606, 1636, 1637, 1638,
+    # San Isidro
+    1607, 1609, 1640, 1641, 1642, 1643,
+    # General San Martin
+    1650, 1651, 1653, 1655, 1656,
+    # Tres de Febrero
+    1657, 1674, 1675, 1676, 1678, 1682, 1684, 1702,
+    # Hurlingham
+    1686, 1688,
+    # Moron
+    1706, 1708, 1712, 1713,
+    # Ituzaingo
+    1714,
+    # La Matanza
+    1704, 1751, 1752, 1753, 1754, 1755, 1756, 1757, 1758, 1759,
+    1761, 1762, 1765, 1766, 1767, 1768, 1769, 1770,
+    # Lanus
+    1822, 1824, 1825, 1826, 1827,
+    # Lomas de Zamora
+    1828, 1829, 1830, 1832, 1834, 1836, 1838,
+    # Avellaneda
+    1868, 1869, 1870, 1871, 1872, 1874, 1875,
+    # Quilmes
+    1876, 1877, 1878, 1879, 1880, 1881, 1882,
+)))
+_FLEX_CP_GBA2 = set(map(str, (
+    # Tigre
+    1611, 1617, 1618, 1621, 1648, 1649,
+    # San Fernando
+    1644, 1645, 1646,
+    # Malvinas Argentinas
+    1613, 1614, 1615, 1616, 1620,
+    # Jose C. Paz
+    1665, 1666,
+    # San Miguel
+    1661, 1663, 1664, 1667,
+    # Moreno
+    1740, 1742, 1743, 1744, 1746, 1747,
+    # Merlo
+    1718, 1719, 1720, 1721, 1722, 1723,
+    # Ezeiza
+    1802, 1804, 1806, 1808,
+    # Esteban Echeverria
+    1840, 1842, 1844,
+    # Almirante Brown
+    1845, 1846, 1847, 1848, 1849, 1850, 1852, 1854, 1856, 1858,
+    # Berazategui
+    1883, 1884, 1885, 1886, 1887,
+    # Florencio Varela
+    1888, 1889, 1890, 1891, 1894,
+)))
+FLEX_ZONAS = {"caba": "CABA", "gba1": "GBA 1", "gba2": "GBA 2"}
+
+
+def _flex_zona(cp, prov="", loc="") -> str:
+    """CABA / GBA 1 / GBA 2 — o "" si el pedido NO entra en Flex (va por Andreani).
+
+    El corte es por CP de 4 digitos. Dos salvedades:
+      - CABA se reconoce tambien por el nombre de la provincia (los CP 1000-1499 son CABA).
+      - un CP del AMBA (16xx-18xx) que no este en ninguna de las dos listas cae en GBA 2,
+        que es el caso mas probable y el mas caro: nunca subestima la distancia. Igual la zona
+        se puede corregir a mano en la pantalla, porque es la que define el costo del viaje.
+    """
+    d = "".join(ch for ch in str(cp or "") if ch.isdigit())[:4]
+    pn = _env_norm(prov or "")
+    code = str(prov or "").strip().upper()
+    if (code == "C" or "capital federal" in pn or "autonoma de buenos aires" in pn
+            or "ciudad de buenos aires" in pn or pn in ("caba", "capital", "c.a.b.a.")):
+        return "caba"
+    if len(d) == 4 and "1000" <= d <= "1499":
+        return "caba"
+    if d in _FLEX_CP_GBA1:
+        return "gba1"
+    if d in _FLEX_CP_GBA2:
+        return "gba2"
+    if len(d) == 4 and "1600" <= d <= "1899":
+        return "gba2"
+    return ""
+
+
+# --- Estados ------------------------------------------------------------------------------
+# (clave, titulo en la linea de tiempo, texto del chip, frase para el cliente, color)
+FLEX_ESTADOS = [
+    ("registrado", "Pedido registrado",   "En preparación", "Estamos preparando tu pedido para despacharlo.", "wait"),
+    ("despachado", "Despachado",          "Despachado",          "Tu pedido ya salió de nuestro depósito.", "move"),
+    ("camino",     "En camino",           "En camino",           "Tu pedido está viajando hacia tu domicilio.", "move"),
+    ("reparto",    "Con el repartidor",   "En reparto",          "Tu pedido está con el repartidor. Llega hoy.", "hoy"),
+    ("entregado",  "Entregado",           "Entregado",           "Tu pedido fue entregado. ¡Gracias por tu compra!", "ok"),
+    ("fallido",    "No se pudo entregar", "Reprogramado",        "No pudimos entregarlo. Vamos a reintentar la entrega.", "bad"),
+]
+_FLEX_EST = {k: (tit, chip, txt, col) for k, tit, chip, txt, col in FLEX_ESTADOS}
+FLEX_ORDEN = [k for k, _t, _c, _x, _co in FLEX_ESTADOS if k != "fallido"]
+
+
+def _flex_all() -> dict:
+    try:
+        return _json.loads(FLEX_DB.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _flex_save(d) -> None:
+    tmp = FLEX_DB.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(FLEX_DB)
+
+
+def _flex_de(email) -> dict:
+    return (_flex_all().get(email) or {}).get("envios") or {}
+
+
+def _flex_ahora() -> str:
+    return _dt.datetime.now(_ARG).strftime("%Y-%m-%d %H:%M")
+
+
+def _flex_dmy(ts) -> str:
+    """'2026-10-08 08:32' → '08/10/2026 · 08:32' (como lo muestra la pagina del cliente)."""
+    s = str(ts or "")
+    if len(s) >= 16 and s[4] == "-":
+        return "%s/%s/%s · %s" % (s[8:10], s[5:7], s[0:4], s[11:16])
+    return s
+
+
+def _flex_crear(email, filas) -> list:
+    """Le da codigo a cada pedido. Si el pedido YA tiene uno, lo devuelve (no duplica nunca)."""
+    todo = _flex_all()
+    cuenta = todo.setdefault(email, {"seq": FLEX_SEQ_INICIAL, "envios": {}})
+    envios = cuenta.setdefault("envios", {})
+    por_num = {str(v.get("num")): k for k, v in envios.items()}
+    out = []
+    for f in filas:
+        num = str(f.get("num") or "").strip()
+        if not num:
+            continue
+        if num in por_num:
+            out.append(envios[por_num[num]])
+            continue
+        cuenta["seq"] = int(cuenta.get("seq") or FLEX_SEQ_INICIAL) + 1
+        cod = str(cuenta["seq"])
+        ahora = _flex_ahora()
+        env = {
+            "cod": cod, "num": num,
+            "nombre": (f.get("nombre") or "").strip(),
+            "zona": f.get("zona") or _flex_zona(f.get("cp"), f.get("provincia"), f.get("localidad")) or "gba2",
+            "loc": f.get("localidad") or "", "prov": f.get("provincia") or "", "cp": str(f.get("cp") or ""),
+            "calle": f.get("calle") or "", "extra": f.get("extra") or "",
+            "tel": f.get("tel") or "", "unidades": int(f.get("unidades") or 0),
+            "estado": "registrado", "creado": ahora,
+            "hist": [{"e": "registrado", "ts": ahora}],
+        }
+        envios[cod] = env
+        por_num[num] = cod
+        out.append(env)
+    _flex_save(todo)
+    return out
+
+
+def _flex_set(email, cods, estado=None, zona=None) -> int:
+    """Mueve el estado y/o corrige la zona. El historial NUNCA se reescribe: se le agrega un paso."""
+    todo = _flex_all()
+    envios = (todo.get(email) or {}).get("envios") or {}
+    n = 0
+    for c in cods:
+        e = envios.get(str(c))
+        if not e:
+            continue
+        if zona in FLEX_ZONAS:
+            e["zona"] = zona
+        if estado in _FLEX_EST and e.get("estado") != estado:
+            e["estado"] = estado
+            e.setdefault("hist", []).append({"e": estado, "ts": _flex_ahora()})
+        n += 1
+    if n:
+        _flex_save(todo)
+    return n
+
+
+def _flex_url(cod) -> str:
+    return "%s/seguimiento/%s" % (RP_BASE.rstrip("/"), cod)
+
+
+# --------------------------------- pantalla del duenio ---------------------------------
+@app.get("/flex-datos")
+def flex_datos():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "rows": []}), 401
+    envios = _flex_de(email)
+    por_num = {str(v.get("num")): v for v in envios.values()}
+    # pedidos pagados sin despachar que caen en zona y todavia no tienen codigo
+    pend = []
+    try:
+        for r in (_despachos_orders(email, refresh=request.args.get("refresh") in ("1", "true")) or []):
+            if r.get("estado") == "enviada" or r.get("tipo") == "sucursal":
+                continue                                   # sucursal = lo lleva el correo, no Flex
+            if str(r.get("num")) in por_num:
+                continue
+            z = _flex_zona(r.get("cp"), r.get("provincia"), r.get("localidad"))
+            if not z:
+                continue
+            pend.append({"num": str(r.get("num")), "nombre": r.get("nombre") or "", "zona": z,
+                         "localidad": r.get("localidad") or "", "cp": str(r.get("cp") or ""),
+                         "provincia": r.get("provincia") or "", "calle": r.get("calle") or "",
+                         "extra": r.get("extra") or "", "tel": r.get("tel") or "",
+                         "unidades": int(r.get("unidades") or 0), "total": r.get("total") or 0})
+    except Exception as e:
+        return jsonify({"ok": True, "pend": [], "envios": sorted(envios.values(),
+                        key=lambda x: int(x["cod"]), reverse=True),
+                        "err_detalle": "%s: %s" % (type(e).__name__, str(e)[:160])})
+    lst = sorted(envios.values(), key=lambda x: int(x["cod"]), reverse=True)
+    return jsonify({"ok": True, "pend": pend, "envios": lst, "base": RP_BASE.rstrip("/"),
+                    "wpp_on": bool((_wa_conf(email) or {}).get("token"))})
+
+
+@app.post("/flex-crear")
+def flex_crear():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    filas = (request.get_json(silent=True) or {}).get("filas") or []
+    hechos = _flex_crear(email, filas)
+    return jsonify({"ok": True, "creados": len(hechos), "envios": hechos})
+
+
+@app.post("/flex-set")
+def flex_set():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    n = _flex_set(email, d.get("cods") or [], d.get("estado"), d.get("zona"))
+    return jsonify({"ok": True, "tocados": n})
+
+
+@app.post("/flex-avisar")
+def flex_avisar():
+    """Carga el codigo en Shopify (mail al cliente) y/o manda la plantilla de WhatsApp."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    cods = [str(c) for c in (d.get("cods") or [])]
+    envios = _flex_de(email)
+    sel = [envios[c] for c in cods if c in envios]
+    if not sel:
+        return jsonify({"ok": False, "msg": "no hay envíos seleccionados"})
+    mapa = _seg_mapa_orders_shopify(email, [e["num"] for e in sel])
+    wpp_env = _wa_seg_all().get(email, {})
+    pedidos = []
+    for e in sel:
+        o = mapa.get(str(e["num"])) or {}
+        tel = _seg_shop_tel(o) or e.get("tel") or ""
+        pedidos.append({
+            "num": e["num"], "nombre": e.get("nombre") or "", "track": e["cod"],
+            "url": _flex_url(e["cod"]), "carrier": "rpflex",
+            "wa_id": _seg_e164(tel) if tel else "",
+            "unidades": e.get("unidades") or 0, "order_id": o.get("id"),
+            "tn": any(f.get("tracking_number") == e["cod"] for f in (o.get("fulfillments") or [])),
+            "wpp": bool(wpp_env.get(str(e["num"]))),
+        })
+    res = {"ok": True}
+    if d.get("shopify"):
+        res["shopify"] = _seg_enviar_shopify(email, pedidos)
+    if d.get("wpp"):
+        res["wpp"] = _seg_enviar_wpp(email, pedidos, force=bool(d.get("force")))
+    return jsonify(res)
+
+
+@app.get("/flex")
+def pagina_flex():
+    if not _user_actual():
+        return redirect("/")
+    return Response(_FLEX_HTML, mimetype="text/html")
+
+
+# --------------------------------- pagina publica del cliente ---------------------------------
+def _flex_buscar(cod):
+    """El codigo es unico en toda la app: lo busco en todas las cuentas (el cliente no se loguea)."""
+    for _em, c in (_flex_all() or {}).items():
+        e = (c.get("envios") or {}).get(str(cod))
+        if e:
+            return e
+    return None
+
+
+@app.get("/seguimiento/")
+@app.get("/seguimiento")
+def pagina_seguimiento_buscar():
+    return Response(_flex_pub_html(None), mimetype="text/html")
+
+
+@app.get("/seguimiento/<cod>")
+def pagina_seguimiento(cod):
+    return Response(_flex_pub_html(_flex_buscar(cod), str(cod)), mimetype="text/html")
+
+
+# La pagina del cliente se arma en el SERVIDOR (es un solo envio: no hace falta fetch ni JS para
+# pintarla). Asi abre instantanea en el celular, que es donde la abre el 95% de la gente.
+_FLEX_PUB_CSS = """
+:root{
+ --tinta:#101722; --tinta2:#5a6779; --tinta3:#8d99a9;
+ --fondo:#f4f6f8; --papel:#ffffff; --linea:#e4e8ee; --linea2:#eef1f5;
+ --marca:#121e30; --marca-sb:#f0f3f8;
+ --ok:#15803d; --ok-bg:#eaf6ee; --move:#1d4ed8; --move-bg:#eaf0fe;
+ --wait:#8a6410; --wait-bg:#fbf2df; --hoy:#9a4a06; --hoy-bg:#fdeee0;
+ --bad:#b42318; --bad-bg:#fdecea;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --tinta:#eef2f7; --tinta2:#9aa7b8; --tinta3:#6b7889;
+ --fondo:#0b1017; --papel:#131a24; --linea:#222c3a; --linea2:#1b232e;
+ --marca:#dfe7f2; --marca-sb:#19222e;
+ --ok:#4ade80; --ok-bg:rgba(74,222,128,.12); --move:#7cb0ff; --move-bg:rgba(124,176,255,.13);
+ --wait:#e8bb62; --wait-bg:rgba(232,187,98,.13); --hoy:#f8a35e; --hoy-bg:rgba(248,163,94,.13);
+ --bad:#f87a72; --bad-bg:rgba(248,122,114,.12);
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--fondo);color:var(--tinta);font-size:15px;line-height:1.55;
+ font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;
+ -webkit-font-smoothing:antialiased}
+a{color:inherit}
+.top{background:var(--papel);border-bottom:1px solid var(--linea);padding:14px 16px}
+.top .in{max-width:620px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.logo{font-weight:800;letter-spacing:.14em;font-size:14px;color:var(--marca);text-decoration:none}
+.logo b{font-weight:800}
+.top .nav{color:var(--tinta3);font-size:13px;font-weight:600}
+.wrap{max-width:620px;margin:0 auto;padding:26px 16px 64px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:0;text-wrap:balance}
+.lead{color:var(--tinta2);font-size:14px;margin:6px 0 10px}
+.card{background:var(--papel);border:1px solid var(--linea);border-radius:14px}
+.pad{padding:16px 17px}
+.sep{border-top:1px solid var(--linea2)}
+.fila{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:6px 13px;
+ font-size:12.5px;font-weight:700;letter-spacing:.02em}
+.chip .pt{width:7px;height:7px;border-radius:50%;background:currentColor}
+.c-ok{background:var(--ok-bg);color:var(--ok)} .c-move{background:var(--move-bg);color:var(--move)}
+.c-wait{background:var(--wait-bg);color:var(--wait)} .c-hoy{background:var(--hoy-bg);color:var(--hoy)}
+.c-bad{background:var(--bad-bg);color:var(--bad)}
+.frase{color:var(--tinta2);font-size:14px;margin-top:9px}
+.cod{display:inline-flex;align-items:center;gap:9px;background:var(--marca);color:#fff;
+ border:0;border-radius:9px;padding:8px 13px;font-size:15px;font-weight:700;letter-spacing:.06em;
+ font-family:ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .cod{color:#0b1017}}
+.cod svg{opacity:.65}
+.k{color:var(--tinta3);font-size:13px}
+.ttl{font-weight:700;font-size:14.5px}
+.meta{color:var(--tinta2);font-size:13.5px;margin-top:3px}
+.linea{margin-top:16px;display:flex;flex-direction:column}
+.paso{display:grid;grid-template-columns:22px 1fr;gap:12px;position:relative;padding-bottom:17px}
+.paso:last-child{padding-bottom:0}
+.paso .bolas{position:relative;display:flex;justify-content:center}
+.paso .bo{width:11px;height:11px;border-radius:50%;background:var(--linea);margin-top:5px;z-index:1}
+.paso.on .bo{background:var(--move)}
+.paso.ult .bo{box-shadow:0 0 0 4px var(--move-bg)}
+.paso.ok .bo{background:var(--ok)} .paso.ok.ult .bo{box-shadow:0 0 0 4px var(--ok-bg)}
+.paso.bad .bo{background:var(--bad)} .paso.bad.ult .bo{box-shadow:0 0 0 4px var(--bad-bg)}
+.paso:not(:last-child) .bolas:after{content:"";position:absolute;top:16px;bottom:-17px;width:2px;
+ background:var(--linea);border-radius:2px}
+.paso.on:not(:last-child) .bolas:after{background:var(--move)}
+.paso.ok:not(:last-child) .bolas:after{background:var(--ok)}
+.paso .nm{font-weight:700;font-size:14px}
+.paso.off .nm{color:var(--tinta3);font-weight:600}
+.paso .ds{color:var(--tinta2);font-size:13.5px}
+.paso .ts{color:var(--tinta3);font-size:12.5px;margin-top:2px;font-variant-numeric:tabular-nums}
+.wa{display:flex;align-items:center;gap:13px;text-decoration:none}
+.wa .ic{width:38px;height:38px;border-radius:50%;background:#25d366;display:flex;align-items:center;
+ justify-content:center;flex:none}
+.wa .t1{color:var(--tinta2);font-size:13px} .wa .t2{font-weight:700;font-size:14.5px}
+h2{font-size:16px;font-weight:800;margin:14px 0 2px;letter-spacing:-.01em}
+details{background:var(--papel);border:1px solid var(--linea);border-radius:12px;margin-top:9px}
+details summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:600;font-size:14px;
+ display:flex;align-items:center;justify-content:space-between;gap:12px}
+details summary::-webkit-details-marker{display:none}
+details summary:after{content:"+";color:var(--tinta3);font-size:18px;font-weight:400;line-height:1}
+details[open] summary:after{content:"\\2013"}
+details .rta{padding:0 16px 15px;color:var(--tinta2);font-size:13.5px}
+form.buscar{display:flex;gap:9px;margin-top:4px}
+form.buscar input{flex:1;min-width:0;background:var(--papel);border:1px solid var(--linea);color:var(--tinta);
+ border-radius:10px;padding:12px 14px;font-size:15px;font-family:inherit}
+form.buscar input:focus{outline:2px solid var(--marca);outline-offset:1px}
+form.buscar button{background:var(--marca);color:var(--papel);border:0;border-radius:10px;padding:12px 18px;
+ font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) form.buscar button{color:#0b1017}}
+.otro{background:var(--marca-sb);border:1px solid var(--linea);color:var(--tinta2);border-radius:9px;
+ padding:7px 13px;font-size:12.5px;font-weight:600;text-decoration:none;white-space:nowrap}
+.vacio{text-align:center;padding:30px 18px}
+.vacio .em{font-size:34px}
+.pie{color:var(--tinta3);font-size:12px;text-align:center;margin-top:8px}
+"""
+
+
+def _flex_esc(s) -> str:
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;"))
+
+
+_FLEX_WPP_AYUDA = "5491123460702"     # el numero humano de NoxaLab (WhatsApp Web)
+
+_FLEX_FAQ = [
+    ("¿Por qué no cambió todavía el estado de mi envío?",
+     "El estado se actualiza cuando el paquete pasa por cada etapa real. Entre una y otra pueden pasar "
+     "algunas horas sin movimiento: es normal y no significa que el envío esté detenido."),
+    ("¿Cuándo voy a recibir mi pedido?",
+     "Los envíos propios a CABA y Gran Buenos Aires llegan dentro de las 24 a 48 horas hábiles "
+     "desde que el paquete sale del depósito."),
+    ("¿Qué hago si veo algo raro en el seguimiento?",
+     "Escribinos por WhatsApp con tu código de seguimiento y lo revisamos al momento."),
+    ("No estaba cuando pasaron, ¿qué pasa ahora?",
+     "Se reprograma la entrega para el día siguiente sin costo. Si querés coordinar un horario o "
+     "cambiar la dirección, avisanos por WhatsApp."),
+]
+
+
+def _flex_pub_html(env, cod="") -> str:
+    """Arma la pagina del cliente. env=None → buscador / 'no encontramos ese codigo'."""
+    E = _flex_esc
+    wa_href = "https://wa.me/%s?text=%s" % (
+        _FLEX_WPP_AYUDA,
+        _url.quote("Hola! Consulta por mi envío %s" % (cod or "")) if cod else _url.quote("Hola! Consulta por mi envío"))
+    wa_svg = ('<svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 '
+              '11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 '
+              '0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm5.8 14.17c-.25.69-1.45 1.32-2 1.37-.51.05-1.16.07'
+              '-1.87-.12a16.9 16.9 0 0 1-1.7-.63c-2.98-1.29-4.93-4.3-5.08-4.5-.15-.2-1.22-1.62-1.22-3.09 0-1.47.77'
+              '-2.19 1.04-2.49.27-.3.59-.37.79-.37h.57c.18 0 .43-.07.67.51.25.6.84 2.07.91 2.22.07.15.12.32.02.52'
+              '-.1.2-.15.32-.3.5-.15.17-.31.39-.45.52-.15.15-.3.31-.13.61.17.3.76 1.25 1.63 2.03 1.12 1 2.06 1.3 '
+              '2.36 1.45.3.15.47.12.65-.07.17-.2.75-.87.95-1.17.2-.3.4-.25.67-.15.27.1 1.74.82 2.04.97.3.15.5.22.57'
+              '.35.07.12.07.72-.18 1.41z"/></svg>')
+
+    faq = "".join('<details><summary>%s</summary><div class="rta">%s</div></details>'
+                  % (E(q), E(r)) for q, r in _FLEX_FAQ)
+    ayuda = ('<div class="card pad"><a class="wa" href="%s" target="_blank" rel="noopener">'
+             '<span class="ic">%s</span><span><span class="t1">¿Necesitás ayuda con tu envío?</span>'
+             '<br><span class="t2">Escribinos por WhatsApp</span></span></a></div>' % (wa_href, wa_svg))
+
+    buscar = ('<form class="buscar" method="get" action="/seguimiento" '
+              'onsubmit="var v=this.cod.value.replace(/\\D/g,\'\');if(!v)return false;'
+              'window.location.href=\'/seguimiento/\'+v;return false;">'
+              '<input name="cod" inputmode="numeric" autocomplete="off" placeholder="Ingresá tu código de seguimiento" '
+              'value="%s"><button type="submit">Buscar</button></form>' % E(cod))
+
+    if not env:
+        aviso = ""
+        if cod:
+            aviso = ('<div class="card vacio"><div class="em">\U0001f50d</div>'
+                     '<div class="ttl" style="margin-top:8px">No encontramos el código %s</div>'
+                     '<div class="frase">Revisá que esté bien escrito. Si lo copiaste del mail o del '
+                     'WhatsApp que te mandamos, escribinos y lo buscamos nosotros.</div></div>' % E(cod))
+        cuerpo = ('<h1>Seguí tu pedido</h1>'
+                  '<p class="lead">Poné el código que te mandamos por WhatsApp o por mail.</p>'
+                  + buscar + aviso + ayuda
+                  + '<h2>Preguntas frecuentes</h2>' + faq)
+        return _flex_shell("Seguimiento", cuerpo)
+
+    est = env.get("estado") or "registrado"
+    tit, chip, frase, col = _FLEX_EST.get(est, _FLEX_EST["registrado"])
+    hist = env.get("hist") or [{"e": "registrado", "ts": env.get("creado") or ""}]
+    hechos = {h["e"]: h.get("ts") for h in hist}
+    # La linea de tiempo muestra TODOS los pasos: los cumplidos con su hora real y los que faltan
+    # en gris. Asi el cliente ve cuanto le queda, no solo donde esta.
+    secuencia = list(FLEX_ORDEN)
+    if est == "fallido":
+        secuencia = [k for k in FLEX_ORDEN if k in hechos] + ["fallido"]
+    ult = max((i for i, k in enumerate(secuencia) if k in hechos), default=0)
+    pasos = []
+    for i, k in enumerate(secuencia):
+        t2, _c2, x2, co2 = _FLEX_EST[k]
+        cumplido = k in hechos
+        cls = ("%s %s" % (co2 if co2 in ("ok", "bad") else "on", "ult" if i == ult else "")).strip() \
+            if cumplido else "off"
+        ts = ('<div class="ts">%s</div>' % E(_flex_dmy(hechos[k]))) if cumplido else ""
+        pasos.append('<div class="paso %s"><div class="bolas"><div class="bo"></div></div>'
+                     '<div><div class="nm">%s</div><div class="ds">%s</div>%s</div></div>'
+                     % (cls, E(t2), E(x2), ts))
+
+    destino = ", ".join(x for x in (env.get("loc"), env.get("prov")) if x)
+    cuerpo = (
+        '<h1>Seguí tu pedido</h1>'
+        '<p class="lead">Seguimiento simple y claro del estado de tu envío.</p>'
+        '<div class="card">'
+        '<div class="pad"><div class="fila">'
+        '<span class="chip c-%s"><span class="pt"></span>%s</span>'
+        '<a class="otro" href="/seguimiento">Buscar otro</a></div>'
+        '<div class="frase">%s</div></div>'
+        '<div class="pad sep fila"><span class="k">Código de seguimiento</span>'
+        '<button class="cod" onclick="rpCopiar(this,\'%s\')">%s'
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+        '<rect x="9" y="9" width="12" height="12" rx="2"/>'
+        '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>'
+        '</div>'
+        '<div class="card pad">'
+        '<div class="fila"><span class="ttl">Detalle del envío</span>'
+        '<span class="k">Pedido #%s</span></div>'
+        '<div class="meta">Transportista: NoxaLab Flex%s</div>'
+        '<div class="linea">%s</div></div>'
+    ) % (col, E(chip), E(frase), E(env["cod"]), E(env["cod"]), E(env.get("num") or "—"),
+         ("<br>Destino: " + E(destino)) if destino else "", "".join(pasos))
+    cuerpo += (ayuda + '<h2>Preguntas frecuentes</h2>' + faq
+               + '<div class="pie">Envío propio · CABA y Gran Buenos Aires</div>')
+    return _flex_shell("Envío %s" % E(env["cod"]), cuerpo)
+
+
+def _flex_shell(titulo, cuerpo) -> str:
+    """Token replace y no %: el CSS tiene '100%' y romperia el formateo."""
+    return (_FLEX_PUB_SHELL.replace("@@TITULO@@", titulo)
+            .replace("@@CSS@@", _FLEX_PUB_CSS).replace("@@CUERPO@@", cuerpo))
+
+
+_FLEX_PUB_SHELL = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#121e30" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#0b1017" media="(prefers-color-scheme:dark)">
+<title>@@TITULO@@ · NoxaLab</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
+<style>@@CSS@@</style></head><body>
+<div class="top"><div class="in"><a class="logo" href="/seguimiento">NOXA<b>LAB</b></a>
+<span class="nav">Seguimiento</span></div></div>
+<div class="wrap">@@CUERPO@@</div>
+<script>
+function rpCopiar(b,t){try{navigator.clipboard.writeText(t);var o=b.innerHTML;
+b.innerHTML='\\u00a1Copiado!';setTimeout(function(){b.innerHTML=o;},1300);}catch(e){}}
+</script></body></html>"""
+
+
+_FLEX_HTML = """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flex</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#080c15;--panel:#101a2c;--panel2:#0b1220;--line:#1b2536;--line2:#25344a;
+ --ink:#f1f5f9;--ink2:#93a3ba;--ink3:#5b6b82;--accent:#137fec;
+ --ok:#34d399;--ok-bg:rgba(52,211,153,.13);--move:#54a8f0;--move-bg:rgba(84,168,240,.13);
+ --wait:#e8b13e;--wait-bg:rgba(232,177,62,.14);--hoy:#fb923c;--hoy-bg:rgba(251,146,60,.14);
+ --bad:#f0637f;--bad-bg:rgba(240,99,127,.13)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+ font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1280px;margin:0 auto;padding:26px 16px 70px;display:flex;flex-direction:column;gap:18px}
+header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;
+ border-bottom:1px solid var(--line2);padding-bottom:16px}
+h1{font-family:Archivo,system-ui,sans-serif;font-size:28px;font-weight:700;margin:0;letter-spacing:-.025em}
+.sub{color:var(--ink2);font-size:13px;margin:5px 0 0;max-width:620px}
+.acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--accent);border:1px solid transparent;color:#fff;border-radius:9px;padding:10px 15px;
+ font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+.btn.g{background:#0e1521;border-color:var(--line2);color:var(--ink)}
+.btn.ok{background:rgba(52,211,153,.14);border-color:#1f5a3d;color:var(--ok)}
+.btn:disabled{opacity:.42;cursor:default}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:820px){.cards{grid-template-columns:repeat(2,1fr)}}
+.c{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.c .l{color:var(--ink3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px}
+.c .v{font-size:25px;font-weight:800;margin-top:9px;line-height:1}
+.c.z1 .v{color:var(--wait)} .c.z2 .v{color:var(--move)} .c.z3 .v{color:var(--hoy)} .c.z4 .v{color:var(--ok)}
+.panel{background:var(--panel2);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+ padding:14px 16px;border-bottom:1px solid var(--line)}
+.ph h2{font-family:Archivo,sans-serif;font-size:16px;margin:0;font-weight:600}
+.ph .n{color:var(--ink3);font-size:12.5px}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:900px}
+th{text-align:left;color:var(--ink3);font-size:11px;font-weight:700;text-transform:uppercase;
+ letter-spacing:.6px;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid var(--line2);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+td.num{font-weight:700} td.dim{color:var(--ink2);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;
+ font-size:11.5px;font-weight:700;white-space:nowrap}
+.p-ok{background:var(--ok-bg);color:var(--ok)} .p-move{background:var(--move-bg);color:var(--move)}
+.p-wait{background:var(--wait-bg);color:var(--wait)} .p-hoy{background:var(--hoy-bg);color:var(--hoy)}
+.p-bad{background:var(--bad-bg);color:var(--bad)}
+.zp{background:rgba(19,127,236,.12);color:#7fbaff;border:1px solid #1e4f8a}
+select{background:#0e1521;border:1px solid var(--line2);color:var(--ink);border-radius:8px;
+ padding:6px 8px;font-size:12.5px;font-family:inherit;cursor:pointer}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+a.lk{color:#7fbaff;text-decoration:none;font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
+a.lk:hover{text-decoration:underline}
+.vacio{padding:34px 18px;text-align:center;color:var(--ink3)}
+.msg{border-radius:10px;padding:11px 14px;font-size:13.5px;display:none}
+.msg.on{display:block}
+.msg.e{background:var(--bad-bg);color:#ffc2cd;border:1px solid #5a2a35}
+.msg.b{background:var(--ok-bg);color:#aef0d4;border:1px solid #1f5a3d}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);
+ background:rgba(19,127,236,.05)}
+.bar .q{color:var(--ink2);font-size:13px;margin-right:auto}
+</style></head><body>
+<div class="wrap">
+ <header>
+  <div><h1>Flex</h1><div class="sub">Env&iacute;o propio a <b>CABA</b>, <b>GBA 1</b> y <b>GBA 2</b>.
+   Gener&aacute; el c&oacute;digo, mov&eacute; el estado y el cliente lo ve en
+   <span style="color:#7fbaff" id="ej">realprofitapp.com/seguimiento/&hellip;</span>. Lo que no entra en zona
+   sigue saliendo por Andreani.</div></div>
+  <div class="acts">
+   <button class="btn g" onclick="cargar(1)">Sincronizar</button>
+   <a class="btn g" href="/seguimiento" target="_blank" style="text-decoration:none">Ver p&aacute;gina p&uacute;blica</a>
+  </div>
+ </header>
+ <div id="msg" class="msg"></div>
+ <div class="cards">
+  <div class="c z1"><div class="l">En zona, sin c&oacute;digo</div><div class="v" id="k-pend">&mdash;</div></div>
+  <div class="c z2"><div class="l">En preparaci&oacute;n</div><div class="v" id="k-prep">&mdash;</div></div>
+  <div class="c z3"><div class="l">En la calle</div><div class="v" id="k-calle">&mdash;</div></div>
+  <div class="c z4"><div class="l">Entregados</div><div class="v" id="k-ok">&mdash;</div></div>
+ </div>
+
+ <div class="panel" id="pan-pend">
+  <div class="ph"><h2>Pedidos en zona sin c&oacute;digo</h2><span class="n" id="n-pend"></span></div>
+  <div class="bar"><span class="q" id="q-pend">Eleg&iacute; los que vas a llevar vos.</span>
+   <button class="btn" id="b-crear" onclick="crear()" disabled>Generar c&oacute;digos</button></div>
+  <div class="tw"><table>
+   <thead><tr><th style="width:34px"><input type="checkbox" onclick="todos(this,'p')"></th>
+    <th>Pedido</th><th>Cliente</th><th>Zona</th><th>Destino</th><th>CP</th><th>U.</th></tr></thead>
+   <tbody id="tb-pend"><tr><td colspan="7" class="vacio">Cargando&hellip;</td></tr></tbody>
+  </table></div>
+ </div>
+
+ <div class="panel">
+  <div class="ph"><h2>Env&iacute;os Flex</h2><span class="n" id="n-env"></span></div>
+  <div class="bar"><span class="q">Seleccionados: <b id="q-sel">0</b></span>
+   <select id="mover"><option value="">Mover a&hellip;</option></select>
+   <button class="btn g" id="b-mover" onclick="mover()" disabled>Aplicar</button>
+   <button class="btn g" id="b-shop" onclick="avisar(1,0)" disabled>Cargar en Shopify</button>
+   <button class="btn ok" id="b-wpp" onclick="avisar(0,1)" disabled>Avisar por WhatsApp</button></div>
+  <div class="tw"><table>
+   <thead><tr><th style="width:34px"><input type="checkbox" onclick="todos(this,'e')"></th>
+    <th>C&oacute;digo</th><th>Pedido</th><th>Cliente</th><th>Zona</th><th>Destino</th>
+    <th>Estado</th><th>Link</th></tr></thead>
+   <tbody id="tb-env"><tr><td colspan="8" class="vacio">Cargando&hellip;</td></tr></tbody>
+  </table></div>
+ </div>
+</div>
+<script>
+var ZN={caba:"CABA",gba1:"GBA 1",gba2:"GBA 2"};
+var EST=__ESTADOS__;            // [[clave,titulo,chip,texto,color], ...]
+var ECOL={},ENOM={};
+EST.forEach(function(e){ECOL[e[0]]=e[4];ENOM[e[0]]=e[2];});
+var PEND=[],ENV=[],BASE="";
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function aviso(t,clase){var m=document.getElementById("msg");
+ if(!t){m.className="msg";m.textContent="";return;}
+ m.className="msg on "+(clase||"b");m.textContent=t;}
+function selP(){return [].slice.call(document.querySelectorAll(".ck-p:checked")).map(function(c){return c.value;});}
+function selE(){return [].slice.call(document.querySelectorAll(".ck-e:checked")).map(function(c){return c.value;});}
+function todos(c,k){[].slice.call(document.querySelectorAll(".ck-"+k)).forEach(function(x){x.checked=c.checked;});refrescar();}
+function refrescar(){
+ var np=selP().length,ne=selE().length;
+ document.getElementById("b-crear").disabled=!np;
+ document.getElementById("q-sel").textContent=ne;
+ ["b-mover","b-shop","b-wpp"].forEach(function(id){document.getElementById(id).disabled=!ne;});
+}
+function pintar(){
+ var tp=document.getElementById("tb-pend");
+ if(!PEND.length){tp.innerHTML='<tr><td colspan="7" class="vacio">No hay pedidos pagados en CABA / GBA sin c\\u00f3digo.</td></tr>';}
+ else{tp.innerHTML=PEND.map(function(p){
+  return '<tr><td><input type="checkbox" class="ck-p" value="'+esc(p.num)+'" onchange="refrescar()"></td>'
+   +'<td class="num">#'+esc(p.num)+'</td><td>'+esc(p.nombre)+'</td>'
+   +'<td><span class="pill zp">'+esc(ZN[p.zona]||p.zona)+'</span></td>'
+   +'<td class="dim">'+esc(p.localidad)+'</td><td class="dim">'+esc(p.cp)+'</td>'
+   +'<td class="dim">'+esc(p.unidades)+'</td></tr>';}).join("");}
+ document.getElementById("n-pend").textContent=PEND.length+" pedido"+(PEND.length==1?"":"s");
+
+ var te=document.getElementById("tb-env");
+ if(!ENV.length){te.innerHTML='<tr><td colspan="8" class="vacio">Todav\\u00eda no generaste ning\\u00fan env\\u00edo Flex.</td></tr>';}
+ else{te.innerHTML=ENV.map(function(e){
+  var op=EST.map(function(x){return '<option value="'+x[0]+'"'+(x[0]==e.estado?" selected":"")+'>'+x[1]+'</option>';}).join("");
+  var zp=Object.keys(ZN).map(function(z){return '<option value="'+z+'"'+(z==e.zona?" selected":"")+'>'+ZN[z]+'</option>';}).join("");
+  var u=BASE+"/seguimiento/"+e.cod;
+  return '<tr><td><input type="checkbox" class="ck-e" value="'+esc(e.cod)+'" onchange="refrescar()"></td>'
+   +'<td class="num">'+esc(e.cod)+'</td><td class="dim">#'+esc(e.num)+'</td><td>'+esc(e.nombre)+'</td>'
+   +'<td><select onchange="unaZona(\\''+esc(e.cod)+'\\',this.value)">'+zp+'</select></td>'
+   +'<td class="dim">'+esc(e.loc)+'</td>'
+   +'<td><span class="pill p-'+(ECOL[e.estado]||"wait")+'" style="margin-right:7px">'+esc(ENOM[e.estado]||e.estado)+'</span>'
+   +'<select onchange="unoEstado(\\''+esc(e.cod)+'\\',this.value)">'+op+'</select></td>'
+   +'<td><a class="lk" href="'+u+'" target="_blank">/seguimiento/'+esc(e.cod)+'</a></td></tr>';}).join("");}
+ document.getElementById("n-env").textContent=ENV.length+" env\\u00edo"+(ENV.length==1?"":"s");
+ var pr=0,ca=0,ok=0;
+ ENV.forEach(function(e){ if(e.estado=="entregado")ok++; else if(e.estado=="registrado")pr++; else ca++; });
+ document.getElementById("k-pend").textContent=PEND.length;
+ document.getElementById("k-prep").textContent=pr;
+ document.getElementById("k-calle").textContent=ca;
+ document.getElementById("k-ok").textContent=ok;
+ if(ENV.length) document.getElementById("ej").textContent=BASE.replace(/^https?:\\/\\//,"")+"/seguimiento/"+ENV[0].cod;
+ refrescar();
+}
+function cargar(ref){
+ fetch("/flex-datos"+(ref?"?refresh=1":"")).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){aviso("No se pudo leer (\\u00bfsesi\\u00f3n vencida?)","e");return;}
+  if(j.err_detalle) aviso("No pude traer los pedidos de la tienda: "+j.err_detalle,"e"); else aviso("");
+  PEND=j.pend||[];ENV=j.envios||[];BASE=j.base||location.origin;pintar();
+ }).catch(function(e){aviso("Error de conexi\\u00f3n: "+e,"e");});
+}
+function crear(){
+ var ns=selP(),filas=PEND.filter(function(p){return ns.indexOf(p.num)>=0;});
+ if(!filas.length)return;
+ document.getElementById("b-crear").disabled=true;
+ fetch("/flex-crear",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({filas:filas})}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){aviso("No se pudieron generar","e");return;}
+  aviso("Listo: "+j.creados+" c\\u00f3digo"+(j.creados==1?"":"s")+" generado"+(j.creados==1?"":"s")+".","b");
+  cargar(0);}).catch(function(e){aviso("Error: "+e,"e");});
+}
+function setear(cods,estado,zona){
+ return fetch("/flex-set",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({cods:cods,estado:estado,zona:zona})}).then(function(r){return r.json();});
+}
+function unoEstado(c,v){setear([c],v,null).then(function(){cargar(0);});}
+function unaZona(c,v){setear([c],null,v).then(function(){cargar(0);});}
+function mover(){
+ var v=document.getElementById("mover").value;if(!v){aviso("Eleg\\u00ed a qu\\u00e9 estado mover.","e");return;}
+ var cods=selE();if(!cods.length)return;
+ setear(cods,v,null).then(function(j){aviso(j.tocados+" env\\u00edo(s) movidos a \\""+ENOM[v]+"\\".","b");cargar(0);});
+}
+function avisar(sh,wp){
+ var cods=selE();if(!cods.length)return;
+ if(wp && !confirm("Mandar la plantilla de WhatsApp a "+cods.length+" cliente(s)?"))return;
+ ["b-shop","b-wpp"].forEach(function(id){document.getElementById(id).disabled=true;});
+ aviso("Mandando\\u2026","b");
+ fetch("/flex-avisar",{method:"POST",headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({cods:cods,shopify:!!sh,wpp:!!wp})}).then(function(r){return r.json();}).then(function(j){
+  if(!j.ok){aviso(j.msg||"No se pudo","e");refrescar();return;}
+  var t=[];
+  if(j.shopify)t.push("Shopify: "+j.shopify.enviados+" cargados, "+j.shopify.saltados+" ya estaban, "+j.shopify.fallaron+" fallaron");
+  if(j.wpp)t.push("WhatsApp: "+j.wpp.enviados+" enviados, "+j.wpp.saltados+" ya avisados, "+j.wpp.fallaron+" fallaron");
+  var er=[].concat(((j.shopify||{}).errores)||[],((j.wpp||{}).errores)||[]);
+  if(er.length)t.push("Errores: "+er.map(function(x){return "#"+x.num+" "+x.msg;}).join(" | "));
+  aviso(t.join(" \\u00b7 "),er.length?"e":"b");refrescar();
+ }).catch(function(e){aviso("Error: "+e,"e");refrescar();});
+}
+EST.forEach(function(e){var o=document.createElement("option");o.value=e[0];o.textContent=e[1];
+ document.getElementById("mover").appendChild(o);});
+cargar(0);
+</script></body></html>"""
+_FLEX_HTML = _FLEX_HTML.replace("__ESTADOS__", _json.dumps(
+    [[k, t, c, x, co] for k, t, c, x, co in FLEX_ESTADOS], ensure_ascii=False))
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
