@@ -26715,7 +26715,7 @@ def _flex_etiqueta(pg, e):
     N, B, G, HB, HV = _FX_N, _FX_B, _FX_G, _FX_HB, _FX_HV
 
     # ── lo de abajo es fijo: se calcula primero y despues el medio se acomoda ──
-    CAJA_H = 86
+    CAJA_H = 112
     caja_y = H - 16 - CAJA_H
     tel_y = caja_y - 14
     nom_y = tel_y - 19
@@ -26792,20 +26792,25 @@ def _flex_etiqueta(pg, e):
     qs = CAJA_H - 20
     pg.insert_image(fitz.Rect(M + 10, caja_y + 10, M + 10 + qs, caja_y + 10 + qs),
                     stream=_fx_qr(_flex_url_corta(e["cod"])))
-    rx = M + 10 + qs + 15
-    _fx_micro(pg, rx, caja_y + 18, "SEGUIMIENTO")
-    _fx_txt(pg, rx, caja_y + 38, e["cod"], HB, 18, N)
-    _fx_micro(pg, rx, caja_y + 54, "PEDIDO")
-    _fx_txt(pg, rx, caja_y + 70, "#" + str(e.get("num") or ""), HB, 14.5, N)
+    rx = M + 10 + qs + 16
+    der = W - M - 10                                  # borde derecho util de la caja
+    _fx_micro(pg, rx, caja_y + 22, "SEGUIMIENTO")
+    _fx_txt(pg, rx, caja_y + 45, e["cod"], HB, 21, N)
+    _fx_micro(pg, rx, caja_y + 64, "PEDIDO")
+    _fx_txt(pg, rx, caja_y + 84, "#" + str(e.get("num") or ""), HB, 16, N)
     sku = str(e.get("sku") or "").strip()
     if sku:
-        _fx_micro(pg, W - M - 10 - _fx_w("CONTENIDO", HB, 6.4) - 7, caja_y + 18, "CONTENIDO")
-        ts, ss = _fx_cortar(sku, HB, 13, A - qs - 100)
-        _fx_txt(pg, W - M - 10 - _fx_w(ts, HB, ss), caja_y + 38, ts, HB, ss, N)
+        _fx_micro(pg, der - _fx_w("CONTENIDO", HB, 6.4) - 7, caja_y + 22, "CONTENIDO")
+        anc = der - (rx + 58)
+        ls = _fx_envolver(sku, HB, 13, anc)[:2]
+        if len(ls) == 2 and _fx_w(ls[1], HB, 13) > anc:
+            ls[1] = _fx_cortar(ls[1], HB, 13, anc)[0]
+        for i, l in enumerate(ls):
+            _fx_txt(pg, der - _fx_w(l, HB, 13), caja_y + 44 + i * 15, l, HB, 13, N)
     fch = str(e.get("creado") or "")[:10]
     if len(fch) == 10:
         fch = "%s/%s/%s" % (fch[8:10], fch[5:7], fch[0:4])
-    _fx_txt(pg, W - M - 10 - _fx_w(fch, HV, 8.5), caja_y + 70, fch, HV, 8.5, G)
+    _fx_txt(pg, der - _fx_w(fch, HV, 8.5), caja_y + 103, fch, HV, 8.5, G)
     _fx_txt(pg, M, H - 7, "realprofitapp.com/s/" + e["cod"], HV, 6.6, G)
 
 
@@ -27091,6 +27096,9 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
 .yo{margin-left:auto;display:flex;align-items:center;gap:7px;color:var(--tinta2);font-size:12.5px;font-weight:600}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-sb);flex:none}
 .dot.off{background:var(--esp);box-shadow:0 0 0 3px var(--esp-sb)}
+.lec{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ok);
+ background:var(--ok-sb);border-radius:999px;padding:3px 9px}
+.lec.esp{color:var(--esp);background:var(--esp-sb)} .lec.mal{color:var(--mal);background:var(--mal-sb)}
 
 /* ---- modos ---- */
 .modos{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;background:var(--papel);
@@ -27185,7 +27193,8 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
    stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
    <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span>
   <span class="marca">Real<em>Profit</em></span>
-  <span class="yo"><span class="dot" id="dot"></span><span id="yo"></span></span>
+  <span class="yo"><span class="lec esp" id="lector">cargando lector&hellip;</span>
+   <span class="dot" id="dot"></span><span id="yo"></span></span>
  </div>
 
  <div id="alta" class="entrar" style="display:none">
@@ -27280,39 +27289,64 @@ function modo(m){ MODO=m;
 modo("camino");
 
 /* ---- camara + lectura ---- */
+/* Safari (iPhone) NO trae BarcodeDetector, asi que jsQR no es un plan B: es EL lector para la
+   mitad de los telefonos. Antes se cargaba de una direccion que daba 404 y la pantalla se
+   quedaba mirando el QR sin hacer nada y sin decir por que. Ahora se carga SIEMPRE, con un
+   segundo servidor por si el primero falla, y si no engancha ninguno se avisa en pantalla. */
 var video=$("cam"), lienzo=document.createElement("canvas"), ctx=lienzo.getContext("2d",{willReadFrequently:true});
-var detector=null;
+var detector=null, jsqrListo=false, jsqrFallo=false;
+var CDN=["https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",
+         "https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"];
+function cargarJsqr(i){
+ if(window.jsQR){ jsqrListo=true; lector(); return; }
+ if(i>=CDN.length){ jsqrFallo=true; lector(); return; }
+ var sc=document.createElement("script"); sc.src=CDN[i]; sc.async=true;
+ sc.onload=function(){ if(window.jsQR){ jsqrListo=true; lector(); } else cargarJsqr(i+1); };
+ sc.onerror=function(){ cargarJsqr(i+1); };
+ document.head.appendChild(sc);
+}
+function lector(){
+ var t=$("lector"); if(!t)return;
+ if(detector){ t.textContent="lector r\u00e1pido"; t.className="lec"; }
+ else if(jsqrListo){ t.textContent="lector listo"; t.className="lec"; }
+ else if(jsqrFallo){ t.textContent="no carg\u00f3 el lector"; t.className="lec mal"; }
+ else { t.textContent="cargando lector\u2026"; t.className="lec esp"; }
+}
 function camara(){
- if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ falloCam("Este navegador no abre la c\\u00e1mara. Prob\\u00e1 con Chrome o Safari."); return; }
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ falloCam("Este navegador no abre la c\u00e1mara. Prob\u00e1 con Chrome o Safari."); return; }
+ if("BarcodeDetector" in window){ try{ detector=new BarcodeDetector({formats:["qr_code"]}); }catch(e){ detector=null; } }
+ cargarJsqr(0);
  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},
    width:{ideal:1280},height:{ideal:1280}},audio:false})
  .then(function(st){ video.srcObject=st; return video.play(); })
- .then(function(){ $("aviso").style.display="none"; scanning=true;
-   if("BarcodeDetector" in window){ try{ detector=new BarcodeDetector({formats:["qr_code"]}); }catch(e){} }
-   if(!detector){ var sc=document.createElement("script");
-     sc.src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"; document.head.appendChild(sc); }
-   requestAnimationFrame(leer);
- }).catch(function(e){
+ .then(function(){ $("aviso").style.display="none"; scanning=true; lector(); requestAnimationFrame(leer); })
+ .catch(function(e){
    falloCam(String(e&&e.name)==="NotAllowedError"
-     ? "No nos diste permiso para la c\\u00e1mara. Activalo en los ajustes del navegador y record\\u00e1 la p\\u00e1gina."
-     : "No pudimos abrir la c\\u00e1mara ("+(e&&e.name||e)+").");
+     ? "No nos diste permiso para la c\u00e1mara. Activalo en los ajustes del navegador y record\u00e1 la p\u00e1gina."
+     : "No pudimos abrir la c\u00e1mara ("+(e&&e.name||e)+").");
  });
 }
 function falloCam(m){ $("aviso").style.display="";
- $("aviso").innerHTML='<div class="t">C\\u00e1mara no disponible</div><div class="d">'+esc(m)
-  +'</div><button class="mano" onclick="aMano()">Escribir el c\\u00f3digo</button>'; }
+ $("aviso").innerHTML='<div class="t">C\u00e1mara no disponible</div><div class="d">'+esc(m)
+  +'</div><button class="mano" onclick="aMano()">Escribir el c\u00f3digo</button>'; }
+var _vuelta=0;
 function leer(){
  if(!scanning){ requestAnimationFrame(leer); return; }
  if(video.readyState===video.HAVE_ENOUGH_DATA){
   var w=video.videoWidth,h=video.videoHeight;
   if(w&&h){
    if(detector){
-    detector.detect(video).then(function(cs){ if(cs&&cs.length) visto(cs[0].rawValue); }).catch(function(){});
+    detector.detect(video).then(function(cs){ if(cs&&cs.length) visto(cs[0].rawValue); })
+     .catch(function(){ detector=null; lector(); });   // si el nativo falla, sigue jsQR
    } else if(window.jsQR){
-    var lado=Math.min(w,h); lienzo.width=lienzo.height=420;
-    ctx.drawImage(video,(w-lado)/2,(h-lado)/2,lado,lado,0,0,420,420);
-    var d=ctx.getImageData(0,0,420,420);
-    var c=jsQR(d.data,420,420,{inversionAttempts:"dontInvert"});
+    _vuelta++;
+    /* Una vuelta mira el centro (QR cerca, mas nitido) y la siguiente el cuadro entero
+       (QR lejos o descentrado). Alternar las dos cubre las dos formas de apuntar. */
+    var L=520, lado=Math.min(w,h)*((_vuelta%2)?1:0.72);
+    lienzo.width=lienzo.height=L;
+    ctx.drawImage(video,(w-lado)/2,(h-lado)/2,lado,lado,0,0,L,L);
+    var d=ctx.getImageData(0,0,L,L);
+    var c=jsQR(d.data,L,L,{inversionAttempts:"dontInvert"});
     if(c&&c.data) visto(c.data);
    }
   }
@@ -27398,16 +27432,31 @@ window.addEventListener("online",function(){ pintarCola(); vaciarCola(); });
 window.addEventListener("offline",pintarCola);
 setInterval(vaciarCola,15000);
 
-/* ---- aviso sonoro + visual: con guantes y en la calle no se mira la pantalla ---- */
+/* ---- aviso: en la calle no se mira la pantalla ---- */
+/* iPhone no deja sonar NADA que no venga de un toque del usuario, y un escaneo no es un toque.
+   Por eso el audio se destraba con el primer toque en cualquier parte de la pantalla. */
 var actx=null;
-function bip(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
- var o=actx.createOscillator(),g2=actx.createGain();
- o.frequency.value=880; o.connect(g2); g2.connect(actx.destination);
- g2.gain.setValueAtTime(.001,actx.currentTime);
- g2.gain.exponentialRampToValueAtTime(.18,actx.currentTime+.01);
- g2.gain.exponentialRampToValueAtTime(.001,actx.currentTime+.14);
- o.start(); o.stop(actx.currentTime+.15); }catch(e){}
- try{ navigator.vibrate&&navigator.vibrate(45); }catch(e){} }
+function destrabarAudio(){
+ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+  if(actx.state==="suspended") actx.resume(); }catch(e){}
+}
+document.addEventListener("pointerdown",destrabarAudio);
+document.addEventListener("touchstart",destrabarAudio);
+function bip(){
+ /* un tic corto y seco, dos tonos de 45 ms: el ruido de la caja del supermercado. */
+ try{ destrabarAudio(); if(!actx)return;
+  [[1760,0],[2349,.035]].forEach(function(par){
+   var o=actx.createOscillator(),g2=actx.createGain(),t0=actx.currentTime+par[1];
+   o.type="square"; o.frequency.value=par[0];
+   o.connect(g2); g2.connect(actx.destination);
+   g2.gain.setValueAtTime(.0001,t0);
+   g2.gain.exponentialRampToValueAtTime(.12,t0+.006);
+   g2.gain.exponentialRampToValueAtTime(.0001,t0+.045);
+   o.start(t0); o.stop(t0+.05);
+  });
+ }catch(e){}
+ try{ navigator.vibrate&&navigator.vibrate(35); }catch(e){}
+}
 function flash(){ var f=$("flash"); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on"); }
 document.addEventListener("visibilitychange",function(){ scanning=!document.hidden; });
 </script></body></html>"""
