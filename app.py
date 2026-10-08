@@ -26659,11 +26659,11 @@ def _fx_encajar(t, f, s, a, mini=7.0):
     return s
 
 
-def _fx_cortar(t, f, s, a):
+def _fx_cortar(t, f, s, a, mini=9.5):
     """Una linea y punta. Achica hasta un minimo y despues corta: un nombre largo NO puede
     pisar el telefono."""
     t = str(t or "").strip()
-    while s > 9.5 and _fx_w(t, f, s) > a:
+    while s > mini and _fx_w(t, f, s) > a:
         s -= .4
     if _fx_w(t, f, s) <= a:
         return t, s
@@ -26725,7 +26725,10 @@ def _flex_etiqueta(pg, e):
 
     # 1 · la marca: un renglon y se corre (es el dato menos importante de la etiqueta)
     _fx_marca(pg, M, 15, 13)
-    t = "FLEX · 24 a 48 HS"
+    fch = str(e.get("creado") or "")[:10]
+    if len(fch) == 10:
+        fch = "%s/%s/%s" % (fch[8:10], fch[5:7], fch[0:4])
+    t = ("%s  ·  FLEX · 24 a 48 HS" % fch) if fch else "FLEX · 24 a 48 HS"
     _fx_txt(pg, W - M - _fx_w(t, HB, 7), 25, t, HB, 7, G)
     pg.draw_line((M, 35), (W - M, 35), color=N, width=.8)
 
@@ -26793,24 +26796,26 @@ def _flex_etiqueta(pg, e):
     pg.insert_image(fitz.Rect(M + 10, caja_y + 10, M + 10 + qs, caja_y + 10 + qs),
                     stream=_fx_qr(_flex_url_corta(e["cod"])))
     rx = M + 10 + qs + 16
-    der = W - M - 10                                  # borde derecho util de la caja
-    _fx_micro(pg, rx, caja_y + 22, "SEGUIMIENTO")
-    _fx_txt(pg, rx, caja_y + 45, e["cod"], HB, 21, N)
-    _fx_micro(pg, rx, caja_y + 64, "PEDIDO")
-    _fx_txt(pg, rx, caja_y + 84, "#" + str(e.get("num") or ""), HB, 16, N)
+    der = W - M - 10                                   # borde derecho util de la caja
+    _fx_micro(pg, rx, caja_y + 20, "SEGUIMIENTO")
+    _fx_txt(pg, rx, caja_y + 44, e["cod"], HB, 22, N)
+    _fx_micro(pg, rx, caja_y + 62, "PEDIDO")
+    _fx_txt(pg, rx, caja_y + 81, "#" + str(e.get("num") or ""), HB, 16, N)
     sku = str(e.get("sku") or "").strip()
     if sku:
-        _fx_micro(pg, der - _fx_w("CONTENIDO", HB, 6.4) - 7, caja_y + 22, "CONTENIDO")
+        _fx_micro(pg, rx, caja_y + 100, "CONTENIDO")
         anc = der - (rx + 58)
-        ls = _fx_envolver(sku, HB, 13, anc)[:2]
-        if len(ls) == 2 and _fx_w(ls[1], HB, 13) > anc:
-            ls[1] = _fx_cortar(ls[1], HB, 13, anc)[0]
-        for i, l in enumerate(ls):
-            _fx_txt(pg, der - _fx_w(l, HB, 13), caja_y + 44 + i * 15, l, HB, 13, N)
-    fch = str(e.get("creado") or "")[:10]
-    if len(fch) == 10:
-        fch = "%s/%s/%s" % (fch[8:10], fch[5:7], fch[0:4])
-    _fx_txt(pg, der - _fx_w(fch, HV, 8.5), caja_y + 103, fch, HV, 8.5, G)
+        ls = _fx_envolver(sku, HB, 12, anc)
+        if len(ls) == 1:
+            t1, s1 = _fx_cortar(ls[0], HB, 13, anc, mini=9.0)
+            _fx_txt(pg, der - _fx_w(t1, HB, s1), caja_y + 101, t1, HB, s1, N)
+        else:
+            ls = ls[:2]
+            if len(_fx_envolver(sku, HB, 12, anc)) > 2:      # rarisimo: 3 productos distintos
+                ls[1] = _fx_cortar(ls[1] + " ...", HB, 12, anc, mini=8.5)[0]
+            for i, l in enumerate(ls):
+                t1, s1 = _fx_cortar(l, HB, 12, anc, mini=8.5)
+                _fx_txt(pg, der - _fx_w(t1, HB, s1), caja_y + 94 + i * 13, t1, HB, s1, N)
     _fx_txt(pg, M, H - 7, "realprofitapp.com/s/" + e["cod"], HV, 6.6, G)
 
 
