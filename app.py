@@ -26755,7 +26755,7 @@ def flex_escaner_entrar():
     t = (request.get_json(silent=True) or {}).get("token") or ""
     r = _flex_repa(t)
     if not r:
-        return jsonify({"ok": False, "msg": "El link ya no sirve. Ped\u00edle uno nuevo a tu jefe."}), 403
+        return jsonify({"ok": False, "msg": "Ese c\u00f3digo no sirve o fue dado de baja. Ped\u00edle a tu jefe que te mande el link del esc\u00e1ner de nuevo."}), 403
     return jsonify({"ok": True, "nombre": r.get("nombre") or "Repartidor"})
 
 
@@ -26960,8 +26960,10 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
     <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span>
    <span class="marca">Real<em>Profit</em></span></div>
   <h1>Esc&aacute;ner de paquetes</h1>
-  <p>Peg&aacute; el c&oacute;digo de acceso que te pasaron.</p>
-  <input id="tok" placeholder="c&oacute;digo de acceso" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <p>Peg&aacute; ac&aacute; el <b style="color:var(--tinta)">link</b> que te pasaron por WhatsApp.<br>
+   No es el n&uacute;mero del paquete: es una clave larga, con letras.</p>
+  <input id="tok" placeholder="realprofitapp.com/escaner?t=&hellip;" autocomplete="off"
+   autocapitalize="off" spellcheck="false">
   <button class="btn" onclick="entrar()">Entrar</button>
   <div class="err" id="err-alta"></div>
  </div>
@@ -27031,6 +27033,10 @@ function validar(t){
 }
 function entrar(){ var v=($("tok").value||"").trim(); if(!v)return;
  var m=v.match(/[?&]t=([^&\\s]+)/); if(m)v=decodeURIComponent(m[1]);   // pegan el link entero
+ if(!m && /^\\d{1,6}$/.test(v)){                                     // 00001 = el PAQUETE, no el acceso
+  $("err-alta").innerHTML="Eso es el n\\u00famero del <b>paquete</b>, no el c\\u00f3digo de acceso."
+   +"<br>Ped\\u00edle a tu jefe el link del esc\\u00e1ner.";
+  return; }
  $("err-alta").textContent=""; validar(v); }
 
 /* ---- modo ---- */
