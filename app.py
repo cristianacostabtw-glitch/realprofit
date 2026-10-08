@@ -6835,10 +6835,11 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
     if not tk or not tk.get("access_token"):
         return None
     shop, token = tk.get("shop"), tk.get("access_token")
-    ckey = "%s|%s" % (desde or "", hasta or "")   # string (no tupla) → sobrevive el JSON del caché en disco
+    ckey = "todo"        # UNA sola clave: las fechas se filtran abajo, en Python (ver nota)
     _desp_cache_load()                    # trae el caché de disco (tras deploy) → carga instantánea
     _c = _DESP_CACHE.get(email)
     orders = None
+    _got = False
     if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
         orders = _c.get("orders")                            # caché fresco → NO vuelve a pegarle a Shopify
     if orders is None:
@@ -6852,16 +6853,14 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             return None
     if orders is None:                     # conseguí lugar en el candado → bajo de Shopify
         try:
+            # Sin created_at_min/max a proposito: se baja el set completo una sola vez y las
+            # pestanias (Hoy / Ayer / 7 dias) se resuelven filtrando en Python, mas abajo.
             params = {"status": "open", "financial_status": "paid",
                       "fulfillment_status": "unshipped", "limit": 250,
                       "fields": "id,order_number,name,total_price,current_total_price,"
                                 "financial_status,fulfillment_status,cancelled_at,line_items,"
-                                "created_at,shipping_lines,shipping_address,customer,contact_email,"
+                                "note,created_at,shipping_lines,shipping_address,customer,contact_email,"
                                 "note_attributes,fulfillments"}
-            if desde:
-                params["created_at_min"] = desde + "T00:00:00-03:00"
-            if hasta:
-                params["created_at_max"] = hasta + "T23:59:59-03:00"
             orders = []
             since = 0
             try:
@@ -6895,6 +6894,14 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             continue
         if (o.get("financial_status") or "").lower() != "paid":   # doble seguro: solo pagadas
             continue
+        if desde or hasta:
+            # created_at viene con el huso de la tienda (-03:00), asi que los 10 primeros
+            # caracteres YA son la fecha local: el mismo corte que hacia created_at_min/max.
+            _fch = str(o.get("created_at") or "")[:10]
+            if desde and _fch < desde:
+                continue
+            if hasta and _fch > hasta:
+                continue
         tiene_trk = any(f.get("tracking_number") for f in (o.get("fulfillments") or []))
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         sa = _D(o.get("shipping_address"))
