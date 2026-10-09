@@ -363,7 +363,7 @@ SOLO_ADMIN = [
 
 # Rutas que puede tocar cualquiera que este logueado (la app no arranca sin esto).
 _LIBRES = ("/login", "/logout", "/registro", "/pf-version", "/static", "/favicon", "/rp",
-           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/", "/escaner")
+           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/", "/escaner", "/mcp/")
 
 
 def _seccion_de(path):
@@ -27515,6 +27515,361 @@ function bip(){
 function flash(){ var f=$("flash"); f.classList.remove("on"); void f.offsetWidth; f.classList.add("on"); }
 document.addEventListener("visibilitychange",function(){ scanning=!document.hidden; });
 </script></body></html>"""
+
+
+# ═══════════════════ CONECTOR MCP (claude.ai → RealProfit) ═══════════════════
+# Un servidor MCP "Streamable HTTP" propio: se agrega en claude.ai como conector personalizado
+# (Personalizar → Conectores → Agregar conector personalizado) y desde ahi el chat puede leer
+# los numeros del negocio y los de Meta Ads, desde el celular y sin la compu prendida.
+#
+# POR QUE PROPIO Y NO UNO DE TERCEROS: un token de Meta Ads no solo LEE, tambien crea campanias
+# y mueve presupuestos. Darselo a un server ajeno es darle la llave de la caja. Aca el token
+# nunca sale de Render.
+#
+# SOLO LECTURA, a proposito. Ninguna herramienta crea, pausa ni gasta.
+#
+# SEGURIDAD: claude.ai no exige OAuth para un conector personalizado, asi que la URL sola
+# alcanzaria para entrar. Por eso la clave va EN EL PATH (/mcp/<clave>): sin ella es un 404,
+# y se revoca cambiando la env MCP_CLAVE en Render.
+
+MCP_CLAVE = (_os.getenv("MCP_CLAVE", "") or "").strip()
+MCP_PROTO = "2025-06-18"          # si el cliente pide otra, se le devuelve la suya
+
+
+def _mcp_email():
+    """De quien son los datos que sirve el conector."""
+    return (_os.getenv("MCP_EMAIL", "") or _os.getenv("META_OWNER_EMAIL", "") or "").strip()
+
+
+def _mcp_cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, DELETE"
+    resp.headers["Access-Control-Allow-Headers"] = ("content-type, mcp-session-id, "
+                                                    "mcp-protocol-version, authorization, accept")
+    resp.headers["Access-Control-Expose-Headers"] = "mcp-session-id"
+    resp.headers["Access-Control-Max-Age"] = "86400"
+    return resp
+
+
+def _mcp_rta(obj, code=200, sid=None):
+    r = Response(_json.dumps(obj, ensure_ascii=False), status=code, mimetype="application/json")
+    if sid:
+        r.headers["MCP-Session-Id"] = sid
+    return _mcp_cors(r)
+
+
+def _mcp_err(idd, code, msg):
+    return _mcp_rta({"jsonrpc": "2.0", "id": idd, "error": {"code": code, "message": msg}})
+
+
+def _mcp_texto(idd, txt):
+    """Todo resultado vuelve como texto: es lo que el modelo lee mejor."""
+    return _mcp_rta({"jsonrpc": "2.0", "id": idd,
+                     "result": {"content": [{"type": "text", "text": txt}], "isError": False}})
+
+
+def _mcp_pesos(n):
+    try:
+        return "$" + format(int(round(float(n or 0))), ",d").replace(",", ".")
+    except Exception:
+        return "$0"
+
+
+def _mcp_fechas(a):
+    """Acepta 'hoy', 'ayer', '7d', '30d' o fechas sueltas. Si no viene nada, hoy."""
+    hoy = _dt.datetime.now(_ARG).date()
+    p = (a.get("periodo") or "").strip().lower()
+    if p in ("hoy", "today"):
+        return hoy.isoformat(), hoy.isoformat()
+    if p in ("ayer", "yesterday"):
+        y = hoy - _dt.timedelta(days=1); return y.isoformat(), y.isoformat()
+    m = _re_and.match(r"^(\d+)\s*d", p) if p else None
+    if m:
+        n = int(m.group(1))
+        return (hoy - _dt.timedelta(days=n)).isoformat(), (hoy - _dt.timedelta(days=1)).isoformat()
+    d = (a.get("desde") or "").strip() or hoy.isoformat()
+    h = (a.get("hasta") or "").strip() or d
+    return d, h
+
+
+# ───────────────────────────── las herramientas ─────────────────────────────
+_MCP_TOOLS = [
+    {"name": "negocio",
+     "title": "Numeros del negocio",
+     "description": ("Los numeros reales del negocio en un periodo: ventas, facturacion, ganancia, "
+                     "margen, ticket promedio, inversion en ads, CPA, ROAS, break even y IVA, con el "
+                     "corte entre la tienda (Shopify) y MercadoLibre. Es la fuente de la VERDAD: sale "
+                     "de los pedidos y los pagos reales, no de lo que Meta se atribuye."),
+     "inputSchema": {"type": "object", "properties": {
+         "periodo": {"type": "string", "description": "hoy | ayer | 7d | 30d. Si lo pasas, ignora desde/hasta."},
+         "desde": {"type": "string", "description": "AAAA-MM-DD"},
+         "hasta": {"type": "string", "description": "AAAA-MM-DD"}}}},
+    {"name": "ads_cuentas",
+     "title": "Meta Ads por cuenta",
+     "description": ("Gasto, compras, costo por compra y ROAS de CADA cuenta publicitaria de Meta "
+                     "(CP1 a CP5) en un periodo. Los montos en dolares se pasan a pesos. Ojo: las "
+                     "compras son las que Meta se ATRIBUYE, siempre menos que las ventas reales."),
+     "inputSchema": {"type": "object", "properties": {
+         "periodo": {"type": "string", "description": "hoy | ayer | 7d | 30d"},
+         "desde": {"type": "string"}, "hasta": {"type": "string"}}}},
+    {"name": "ads_anuncios",
+     "title": "Meta Ads anuncio por anuncio",
+     "description": ("Rendimiento de cada anuncio: gasto, compras, costo por compra, ROAS, CTR y "
+                     "frecuencia. Devuelve los que mejor venden y los que mas plata queman SIN "
+                     "vender. Sirve para decidir que creativo matar y cual escalar."),
+     "inputSchema": {"type": "object", "properties": {
+         "periodo": {"type": "string", "description": "hoy | ayer | 7d | 30d"},
+         "desde": {"type": "string"}, "hasta": {"type": "string"},
+         "top": {"type": "integer", "description": "cuantos mostrar de cada lado (por defecto 10)"}}}},
+    {"name": "despachos",
+     "title": "Pedidos a despachar",
+     "description": "Los pedidos pagados que todavia no se despacharon, con destino, unidades y monto.",
+     "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
+]
+
+
+def _mcp_tool_negocio(email, a):
+    d, h = _mcp_fechas(a)
+    b = _pf_periodo_blob(email, d, h)
+    r = b.get("raw") or {}
+    L = ["NEGOCIO  %s%s" % (d, "" if d == h else "  al  " + h), ""]
+    L.append("Ventas           %s   (tienda %s · MercadoLibre %s)" % (
+        r.get("ordenes", 0), r.get("ordenes_web", 0), r.get("meli_ventas", 0)))
+    L.append("Facturacion      %s" % _mcp_pesos(r.get("facturado")))
+    L.append("Ganancia         %s   (margen %s%%)" % (_mcp_pesos(r.get("ganancia")), r.get("margen", 0)))
+    L.append("Ticket promedio  %s" % _mcp_pesos(r.get("aov")))
+    L.append("")
+    L.append("PUBLICIDAD")
+    L.append("  Inversion      %s" % _mcp_pesos(r.get("publi_ars")))
+    L.append("  CPA            %s      (tope para no perder: %s)" % (
+        _mcp_pesos(r.get("cpa")), _mcp_pesos(r.get("be_cpa"))))
+    L.append("  ROAS           %sx     (minimo para no perder: %sx)" % (r.get("roas", 0), r.get("be_roas", 0)))
+    if r.get("comision_agencia"):
+        L.append("  Comision CP3   %s   (10%% de la pauta de CP3, se resta de la ganancia)"
+                 % _mcp_pesos(r.get("comision_agencia")))
+    L.append("")
+    L.append("POR CANAL")
+    L.append("  Tienda         %s facturado · ganancia %s · margen %s%%" % (
+        _mcp_pesos(r.get("facturado_web")), _mcp_pesos(r.get("web_ganancia")), r.get("web_margen", 0)))
+    L.append("  MercadoLibre   %s facturado · ganancia %s · margen %s%%" % (
+        _mcp_pesos(r.get("meli_facturado")), _mcp_pesos(r.get("ml_ganancia")), r.get("ml_margen", 0)))
+    if r.get("ri"):
+        L.append("")
+        L.append("IVA  (ventas %s%% · compras %s%%)" % (IVA_VENTAS_PCT, IVA_COMPRAS_PCT))
+        L.append("  Debito %s · credito %s · a pagar %s" % (
+            _mcp_pesos(r.get("iva_total")), _mcp_pesos(r.get("iva_favor")), _mcp_pesos(r.get("iva_pagar"))))
+    L.append("")
+    L.append("Nota: la pauta NO trae las ventas de MercadoLibre, por eso el CPA y el break even "
+             "se calculan SOLO con la tienda.")
+    return "\n".join(L)
+
+
+def _mcp_ads_insights(email, d, h, nivel="account", campos=None, limite=500):
+    """Insights de Meta de TODAS las cuentas, ya pasados a pesos."""
+    import urllib.parse as _up
+    tk = _meta_tokens().get(email) or {}
+    token = tk.get("access_token") or _os.getenv("META_OWNER_TOKEN", "")
+    if not token:
+        return None, "No hay token de Meta conectado."
+    cuentas = [(v["nombre"], v["ad_account"]) for v in _ADS_CUENTAS.values()]
+    vistas, out = set(), []
+    dolar = _dolar_ars_vivo() or 1.0
+    f = campos or "spend,account_currency"
+    for nom, acc in cuentas:
+        if acc in vistas:
+            continue
+        vistas.add(acc)
+        q = _up.urlencode({"fields": f, "level": nivel, "limit": str(limite),
+                           "time_range": _json.dumps({"since": d, "until": h}),
+                           "access_token": token})
+        try:
+            rr = requests.get("https://graph.facebook.com/%s/act_%s/insights?%s" % (META_API, acc, q), timeout=45)
+            dd = rr.json() if rr.content else {}
+        except Exception as e:
+            out.append({"cuenta": nom, "error": str(e)[:80]}); continue
+        if dd.get("error"):
+            out.append({"cuenta": nom, "error": dd["error"].get("message", "")[:80]}); continue
+        for row in (dd.get("data") or []):
+            gasto = float(row.get("spend") or 0)
+            mon = (row.get("account_currency") or "ARS").upper()
+            ars = gasto * dolar if mon == "USD" else gasto
+            comp = val = 0.0
+            for ac in (row.get("actions") or []):
+                if ac.get("action_type") in ("purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"):
+                    comp = max(comp, float(ac.get("value") or 0))
+            for ac in (row.get("action_values") or []):
+                if ac.get("action_type") in ("purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"):
+                    val = max(val, float(ac.get("value") or 0))
+            out.append({"cuenta": nom, "acc": acc, "gasto": ars, "moneda": mon, "gasto_orig": gasto,
+                        "compras": comp, "valor": val * dolar if mon == "USD" else val,
+                        "nombre": row.get("ad_name") or row.get("campaign_name") or "",
+                        "campania": row.get("campaign_name") or "",
+                        "ctr": float(row.get("ctr") or 0), "frec": float(row.get("frequency") or 0)})
+    return out, None
+
+
+def _mcp_tool_ads_cuentas(email, a):
+    d, h = _mcp_fechas(a)
+    filas, err = _mcp_ads_insights(email, d, h, "account",
+                                   "spend,account_currency,actions,action_values")
+    if err:
+        return err
+    L = ["META ADS POR CUENTA  %s%s" % (d, "" if d == h else "  al  " + h), ""]
+    L.append("%-6s %14s %8s %12s %8s" % ("cuenta", "gasto", "compras", "costo/compra", "ROAS"))
+    tg = tc = tv = 0.0
+    for f in sorted(filas, key=lambda x: -x.get("gasto", 0)):
+        if f.get("error"):
+            L.append("%-6s  error: %s" % (f["cuenta"], f["error"])); continue
+        if f["gasto"] <= 0:
+            continue
+        tg += f["gasto"]; tc += f["compras"]; tv += f["valor"]
+        L.append("%-6s %14s %8d %12s %7.2fx%s" % (
+            f["cuenta"], _mcp_pesos(f["gasto"]), f["compras"],
+            _mcp_pesos(f["gasto"] / f["compras"]) if f["compras"] else "—",
+            (f["valor"] / f["gasto"]) if f["gasto"] else 0,
+            "  (en USD)" if f["moneda"] == "USD" else ""))
+    L.append("-" * 54)
+    L.append("%-6s %14s %8d %12s %7.2fx" % ("TOTAL", _mcp_pesos(tg), tc,
+             _mcp_pesos(tg / tc) if tc else "—", (tv / tg) if tg else 0))
+    L.append("")
+    L.append("Las compras son las que Meta se ATRIBUYE. Para las ventas reales usa la "
+             "herramienta 'negocio'. CP3 ademas lleva 10% de comision de agencia.")
+    return "\n".join(L)
+
+
+def _mcp_tool_ads_anuncios(email, a):
+    d, h = _mcp_fechas(a)
+    top = int(a.get("top") or 10)
+    filas, err = _mcp_ads_insights(
+        email, d, h, "ad",
+        "ad_name,campaign_name,spend,account_currency,actions,action_values,ctr,frequency", 400)
+    if err:
+        return err
+    filas = [f for f in filas if not f.get("error") and f.get("gasto", 0) > 0]
+    if not filas:
+        return "No hubo gasto en anuncios entre %s y %s." % (d, h)
+    tg = sum(f["gasto"] for f in filas); tc = sum(f["compras"] for f in filas)
+    tv = sum(f["valor"] for f in filas)
+    con = sorted([f for f in filas if f["compras"] > 0], key=lambda f: f["gasto"] / f["compras"])
+    sin = sorted([f for f in filas if f["compras"] == 0], key=lambda f: -f["gasto"])
+    L = ["META ADS ANUNCIO POR ANUNCIO  %s%s" % (d, "" if d == h else "  al  " + h), ""]
+    L.append("%d anuncios con gasto · %s · %d compras · costo/compra %s · ROAS %.2fx" % (
+        len(filas), _mcp_pesos(tg), tc, _mcp_pesos(tg / tc) if tc else "—", (tv / tg) if tg else 0))
+    L.append("")
+    L.append("LOS QUE MEJOR VENDEN")
+    L.append("%-5s %-34s %12s %5s %12s %7s" % ("cta", "anuncio", "gasto", "comp", "costo/comp", "ROAS"))
+    for f in con[:top]:
+        L.append("%-5s %-34s %12s %5d %12s %6.1fx" % (
+            f["cuenta"], f["nombre"][:34], _mcp_pesos(f["gasto"]), f["compras"],
+            _mcp_pesos(f["gasto"] / f["compras"]), f["valor"] / f["gasto"] if f["gasto"] else 0))
+    L.append("")
+    L.append("LOS QUE QUEMAN PLATA SIN VENDER NADA")
+    L.append("%-5s %-34s %12s %8s %7s" % ("cta", "anuncio", "gasto", "CTR", "frec"))
+    for f in sin[:top]:
+        L.append("%-5s %-34s %12s %7.2f%% %6.2f" % (
+            f["cuenta"], f["nombre"][:34], _mcp_pesos(f["gasto"]), f["ctr"], f["frec"]))
+    gq = sum(f["gasto"] for f in sin)
+    L.append("")
+    L.append("En anuncios SIN una sola compra: %s  (%.0f%% del gasto)" % (
+        _mcp_pesos(gq), 100 * gq / tg if tg else 0))
+    return "\n".join(L)
+
+
+def _mcp_tool_despachos(email, a):
+    try:
+        rows = _despachos_orders(email) or []
+    except Exception as e:
+        return "No pude traer los pedidos: %s: %s" % (type(e).__name__, str(e)[:120])
+    pend = [r for r in rows if r.get("estado") != "enviada"]
+    if not pend:
+        return "No hay pedidos pagados sin despachar."
+    L = ["PEDIDOS A DESPACHAR: %d" % len(pend), ""]
+    L.append("%-8s %-26s %-22s %-7s %4s %12s" % ("pedido", "cliente", "destino", "CP", "u.", "total"))
+    for r in pend[:60]:
+        L.append("%-8s %-26s %-22s %-7s %4s %12s" % (
+            "#" + str(r.get("num", "")), (r.get("nombre") or "")[:26], (r.get("localidad") or "")[:22],
+            r.get("cp", ""), r.get("unidades", 0), _mcp_pesos(r.get("total"))))
+    if len(pend) > 60:
+        L.append("... y %d mas" % (len(pend) - 60))
+    L.append("")
+    L.append("Total a despachar: %s" % _mcp_pesos(sum(float(r.get("total") or 0) for r in pend)))
+    return "\n".join(L)
+
+
+_MCP_FN = {"negocio": _mcp_tool_negocio, "ads_cuentas": _mcp_tool_ads_cuentas,
+           "ads_anuncios": _mcp_tool_ads_anuncios, "despachos": _mcp_tool_despachos}
+
+
+# ───────────────────────────── el transporte ─────────────────────────────
+@app.route("/mcp/<clave>", methods=["GET", "POST", "OPTIONS", "DELETE"])
+def mcp_servidor(clave):
+    if request.method == "OPTIONS":
+        return _mcp_cors(Response(status=200))
+    if not MCP_CLAVE or clave != MCP_CLAVE:
+        return _mcp_cors(Response("no existe", status=404, mimetype="text/plain"))
+    if request.method == "DELETE":                 # el cliente cierra la sesion
+        return _mcp_cors(Response(status=204))
+    if request.method == "GET":
+        # No abrimos canal del servidor al cliente: no hace falta, todo es pregunta-respuesta.
+        return _mcp_cors(Response("sin stream", status=405, mimetype="text/plain"))
+
+    msg = request.get_json(silent=True)
+    if msg is None:
+        return _mcp_err(None, -32700, "JSON invalido")
+    if isinstance(msg, list):                      # lote: proceso el primero con id
+        msg = next((m for m in msg if isinstance(m, dict) and m.get("id") is not None), msg[0])
+    idd = msg.get("id")
+    metodo = msg.get("method") or ""
+
+    if metodo == "initialize":
+        pv = ((msg.get("params") or {}).get("protocolVersion")) or MCP_PROTO
+        import uuid as _uuid
+        return _mcp_rta({"jsonrpc": "2.0", "id": idd, "result": {
+            "protocolVersion": pv,
+            "capabilities": {"tools": {"listChanged": False}},
+            "serverInfo": {"name": "RealProfit", "version": "1.0.0"},
+            "instructions": (
+                "Datos reales del negocio de NoxaLab: ventas, ganancia, publicidad de Meta y "
+                "pedidos a despachar. Todo es SOLO LECTURA.\n"
+                "Dos fuentes que NO son lo mismo: 'negocio' sale de los pedidos y pagos reales "
+                "(Shopify + MercadoLibre) y es la verdad; 'ads_cuentas' y 'ads_anuncios' salen de "
+                "Meta, que se atribuye MENOS ventas de las que hubo. Para comparar creativos entre "
+                "si, Meta sirve; para saber cuanto se gano, usa 'negocio'.\n"
+                "La pauta no trae las ventas de MercadoLibre: por eso el CPA y el break even se "
+                "calculan solo con la tienda. Los montos van en pesos."),
+        }}, sid=_uuid.uuid4().hex)
+
+    if metodo in ("notifications/initialized", "notifications/cancelled"):
+        return _mcp_cors(Response(status=202))
+    if metodo == "ping":
+        return _mcp_rta({"jsonrpc": "2.0", "id": idd, "result": {}})
+    if metodo == "tools/list":
+        return _mcp_rta({"jsonrpc": "2.0", "id": idd, "result": {"tools": _MCP_TOOLS}})
+    if metodo in ("resources/list", "prompts/list"):
+        k = "resources" if metodo.startswith("resources") else "prompts"
+        return _mcp_rta({"jsonrpc": "2.0", "id": idd, "result": {k: []}})
+
+    if metodo == "tools/call":
+        p = msg.get("params") or {}
+        fn = _MCP_FN.get(p.get("name") or "")
+        if not fn:
+            return _mcp_err(idd, -32602, "No existe la herramienta '%s'" % p.get("name"))
+        email = _mcp_email()
+        if not email:
+            return _mcp_texto(idd, "El conector no tiene cuenta configurada (falta MCP_EMAIL).")
+        try:
+            return _mcp_texto(idd, fn(email, p.get("arguments") or {}))
+        except Exception as e:
+            import traceback as _tb
+            t = _tb.extract_tb(e.__traceback__)
+            ln = (" @ %s:%d" % (t[-1].name, t[-1].lineno)) if t else ""
+            return _mcp_rta({"jsonrpc": "2.0", "id": idd, "result": {
+                "content": [{"type": "text", "text": "Fallo la consulta — %s: %s%s"
+                             % (type(e).__name__, str(e)[:200], ln)}], "isError": True}})
+
+    if idd is None:
+        return _mcp_cors(Response(status=202))
+    return _mcp_err(idd, -32601, "Metodo desconocido: %s" % metodo)
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
