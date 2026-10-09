@@ -1627,7 +1627,17 @@ _SOLO_DASH = r"""
     +'<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Marcar tildados:</span>'
     +'<button onclick="rpDMarcar(\'flex\')" style="background:#1c1636;border:1px solid #3a2f6b;color:#c4b5fd;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\u26A1 Flex</button>'
     +'<button onclick="rpDMarcar(\'andreani\')" style="background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\uD83D\uDE9A Andreani</button>'
-    +'<button onclick="rpDMarcar(\'auto\')" title="Vuelve a decidirlo el metodo de envio del pedido" style="background:transparent;border:1px solid #1a2333;color:#5b6b82;border-radius:11px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer">auto</button>'; };
+    +'<button onclick="rpDMarcar(\'auto\')" title="Vuelve a decidirlo el metodo de envio del pedido" style="background:transparent;border:1px solid #1a2333;color:#5b6b82;border-radius:11px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer">auto</button>'
+    +((_dRows.filter(function(r){return r.logi_manual;}).length)
+       ? '<button onclick="rpDResetLogi()" style="background:#2a1620;border:1px solid #5a2a3a;color:#fb7185;border-radius:11px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-left:6px">\u21ba Borrar marcas a mano ('+_dRows.filter(function(r){return r.logi_manual;}).length+')</button>'
+       : ''); };
+ window.rpDResetLogi=function(){
+   if(!confirm('Borra TODAS las marcas que pusiste a mano. La log\u00edstica vuelve a salir del m\u00e9todo de env\u00edo de cada pedido. \u00bfDale?')) return;
+   fetch('/pf-desp-logistica',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({todos:true,logistica:'auto'})}).then(function(r){return r.json();}).then(function(j){
+     _dStat('Listo: se borraron '+j.marcados+' marca(s) a mano. Vuelve a mandar el m\u00e9todo de env\u00edo.','#34d399');
+     rpDLoad(true);
+   }).catch(function(){ _dStat('No se pudo.','#fb7185'); }); };
  window.rpDLogi=function(t){ _dLogi=t; rpDLogiRender(); rpDRender(); };
  window.rpDMarcar=function(cual){
    var ns=[].slice.call(document.querySelectorAll('.rp-d-chk:checked')).map(function(c){return c.value;});
@@ -6980,6 +6990,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             "incompleta": incompleta, "estado": estado,
             "logistica": _logi_de(email, num, " ".join(
                 (s.get("title") or "") for s in (o.get("shipping_lines") or []))),
+            "logi_manual": str(num) in _logi(email),
         })
     out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
     return out
@@ -28010,7 +28021,16 @@ def pf_desp_logistica():
     cual = d.get("logistica") or "andreani"
     if cual not in ("flex", "andreani", "auto"):
         cual = "andreani"
-    n = _logi_set(email, d.get("nums") or [], cual)
+    if d.get("todos") and cual == "auto":
+        # Reset: se borran TODAS las marcas a mano y vuelve a decidir el metodo de envio.
+        todo = _logi_all()
+        n = len(todo.get(email) or {})
+        todo[email] = {}
+        tmp = DESP_LOGI.with_suffix(".tmp")
+        tmp.write_text(_json.dumps(todo, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(DESP_LOGI)
+    else:
+        n = _logi_set(email, d.get("nums") or [], cual)
     try:                                           # los numeros del dashboard cambian: tiro el cache
         _DESP_CACHE.pop(email, None); _desp_cache_save()
     except Exception:
