@@ -27671,7 +27671,7 @@ def _mcp_ads_insights(email, d, h, nivel="account", campos=None, limite=500):
     token = tk.get("access_token") or _os.getenv("META_OWNER_TOKEN", "")
     if not token:
         return None, "No hay token de Meta conectado."
-    cuentas = [(v["nombre"], v["ad_account"]) for v in _ADS_CUENTAS.values()]
+    cuentas = [(k.upper(), v["ad_account"]) for k, v in _ADS_CUENTAS.items()]
     vistas, out = set(), []
     dolar = _dolar_ars_vivo() or 1.0
     f = campos or "spend,account_currency"
@@ -27715,22 +27715,24 @@ def _mcp_tool_ads_cuentas(email, a):
     if err:
         return err
     L = ["META ADS POR CUENTA  %s%s" % (d, "" if d == h else "  al  " + h), ""]
-    L.append("%-6s %14s %8s %12s %8s" % ("cuenta", "gasto", "compras", "costo/compra", "ROAS"))
+    L.append("%-5s %14s %9s %14s %8s" % ("cta", "gasto", "compras", "costo/compra", "ROAS"))
     tg = tc = tv = 0.0
-    for f in sorted(filas, key=lambda x: -x.get("gasto", 0)):
-        if f.get("error"):
-            L.append("%-6s  error: %s" % (f["cuenta"], f["error"])); continue
+    sinacceso = [f["cuenta"] for f in filas if f.get("error")]
+    for f in sorted([x for x in filas if not x.get("error")], key=lambda x: -x.get("gasto", 0)):
         if f["gasto"] <= 0:
             continue
         tg += f["gasto"]; tc += f["compras"]; tv += f["valor"]
-        L.append("%-6s %14s %8d %12s %7.2fx%s" % (
+        L.append("%-5s %14s %9d %14s %7.2fx%s" % (
             f["cuenta"], _mcp_pesos(f["gasto"]), f["compras"],
             _mcp_pesos(f["gasto"] / f["compras"]) if f["compras"] else "—",
             (f["valor"] / f["gasto"]) if f["gasto"] else 0,
-            "  (en USD)" if f["moneda"] == "USD" else ""))
-    L.append("-" * 54)
-    L.append("%-6s %14s %8d %12s %7.2fx" % ("TOTAL", _mcp_pesos(tg), tc,
+            "   (factura en USD)" if f["moneda"] == "USD" else ""))
+    L.append("-" * 56)
+    L.append("%-5s %14s %9d %14s %7.2fx" % ("TOTAL", _mcp_pesos(tg), tc,
              _mcp_pesos(tg / tc) if tc else "—", (tv / tg) if tg else 0))
+    if sinacceso:
+        L.append("")
+        L.append("Sin acceso con este token: %s" % ", ".join(sinacceso))
     L.append("")
     L.append("Las compras son las que Meta se ATRIBUYE. Para las ventas reales usa la "
              "herramienta 'negocio'. CP3 ademas lleva 10% de comision de agencia.")
