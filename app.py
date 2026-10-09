@@ -1615,9 +1615,10 @@ _SOLO_DASH = r"""
  window.rpDStore=function(t){ _dTienda=t; rpDTiendasRender(); rpDRender(); };
  // ── LOGISTICA ── Andreani es el default; solo se marcan los que van por Flex.
  window.rpDLogiRender=function(){ var c=document.getElementById('rp-d-logi'); if(!c)return;
-   var n={todas:_dRows.length,
-          andreani:_dRows.filter(function(r){return (r.logistica||'andreani')==='andreani';}).length,
-          flex:_dRows.filter(function(r){return r.logistica==='flex';}).length};
+   var B=(window.rpDBase?rpDBase():_dRows);
+   var n={todas:B.length,
+          andreani:B.filter(function(r){return (r.logistica||'andreani')==='andreani';}).length,
+          flex:B.filter(function(r){return r.logistica==='flex';}).length};
    var ops=[['todas','Todas'],['andreani','\uD83D\uDE9A Andreani'],['flex','\u26A1 Flex']];
    c.style.display='flex';
    c.innerHTML='<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Log\u00edstica:</span>'
@@ -1632,13 +1633,19 @@ _SOLO_DASH = r"""
      rpDLoad(true);
    }).catch(function(){ _dStat('No se pudo.','#fb7185'); }); };
  window.rpDLogi=function(t){ _dLogi=t; rpDLogiRender(); rpDRender(); };
- window.rpDVisibles=function(){ var q=((document.getElementById('rp-d-q')||{}).value||'').toLowerCase().trim();
+ // Lo que mira la solapa elegida: estado + tienda + busqueda, SIN el filtro de logistica.
+ // La barra de Logistica cuenta sobre ESTO, no sobre _dRows: si contara sobre todo, con
+ // "Por empaquetar 109" seleccionado diria "Todas 117" y estaria sumando las exportadas.
+ window.rpDBase=function(){ var q=((document.getElementById('rp-d-q')||{}).value||'').toLowerCase().trim();
    var base=_dFilt==='todas'?_dRows:_dRows.filter(function(r){return r.estado===_dFilt;});
    if(_dTienda!=='todas') base=base.filter(function(r){return (r.tienda||'')===_dTienda;});
-   if(_dLogi!=='todas') base=base.filter(function(r){return (r.logistica||'andreani')===_dLogi;});
    if(!q) return base;
    return base.filter(function(r){ return (r.num+' '+r.nombre+' '+r.localidad+' '+r.cp).toLowerCase().indexOf(q)>=0; }); };
- window.rpDRender=function(){ var rows=rpDVisibles(), tb=document.getElementById('rp-d-body'); if(!tb)return;
+ window.rpDVisibles=function(){ var base=rpDBase();
+   if(_dLogi==='todas') return base;
+   return base.filter(function(r){ return (r.logistica||'andreani')===_dLogi; }); };
+ window.rpDRender=function(){ rpDLogiRender();   // los contadores de Logistica siguen a la solapa
+   var rows=rpDVisibles(), tb=document.getElementById('rp-d-body'); if(!tb)return;
    var td='padding:13px;border-bottom:1px solid #141c2a;font-size:13px';
    if(!rows.length){ tb.innerHTML='<tr><td colspan="8" style="padding:40px 14px;text-align:center;color:#5b6b82;font-size:13.5px">No hay pedidos en este estado.</td></tr>'; }
    else tb.innerHTML=rows.map(function(r){
