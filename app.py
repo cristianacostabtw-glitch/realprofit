@@ -725,6 +725,7 @@ _SOLO_DASH = r"""
    <div style="flex:1;min-width:170px;display:flex;align-items:center;gap:9px;background:#0b111c;border:1px solid #1a2333;border-radius:11px;padding:0 13px"><span class="material-symbols-outlined" style="color:#5b6b82;font-size:18px">search</span><input id="rp-d-q" oninput="rpDRender()" placeholder="Buscar pedido, cliente, localidad&hellip;" style="flex:1;border:0;background:transparent;color:#f1f5f9;padding:10px 0;font-size:13.5px;outline:none"></div>
   </div>
   <div id="rp-d-tiendas" style="display:none;align-items:center;gap:8px;margin-bottom:10px"></div>
+  <div id="rp-d-logi" style="display:none;gap:7px;align-items:center;flex-wrap:wrap;margin:10px 0 0"></div>
 
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:8px">
    <label style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="rp-d-all" onclick="rpDAll(this)" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">Todas</label>
@@ -1509,6 +1510,7 @@ _SOLO_DASH = r"""
 
  // ===================== DESPACHOS =====================
  var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false, _dTienda='todas', _dTiendas=[];
+ var _dLogi='todas';   // filtro de logistica: todas | andreani | flex
  var _DCOL=['#5aa2f5','#34d399','#f0b429','#a78bfa','#fb7185','#38bdf8','#f472b6'];
  function _dEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
  function _dFmt(n){ try{return '$'+Math.round(n||0).toLocaleString('es-AR');}catch(e){return '$'+Math.round(n||0);} }
@@ -1595,7 +1597,7 @@ _SOLO_DASH = r"""
      if(!j||!j.ok){ _dStat('No se pudo cargar'+((j&&j.err_detalle)?(' — '+j.err_detalle):'')+'.', '#fb7185'); return; }
      if(j._err){ _dStat('⚠ Error trayendo pedidos: '+(j.err_detalle||'desconocido'), '#fb7185'); }   // muestra el error REAL
      if(j.shopify===false){ _dRows=[]; _dLoaded=true; rpDRender(); _dStat('Conectá tu tienda (Shopify) en Integraciones para ver los despachos.', '#f0b429'); return; }
-     _dRows=j.rows||[]; _dLoaded=true; _dTiendas=j.tiendas||[]; rpDTiendasRender();
+     _dRows=j.rows||[]; _dLoaded=true; _dTiendas=j.tiendas||[]; rpDTiendasRender(); rpDLogiRender();
      var R=j.resumen||{};
      [['empaquetar',R.empaquetar],['exportada',R.exportada],['enviada',R.enviada],['todas',R.todas]].forEach(function(x){
        var e1=document.getElementById('rp-d-n-'+x[0]), e2=document.getElementById('rp-d-m-'+x[0]);
@@ -1611,9 +1613,38 @@ _SOLO_DASH = r"""
    c.innerHTML='<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Tienda:</span>'+opts.map(function(o){var on=o[0]===_dTienda;return '<button onclick="rpDStore(\''+o[0]+'\')" style="background:'+(on?'#16233a':'#0b111c')+';border:1px solid '+(on?'#2f4a6b':'#1a2333')+';color:'+(on?'#8fbdf5':'#c7d2e0')+';border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">'+o[1]+'</button>';}).join('');
  };
  window.rpDStore=function(t){ _dTienda=t; rpDTiendasRender(); rpDRender(); };
+ // ── LOGISTICA ── Andreani es el default; solo se marcan los que van por Flex.
+ window.rpDLogiRender=function(){ var c=document.getElementById('rp-d-logi'); if(!c)return;
+   var n={todas:_dRows.length,
+          andreani:_dRows.filter(function(r){return (r.logistica||'andreani')==='andreani';}).length,
+          flex:_dRows.filter(function(r){return r.logistica==='flex';}).length};
+   var ops=[['todas','Todas'],['andreani','\uD83D\uDE9A Andreani'],['flex','\u26A1 Flex']];
+   c.style.display='flex';
+   c.innerHTML='<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Log\u00edstica:</span>'
+    +ops.map(function(o){ var on=o[0]===_dLogi;
+      return '<button onclick="rpDLogi(\''+o[0]+'\')" style="background:'+(on?'#16233a':'#0b111c')+';border:1px solid '+(on?'#2f4a6b':'#1a2333')+';color:'+(on?'#8fbdf5':'#c7d2e0')+';border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">'+o[1]+' <span style="opacity:.6">'+n[o[0]]+'</span></button>'; }).join('')
+    +'<span style="flex:1"></span>'
+    +'<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Marcar tildados:</span>'
+    +'<button onclick="rpDMarcar(\'flex\')" style="background:#1c1636;border:1px solid #3a2f6b;color:#c4b5fd;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\u26A1 Flex</button>'
+    +'<button onclick="rpDMarcar(\'andreani\')" style="background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\uD83D\uDE9A Andreani</button>'; };
+ window.rpDLogi=function(t){ _dLogi=t; rpDLogiRender(); rpDRender(); };
+ window.rpDMarcar=function(cual){
+   var ns=[].slice.call(document.querySelectorAll('.rp-d-chk:checked')).map(function(c){return c.value;});
+   if(!ns.length){ _dStat('Tild\u00e1 primero los pedidos que van por esa log\u00edstica.','#f0b429'); return; }
+   fetch('/pf-desp-logistica',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({nums:ns,logistica:cual})}).then(function(r){return r.json();}).then(function(j){
+     if(!j.ok){ _dStat('No se pudo marcar.','#fb7185'); return; }
+     _dRows.forEach(function(r){ if(ns.indexOf(String(r.num))>=0) r.logistica=cual; });
+     var av=(cual==='flex'&&!j.costo_configurado)
+       ? ' \u2014 OJO: todav\u00eda no cargaste cu\u00e1nto te cuesta un env\u00edo por Flex, as\u00ed que se siguen costeando como Andreani.'
+       : '';
+     _dStat(j.marcados+' pedido(s) marcados como '+(cual==='flex'?'Flex':'Andreani')+'.'+av, av?'#f0b429':'#34d399');
+     rpDLogiRender(); rpDRender();
+   }).catch(function(){ _dStat('Error de conexi\u00f3n.','#fb7185'); }); };
  window.rpDVisibles=function(){ var q=((document.getElementById('rp-d-q')||{}).value||'').toLowerCase().trim();
    var base=_dFilt==='todas'?_dRows:_dRows.filter(function(r){return r.estado===_dFilt;});
    if(_dTienda!=='todas') base=base.filter(function(r){return (r.tienda||'')===_dTienda;});
+   if(_dLogi!=='todas') base=base.filter(function(r){return (r.logistica||'andreani')===_dLogi;});
    if(!q) return base;
    return base.filter(function(r){ return (r.num+' '+r.nombre+' '+r.localidad+' '+r.cp).toLowerCase().indexOf(q)>=0; }); };
  window.rpDRender=function(){ var rows=rpDVisibles(), tb=document.getElementById('rp-d-body'); if(!tb)return;
@@ -1626,11 +1657,13 @@ _SOLO_DASH = r"""
      var est = r.estado==='exportada' ? ' <span style="background:#0a2434;border:1px solid #155066;color:#38bdf8;font-size:11px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">exportada</span>'
              : r.estado==='enviada' ? ' <span style="background:#1c1636;border:1px solid #3a2f6b;color:#a78bfa;font-size:11px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">enviada</span>' : '';
      var w = r.incompleta ? ' <span title="Dirección incompleta" style="color:#fb7185;font-size:12px;cursor:help">⚠</span>' : '';
+     var lg = r.logistica==='flex'
+       ? ' <span style="background:#1c1636;border:1px solid #3a2f6b;color:#c4b5fd;font-size:10.5px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">⚡ Flex</span>' : '';
      return '<tr onmouseover="this.style.background=&#39;#0d1622&#39;" onmouseout="this.style.background=&#39;&#39;">'
        +'<td style="'+td+';width:36px"><input type="checkbox" class="rp-d-chk" value="'+_dEsc(r.num)+'" onclick="rpDCnt()" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer"></td>'
        +'<td style="'+td+';color:#cbd5e1;font-weight:700">#'+_dEsc(r.num)+w+(_dTiendas.length>=2?' <span style="font-size:9.5px;color:#5b6b82;font-weight:700;letter-spacing:.5px">'+(r.tienda==='shopify'?'SH':(r.tienda==='tn'?'TN':(r.tienda==='meli'?'ML':'')))+'</span>':'')+'</td>'
        +'<td style="'+td+'"><span style="display:inline-flex;align-items:center;gap:9px"><span style="width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:800;color:#fff;background:'+_dColor(r.nombre)+'">'+_dEsc(_dIni(r.nombre))+'</span>'+_dEsc(r.nombre)+'</span></td>'
-       +'<td style="'+td+'">'+env+est+'</td>'
+       +'<td style="'+td+'">'+env+lg+est+'</td>'
        +'<td style="'+td+';color:#8493a8">'+_dEsc(r.localidad)+'</td>'
        +'<td style="'+td+';color:#8493a8">'+_dEsc(r.cp)+'</td>'
        +'<td style="'+td+';text-align:right">'+r.unidades+'</td>'
@@ -6943,6 +6976,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             "suc_nombre": " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip(),
             "calle": sa.get("address1") or "", "extra": sa.get("address2") or "",
             "incompleta": incompleta, "estado": estado,
+            "logistica": _logi_de(email, num),
         })
     out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
     return out
@@ -12443,6 +12477,7 @@ def _shopify_resumen(email, desde, hasta):
     iibb_ret = 0.0     # IIBB que MP ya retuvo en los pagos del periodo (pago a cuenta)
     perc_iva = 0.0     # PERCEPCION de IVA: otro impuesto, este SI es credito fiscal
     fact = cobr = costo_prod = reemb_monto = envio_monto = 0.0
+    envio_flex = 0            # cuantos se costearon como Flex y no como Andreani
     envio_zona = 0.0   # suma de la tabla Andreani por zona (con descuento)
     unidades = ordenes = reemb_cant = envio_real = 0
     ordenes_cero = 0   # pedidos en $0: no son ventas, pero su producto y envio si cuestan
@@ -12473,11 +12508,18 @@ def _shopify_resumen(email, desde, hasta):
         _num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         if _envio_unificado_paga(_num):
             envio_zona += _envio_costo(o)   # SIEMPRE la tabla Andreani por zona (con descuento)
-            _real = emap.get(_num)
-            if _real is not None:
-                envio_monto += _real; envio_real += 1
+            # Si el pedido se marco como FLEX, no paga tarifa de correo: cuesta lo que cuesta
+            # llevarlo. Si todavia no se cargo ese costo, se deja la tabla de Andreani antes
+            # que inventar un numero que le cambie la ganancia a ciegas.
+            _fx = _flex_costo_envio(o) if _logi_de(email, _num) == "flex" else None
+            if _fx is not None:
+                envio_monto += _fx; envio_flex += 1
             else:
-                envio_monto += _envio_costo(o)
+                _real = emap.get(_num)
+                if _real is not None:
+                    envio_monto += _real; envio_real += 1
+                else:
+                    envio_monto += _envio_costo(o)
         # else: viaja dentro del paquete de otro pedido (ver ENVIOS_UNIFICADOS) -> no suma envio
         # MP: matcheo este pedido con su pago real (por referencia; fallback por monto exacto).
         pago = None
@@ -27872,6 +27914,88 @@ def mcp_servidor(clave):
     if idd is None:
         return _mcp_cors(Response(status=202))
     return _mcp_err(idd, -32601, "Metodo desconocido: %s" % metodo)
+
+
+# ───────────────── LOGISTICA POR PEDIDO (Andreani / Flex) ─────────────────
+# Cada pedido se costeaba SIEMPRE con la tabla de Andreani por zona. Los que lleva Cristian
+# por Flex no cuestan eso, asi que el envio promedio (y con el la ganancia y el break even)
+# salian mal. Aca se marca cual va por cual y el costo sigue a la marca.
+#
+# Por defecto TODO es Andreani: solo se guardan los que se marcan como Flex.
+
+DESP_LOGI = DATA_DIR / "desp_logistica.json"      # {email: {num: "flex"}}
+
+# Lo que te cuesta a VOS un envio por Flex (nafta + lo que le pagas al que reparte).
+# Vacio = todavia no configurado -> se sigue costeando como Andreani, para no cambiarte
+# la ganancia a ciegas con un numero inventado.
+_FLEX_COSTO_UNICO = (_os.getenv("FLEX_COSTO", "") or "").strip()
+_FLEX_COSTO_ZONA = {                               # pisa al unico si estan cargados
+    "caba": (_os.getenv("FLEX_COSTO_CABA", "") or "").strip(),
+    "gba1": (_os.getenv("FLEX_COSTO_GBA1", "") or "").strip(),
+    "gba2": (_os.getenv("FLEX_COSTO_GBA2", "") or "").strip(),
+}
+
+
+def _logi_all() -> dict:
+    try:
+        return _json.loads(DESP_LOGI.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _logi(email) -> dict:
+    return (_logi_all().get(email) or {})
+
+
+def _logi_de(email, num) -> str:
+    """'flex' o 'andreani'. Andreani es el default: no hace falta marcarlos."""
+    return "flex" if _logi(email).get(str(num)) == "flex" else "andreani"
+
+
+def _logi_set(email, nums, cual) -> int:
+    todo = _logi_all()
+    d = todo.setdefault(email, {})
+    n = 0
+    for x in nums:
+        k = str(x).strip()
+        if not k:
+            continue
+        if cual == "flex":
+            d[k] = "flex"
+        else:
+            d.pop(k, None)                         # Andreani = no estar en la lista
+        n += 1
+    tmp = DESP_LOGI.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(todo, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(DESP_LOGI)
+    return n
+
+
+def _flex_costo_envio(o) -> float:
+    """Lo que cuesta de verdad llevarlo por Flex. Si no esta configurado devuelve None y el
+    pedido se sigue costeando con la tabla de Andreani (mejor eso que inventar un numero)."""
+    z = _flex_zona(_prov_cp(o)[1], _prov_cp(o)[0]) or ""
+    v = _FLEX_COSTO_ZONA.get(z) or _FLEX_COSTO_UNICO
+    try:
+        return float(str(v).replace(".", "").replace(",", ".")) if v else None
+    except Exception:
+        return None
+
+
+@app.post("/pf-desp-logistica")
+def pf_desp_logistica():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    cual = "flex" if (d.get("logistica") == "flex") else "andreani"
+    n = _logi_set(email, d.get("nums") or [], cual)
+    try:                                           # los numeros del dashboard cambian: tiro el cache
+        _DESP_CACHE.pop(email, None); _desp_cache_save()
+    except Exception:
+        pass
+    return jsonify({"ok": True, "marcados": n, "logistica": cual,
+                    "costo_configurado": bool(_FLEX_COSTO_UNICO or any(_FLEX_COSTO_ZONA.values()))})
 
 
 # Catch-all defensivo: cualquier otro fetch del dashboard responde vacío (no 404, no error).
