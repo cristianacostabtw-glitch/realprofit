@@ -16655,7 +16655,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _iibb_w = _fact_w * (IIBB_PCT / 100.0)
         # Misma regla que arriba: el 0,6% de Shopify no da credito, asi que NO se resta de la base.
         # La retencion NO va en esta base: es impuesto, no factura, no da credito fiscal.
-        _iva_w = (_fact_w - _prod_w - _com_w - _env_w) * _F
+        _iva_w = _fact_w * _IVA_F_VTA - (_prod_w + _com_w + _env_w) * _IVA_F_CMP
         # La comision de la agencia (10% de la pauta de CP3) NO entra en el break even.
         # Decision de Cristian (05-10-2026): "sin agregarlo al cpa breakeven, pero restalo como
         # algo a la ganancia si tiene su tarjetita y se sabe cuanto se resta".
