@@ -1626,7 +1626,8 @@ _SOLO_DASH = r"""
     +'<span style="flex:1"></span>'
     +'<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Marcar tildados:</span>'
     +'<button onclick="rpDMarcar(\'flex\')" style="background:#1c1636;border:1px solid #3a2f6b;color:#c4b5fd;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\u26A1 Flex</button>'
-    +'<button onclick="rpDMarcar(\'andreani\')" style="background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\uD83D\uDE9A Andreani</button>'; };
+    +'<button onclick="rpDMarcar(\'andreani\')" style="background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\uD83D\uDE9A Andreani</button>'
+    +'<button onclick="rpDMarcar(\'auto\')" title="Vuelve a decidirlo el metodo de envio del pedido" style="background:transparent;border:1px solid #1a2333;color:#5b6b82;border-radius:11px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer">auto</button>'; };
  window.rpDLogi=function(t){ _dLogi=t; rpDLogiRender(); rpDRender(); };
  window.rpDMarcar=function(cual){
    var ns=[].slice.call(document.querySelectorAll('.rp-d-chk:checked')).map(function(c){return c.value;});
@@ -1634,6 +1635,7 @@ _SOLO_DASH = r"""
    fetch('/pf-desp-logistica',{method:'POST',headers:{'Content-Type':'application/json'},
      body:JSON.stringify({nums:ns,logistica:cual})}).then(function(r){return r.json();}).then(function(j){
      if(!j.ok){ _dStat('No se pudo marcar.','#fb7185'); return; }
+     if(cual==='auto'){ rpDLoad(true); return; }    // la deteccion la rehace el server
      _dRows.forEach(function(r){ if(ns.indexOf(String(r.num))>=0) r.logistica=cual; });
      var av=(cual==='flex'&&!j.costo_configurado)
        ? ' \u2014 OJO: todav\u00eda no cargaste cu\u00e1nto te cuesta un env\u00edo por Flex, as\u00ed que se siguen costeando como Andreani.'
@@ -6976,7 +6978,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             "suc_nombre": " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).strip(),
             "calle": sa.get("address1") or "", "extra": sa.get("address2") or "",
             "incompleta": incompleta, "estado": estado,
-            "logistica": _logi_de(email, num),
+            "logistica": _logi_de(email, num, " ".join(
+                (s.get("title") or "") for s in (o.get("shipping_lines") or []))),
         })
     out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
     return out
@@ -12511,7 +12514,8 @@ def _shopify_resumen(email, desde, hasta):
             # Si el pedido se marco como FLEX, no paga tarifa de correo: cuesta lo que cuesta
             # llevarlo. Si todavia no se cargo ese costo, se deja la tabla de Andreani antes
             # que inventar un numero que le cambie la ganancia a ciegas.
-            _fx = _flex_costo_envio(o) if _logi_de(email, _num) == "flex" else None
+            _metodo = " ".join((x.get("title") or "") for x in (o.get("shipping_lines") or []))
+            _fx = _flex_costo_envio(o) if _logi_de(email, _num, _metodo) == "flex" else None
             if _fx is not None:
                 envio_monto += _fx; envio_flex += 1
             else:
@@ -27947,9 +27951,22 @@ def _logi(email) -> dict:
     return (_logi_all().get(email) or {})
 
 
-def _logi_de(email, num) -> str:
-    """'flex' o 'andreani'. Andreani es el default: no hace falta marcarlos."""
-    return "flex" if _logi(email).get(str(num)) == "flex" else "andreani"
+def _logi_auto(metodo) -> str:
+    """La logistica sale SOLA del metodo de envio que eligio el cliente en el checkout.
+    Los de Envialo Flex son los del rayito; tambien se aceptan las variantes escritas."""
+    t = (metodo or "").lower()
+    if "\u26a1" in t or "flex" in t or "envialo" in t or "redchat" in t:
+        return "flex"
+    return "andreani"
+
+
+def _logi_de(email, num, metodo=None) -> str:
+    """Primero lo que marco Cristian a mano (gana siempre), si no lo que dice el metodo de
+    envio. Andreani es el default."""
+    m = _logi(email).get(str(num))
+    if m in ("flex", "andreani"):
+        return m
+    return _logi_auto(metodo)
 
 
 def _logi_set(email, nums, cual) -> int:
@@ -27960,10 +27977,12 @@ def _logi_set(email, nums, cual) -> int:
         k = str(x).strip()
         if not k:
             continue
-        if cual == "flex":
-            d[k] = "flex"
+        # Se guardan los DOS: ahora que la deteccion es automatica, marcar "Andreani" a mano
+        # tiene que poder CONTRADECIR al metodo de envio, no solo borrar la marca.
+        if cual == "auto":
+            d.pop(k, None)                         # vuelve a decidir el metodo de envio
         else:
-            d.pop(k, None)                         # Andreani = no estar en la lista
+            d[k] = "flex" if cual == "flex" else "andreani"
         n += 1
     tmp = DESP_LOGI.with_suffix(".tmp")
     tmp.write_text(_json.dumps(todo, ensure_ascii=False), encoding="utf-8")
@@ -27988,7 +28007,9 @@ def pf_desp_logistica():
     if not email:
         return jsonify({"ok": False}), 401
     d = request.get_json(silent=True) or {}
-    cual = "flex" if (d.get("logistica") == "flex") else "andreani"
+    cual = d.get("logistica") or "andreani"
+    if cual not in ("flex", "andreani", "auto"):
+        cual = "andreani"
     n = _logi_set(email, d.get("nums") or [], cual)
     try:                                           # los numeros del dashboard cambian: tiro el cache
         _DESP_CACHE.pop(email, None); _desp_cache_save()
