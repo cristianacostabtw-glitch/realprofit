@@ -1623,14 +1623,7 @@ _SOLO_DASH = r"""
    c.innerHTML='<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Log\u00edstica:</span>'
     +ops.map(function(o){ var on=o[0]===_dLogi;
       return '<button onclick="rpDLogi(\''+o[0]+'\')" style="background:'+(on?'#16233a':'#0b111c')+';border:1px solid '+(on?'#2f4a6b':'#1a2333')+';color:'+(on?'#8fbdf5':'#c7d2e0')+';border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">'+o[1]+' <span style="opacity:.6">'+n[o[0]]+'</span></button>'; }).join('')
-    +'<span style="flex:1"></span>'
-    +'<span style="color:#5b6b82;font-size:12px;font-weight:600;margin-right:2px">Marcar tildados:</span>'
-    +'<button onclick="rpDMarcar(\'flex\')" style="background:#1c1636;border:1px solid #3a2f6b;color:#c4b5fd;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\u26A1 Flex</button>'
-    +'<button onclick="rpDMarcar(\'andreani\')" style="background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer">\uD83D\uDE9A Andreani</button>'
-    +'<button onclick="rpDMarcar(\'auto\')" title="Vuelve a decidirlo el metodo de envio del pedido" style="background:transparent;border:1px solid #1a2333;color:#5b6b82;border-radius:11px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer">auto</button>'
-    +((_dRows.filter(function(r){return r.logi_manual;}).length)
-       ? '<button onclick="rpDResetLogi()" style="background:#2a1620;border:1px solid #5a2a3a;color:#fb7185;border-radius:11px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-left:6px">\u21ba Borrar marcas a mano ('+_dRows.filter(function(r){return r.logi_manual;}).length+')</button>'
-       : ''); };
+    + ''; };
  window.rpDResetLogi=function(){
    if(!confirm('Borra TODAS las marcas que pusiste a mano. La log\u00edstica vuelve a salir del m\u00e9todo de env\u00edo de cada pedido. \u00bfDale?')) return;
    fetch('/pf-desp-logistica',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1639,20 +1632,6 @@ _SOLO_DASH = r"""
      rpDLoad(true);
    }).catch(function(){ _dStat('No se pudo.','#fb7185'); }); };
  window.rpDLogi=function(t){ _dLogi=t; rpDLogiRender(); rpDRender(); };
- window.rpDMarcar=function(cual){
-   var ns=[].slice.call(document.querySelectorAll('.rp-d-chk:checked')).map(function(c){return c.value;});
-   if(!ns.length){ _dStat('Tild\u00e1 primero los pedidos que van por esa log\u00edstica.','#f0b429'); return; }
-   fetch('/pf-desp-logistica',{method:'POST',headers:{'Content-Type':'application/json'},
-     body:JSON.stringify({nums:ns,logistica:cual})}).then(function(r){return r.json();}).then(function(j){
-     if(!j.ok){ _dStat('No se pudo marcar.','#fb7185'); return; }
-     if(cual==='auto'){ rpDLoad(true); return; }    // la deteccion la rehace el server
-     _dRows.forEach(function(r){ if(ns.indexOf(String(r.num))>=0) r.logistica=cual; });
-     var av=(cual==='flex'&&!j.costo_configurado)
-       ? ' \u2014 OJO: todav\u00eda no cargaste cu\u00e1nto te cuesta un env\u00edo por Flex, as\u00ed que se siguen costeando como Andreani.'
-       : '';
-     _dStat(j.marcados+' pedido(s) marcados como '+(cual==='flex'?'Flex':'Andreani')+'.'+av, av?'#f0b429':'#34d399');
-     rpDLogiRender(); rpDRender();
-   }).catch(function(){ _dStat('Error de conexi\u00f3n.','#fb7185'); }); };
  window.rpDVisibles=function(){ var q=((document.getElementById('rp-d-q')||{}).value||'').toLowerCase().trim();
    var base=_dFilt==='todas'?_dRows:_dRows.filter(function(r){return r.estado===_dFilt;});
    if(_dTienda!=='todas') base=base.filter(function(r){return (r.tienda||'')===_dTienda;});
@@ -6124,11 +6103,23 @@ DESP_STATE = DATA_DIR / "despachos_estado.json"   # {email: {order_num: "enviar"
 _SUC_KEYS = ("sucursal", "pickup", "pick up", "pick-up", "retiro", "punto", "agenc", "hop")
 
 
+DESP_ESTADOS_OK = ("exportada", "enviada")   # lo unico que puede vivir en el estado de un pedido
+
+
 def _desp_state(email) -> dict:
+    """Estado guardado de cada pedido. SANEA al leer: cualquier valor que no sea
+    'exportada' o 'enviada' se descarta.
+
+    Por que: un pedido cuyo estado no es ninguno de los tres (empaquetar/exportada/enviada)
+    no cae en NINGUN grupo del resumen ni en NINGUNA solapa — desaparece de la pantalla
+    aunque siga existiendo. El 09-10-2026 se escribio "andreani" en 93 pedidos (dos funciones
+    JS distintas se llamaban rpDMarcar y la vieja pisaba a la nueva, ver /pf-despachos-marcar)
+    y Despachos quedo en 9 de 112. Sanear al LEER lo arregla solo, sin migracion."""
     try:
-        return (_json.loads(DESP_STATE.read_text(encoding="utf-8"))).get(email, {})
+        st = (_json.loads(DESP_STATE.read_text(encoding="utf-8"))).get(email, {})
     except Exception:
         return {}
+    return {k: v for k, v in st.items() if v in DESP_ESTADOS_OK}
 
 
 def _desp_save(email, st) -> None:
@@ -8612,6 +8603,9 @@ def pf_despachos_marcar():
     data = request.get_json(silent=True) or {}
     nums = [str(n) for n in (data.get("nums") or [])]
     accion = (data.get("accion") or "exportada").strip()   # exportada / enviada / empaquetar
+    if accion not in DESP_ESTADOS_OK + ("empaquetar",):
+        # sin esto, un accion raro se guardaba igual y el pedido se volvia invisible
+        return jsonify({"ok": False, "error": "estado invalido: %s" % accion}), 400
     st = _desp_state(email)
     for n in nums:
         if accion == "empaquetar":
