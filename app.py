@@ -3889,8 +3889,8 @@ _SOLO_DASH = r"""
       <span class="lb">Estrategia de puja</span>
       <div class="seg">
        <div class="s on" id="rpa-em" onclick="rpaEstr('minimo')">Costo m&aacute;s bajo<small>sin puja</small></div>
-       <div class="s" id="rpa-ec" onclick="rpaEstr('costcap')">Cost cap<small>techo de CPA</small></div>
-       <div class="s" id="rpa-eb" onclick="rpaEstr('bidcap')">Bid cap<small>techo de puja</small></div>
+       <div class="s" id="rpa-ec" onclick="rpaEstr('costcap')">Objetivo de costo<small>por resultado</small></div>
+       <div class="s" id="rpa-eb" onclick="rpaEstr('bidcap')">L&iacute;mite de puja<small>techo por subasta</small></div>
       </div>
       <div id="rpa-pujawrap" style="display:none;margin-top:13px">
        <span class="lb">Pujas <span id="rpa-pujamon" style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">una puja = un conjunto</span></span>
@@ -4143,7 +4143,7 @@ _SOLO_DASH = r"""
    var rc=$('rpa-rconj'); if(rc) rc.textContent=nc;
    var ra=$('rpa-rads'); if(ra&&!(REPARTIR&&nc>1&&MODO=='renovacion')) ra.textContent=creat*nc;
    var rt=$('rpa-rtipo');
-   if(rt&&conPuja) rt.textContent=rt.textContent+' · '+(ESTR=='costcap'?'límite de costo':'límite de puja')
+   if(rt&&conPuja) rt.textContent=rt.textContent+' · '+(ESTR=='costcap'?'obj. de costo':'límite de puja')
      +(ps.length?(' '+_rpMil(ps[0])+(ps.length>1?(' → '+_rpMil(ps[ps.length-1])):'')):'');
   }
   var rv=$('rpa-rvids'); if(rv&&MODO=='escala') rv.textContent=creat;
@@ -4227,7 +4227,7 @@ _SOLO_DASH = r"""
  window.rpaLanzar=function(){
   if(MODO=='escala'){ if(!rpaPostIds().length){alert('Pegá al menos una publicación (post ID) para escalar.');return;} }
   else if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
-  if(ESTR!='minimo'&&!rpaPujas().length){alert('Elegiste '+(ESTR=='costcap'?'límite de costo':'límite de puja')+': agregá al menos una puja.');return;}
+  if(ESTR!='minimo'&&!rpaPujas().length){alert('Elegiste '+(ESTR=='costcap'?'objetivo de costo por resultado':'límite de puja')+': agregá al menos una puja.');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:rpaNConj(),repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'&&!rpaEsc()),reparto_map:RMAP,
@@ -14661,14 +14661,14 @@ def _ads_sched(params):
 # Verificado el 09-10-2026 LEYENDO los 80 conjuntos de CP3, no de memoria: Meta guarda la
 # estrategia y la puja en lugares DISTINTOS segun donde este el presupuesto.
 #   CBO -> bid_strategy en la CAMPANA; cada conjunto lleva SOLO bid_amount (mandarle tambien
-#          bid_strategy al conjunto lo hace rechazar)            [52 conjuntos asi, bid cap]
+#          bid_strategy al conjunto lo hace rechazar)      [52 conjuntos asi, limite de puja]
 #   ABO -> bid_strategy Y bid_amount en el CONJUNTO; la campana no lleva ninguno de los dos
-#                                                                [6 conjuntos asi, cost cap]
+#                                                        [6 conjuntos asi, objetivo de costo]
 # bid_amount va en CENTAVOS de la moneda de la cuenta (6000000 = $60.000 en CP3, que es ARS).
 ADS_ESTRATEGIAS = {
     "minimo": "LOWEST_COST_WITHOUT_CAP",    # costo mas bajo: sin puja
-    "costcap": "COST_CAP",                  # techo de CPA
-    "bidcap": "LOWEST_COST_WITH_BID_CAP",   # techo de puja
+    "costcap": "COST_CAP",                  # en Meta: "Objetivo de costo por resultado"
+    "bidcap": "LOWEST_COST_WITH_BID_CAP",   # en Meta: "Limite de puja"
 }
 def _ads_num(v):
     """'60000' · '60.000' · '$ 60.000' · '12,50' -> numero. El punto de miles y el decimal se
@@ -15932,7 +15932,7 @@ def _ads_run(job, params):
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
                        "tipo": (("CBO" if cbo else "ABO")
                                 + ("" if estrategia == "LOWEST_COST_WITHOUT_CAP"
-                                   else (" COST CAP" if estrategia == "COST_CAP" else " BID CAP"))),
+                                   else (" OBJ. COSTO" if estrategia == "COST_CAP" else " LIM. PUJA"))),
                        "estado": _est_txt, "needs_approval": needs_appr}
         st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s" % (creados, n_conj, _est_txt); _job_put(job, st)
         st["listo"] = True
@@ -16314,7 +16314,8 @@ def pf_ads_lanzar():
     if _es in ("costcap", "bidcap") and not [v for v in (data.get("pujas") or []) if _ads_num(v) > 0]:
         return jsonify({"ok": False,
                         "msg": "elegiste %s pero no agregaste ninguna puja" % (
-                            "límite de costo" if _es == "costcap" else "límite de puja")}), 400
+                            "objetivo de costo por resultado" if _es == "costcap"
+                            else "límite de puja")}), 400
     import uuid
     # MULTI-CUENTA: si vienen varias, se lanza UN job por cuenta. Cada uno con SU token y SU
     # presupuesto (las cuentas pueden estar en monedas distintas: un solo numero no sirve para las dos).
