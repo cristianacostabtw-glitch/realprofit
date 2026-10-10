@@ -3830,7 +3830,11 @@ _SOLO_DASH = r"""
    <p style="margin:5px 0 0;color:#8b97a8;font-size:13px">Peg&aacute; el Drive, eleg&iacute; la config y lanz&aacute; la campa&ntilde;a con 1 click.</p></div>
   <button onclick="rpAds(false)" style="background:#111c2b;border:1px solid #1b2536;color:#cbd5e1;border-radius:10px;width:38px;height:38px;font-size:17px;cursor:pointer">&#10005;</button>
  </div>
- <div style="display:flex;align-items:center;gap:13px;background:linear-gradient(90deg,rgba(251,191,36,.09),rgba(19,127,236,.05));border:1px solid #4a3a1a;border-radius:14px;padding:13px 17px;margin-bottom:18px">
+ <div class="seg" id="rpa-modo" style="margin-bottom:18px">
+  <div class="s on" id="rpa-mren" onclick="rpaModo('renovacion')">Renovaci&oacute;n<small>creativos nuevos</small></div>
+  <div class="s" id="rpa-mesc" onclick="rpaModo('escala')">Escala<small>publicaciones que ya corren</small></div>
+ </div>
+ <div id="rpa-drivebanner" style="display:flex;align-items:center;gap:13px;background:linear-gradient(90deg,rgba(251,191,36,.09),rgba(19,127,236,.05));border:1px solid #4a3a1a;border-radius:14px;padding:13px 17px;margin-bottom:18px">
   <span style="font-size:20px;flex:none">&#128273;</span>
   <div style="flex:1;font-size:12.5px;color:#cbd5e1;line-height:1.5">Para que pueda leer tus videos, <b style="color:#f4f7fb">compart&iacute; la carpeta de Drive</b> con esta cuenta (permiso <b style="color:#f4f7fb">Lector</b>):<br>
    <span style="color:#fbbf24;font-weight:700;font-family:ui-monospace,monospace;font-size:12px">bot-finanzas-sheets@bot-finanzas-499200.iam.gserviceaccount.com</span></div>
@@ -3851,7 +3855,7 @@ _SOLO_DASH = r"""
      <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
     <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select></div>
    </div>
-   <div class="card">
+   <div class="card" id="rpa-card-creativos">
     <div class="ch"><div class="cn">2</div><div class="ct">Creativos</div><div class="cs" id="rpa-vc">eleg&iacute; de d&oacute;nde</div></div>
     <div class="seg" style="margin-bottom:12px"><div class="s on" id="rpa-fdrive" onclick="rpaFuente('drive')">Google Drive</div><div class="s" id="rpa-farch" onclick="rpaFuente('arch')">Mis archivos</div></div>
     <div id="rpa-srcdrive">
@@ -3865,6 +3869,11 @@ _SOLO_DASH = r"""
      <div style="color:#5b6678;font-size:11.5px;margin-top:6px">Pod&eacute;s elegir varios de una, o subir el <b>.zip</b> que te baja Google Drive (lo descomprimo solo y saco los videos).</div>
     </div>
     <div id="rpa-vids"></div>
+   </div>
+   <div class="card" id="rpa-card-posts" style="display:none">
+    <div class="ch"><div class="cn">2</div><div class="ct">Publicaciones a escalar</div><div class="cs" id="rpa-postsc">peg&aacute; los post ID</div></div>
+    <textarea class="in" id="rpa-posts" rows="4" oninput="rpaCalc()" placeholder="1200571473149471_122109626079462676&#10;1200571473149471_122112581397462676&#10;&#10;una por l&iacute;nea &mdash; tambi&eacute;n sirve el link de la publicaci&oacute;n" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.6"></textarea>
+    <div class="hint" id="rpa-postshint">Cada publicaci&oacute;n entra como un anuncio en <b style="color:#8fb3e0">cada</b> conjunto, con los likes y comentarios que ya tiene.</div>
    </div>
    <div class="card">
     <div class="ch"><div class="cn">3</div><div class="ct">Campa&ntilde;a</div></div>
@@ -3884,16 +3893,9 @@ _SOLO_DASH = r"""
        <div class="s" id="rpa-eb" onclick="rpaEstr('bidcap')">Bid cap<small>techo de puja</small></div>
       </div>
       <div id="rpa-pujawrap" style="display:none;margin-top:13px">
-       <div class="seg">
-        <div class="s on" id="rpa-pu" onclick="rpaPujaModo('una')">Una puja<small>igual en todos</small></div>
-        <div class="s" id="rpa-pe" onclick="rpaPujaModo('escalera')">Escalera<small>un conjunto por puja</small></div>
-       </div>
-       <div id="rpa-pujauna" style="margin-top:12px"><span class="lb">Puja <span id="rpa-pujamon" style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0"></span></span><input class="in" id="rpa-puja" placeholder="ej: 50000" oninput="rpaCalc()"></div>
-       <div id="rpa-pujaesc" style="display:none;margin-top:12px"><div class="row">
-        <div><span class="lb">Desde</span><input class="in" id="rpa-pd" placeholder="60000" oninput="rpaCalc()"></div>
-        <div><span class="lb">Hasta</span><input class="in" id="rpa-ph" placeholder="40000" oninput="rpaCalc()"></div>
-        <div><span class="lb">Paso</span><input class="in" id="rpa-pp" placeholder="2000" oninput="rpaCalc()"></div>
-       </div></div>
+       <span class="lb">Pujas <span id="rpa-pujamon" style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">una puja = un conjunto</span></span>
+       <div id="rpa-pujalista"></div>
+       <button onclick="rpaPujaAdd()" style="background:#16233a;border:1px solid #2f4a6b;color:#8fbdf5;border-radius:10px;padding:10px 15px;font-size:12.5px;font-weight:800;cursor:pointer;margin-top:4px">+ Agregar puja</button>
        <div class="hint" id="rpa-eschint"></div>
       </div>
      </div>
@@ -3917,7 +3919,7 @@ _SOLO_DASH = r"""
     <label class="sw" id="rpa-repwrap" onclick="rpaRep()" style="margin-top:13px"><span class="tk" id="rpa-reptk"><i></i></span><span style="font-size:13.5px;font-weight:700">Repartir videos entre conjuntos <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(por orden: los primeros al 1&ordm;, y as&iacute;)</span></span></label>
     <div class="hint" id="rpa-cjhint">Cada conjunto lleva 1 anuncio por video.</div>
    </div>
-   <div class="card">
+   <div class="card" id="rpa-card-anuncio">
     <div class="ch"><div class="cn">5</div><div class="ct">Anuncio</div><div class="cs">t&iacute;tulo &middot; copy &middot; destino</div></div>
     <div class="row"><div><span class="lb">T&iacute;tulo</span><input class="in" id="rpa-titulo" placeholder="Titular del anuncio"></div>
      <div><span class="lb">Subt&iacute;tulo</span><input class="in" id="rpa-sub" placeholder="descripci&oacute;n (opcional)"></div></div>
@@ -3945,7 +3947,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
 (function(){
- var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados',SHARE=false,ESTR='minimo',PUJAM='una';
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados',SHARE=false,ESTR='minimo',MODO='renovacion',PUJAS=[''];
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
@@ -4077,50 +4079,75 @@ _SOLO_DASH = r"""
   rpaCalc();};
  window.rpaPresupLb=function(){var e=$('rpa-presuplb');if(!e)return;
    e.textContent=(TIPO=='abo'?'Presupuesto diario por conjunto':'Presupuesto diario')+(MONEDA?(' ('+MONEDA+')'):'');};
- // ── ESCALA ── estrategia de puja + escalera (un conjunto por puja, como los arma Cristian a mano)
+ // ── MODO ── Renovacion = creativos nuevos (Drive/archivos). Escala = publicaciones que YA
+ // corren, por post ID: no se sube nada y el anuncio se lleva los likes y comentarios del post.
+ window.rpaModo=function(m){ MODO=m;
+  $('rpa-mren').classList.toggle('on',m=='renovacion'); $('rpa-mesc').classList.toggle('on',m=='escala');
+  var esc=(m=='escala');
+  var o=function(id,v){ var e=$(id); if(e) e.style.display=v; };
+  o('rpa-card-creativos', esc?'none':'block');
+  o('rpa-card-posts',     esc?'block':'none');
+  o('rpa-card-anuncio',   esc?'none':'block');   // la publicacion ya trae copy, titulo y destino
+  o('rpa-drivebanner',    esc?'none':'flex');
+  rpaCalc(); };
+ window.rpaPostIds=function(){
+  var t=(($('rpa-posts')||{}).value||'').split(/[\n,;]+/);
+  var out=[]; for(var i=0;i<t.length;i++){ var v=t[i].trim(); if(v) out.push(v); }
+  return out; };
+ // ── PUJAS ── las arma Cristian una por una: cada puja es UN conjunto.
+ function _rpNum(v){                       // '60000' '60.000' '12,50' -> numero
+  var t=String(v||'').replace(/[^0-9.,]/g,''); if(!t) return 0;
+  var i=Math.max(t.lastIndexOf('.'),t.lastIndexOf(','));
+  if(i<0) return parseFloat(t)||0;
+  var dec=t.slice(i+1), ent=t.slice(0,i).replace(/[.,]/g,'');
+  if(dec.length===3) return parseFloat(ent+dec)||0;       // 60.000 = miles, no decimal
+  return parseFloat(ent+'.'+dec)||0; }
+ function _rpMil(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
  window.rpaPujas=function(){
   if(ESTR=='minimo') return [];
-  if(PUJAM=='una'){ var u=parseFloat(($('rpa-puja')||{}).value||'0'); return (u>0)?[u]:[]; }
-  var a=parseFloat(($('rpa-pd')||{}).value||'0'),b=parseFloat(($('rpa-ph')||{}).value||'0'),p=Math.abs(parseFloat(($('rpa-pp')||{}).value||'0'));
-  if(!(a>0&&b>0&&p>0)) return [];
-  var st=(a>=b)?-p:p,out=[],v=a;          // misma cuenta que _ads_escalera en el server
-  while(out.length<30){ out.push(Math.round(v)); v+=st; if(st<0&&v<b-1e-9)break; if(st>0&&v>b+1e-9)break; }
+  var out=[]; for(var i=0;i<PUJAS.length;i++){ var n=_rpNum(PUJAS[i]); if(n>0) out.push(n); }
   return out; };
- window.rpaEsc=function(){ return ESTR!='minimo'&&PUJAM=='escalera'&&rpaPujas().length>0; };
- window.rpaNConj=function(){ return rpaEsc()?rpaPujas().length:NCONJ; };
+ window.rpaNConj=function(){ var p=rpaPujas(); return (ESTR!='minimo'&&p.length)?p.length:NCONJ; };
+ window.rpaPujaSet=function(i,v){ PUJAS[i]=v; rpaCalc(); };      // NO repinta: perderia el foco
+ window.rpaPujaAdd=function(){ PUJAS.push(''); rpaPujaRender(); rpaCalc(); };
+ window.rpaPujaDel=function(i){ PUJAS.splice(i,1); if(!PUJAS.length)PUJAS=['']; rpaPujaRender(); rpaCalc(); };
+ window.rpaPujaRender=function(){ var c=$('rpa-pujalista'); if(!c)return;
+  c.innerHTML=PUJAS.map(function(v,i){
+   return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'
+    +'<span style="color:#5b6678;font-size:11.5px;font-weight:800;width:62px;flex:none">conj. '+(i+1)+'</span>'
+    +'<input class="in" style="flex:1" value="'+String(v||'').replace(/"/g,'&quot;')+'" placeholder="ej: 50000" oninput="rpaPujaSet('+i+',this.value)">'
+    +(PUJAS.length>1?('<button onclick="rpaPujaDel('+i+')" title="sacar" style="flex:none;background:#2a1620;border:1px solid #5a2a3a;color:#fb7185;border-radius:9px;width:34px;height:38px;font-size:15px;cursor:pointer">&times;</button>'):'')
+    +'</div>'; }).join(''); };
  window.rpaEstr=function(e){ ESTR=e;
   $('rpa-em').classList.toggle('on',e=='minimo');$('rpa-ec').classList.toggle('on',e=='costcap');$('rpa-eb').classList.toggle('on',e=='bidcap');
-  $('rpa-pujawrap').style.display=(e=='minimo')?'none':'block'; rpaCalc(); };
- window.rpaPujaModo=function(m){ PUJAM=m;
-  $('rpa-pu').classList.toggle('on',m=='una');$('rpa-pe').classList.toggle('on',m=='escalera');
-  $('rpa-pujauna').style.display=(m=='una')?'block':'none';
-  $('rpa-pujaesc').style.display=(m=='escalera')?'block':'none'; rpaCalc(); };
- function _rpMil(n){ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
+  $('rpa-pujawrap').style.display=(e=='minimo')?'none':'block';
+  if(e!='minimo'&&!PUJAS.length){ PUJAS=['']; }
+  rpaPujaRender(); rpaCalc(); };
  window.rpaEscalaCalc=function(){
-  var ps=rpaPujas(), esc=rpaEsc(), nc=rpaNConj(), mon=MONEDA?(' '+MONEDA):'';
-  var pm=$('rpa-pujamon'); if(pm)pm.textContent=MONEDA?('en '+MONEDA):'';
+  var ps=rpaPujas(), nc=rpaNConj(), conPuja=(ESTR!='minimo'), mon=MONEDA?(' '+MONEDA):'';
+  var creat=(MODO=='escala')?rpaPostIds().length:VIDS;        // de donde salen los anuncios
   var eh=$('rpa-eschint');
   if(eh){
-   if(ESTR=='minimo') eh.textContent='';
-   else if(PUJAM=='escalera') eh.innerHTML=ps.length
-     ? ('<b style="color:#8fb3e0">'+ps.length+' conjuntos</b>, uno por puja: '+ps.slice(0,3).map(_rpMil).join(' &middot; ')+(ps.length>3?(' &hellip; '+_rpMil(ps[ps.length-1])):'')+mon+'. Cada uno se llama como su puja y lleva tus '+VIDS+' videos.')
-     : 'Pon&eacute; desde, hasta y paso (ej: 60000 &rarr; 40000 de a 2000 = 11 conjuntos).';
-   else eh.innerHTML=ps.length
-     ? ('La misma puja ('+_rpMil(ps[0])+mon+') en los '+NCONJ+' conjuntos.')
-     : '<span style="color:#fbbf24">Falta la puja.</span>';
+   if(!conPuja) eh.textContent='';
+   else if(!ps.length) eh.innerHTML='<span style="color:#fbbf24">Agreg&aacute; al menos una puja.</span>';
+   else eh.innerHTML='<b style="color:#8fb3e0">'+ps.length+(ps.length==1?' conjunto':' conjuntos')+'</b>, uno por puja: '
+     +ps.slice(0,4).map(_rpMil).join(' &middot; ')+(ps.length>4?(' &hellip; '+_rpMil(ps[ps.length-1])):'')+mon
+     +'. Cada conjunto se llama como su puja y lleva '+(creat||0)+(creat==1?' anuncio.':' anuncios.');
   }
-  // El contador lo MANDA la escalera: que no diga 1 conjunto y te cree 11 (ya nos paso con
-  // los contadores de Despachos: dos numeros de la misma pantalla que no cierran).
+  // Un solo numero de conjuntos en toda la pantalla: con pujas lo manda la lista, no el contador.
   var nb=$('rpa-nconj'); if(nb)nb.textContent=nc;
-  var cl=$('rpa-cantlb'); if(cl)cl.textContent=esc?'Conjuntos (los pone la escalera)':'Cantidad de conjuntos';
-  var sp=$('rpa-cjcant'); if(sp){ var s2=sp.querySelector('.step'); if(s2){ s2.style.opacity=esc?'.45':''; s2.style.pointerEvents=esc?'none':''; } }
+  var cl=$('rpa-cantlb'); if(cl)cl.textContent=conPuja?'Conjuntos (los ponen las pujas)':'Cantidad de conjuntos';
+  var sp=$('rpa-cjcant'); if(sp){ var s2=sp.querySelector('.step'); if(s2){ s2.style.opacity=conPuja?'.45':''; s2.style.pointerEvents=conPuja?'none':''; } }
+  var ax=$('rpa-adsx'); if(ax&&MODO=='escala') ax.textContent=creat;
   if(CMP=='nueva'){
    var rc=$('rpa-rconj'); if(rc) rc.textContent=nc;
-   var ra=$('rpa-rads'); if(ra&&!(REPARTIR&&nc>1)) ra.textContent=VIDS*nc;
+   var ra=$('rpa-rads'); if(ra&&!(REPARTIR&&nc>1&&MODO=='renovacion')) ra.textContent=creat*nc;
    var rt=$('rpa-rtipo');
-   if(rt&&ESTR!='minimo') rt.textContent=rt.textContent+' · '+(ESTR=='costcap'?'cost cap':'bid cap')+(ps.length?(' '+_rpMil(ps[0])+(esc?(' → '+_rpMil(ps[ps.length-1])):'')):'');
+   if(rt&&conPuja) rt.textContent=rt.textContent+' · '+(ESTR=='costcap'?'límite de costo':'límite de puja')
+     +(ps.length?(' '+_rpMil(ps[0])+(ps.length>1?(' → '+_rpMil(ps[ps.length-1])):'')):'');
   }
-  if(esc){ var rw=$('rpa-repwrap'); if(rw) rw.style.display='none'; }   // escalando van los MISMOS ads en todos
+  var rv=$('rpa-rvids'); if(rv&&MODO=='escala') rv.textContent=creat;
+  if(conPuja||MODO=='escala'){ var rw=$('rpa-repwrap'); if(rw) rw.style.display='none'; }
  };
  window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');rpaPresupLb();rpaCalc();};
  window.rpaShare=function(){SHARE=!SHARE;$('rpa-sharetk').classList.toggle('on',SHARE);};
@@ -4197,11 +4224,14 @@ _SOLO_DASH = r"""
   if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi){if(rep){var cnt=[],k;for(k=1;k<=NCONJ;k++)cnt[k]=0;for(k=0;k<VLIST.length;k++){var cc=RMAP[k]||1;cnt[cc]=(cnt[cc]||0)+1;}var pp=[];for(k=1;k<=NCONJ;k++)pp.push('C'+k+': '+(cnt[k]||0));hi.innerHTML='Repartir — '+pp.join(' · ')+'  (elegí en cada video).';}else hi.innerHTML='Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).';}}
   $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;
   rpaEscalaCalc();};
- window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
+ window.rpaLanzar=function(){
+  if(MODO=='escala'){ if(!rpaPostIds().length){alert('Pegá al menos una publicación (post ID) para escalar.');return;} }
+  else if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
+  if(ESTR!='minimo'&&!rpaPujas().length){alert('Elegiste '+(ESTR=='costcap'?'límite de costo':'límite de puja')+': agregá al menos una puja.');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
    modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:rpaNConj(),repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'&&!rpaEsc()),reparto_map:RMAP,
-   estrategia:ESTR,puja_modo:PUJAM,puja:(($('rpa-puja')||{}).value||''),puja_desde:(($('rpa-pd')||{}).value||''),puja_hasta:(($('rpa-ph')||{}).value||''),puja_paso:(($('rpa-pp')||{}).value||''),
+   modo:MODO,posts:rpaPostIds(),estrategia:ESTR,pujas:rpaPujas(),
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   // MULTI-CUENTA: mando la lista y el presupuesto de CADA una (cada cuenta tiene su moneda).
@@ -14640,29 +14670,51 @@ ADS_ESTRATEGIAS = {
     "costcap": "COST_CAP",                  # techo de CPA
     "bidcap": "LOWEST_COST_WITH_BID_CAP",   # techo de puja
 }
-ADS_ESCALERA_MAX = 30          # tope de conjuntos que puede generar una escalera
-
-
-def _ads_escalera(desde, hasta, paso):
-    """Las pujas de una escalera: de `desde` a `hasta` de a `paso`, inclusive las dos puntas.
-    Cristian las escribe de mayor a menor (60000 -> 40000 de a 2000 = 11 conjuntos), pero
-    tambien funciona al reves. Devuelve [] si los numeros no sirven."""
+def _ads_num(v):
+    """'60000' · '60.000' · '$ 60.000' · '12,50' -> numero. El punto de miles y el decimal se
+    distinguen por cuantos digitos lo siguen: 3 = miles. Hace falta porque CP3 esta en pesos
+    (pujas de 60.000) y CP1/CP2 en dolares (pujas de 12,50) — ver [moneda por cuenta]."""
+    t = "".join(ch for ch in str(v if v is not None else "") if ch.isdigit() or ch in ".,")
+    if not t:
+        return 0.0
+    i = max(t.rfind("."), t.rfind(","))
+    if i < 0:
+        try:
+            return float(t)
+        except ValueError:
+            return 0.0
+    dec, ent = t[i + 1:], t[:i].replace(".", "").replace(",", "")
     try:
-        a, b, p = float(desde), float(hasta), abs(float(paso))
-    except (TypeError, ValueError):
-        return []
-    if not (a > 0 and b > 0 and p > 0):
-        return []
-    sentido = -p if a >= b else p
-    out, v = [], a
-    while len(out) < ADS_ESCALERA_MAX:
-        out.append(int(round(v)))
-        v += sentido
-        if sentido < 0 and v < b - 1e-9:
-            break
-        if sentido > 0 and v > b + 1e-9:
-            break
-    return out
+        if len(dec) == 3:                      # 60.000 -> sesenta mil, no 60 con 000
+            return float((ent or "0") + dec)
+        return float((ent or "0") + "." + (dec or "0"))
+    except ValueError:
+        return 0.0
+
+
+def _ads_post_id(txt, page=None):
+    """Lo que pegue Cristian -> object_story_id (paginaID_postID), que es como Meta referencia
+    una publicacion que YA existe. Acepta las cuatro formas que se encuentra uno:
+        1200571473149471_122109626079462676   ya listo
+        122109626079462676                    solo el post -> le pega la pagina de la cuenta
+        .../posts/122109626079462676          link de la publicacion
+        ...?story_fbid=122...&id=1200...      link viejo con los dos ids separados
+    Devuelve "" si no sale nada usable (mejor vacio que un id inventado)."""
+    import re as _re
+    t = str(txt or "").strip()
+    if not t:
+        return ""
+    m = _re.search(r"(\d{6,})_(\d{6,})", t)
+    if m:
+        return "%s_%s" % (m.group(1), m.group(2))
+    qs = dict(_re.findall(r"[?&]([a-z_]+)=(\d{6,})", t))
+    if qs.get("story_fbid") and qs.get("id"):
+        return "%s_%s" % (qs["id"], qs["story_fbid"])
+    nums = _re.findall(r"\d{6,}", t)
+    if not nums:
+        return ""
+    post = qs.get("story_fbid") or max(nums, key=len)   # el post id es el largo
+    return ("%s_%s" % (page, post)) if page else ""
 
 
 def _ads_camp_payload(nombre, cbo, presup, status, budget_sharing=False, estrategia=None):
@@ -14709,6 +14761,18 @@ def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=No
 def _ads_creative_payload(nombre, medio, cfg, ad):
     """medio: {'kind':'video','video_id','thumb'} o {'kind':'image','image_hash'}.
     ad: {copy, titulo, subtitulo, url} (cae a los defaults de la cuenta)."""
+    if medio.get("kind") == "post":
+        # ESCALA: el anuncio APUNTA a una publicacion que ya existe. No se manda copy, titulo,
+        # destino ni video: todo eso ya vive en el post, y asi el anuncio hereda sus likes y
+        # comentarios (verificado el 09-10-2026 contra los ads de "9-10 CBO BIDCAP 3 ADS",
+        # que usan object_story_id y 3 publicaciones distintas repartidas en los 11 conjuntos).
+        creative = {"name": nombre, "object_story_id": medio["story_id"],
+                    "contextual_multi_ads": {"enroll_status": "OPT_OUT"},
+                    "degrees_of_freedom_spec": {"creative_features_spec": {
+                        "site_extensions": {"enroll_status": "OPT_OUT"}}}}
+        if cfg.get("ig"):
+            creative["instagram_user_id"] = cfg["ig"]
+        return creative
     url = (ad.get("url") or "").strip() or cfg["landing"]
     cta = {"type": "SHOP_NOW", "value": {"link": url}}
     title = (ad.get("titulo") or cfg.get("titulo") or "")
@@ -15614,83 +15678,101 @@ def _ads_run(job, params):
               "subtitulo": (params.get("subtitulo") or "").strip(), "url": (params.get("url") or "").strip()}
         modo_conj = params.get("modo_conjunto") or "nuevo"   # nuevo | dup | usar
         src = params.get("adset_src_id")
-        # ── ESCALA ── estrategia de puja + (opcional) escalera de pujas.
+        # ── MODO ── renovacion (creativos nuevos) | escala (publicaciones que ya corren)
+        escala = (params.get("modo") or "renovacion") == "escala"
+        posts = []
+        if escala:
+            for _p in (params.get("posts") or []):
+                _pid = _ads_post_id(_p, cfg.get("page"))
+                if _pid and _pid not in posts:
+                    posts.append(_pid)
+            if not posts:
+                raise RuntimeError("no entendí ninguna publicación de las que pegaste")
+        # ── PUJAS ── la lista la arma Cristian a mano, una por una: cada puja es UN conjunto.
         estrategia = ADS_ESTRATEGIAS.get((params.get("estrategia") or "minimo").strip(),
                                          "LOWEST_COST_WITHOUT_CAP")
-        escalera = False
         pujas = []
         if estrategia != "LOWEST_COST_WITHOUT_CAP":
-            if (params.get("puja_modo") or "una") == "escalera":
-                pujas = _ads_escalera(params.get("puja_desde"), params.get("puja_hasta"),
-                                      params.get("puja_paso"))
-                if pujas:
-                    escalera = True
-                    n_conj = len(pujas)      # la escalera MANDA: un conjunto por puja
-            else:
-                try:
-                    _u = float(params.get("puja") or 0)
-                except (TypeError, ValueError):
-                    _u = 0
-                if _u > 0:
-                    pujas = [_u] * n_conj
+            for _v in (params.get("pujas") or []):
+                _f = _ads_num(_v)
+                if _f > 0:
+                    pujas.append(_f)
+            if pujas:
+                n_conj = len(pujas)      # las pujas MANDAN sobre el contador de conjuntos
         _puja_de = lambda i: (pujas[i] if i < len(pujas) else None)
         start = _ads_sched(params)                            # día/hora de salida
 
-        up_id = (params.get("upload_id") or "").strip()
-        if up_id:
-            st["msg"] = "Tomando tus videos…"; _job_put(job, st)
-            updir = _ads_up_dir(up_id)
-            rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)) if (updir and _os.path.isdir(updir)) else []
-            if not rutas:
-                raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
-        else:
-            st["msg"] = "Bajando videos de Drive…"; _job_put(job, st)
-            def _prog_drive(k, t):
-                # OJO: además de la memoria hay que persistir. Sin esto la pantalla se quedaba en
-                # "Bajando videos de Drive…" todo el rato (leía el disco, que no se actualizaba) y
-                # parecía colgado aunque estuviera bajando bien.
-                st["msg"] = "Bajando videos… %d/%d" % (k, t)
-                _job_put(job, st)
-            rutas = _ads_drive_bajar(params.get("drive", ""), tmp, on_prog=_prog_drive)
-            if not rutas:
-                raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
-        n = len(rutas)
-        _adsets_prev = 1 if (modo_conj == "usar" and src) else n_conj
-        # barra completa desde el arranque = subir videos (n) + crear anuncios (n × conjuntos). Solo avanza.
-        st["total"] = n + n * _adsets_prev; st["done"] = 0
-
-        # subir videos EN PARALELO. NO esperamos el procesado completo de Meta (eso tardaba minutos):
-        # Meta acepta crear el anuncio con el video procesándose, y si no está listo reintentamos abajo.
+        # Estos tres los usan las DOS ramas: _crear_ad cuenta con _pl/_pn y el pool de anuncios
+        # necesita _cf. Antes vivian adentro del bloque de subida; en Escala no se sube nada,
+        # asi que ahi quedaban sin definir y reventaba al crear el primer anuncio.
         import concurrent.futures as _cf
-        medios = [None] * n
-        _pl = threading.Lock(); _pn = {"n": 0}
-        _tok_prep = getattr(_ads_local, "token", None)     # token de la cuenta correcta, para los threads
-
-        def _prep(idx, ruta):
-            _ads_local.token = _tok_prep                   # propagar el token a este thread (subir video a la cuenta correcta)
-            if _ads_es_imagen(ruta):
-                medio = {"kind": "image", "image_hash": _ads_subir_imagen(acct, ruta)}
+        _pl = threading.Lock()
+        _pn = {"n": 0}
+        if escala:
+            # ESCALA: no se sube NADA. Los anuncios salen de publicaciones que ya corren, asi
+            # que se llevan los likes y comentarios que ya juntaron (ese es el punto de escalar).
+            medios = [{"kind": "post", "story_id": p} for p in posts]
+            n = 0
+            rutas = []
+            _adsets_prev = 1 if (modo_conj == "usar" and src) else n_conj
+            st["total"] = len(medios) * _adsets_prev
+            st["done"] = 0
+            st["msg"] = "Usando %d publicación(es) que ya corren…" % len(medios)
+            _job_put(job, st)
+        else:
+            up_id = (params.get("upload_id") or "").strip()
+            if up_id:
+                st["msg"] = "Tomando tus videos…"; _job_put(job, st)
+                updir = _ads_up_dir(up_id)
+                rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)) if (updir and _os.path.isdir(updir)) else []
+                if not rutas:
+                    raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
             else:
-                vid = _ads_subir_video(acct, ruta)
-                # la miniatura se saca al CREAR el anuncio (no acá) para no frenar la subida
-                medio = {"kind": "video", "video_id": vid, "thumb": None}
-            try:
-                _os.remove(ruta)      # ya está en Meta: liberar el archivo local enseguida
-            except Exception:
-                pass
-            with _pl:
-                _pn["n"] += 1
-                st["done"] = _pn["n"]
-                st["msg"] = "Subiendo videos %d/%d…" % (_pn["n"], n); _job_put(job, st)
-            return idx, medio
+                st["msg"] = "Bajando videos de Drive…"; _job_put(job, st)
+                def _prog_drive(k, t):
+                    # OJO: además de la memoria hay que persistir. Sin esto la pantalla se quedaba en
+                    # "Bajando videos de Drive…" todo el rato (leía el disco, que no se actualizaba) y
+                    # parecía colgado aunque estuviera bajando bien.
+                    st["msg"] = "Bajando videos… %d/%d" % (k, t)
+                    _job_put(job, st)
+                rutas = _ads_drive_bajar(params.get("drive", ""), tmp, on_prog=_prog_drive)
+                if not rutas:
+                    raise RuntimeError("no encontré videos en ese Drive (¿está compartido con la service account?)")
+            n = len(rutas)
+            _adsets_prev = 1 if (modo_conj == "usar" and src) else n_conj
+            # barra completa desde el arranque = subir videos (n) + crear anuncios (n × conjuntos). Solo avanza.
+            st["total"] = n + n * _adsets_prev; st["done"] = 0
 
-        # OJO memoria: cada upload a Meta buffea el video entero en RAM. Con el plan de 512MB,
-        # 6 en paralelo revientan (OOM → Render reinicia → 502). Max 2 a la vez = ~120MB, entra.
-        with _cf.ThreadPoolExecutor(max_workers=min(2, max(1, n))) as _ex:
-            _futs = [_ex.submit(_prep, i, r) for i, r in enumerate(rutas)]
-            for _f in _cf.as_completed(_futs):
-                _idx, _m = _f.result()
-                medios[_idx] = _m
+            # subir videos EN PARALELO. NO esperamos el procesado completo de Meta (eso tardaba minutos):
+            # Meta acepta crear el anuncio con el video procesándose, y si no está listo reintentamos abajo.
+            medios = [None] * n
+            _tok_prep = getattr(_ads_local, "token", None)     # token de la cuenta correcta, para los threads
+
+            def _prep(idx, ruta):
+                _ads_local.token = _tok_prep                   # propagar el token a este thread (subir video a la cuenta correcta)
+                if _ads_es_imagen(ruta):
+                    medio = {"kind": "image", "image_hash": _ads_subir_imagen(acct, ruta)}
+                else:
+                    vid = _ads_subir_video(acct, ruta)
+                    # la miniatura se saca al CREAR el anuncio (no acá) para no frenar la subida
+                    medio = {"kind": "video", "video_id": vid, "thumb": None}
+                try:
+                    _os.remove(ruta)      # ya está en Meta: liberar el archivo local enseguida
+                except Exception:
+                    pass
+                with _pl:
+                    _pn["n"] += 1
+                    st["done"] = _pn["n"]
+                    st["msg"] = "Subiendo videos %d/%d…" % (_pn["n"], n); _job_put(job, st)
+                return idx, medio
+
+            # OJO memoria: cada upload a Meta buffea el video entero en RAM. Con el plan de 512MB,
+            # 6 en paralelo revientan (OOM → Render reinicia → 502). Max 2 a la vez = ~120MB, entra.
+            with _cf.ThreadPoolExecutor(max_workers=min(2, max(1, n))) as _ex:
+                _futs = [_ex.submit(_prep, i, r) for i, r in enumerate(rutas)]
+                for _f in _cf.as_completed(_futs):
+                    _idx, _m = _f.result()
+                    medios[_idx] = _m
 
         # campaña
         st["msg"] = "Creando campaña…"; _job_put(job, st)
@@ -15718,10 +15800,14 @@ def _ads_run(job, params):
         else:
             for c in range(n_conj):
                 st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj); _job_put(job, st)
-                # En la escalera el conjunto se llama como su puja (60000, 58000, ...), que es
-                # como los nombra Cristian a mano: asi se lee el ganador de un vistazo en Meta.
-                nombre_conj = (str(int(pujas[c])) if escalera
-                               else (base if n_conj == 1 else ("%s %d" % (base, c + 1))))
+                # Con pujas, el conjunto se llama como SU puja (60000, 58000, ...), que es como
+                # los nombra Cristian a mano: asi se lee el ganador de un vistazo en Meta.
+                if pujas:
+                    nombre_conj = "%g" % pujas[c]
+                    if pujas[:c].count(pujas[c]):          # la misma puja repetida -> 60000 2
+                        nombre_conj += " %d" % (pujas[:c].count(pujas[c]) + 1)
+                else:
+                    nombre_conj = base if n_conj == 1 else ("%s %d" % (base, c + 1))
                 if modo_conj == "dup" and src:              # copia la config de un conjunto existente
                     adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start,
                                                  presup_override=params.get("presup_conjunto")))
@@ -16216,23 +16302,19 @@ def pf_ads_lanzar():
     if not _ads_token():
         return jsonify({"ok": False, "msg": "falta META_TOKEN en el servidor (Render → Environment)"}), 400
     data = request.get_json(silent=True) or {}
-    if not (data.get("drive") or "").strip() and not (data.get("upload_id") or "").strip():
+    _escala = (data.get("modo") or "renovacion") == "escala"
+    if _escala:
+        if not [p for p in (data.get("posts") or []) if _ads_post_id(p, "1")]:
+            return jsonify({"ok": False, "msg": "pegá al menos una publicación (post ID) para escalar"}), 400
+    elif not (data.get("drive") or "").strip() and not (data.get("upload_id") or "").strip():
         return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
-    # Cost cap / bid cap SIN puja: Meta lo rechaza recien a mitad del job, con los videos ya
-    # subidos y la campaña creada a medias. Mejor frenarlo acá y decir que falta.
+    # Limite de costo / de puja SIN puja: Meta lo rechaza recien a mitad del job, con los videos
+    # ya subidos y la campaña creada a medias. Mejor frenarlo acá y decir que falta.
     _es = (data.get("estrategia") or "minimo").strip()
-    if _es in ("costcap", "bidcap"):
-        if (data.get("puja_modo") or "una") == "escalera":
-            if not _ads_escalera(data.get("puja_desde"), data.get("puja_hasta"), data.get("puja_paso")):
-                return jsonify({"ok": False, "msg": "la escalera no da: revisá desde, hasta y paso"}), 400
-        else:
-            try:
-                _ok = float(data.get("puja") or 0) > 0
-            except (TypeError, ValueError):
-                _ok = False
-            if not _ok:
-                return jsonify({"ok": False,
-                                "msg": "elegiste %s pero no pusiste la puja" % ("cost cap" if _es == "costcap" else "bid cap")}), 400
+    if _es in ("costcap", "bidcap") and not [v for v in (data.get("pujas") or []) if _ads_num(v) > 0]:
+        return jsonify({"ok": False,
+                        "msg": "elegiste %s pero no agregaste ninguna puja" % (
+                            "límite de costo" if _es == "costcap" else "límite de puja")}), 400
     import uuid
     # MULTI-CUENTA: si vienen varias, se lanza UN job por cuenta. Cada uno con SU token y SU
     # presupuesto (las cuentas pueden estar en monedas distintas: un solo numero no sirve para las dos).
