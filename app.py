@@ -3872,8 +3872,9 @@ _SOLO_DASH = r"""
    </div>
    <div class="card" id="rpa-card-posts" style="display:none">
     <div class="ch"><div class="cn">2</div><div class="ct">Publicaciones a escalar</div><div class="cs" id="rpa-postsc">peg&aacute; los post ID</div></div>
-    <textarea class="in" id="rpa-posts" rows="4" oninput="rpaCalc()" placeholder="1200571473149471_122109626079462676&#10;1200571473149471_122112581397462676&#10;&#10;una por l&iacute;nea &mdash; tambi&eacute;n sirve el link de la publicaci&oacute;n" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.6"></textarea>
-    <div class="hint" id="rpa-postshint">Cada publicaci&oacute;n entra como un anuncio en <b style="color:#8fb3e0">cada</b> conjunto, con los likes y comentarios que ya tiene.</div>
+    <textarea class="in" id="rpa-posts" rows="4" oninput="rpaCalc();rpaPostsChk()" placeholder="1200571473149471_122109626079462676&#10;1200571473149471_122112581397462676&#10;&#10;una por l&iacute;nea &mdash; tambi&eacute;n sirve el link de la publicaci&oacute;n" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.6"></textarea>
+    <div id="rpa-postsres" style="margin-top:10px"></div>
+    <div class="hint" id="rpa-postshint">Cada publicaci&oacute;n entra como un anuncio en <b style="color:#8fb3e0">cada</b> conjunto, con los likes y comentarios que ya tiene. La <b style="color:#8fb3e0">p&aacute;gina la pone la publicaci&oacute;n</b>, no el selector de arriba.</div>
    </div>
    <div class="card">
     <div class="ch"><div class="cn">3</div><div class="ct">Campa&ntilde;a</div></div>
@@ -4079,6 +4080,36 @@ _SOLO_DASH = r"""
   rpaCalc();};
  window.rpaPresupLb=function(){var e=$('rpa-presuplb');if(!e)return;
    e.textContent=(TIPO=='abo'?'Presupuesto diario por conjunto':'Presupuesto diario')+(MONEDA?(' ('+MONEDA+')'):'');};
+ // ── CHEQUEO DE PUBLICACIONES ── Al pegar el post ID, Meta te dice de que pagina es. Aca
+ // igual: se le pregunta al servidor (que valida sin crear nada) y se elige esa pagina sola.
+ // Sin esto el subidor le pegaba la pagina del selector y Meta rechazaba TODO con
+ // "la publicacion no pertenece a la pagina de tu anuncio".
+ var _chkT=null, _chkUlt='';
+ window.rpaPostsChk=function(){
+  if(MODO!='escala') return;
+  var ids=rpaPostIds(), clave=ids.join('|')+'@'+(($('rpa-cuenta')||{}).value||'');
+  var c=$('rpa-postsres'); if(!c) return;
+  if(!ids.length){ c.innerHTML=''; _chkUlt=''; return; }
+  if(clave===_chkUlt) return;
+  clearTimeout(_chkT);
+  c.innerHTML='<div style="color:#5b6678;font-size:12px">Buscando de qu&eacute; p&aacute;gina son&hellip;</div>';
+  _chkT=setTimeout(function(){
+   _chkUlt=clave;
+   fetch('/pf-ads-posts-chequear',{method:'POST',headers:{'Content-Type':'application/json'},
+     body:JSON.stringify({cuenta:(($('rpa-cuenta')||{}).value||'cp1'),page:(($('rpa-page')||{}).value||''),posts:ids})})
+    .then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ c.innerHTML='<div style="color:#fb7185;font-size:12px">No pude chequearlas.</div>'; return; }
+     c.innerHTML=(j.posts||[]).map(function(p){
+       return p.ok
+        ? '<div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;margin-bottom:5px"><span style="color:#34d399;flex:none">&#10003;</span><span style="color:#8b97a8;font-family:ui-monospace,monospace">'+p.post+'</span><span style="color:#5b6678">&rarr;</span><b style="color:#8fbdf5">'+p.page_nombre+'</b></div>'
+        : '<div style="display:flex;gap:8px;align-items:baseline;font-size:12.5px;margin-bottom:5px"><span style="color:#fb7185;flex:none">&#10007;</span><span style="color:#8b97a8;font-family:ui-monospace,monospace">'+(p.post||p.texto||'')+'</span><span style="color:#fb7185">'+(p.error||'')+(p.detalle?('<span style="color:#5b6678"> \u00b7 '+String(p.detalle).slice(0,90)+'</span>'):'')+'</span></div>';
+     }).join('');
+     if(j.page){ var sel=$('rpa-page');
+       if(sel&&sel.value!=j.page){ sel.value=j.page;
+         c.innerHTML+='<div style="color:#fbbf24;font-size:12px;margin-top:6px">P&aacute;gina cambiada a <b>'+j.page_nombre+'</b>, que es la due&ntilde;a de la publicaci&oacute;n.</div>'; } }
+     rpaCalc();
+    }).catch(function(){ c.innerHTML='<div style="color:#fb7185;font-size:12px">Error de conexi&oacute;n.</div>'; });
+  }, 700); };
  // ── MODO ── Renovacion = creativos nuevos (Drive/archivos). Escala = publicaciones que YA
  // corren, por post ID: no se sube nada y el anuncio se lleva los likes y comentarios del post.
  window.rpaModo=function(m){ MODO=m;
@@ -4089,7 +4120,7 @@ _SOLO_DASH = r"""
   o('rpa-card-posts',     esc?'block':'none');
   o('rpa-card-anuncio',   esc?'none':'block');   // la publicacion ya trae copy, titulo y destino
   o('rpa-drivebanner',    esc?'none':'flex');
-  rpaCalc(); };
+  rpaCalc(); if(esc) rpaPostsChk(); };
  window.rpaPostIds=function(){
   var t=(($('rpa-posts')||{}).value||'').split(/[\n,;]+/);
   var out=[]; for(var i=0;i<t.length;i++){ var v=t[i].trim(); if(v) out.push(v); }
@@ -14692,6 +14723,84 @@ def _ads_num(v):
         return 0.0
 
 
+def _ads_paginas_de(acct):
+    """Las paginas candidatas de una cuenta: las conectadas + las promocionables."""
+    out, visto = [], set()
+    for path, raw in (("me/accounts", True), ("act_%s/promote_pages" % acct, False)):
+        try:
+            for p in (_ads_call("GET", path, params={"fields": "id,name", "limit": 100}) or {}).get("data", []):
+                if p.get("id") and p["id"] not in visto:
+                    visto.add(p["id"])
+                    out.append({"id": str(p["id"]), "nombre": p.get("name") or "Página"})
+        except Exception:
+            pass
+    return out
+
+
+def _ads_post_duena(acct, post, paginas):
+    """A QUE pagina pertenece una publicacion, SIN crear nada.
+
+    Meta valida la propiedad con execution_options=["validate_only"]: contesta ok para la
+    pagina duena y "La publicacion N no pertenece a la pagina de tu anuncio" para las demas.
+    Verificado el 09-10-2026 sobre el post 122108786643462676, que es de "Noxalab NX" y no de
+    "NoxaLab Argentina" — que era la que estaba elegida, y por eso Meta rechazaba la subida.
+
+    OJO: generatepreviews NO sirve de oraculo, acepta CUALQUIER pagina para el mismo post.
+
+    Devuelve (story_id, page_id, motivo_del_ultimo_rechazo)."""
+    ultimo = ""
+    for pid in paginas:
+        if not pid:
+            continue
+        sid = "%s_%s" % (pid, post)
+        try:
+            _ads_call("POST", "act_%s/adcreatives" % acct,
+                      data={"object_story_id": sid, "name": "chequeo",
+                            "execution_options": _json.dumps(["validate_only"])})
+            return sid, str(pid), ""
+        except Exception as e:
+            ultimo = str(e)
+    return "", "", ultimo
+
+
+def _ads_post_num(txt):
+    """De lo que pegue Cristian saca (publicacion, pagina_si_venia_pegada)."""
+    import re as _re
+    t = str(txt or "").strip()
+    m = _re.search(r"(\d{6,})_(\d{6,})", t)
+    if m:
+        return m.group(2), m.group(1)
+    qs = dict(_re.findall(r"[?&]([a-z_]+)=(\d{6,})", t))
+    if qs.get("story_fbid"):
+        return qs["story_fbid"], qs.get("id", "")
+    nums = _re.findall(r"\d{6,}", t)
+    return (max(nums, key=len), "") if nums else ("", "")
+
+
+def _ads_post_resolver(acct, txt, page_pref=None, paginas=None):
+    """De lo pegado al object_story_id REAL, averiguando a que pagina pertenece.
+
+    Hace falta porque la pagina de la publicacion NO es necesariamente la de la cuenta: el
+    09-10-2026 CP3 tenia elegida "NoxaLab Argentina" y las publicaciones a escalar eran de
+    "Noxalab NX", asi que Meta rechazaba todo con "la publicacion no pertenece a la pagina de
+    tu anuncio". Se prueba primero la pagina pegada/elegida y despues el resto."""
+    post, pg_pegada = _ads_post_num(txt)
+    if not post:
+        return {"ok": False, "texto": txt, "error": "no entendí ese post ID"}
+    todas = _ads_paginas_de(acct) if paginas is None else paginas
+    nombres = {p["id"]: p["nombre"] for p in todas}
+    cands = [c for c in (pg_pegada, page_pref) if c]
+    cands += [p["id"] for p in todas if p["id"] not in cands]
+    sid, pid, motivo = _ads_post_duena(acct, post, cands)
+    if not sid:
+        _dond = ", ".join(p["nombre"] for p in todas) or "tus páginas"
+        return {"ok": False, "texto": txt, "post": post,
+                "error": "no está en %s" % _dond,          # corto, para la pantalla
+                "detalle": motivo}                          # lo que dijo Meta, para diagnosticar
+    return {"ok": True, "texto": txt, "post": post, "story_id": sid,
+            "page": pid, "page_nombre": nombres.get(pid, "") or "Página"}
+
+
 def _ads_post_id(txt, page=None):
     """Lo que pegue Cristian -> object_story_id (paginaID_postID), que es como Meta referencia
     una publicacion que YA existe. Acepta las cuatro formas que se encuentra uno:
@@ -15701,12 +15810,23 @@ def _ads_run(job, params):
         escala = (params.get("modo") or "renovacion") == "escala"
         posts = []
         if escala:
+            _pgs = _ads_paginas_de(acct)
+            _pg_post = ""
+            _pref = params.get("page") or cfg.get("page")
             for _p in (params.get("posts") or []):
-                _pid = _ads_post_id(_p, cfg.get("page"))
-                if _pid and _pid not in posts:
-                    posts.append(_pid)
+                _r = _ads_post_resolver(acct, _p, _pref, _pgs)
+                if not _r.get("ok"):
+                    raise RuntimeError("La publicación %s %s" % (
+                        _r.get("post") or str(_p)[:40], _r.get("error")))
+                _pref = _r["page"]
+                if _r["story_id"] not in posts:
+                    posts.append(_r["story_id"])
+                    _pg_post = _r["page"]
             if not posts:
                 raise RuntimeError("no entendí ninguna publicación de las que pegaste")
+            # La pagina la manda la PUBLICACION, no el selector: si no, Meta rechaza todo.
+            if _pg_post:
+                cfg["page"] = _pg_post
         # ── PUJAS ── la lista la arma Cristian a mano, una por una: cada puja es UN conjunto.
         estrategia = ADS_ESTRATEGIAS.get((params.get("estrategia") or "minimo").strip(),
                                          "LOWEST_COST_WITHOUT_CAP")
@@ -16092,6 +16212,33 @@ def pf_ads_drive_test():
         return jsonify({"ok": False, "error": str(e), "segundos": round(_t.time() - t0, 1)})
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/pf-ads-posts-chequear")
+def pf_ads_posts_chequear():
+    """Al pegar un post ID, decir a QUE pagina pertenece — igual que hace Meta.
+    No crea nada: valida con execution_options=["validate_only"]."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    cta = d.get("cuenta") or "cp1"
+    cfg = _ADS_CUENTAS.get(cta) or _ADS_CUENTAS["cp1"]
+    acct = cfg["ad_account"]
+    _ads_local.token = _ads_token_para_cuenta(cta)
+    pgs = _ads_paginas_de(acct)
+    out = []
+    pref = d.get("page") or cfg.get("page")
+    for p in (d.get("posts") or [])[:12]:          # tope: cada uno son 1-2 llamadas a Meta
+        r = _ads_post_resolver(acct, p, pref, pgs)
+        out.append(r)
+        if r.get("ok"):
+            pref = r["page"]       # casi siempre las siguientes son de la MISMA pagina
+    pags = {r.get("page") for r in out if r.get("ok")}
+    uno = len(pags) == 1
+    return jsonify({"ok": True, "posts": out,
+                    # si TODAS caen en la misma pagina, la pantalla la elige sola
+                    "page": (list(pags)[0] if uno else ""),
+                    "page_nombre": (next((r["page_nombre"] for r in out if r.get("ok")), "") if uno else "")})
 
 
 @app.get("/pf-ads-identidad")
