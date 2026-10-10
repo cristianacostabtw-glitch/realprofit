@@ -14758,7 +14758,26 @@ def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=No
     return p
 
 
-def _ads_creative_payload(nombre, medio, cfg, ad):
+# Las "mejoras" del anuncio, tal cual las tiene Cristian en Meta. Capturas del 09-10-2026 y
+# verificado sobre 250 anuncios de CP3 (4 configuraciones distintas, estas son las dos suyas):
+#   Renovacion (creativo nuevo)      -> TODO en OPT_OUT            [160 anuncios asi]
+#   Escala (publicacion existente)   -> Advantage+ 0/4 en OPT_OUT, pero las "mejoras
+#                                       esenciales" PRENDIDAS: video_filtering OPT_IN
+#                                                                   [64 anuncios asi]
+# Se mandan explicitas y no se deja el default de Meta: hoy el default coincide, pero si Meta
+# lo cambia te prende "Mostrar productos" o "Mejoras en el texto" sin avisar.
+# OJO: NO se manda "standard_enhancements". Meta lo deprecio y RECHAZA la creacion pidiendo
+# configurar las funciones una por una (ya nos rompio todos los ads una vez).
+_ADS_MEJ = ("site_extensions", "product_extensions", "text_optimizations",
+            "video_auto_crop", "video_uncrop", "video_filtering",
+            "image_templates", "image_touchups")
+ADS_MEJORAS_NUEVO = {f: {"enroll_status": "OPT_OUT"} for f in _ADS_MEJ}
+ADS_MEJORAS_POST = dict(ADS_MEJORAS_NUEVO, video_filtering={"enroll_status": "OPT_IN"})
+# El minimo que YA venia andando, por si Meta rechaza alguna de las de arriba.
+ADS_MEJORAS_MINIMO = {"site_extensions": {"enroll_status": "OPT_OUT"}}
+
+
+def _ads_creative_payload(nombre, medio, cfg, ad, minimo=False):
     """medio: {'kind':'video','video_id','thumb'} o {'kind':'image','image_hash'}.
     ad: {copy, titulo, subtitulo, url} (cae a los defaults de la cuenta)."""
     if medio.get("kind") == "post":
@@ -14768,8 +14787,8 @@ def _ads_creative_payload(nombre, medio, cfg, ad):
         # que usan object_story_id y 3 publicaciones distintas repartidas en los 11 conjuntos).
         creative = {"name": nombre, "object_story_id": medio["story_id"],
                     "contextual_multi_ads": {"enroll_status": "OPT_OUT"},
-                    "degrees_of_freedom_spec": {"creative_features_spec": {
-                        "site_extensions": {"enroll_status": "OPT_OUT"}}}}
+                    "degrees_of_freedom_spec": {"creative_features_spec":
+                        (ADS_MEJORAS_MINIMO if minimo else ADS_MEJORAS_POST)}}
         if cfg.get("ig"):
             creative["instagram_user_id"] = cfg["ig"]
         return creative
@@ -14796,8 +14815,8 @@ def _ads_creative_payload(nombre, medio, cfg, ad):
                 # Multianunciante OFF + sin mejoras automáticas. OJO: NO mandar "standard_enhancements"
                 # (Meta lo deprecó y RECHAZA la creación: "elige configurar funciones individuales").
                 "contextual_multi_ads": {"enroll_status": "OPT_OUT"},
-                "degrees_of_freedom_spec": {"creative_features_spec": {
-                    "site_extensions": {"enroll_status": "OPT_OUT"}}}}
+                "degrees_of_freedom_spec": {"creative_features_spec":
+                    (ADS_MEJORAS_MINIMO if minimo else ADS_MEJORAS_NUEVO)}}
     if cfg.get("ig"):
         creative["instagram_user_id"] = cfg["ig"]   # el IG va al NIVEL del creativo, no dentro de object_story_spec
     return creative
@@ -15826,6 +15845,8 @@ def _ads_run(job, params):
                                              _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado,
                                                                 start, estrategia, _puja_de(c))))
 
+        _mej_min = {"si": False}   # si Meta rechazo las mejaras y hubo que ir con el spec minimo.
+        #                            NO puede ir en st["stats"]: mas abajo se reemplaza entero.
         # 2ª parte de la barra = crear los anuncios (la fase más lenta).
         import time as _t
         total_ads = len(adsets) * len(medios)
@@ -15860,7 +15881,18 @@ def _ads_run(job, params):
                 try:
                     if medio.get("kind") == "video" and not medio.get("thumb"):
                         medio["thumb"] = _ads_thumb(medio["video_id"])   # miniatura requerida
-                    cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
+                    try:
+                        cid = _ads_crear(acct, "adcreatives", _ads_creative_payload(str(i), medio, cfg, ad))
+                    except Exception as _emej:
+                        # Si Meta rechaza alguna de las mejoras (ya paso con standard_enhancements,
+                        # que deprecaron de un dia para el otro), sale con el spec minimo en vez de
+                        # dejarte sin anuncio. Queda avisado en el resumen para no enterarse tarde.
+                        _t_err = str(_emej).lower()
+                        if not any(k in _t_err for k in ("enroll", "creative_feature", "degrees_of_freedom")):
+                            raise
+                        _mej_min["si"] = True
+                        cid = _ads_crear(acct, "adcreatives",
+                                         _ads_creative_payload(str(i), medio, cfg, ad, minimo=True))
                     _ads_crear(acct, "ads", {"name": str(i), "adset_id": adset_id,
                                              "creative": {"creative_id": cid}, "status": estado})
                     with _pl:
@@ -15933,8 +15965,12 @@ def _ads_run(job, params):
                        "tipo": (("CBO" if cbo else "ABO")
                                 + ("" if estrategia == "LOWEST_COST_WITHOUT_CAP"
                                    else (" OBJ. COSTO" if estrategia == "COST_CAP" else " LIM. PUJA"))),
-                       "estado": _est_txt, "needs_approval": needs_appr}
-        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s" % (creados, n_conj, _est_txt); _job_put(job, st)
+                       "estado": _est_txt, "needs_approval": needs_appr,
+                       "mejoras_minimas": _mej_min["si"]}
+        st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s%s" % (
+            creados, n_conj, _est_txt,
+            "  ⚠ Meta rechazó las mejoras del anuncio: quedaron en el mínimo, revisalas." if _mej_min["si"] else "")
+        _job_put(job, st)
         st["listo"] = True
         _job_put(job, st)
     except Exception as e:
