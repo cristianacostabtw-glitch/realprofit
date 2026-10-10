@@ -3876,6 +3876,27 @@ _SOLO_DASH = r"""
      <span class="lb" style="margin-top:13px">Presupuesto a nivel</span>
      <div class="seg"><div class="s on" id="rpa-tc" onclick="rpaTipo('cbo')">CBO<small>en la campa&ntilde;a</small></div><div class="s" id="rpa-ta" onclick="rpaTipo('abo')">ABO<small>por conjunto</small></div></div>
      <label class="sw" id="rpa-sharewrap" onclick="rpaShare()" style="margin-top:13px;display:none"><span class="tk" id="rpa-sharetk"><i></i></span><span style="font-size:13.5px;font-weight:700">Compartir presupuesto entre conjuntos <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(hasta 20% entre s&iacute;, opci&oacute;n de Meta). Apagado = cada conjunto gasta lo suyo (mejor para testear)</span></span></label>
+     <div id="rpa-escala" style="margin-top:15px;border-top:1px solid #1a2436;padding-top:14px">
+      <span class="lb">Estrategia de puja</span>
+      <div class="seg">
+       <div class="s on" id="rpa-em" onclick="rpaEstr('minimo')">Costo m&aacute;s bajo<small>sin puja</small></div>
+       <div class="s" id="rpa-ec" onclick="rpaEstr('costcap')">Cost cap<small>techo de CPA</small></div>
+       <div class="s" id="rpa-eb" onclick="rpaEstr('bidcap')">Bid cap<small>techo de puja</small></div>
+      </div>
+      <div id="rpa-pujawrap" style="display:none;margin-top:13px">
+       <div class="seg">
+        <div class="s on" id="rpa-pu" onclick="rpaPujaModo('una')">Una puja<small>igual en todos</small></div>
+        <div class="s" id="rpa-pe" onclick="rpaPujaModo('escalera')">Escalera<small>un conjunto por puja</small></div>
+       </div>
+       <div id="rpa-pujauna" style="margin-top:12px"><span class="lb">Puja <span id="rpa-pujamon" style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0"></span></span><input class="in" id="rpa-puja" placeholder="ej: 50000" oninput="rpaCalc()"></div>
+       <div id="rpa-pujaesc" style="display:none;margin-top:12px"><div class="row">
+        <div><span class="lb">Desde</span><input class="in" id="rpa-pd" placeholder="60000" oninput="rpaCalc()"></div>
+        <div><span class="lb">Hasta</span><input class="in" id="rpa-ph" placeholder="40000" oninput="rpaCalc()"></div>
+        <div><span class="lb">Paso</span><input class="in" id="rpa-pp" placeholder="2000" oninput="rpaCalc()"></div>
+       </div></div>
+       <div class="hint" id="rpa-eschint"></div>
+      </div>
+     </div>
     </div>
     <div id="rpa-boxe" style="display:none">
      <span class="lb">Eleg&iacute; la campa&ntilde;a <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(solo activas)</span></span>
@@ -3924,7 +3945,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
 (function(){
- var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados',SHARE=false;
+ var VIDS=0,NCONJ=1,TIPO='cbo',EST='activa',CMP='nueva',CJ='nuevo',CMPS=[],CJS=[],UPLOAD_ID='',REPARTIR=false,VLIST=[],RMAP=[],VMSG='cargados',SHARE=false,ESTR='minimo',PUJAM='una';
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
@@ -4056,6 +4077,51 @@ _SOLO_DASH = r"""
   rpaCalc();};
  window.rpaPresupLb=function(){var e=$('rpa-presuplb');if(!e)return;
    e.textContent=(TIPO=='abo'?'Presupuesto diario por conjunto':'Presupuesto diario')+(MONEDA?(' ('+MONEDA+')'):'');};
+ // ── ESCALA ── estrategia de puja + escalera (un conjunto por puja, como los arma Cristian a mano)
+ window.rpaPujas=function(){
+  if(ESTR=='minimo') return [];
+  if(PUJAM=='una'){ var u=parseFloat(($('rpa-puja')||{}).value||'0'); return (u>0)?[u]:[]; }
+  var a=parseFloat(($('rpa-pd')||{}).value||'0'),b=parseFloat(($('rpa-ph')||{}).value||'0'),p=Math.abs(parseFloat(($('rpa-pp')||{}).value||'0'));
+  if(!(a>0&&b>0&&p>0)) return [];
+  var st=(a>=b)?-p:p,out=[],v=a;          // misma cuenta que _ads_escalera en el server
+  while(out.length<30){ out.push(Math.round(v)); v+=st; if(st<0&&v<b-1e-9)break; if(st>0&&v>b+1e-9)break; }
+  return out; };
+ window.rpaEsc=function(){ return ESTR!='minimo'&&PUJAM=='escalera'&&rpaPujas().length>0; };
+ window.rpaNConj=function(){ return rpaEsc()?rpaPujas().length:NCONJ; };
+ window.rpaEstr=function(e){ ESTR=e;
+  $('rpa-em').classList.toggle('on',e=='minimo');$('rpa-ec').classList.toggle('on',e=='costcap');$('rpa-eb').classList.toggle('on',e=='bidcap');
+  $('rpa-pujawrap').style.display=(e=='minimo')?'none':'block'; rpaCalc(); };
+ window.rpaPujaModo=function(m){ PUJAM=m;
+  $('rpa-pu').classList.toggle('on',m=='una');$('rpa-pe').classList.toggle('on',m=='escalera');
+  $('rpa-pujauna').style.display=(m=='una')?'block':'none';
+  $('rpa-pujaesc').style.display=(m=='escalera')?'block':'none'; rpaCalc(); };
+ function _rpMil(n){ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
+ window.rpaEscalaCalc=function(){
+  var ps=rpaPujas(), esc=rpaEsc(), nc=rpaNConj(), mon=MONEDA?(' '+MONEDA):'';
+  var pm=$('rpa-pujamon'); if(pm)pm.textContent=MONEDA?('en '+MONEDA):'';
+  var eh=$('rpa-eschint');
+  if(eh){
+   if(ESTR=='minimo') eh.textContent='';
+   else if(PUJAM=='escalera') eh.innerHTML=ps.length
+     ? ('<b style="color:#8fb3e0">'+ps.length+' conjuntos</b>, uno por puja: '+ps.slice(0,3).map(_rpMil).join(' &middot; ')+(ps.length>3?(' &hellip; '+_rpMil(ps[ps.length-1])):'')+mon+'. Cada uno se llama como su puja y lleva tus '+VIDS+' videos.')
+     : 'Pon&eacute; desde, hasta y paso (ej: 60000 &rarr; 40000 de a 2000 = 11 conjuntos).';
+   else eh.innerHTML=ps.length
+     ? ('La misma puja ('+_rpMil(ps[0])+mon+') en los '+NCONJ+' conjuntos.')
+     : '<span style="color:#fbbf24">Falta la puja.</span>';
+  }
+  // El contador lo MANDA la escalera: que no diga 1 conjunto y te cree 11 (ya nos paso con
+  // los contadores de Despachos: dos numeros de la misma pantalla que no cierran).
+  var nb=$('rpa-nconj'); if(nb)nb.textContent=nc;
+  var cl=$('rpa-cantlb'); if(cl)cl.textContent=esc?'Conjuntos (los pone la escalera)':'Cantidad de conjuntos';
+  var sp=$('rpa-cjcant'); if(sp){ var s2=sp.querySelector('.step'); if(s2){ s2.style.opacity=esc?'.45':''; s2.style.pointerEvents=esc?'none':''; } }
+  if(CMP=='nueva'){
+   var rc=$('rpa-rconj'); if(rc) rc.textContent=nc;
+   var ra=$('rpa-rads'); if(ra&&!(REPARTIR&&nc>1)) ra.textContent=VIDS*nc;
+   var rt=$('rpa-rtipo');
+   if(rt&&ESTR!='minimo') rt.textContent=rt.textContent+' · '+(ESTR=='costcap'?'cost cap':'bid cap')+(ps.length?(' '+_rpMil(ps[0])+(esc?(' → '+_rpMil(ps[ps.length-1])):'')):'');
+  }
+  if(esc){ var rw=$('rpa-repwrap'); if(rw) rw.style.display='none'; }   // escalando van los MISMOS ads en todos
+ };
  window.rpaTipo=function(t){TIPO=t;$('rpa-tc').classList.toggle('on',t=='cbo');$('rpa-ta').classList.toggle('on',t=='abo');$('rpa-sharewrap').style.display=(t=='abo'?'flex':'none');rpaPresupLb();rpaCalc();};
  window.rpaShare=function(){SHARE=!SHARE;$('rpa-sharetk').classList.toggle('on',SHARE);};
  window.rpaCmp=function(m){CMP=m;$('rpa-cn').classList.toggle('on',m=='nueva');$('rpa-ce').classList.toggle('on',m=='exist');
@@ -4129,11 +4195,13 @@ _SOLO_DASH = r"""
   $('rpa-rads').textContent=(CMP=='exist'&&CJ=='usar')?VIDS:(rep?VIDS:(VIDS*NCONJ));
   var rw=$('rpa-repwrap');if(rw)rw.style.display=(CMP=='nueva'&&NCONJ>1)?'flex':'none';
   if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi){if(rep){var cnt=[],k;for(k=1;k<=NCONJ;k++)cnt[k]=0;for(k=0;k<VLIST.length;k++){var cc=RMAP[k]||1;cnt[cc]=(cnt[cc]||0)+1;}var pp=[];for(k=1;k<=NCONJ;k++)pp.push('C'+k+': '+(cnt[k]||0));hi.innerHTML='Repartir — '+pp.join(' · ')+'  (elegí en cada video).';}else hi.innerHTML='Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).';}}
-  $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;};
+  $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;
+  rpaEscalaCalc();};
  window.rpaLanzar=function(){ if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
-   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:NCONJ,repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'),reparto_map:RMAP,
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:rpaNConj(),repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'&&!rpaEsc()),reparto_map:RMAP,
+   estrategia:ESTR,puja_modo:PUJAM,puja:(($('rpa-puja')||{}).value||''),puja_desde:(($('rpa-pd')||{}).value||''),puja_hasta:(($('rpa-ph')||{}).value||''),puja_paso:(($('rpa-pp')||{}).value||''),
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
   // MULTI-CUENTA: mando la lista y el presupuesto de CADA una (cada cuenta tiene su moneda).
@@ -14559,12 +14627,51 @@ def _ads_sched(params):
     return dt.strftime("%Y-%m-%dT%H:%M:00-03:00")
 
 
-def _ads_camp_payload(nombre, cbo, presup, status, budget_sharing=False):
+# ── ESCALA: estrategia de puja ──────────────────────────────────────────────────────────
+# Verificado el 09-10-2026 LEYENDO los 80 conjuntos de CP3, no de memoria: Meta guarda la
+# estrategia y la puja en lugares DISTINTOS segun donde este el presupuesto.
+#   CBO -> bid_strategy en la CAMPANA; cada conjunto lleva SOLO bid_amount (mandarle tambien
+#          bid_strategy al conjunto lo hace rechazar)            [52 conjuntos asi, bid cap]
+#   ABO -> bid_strategy Y bid_amount en el CONJUNTO; la campana no lleva ninguno de los dos
+#                                                                [6 conjuntos asi, cost cap]
+# bid_amount va en CENTAVOS de la moneda de la cuenta (6000000 = $60.000 en CP3, que es ARS).
+ADS_ESTRATEGIAS = {
+    "minimo": "LOWEST_COST_WITHOUT_CAP",    # costo mas bajo: sin puja
+    "costcap": "COST_CAP",                  # techo de CPA
+    "bidcap": "LOWEST_COST_WITH_BID_CAP",   # techo de puja
+}
+ADS_ESCALERA_MAX = 30          # tope de conjuntos que puede generar una escalera
+
+
+def _ads_escalera(desde, hasta, paso):
+    """Las pujas de una escalera: de `desde` a `hasta` de a `paso`, inclusive las dos puntas.
+    Cristian las escribe de mayor a menor (60000 -> 40000 de a 2000 = 11 conjuntos), pero
+    tambien funciona al reves. Devuelve [] si los numeros no sirven."""
+    try:
+        a, b, p = float(desde), float(hasta), abs(float(paso))
+    except (TypeError, ValueError):
+        return []
+    if not (a > 0 and b > 0 and p > 0):
+        return []
+    sentido = -p if a >= b else p
+    out, v = [], a
+    while len(out) < ADS_ESCALERA_MAX:
+        out.append(int(round(v)))
+        v += sentido
+        if sentido < 0 and v < b - 1e-9:
+            break
+        if sentido > 0 and v > b + 1e-9:
+            break
+    return out
+
+
+def _ads_camp_payload(nombre, cbo, presup, status, budget_sharing=False, estrategia=None):
     p = {"name": nombre, "objective": "OUTCOME_SALES", "special_ad_categories": [],
          "buying_type": "AUCTION", "status": status}
     if cbo:
         p["daily_budget"] = int(presup) * 100
-        p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"   # CBO: la estrategia de puja va en la campaña (que tiene presupuesto)
+        # CBO: la estrategia de puja va en la campaña (que es la que tiene presupuesto)
+        p["bid_strategy"] = estrategia or "LOWEST_COST_WITHOUT_CAP"
     else:
         # ABO: el presupuesto y la estrategia de puja van en cada CONJUNTO, NO en la campaña
         # (sin presupuesto de campaña, Meta rechaza el bid_strategy acá). Solo declaramos el compartir.
@@ -14572,7 +14679,8 @@ def _ads_camp_payload(nombre, cbo, presup, status, budget_sharing=False):
     return p
 
 
-def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=None):
+def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=None,
+                       estrategia=None, puja=None):
     p = {"name": nombre, "campaign_id": campaign_id, "billing_event": "IMPRESSIONS",
          "optimization_goal": "OFFSITE_CONVERSIONS",
          "promoted_object": {"pixel_id": pixel, "custom_event_type": "PURCHASE"},
@@ -14586,9 +14694,13 @@ def _ads_adset_payload(nombre, campaign_id, pixel, cbo, presup, status, start=No
          "targeting": {"geo_locations": {"countries": ["AR"]},
                        "targeting_automation": {"advantage_audience": 1}},
          "status": status}
+    _est = estrategia or "LOWEST_COST_WITHOUT_CAP"
     if not cbo:
         p["daily_budget"] = int(presup) * 100        # ABO: presupuesto por conjunto
-        p["bid_strategy"] = "LOWEST_COST_WITHOUT_CAP"  # ABO: la estrategia de puja va en el conjunto
+        p["bid_strategy"] = _est                     # ABO: la estrategia de puja va en el conjunto
+    # La PUJA va siempre en el conjunto, en los dos casos. En CBO va SOLA (sin bid_strategy).
+    if puja and _est != "LOWEST_COST_WITHOUT_CAP":
+        p["bid_amount"] = int(round(float(puja) * 100))
     if status == "ACTIVE":
         p["start_time"] = start or _ads_start_5am()
     return p
@@ -15502,6 +15614,26 @@ def _ads_run(job, params):
               "subtitulo": (params.get("subtitulo") or "").strip(), "url": (params.get("url") or "").strip()}
         modo_conj = params.get("modo_conjunto") or "nuevo"   # nuevo | dup | usar
         src = params.get("adset_src_id")
+        # ── ESCALA ── estrategia de puja + (opcional) escalera de pujas.
+        estrategia = ADS_ESTRATEGIAS.get((params.get("estrategia") or "minimo").strip(),
+                                         "LOWEST_COST_WITHOUT_CAP")
+        escalera = False
+        pujas = []
+        if estrategia != "LOWEST_COST_WITHOUT_CAP":
+            if (params.get("puja_modo") or "una") == "escalera":
+                pujas = _ads_escalera(params.get("puja_desde"), params.get("puja_hasta"),
+                                      params.get("puja_paso"))
+                if pujas:
+                    escalera = True
+                    n_conj = len(pujas)      # la escalera MANDA: un conjunto por puja
+            else:
+                try:
+                    _u = float(params.get("puja") or 0)
+                except (TypeError, ValueError):
+                    _u = 0
+                if _u > 0:
+                    pujas = [_u] * n_conj
+        _puja_de = lambda i: (pujas[i] if i < len(pujas) else None)
         start = _ads_sched(params)                            # día/hora de salida
 
         up_id = (params.get("upload_id") or "").strip()
@@ -15574,7 +15706,8 @@ def _ads_run(job, params):
             campaign_id = params["campaign_id"]
         else:
             campaign_id = _ads_crear(acct, "campaigns",
-                                     _ads_camp_payload("%s %s" % (fecha, angulo), cbo, presup, estado, budget_sharing))
+                                     _ads_camp_payload("%s %s" % (fecha, angulo), cbo, presup, estado,
+                                                       budget_sharing, estrategia))
 
         # determinar los CONJUNTOS destino
         base = (params.get("conjunto_nombre") or "CONJUNTO").strip() or "CONJUNTO"
@@ -15585,7 +15718,10 @@ def _ads_run(job, params):
         else:
             for c in range(n_conj):
                 st["msg"] = "Creando conjunto %d de %d…" % (c + 1, n_conj); _job_put(job, st)
-                nombre_conj = base if n_conj == 1 else ("%s %d" % (base, c + 1))
+                # En la escalera el conjunto se llama como su puja (60000, 58000, ...), que es
+                # como los nombra Cristian a mano: asi se lee el ganador de un vistazo en Meta.
+                nombre_conj = (str(int(pujas[c])) if escalera
+                               else (base if n_conj == 1 else ("%s %d" % (base, c + 1))))
                 if modo_conj == "dup" and src:              # copia la config de un conjunto existente
                     adsets.append(_ads_adset_dup(acct, src, campaign_id, nombre_conj, pixel, estado, start,
                                                  presup_override=params.get("presup_conjunto")))
@@ -15601,7 +15737,8 @@ def _ads_run(job, params):
                                              _ads_adset_payload(nombre_conj, campaign_id, pixel, (not _abo), _pcj, estado, start)))
                 else:                                        # conjunto nuevo estándar (campaña nueva)
                     adsets.append(_ads_crear(acct, "adsets",
-                                             _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado, start)))
+                                             _ads_adset_payload(nombre_conj, campaign_id, pixel, cbo, presup, estado,
+                                                                start, estrategia, _puja_de(c))))
 
         # 2ª parte de la barra = crear los anuncios (la fase más lenta).
         import time as _t
@@ -15707,7 +15844,10 @@ def _ads_run(job, params):
         _est_txt = ("⚠ APROBÁ los anuncios en Meta (te pidió aprobación de admin — revisá tu email/notificaciones)"
                     if needs_appr else ("Programada 5 AM" if estado == "ACTIVE" else "Pausada"))
         st["stats"] = {"campaign_id": campaign_id, "conjuntos": len(adsets), "ads": creados,
-                       "tipo": "CBO" if cbo else "ABO", "estado": _est_txt, "needs_approval": needs_appr}
+                       "tipo": (("CBO" if cbo else "ABO")
+                                + ("" if estrategia == "LOWEST_COST_WITHOUT_CAP"
+                                   else (" COST CAP" if estrategia == "COST_CAP" else " BID CAP"))),
+                       "estado": _est_txt, "needs_approval": needs_appr}
         st["msg"] = "¡Listo! %d anuncios en %d conjunto(s). %s" % (creados, n_conj, _est_txt); _job_put(job, st)
         st["listo"] = True
         _job_put(job, st)
@@ -16078,6 +16218,21 @@ def pf_ads_lanzar():
     data = request.get_json(silent=True) or {}
     if not (data.get("drive") or "").strip() and not (data.get("upload_id") or "").strip():
         return jsonify({"ok": False, "msg": "pegá el link de Drive o subí tus videos"}), 400
+    # Cost cap / bid cap SIN puja: Meta lo rechaza recien a mitad del job, con los videos ya
+    # subidos y la campaña creada a medias. Mejor frenarlo acá y decir que falta.
+    _es = (data.get("estrategia") or "minimo").strip()
+    if _es in ("costcap", "bidcap"):
+        if (data.get("puja_modo") or "una") == "escalera":
+            if not _ads_escalera(data.get("puja_desde"), data.get("puja_hasta"), data.get("puja_paso")):
+                return jsonify({"ok": False, "msg": "la escalera no da: revisá desde, hasta y paso"}), 400
+        else:
+            try:
+                _ok = float(data.get("puja") or 0) > 0
+            except (TypeError, ValueError):
+                _ok = False
+            if not _ok:
+                return jsonify({"ok": False,
+                                "msg": "elegiste %s pero no pusiste la puja" % ("cost cap" if _es == "costcap" else "bid cap")}), 400
     import uuid
     # MULTI-CUENTA: si vienen varias, se lanza UN job por cuenta. Cada uno con SU token y SU
     # presupuesto (las cuentas pueden estar en monedas distintas: un solo numero no sirve para las dos).
