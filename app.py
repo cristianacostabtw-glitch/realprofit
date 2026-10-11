@@ -27994,13 +27994,16 @@ def _flex_empaquetar(doc, envios, afuera=()):
     pot = {}
     for e in envios:
         pot.setdefault(_sku(e), (_caps(e), _flex_potes(e)))
-    skus = sorted(sc, key=lambda k: (pot[k][0], pot[k][1], k))     # sin CAPS, y por potes
+    # Primero el grupo que se lleva MAS POTES en total (cantidad x potes de cada uno), no el
+    # que tiene mas envios ni el de menos potes: se arranca por el que mueve mas producto.
+    # Los que llevan CAPS van despues, con el mismo criterio entre ellos.
+    def _vol(k):
+        return sc[k] * pot[k][1]
+    skus = sorted(sc, key=lambda k: (pot[k][0], -_vol(k), -sc[k], k))
     zc = _Cnt(_flex_zona_de(e) for e in envios)
     zonas = sorted(zc, key=lambda z: (-zc[z], z or "zzz"))
 
     _nec = 26 + len(skus) * 19 + 8 + len(zonas) * 21
-    if afuera:
-        _nec += 22 + len(afuera) * 19
     _k = min(1.0, max(.72, (TOPE - 52) / float(_nec or 1)))
 
     est = {"pg": None, "y": 0}
@@ -28043,10 +28046,8 @@ def _flex_empaquetar(doc, envios, afuera=()):
     for z in zonas:
         fila(FLEX_ZONAS.get(z, (z or "SIN ZONA").upper()), str(zc[z]), 21, True, 11.5)
 
-    if afuera:
-        fila("NO SE IMPRIMIERON", str(len(afuera)), 22, True, 11.5)
-        for e in afuera:
-            fila("#%s  %s" % (e.get("num"), ", ".join(_flex_falta(e))), e.get("cod", ""), 19)
+    # Los que no se imprimieron NO van en esta hoja: es para empaquetar, y un envio sin
+    # etiqueta no se empaqueta. Decision de Cristian (11-10). Quedan en la pantalla de Flex.
 
 
 def _flex_etiquetas_pdf(envios) -> bytes:
