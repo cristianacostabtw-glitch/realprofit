@@ -729,6 +729,7 @@ _SOLO_DASH = r"""
 
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:8px">
    <label style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer"><input type="checkbox" id="rp-d-all" onclick="rpDAll(this)" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer">Todas</label>
+   <button onclick="window.open('/flex','_blank')" title="Env&iacute;o propio: gener&aacute; los env&iacute;os, imprim&iacute; las etiquetas y segu&iacute; los paquetes" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#3a2c73,#241c54);border:1px solid #4a3a86;color:#d8ccff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer">&#9889; Flex</button>
    <button id="rp-d-sync" onclick="rpDLoad(true)" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">sync</span>Actualizar pedidos</button>
    <button onclick="rpDExcel()" style="display:inline-flex;align-items:center;gap:8px;background:linear-gradient(160deg,#4c3a8f,#3a2c73);border:1px solid #4a3a86;color:#e5ddff;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">download</span>Generar Excel Andreani</button>
    <label title="Subí el Excel de Envialo: las sucursales de Envialo mandan (1=1)" style="display:inline-flex;align-items:center;gap:8px;background:#0b111c;border:1px solid #1a2333;color:#c7d2e0;border-radius:11px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer"><span class="material-symbols-outlined" style="font-size:17px">verified</span>Subir Excel de Envialo<input type="file" accept=".xlsx" onchange="rpDEnvialo(this)" style="display:none"></label>
@@ -26120,9 +26121,10 @@ def _flex_zona(cp, prov="", loc="") -> str:
     d = "".join(ch for ch in str(cp or "") if ch.isdigit())[:4]
     pn = _env_norm(prov or "")
     code = str(prov or "").strip().upper()
-    if (code == "C" or "capital federal" in pn or "autonoma de buenos aires" in pn
-            or "ciudad de buenos aires" in pn or pn in ("caba", "capital", "c.a.b.a.")):
-        return "caba"
+    # EL CP MANDA SOBRE LA PROVINCIA. El cliente elige mal la provincia todo el tiempo: el
+    # pedido #7686 es de Berazategui (CP 1884) y tiene cargado "Ciudad Autonoma de Buenos
+    # Aires", asi que salia CABA y el paquete se cargaba en el recorrido equivocado.
+    # La provincia solo decide cuando el CP no alcanza para resolverlo.
     if len(d) == 4 and "1000" <= d <= "1499":
         return "caba"
     if d in _FLEX_CP_NORTE:
@@ -26135,6 +26137,10 @@ def _flex_zona(cp, prov="", loc="") -> str:
     # sigue bastante bien la geografia. Igual la zona se corrige a mano en la pantalla.
     if len(d) == 4 and "1600" <= d <= "1899":
         return "norte" if d <= "1669" else ("oeste" if d <= "1799" else "sur")
+    # sin CP util, recien ahi se mira la provincia
+    if (code == "C" or "capital federal" in pn or "autonoma de buenos aires" in pn
+            or "ciudad de buenos aires" in pn or pn in ("caba", "capital", "c.a.b.a.")):
+        return "caba"
     return ""
 
 
@@ -27163,8 +27169,15 @@ def _fx_qr(dato):
 
 
 def _fx_w(t, f=_FX_HV, s=10):
-    import fitz
-    return fitz.get_text_length(str(t), fontname=f, fontsize=s)
+    """Ancho del texto en puntos.
+
+    OJO: fitz.get_text_length MIDE DE MENOS las tildes y la ñ. Con "Cañada de Gómez" devuelve
+    101 donde el texto ocupa 121, y el nombre se sale de la etiqueta. El glifo acentuado tiene
+    el MISMO avance que la letra base en Helvetica, asi que se mide sobre el texto sin
+    acentos: verificado contra el render en 8 casos, da exacto en los 8."""
+    import fitz, unicodedata as _ud
+    plano = "".join(c for c in _ud.normalize("NFD", str(t)) if _ud.category(c) != "Mn")
+    return fitz.get_text_length(plano, fontname=f, fontsize=s)
 
 
 def _fx_txt(pg, x, y, t, f=_FX_HV, s=10, c=_FX_N, al=0, a=0):
@@ -27217,10 +27230,39 @@ def _fx_envolver(t, f, s, a):
 
 
 def _fx_partir_calle(c):
-    """Separa la altura del nombre de la calle: el que reparte busca PRIMERO el numero
-    en la puerta, no el nombre."""
-    m = _re_and.search(r"^(.*?)(\d+[A-Za-z]?)\s*$", str(c or "").strip())
-    return (m.group(1).strip(), m.group(2)) if m else (str(c or "").strip(), "")
+    """Separa la altura del nombre de la calle: el que reparte busca PRIMERO el numero en la
+    puerta, no el nombre.
+
+    Tres intentos en orden, porque la gente escribe la direccion como quiere:
+      1. el numero AL FINAL          "Mocoreta 4685"
+      2. el que sigue a N° / Nro     "Calle 31 N° 5874, e/159 y 159 A, Berazategui"
+      3. el numero MAS LARGO         ultimo recurso
+    El caso 2 es real (pedido #7686 del 09-10-2026): con solo la regla 1 la etiqueta decia
+    "s/n" y el 5874 quedaba enterrado en la linea chica."""
+    t = str(c or "").strip()
+    if not t:
+        return ("", "")
+    m = _re_and.search(r"^(.*?)(\d+[A-Za-z]?)\s*$", t)
+    if m and m.group(1).strip(" ,-"):
+        return (m.group(1).strip(" ,-"), m.group(2))
+    m = _re_and.search(r"(?:n\s*[°º:.]|nro|numero|num)\s*(\d{1,6})", t, _re_and.I)
+    if m:
+        alt = m.group(1)
+    else:
+        nums = _re_and.findall(r"\d{1,6}", t)
+        if not nums:
+            return (t, "")
+        alt = max(nums, key=len)
+    # OJO el flags=I: sin eso el "N°" de "N° 5874" no se borra junto con el numero y queda
+    # huerfano en el nombre de la calle ("Calle 31 N° , e/159...").
+    resto = _re_and.sub(r"(?:n\s*[°º:.]\s*)?" + _re_and.escape(alt), " ", t,
+                        count=1, flags=_re_and.I)
+    resto = _re_and.sub(r"\s+,", ",", resto)              # "Calle 31 ," -> "Calle 31,"
+    resto = _re_and.sub(r",(?=\s*,|\s*$)", "", resto)
+    resto = _re_and.sub(r"\s{2,}", " ", resto).strip(" ,-")
+    if not resto or resto.isdigit():
+        return ("", alt)
+    return (resto, alt)
 
 
 def _fx_marca(pg, x, y, alto):
@@ -27236,120 +27278,106 @@ def _fx_marca(pg, x, y, alto):
 
 
 def _flex_etiqueta(pg, e):
-    """Dibuja UNA etiqueta. `e` es el registro de flex_envios.json."""
+    """Dibuja UNA etiqueta de 10x15. `e` es el registro de flex_envios.json.
+
+    Ficha de renglones, como la quiere Cristian (diseño suyo, afinado el 11-10-2026 contra
+    sus 3 ultimas ventas Flex reales):
+      banda de ZONA · localidad+CP · direccion con el QR al costado · piso/depto · recibe ·
+      telefono · observaciones · contenido (pastilla negra a la izquierda) + pedido.
+
+    Dos cosas que parecen detalles y no lo son:
+      - el ALTO de la fila de direccion lo fija el QR (86 pt = 0,86 mm por modulo, el piso
+        para que lea en termica), no el texto. Por eso no se puede achicar mas.
+      - lo que sobra se REPARTE entre las filas de datos. Dandoselo todo a una quedaba un
+        hueco muerto con el texto flotando en el medio."""
     import fitz
+    M, pad = 15, 11
     W, H = FLEX_ET_W, FLEX_ET_H
-    M = 16
+    N, BL, G, HB, HV = _FX_N, _FX_B, _FX_G, _FX_HB, _FX_HV
     A = W - 2 * M
-    N, B, G, HB, HV = _FX_N, _FX_B, _FX_G, _FX_HB, _FX_HV
+    TOP, BOT = 16, H - 16
 
-    # ── lo de abajo es fijo: se calcula primero y despues el medio se acomoda ──
-    CAJA_H = 112
-    caja_y = H - 16 - CAJA_H
-    tel_y = caja_y - 14
-    nom_y = tel_y - 19
-    lbl_y = nom_y - 16
-    reg_y = lbl_y - 13
-    TOPE = reg_y - 9                      # ni un pixel del medio pasa de aca
+    zona_txt = FLEX_ZONAS.get(_flex_zona_ok(e.get("zona"), e.get("cp")), "")
+    extra = (e.get("extra") or "").strip()            # "Casa", "Piso 3 Depto B" o vacio
+    obs = (e.get("nota") or "").strip() or "Sin información"
+    obs_lin = _fx_envolver(obs, HV, 11.5, A - 2 * pad - 6)[:2]
+    cont = (e.get("sku") or "").strip()
+    ped = "PEDIDO #" + (str(e.get("num") or "").replace("#", ""))
 
-    # 1 · la marca: un renglon y se corre (es el dato menos importante de la etiqueta)
-    _fx_marca(pg, M, 15, 13)
-    fch = str(e.get("creado") or "")[:10]
-    if len(fch) == 10:
-        fch = "%s/%s/%s" % (fch[8:10], fch[5:7], fch[0:4])
-    t = ("%s  ·  FLEX · 24 a 48 HS" % fch) if fch else "FLEX · 24 a 48 HS"
-    _fx_txt(pg, W - M - _fx_w(t, HB, 7), 25, t, HB, 7, G)
-    pg.draw_line((M, 35), (W - M, 35), color=N, width=.8)
+    libre = A - 2 * pad
+    pedw = _fx_w(ped, HB, 12)
+    cont_s = 10.5
+    for _s in (14, 13.5, 13, 12.5, 12, 11.5, 11, 10.5):
+        if _fx_w(cont, HB, _s) + 20 + pedw + 14 <= libre:
+            cont_s = _s
+            break
 
-    # 2 · a donde va: localidad en negativo y la zona en recuadro blanco (se ve de lejos)
-    y, bh, zb = 44, 44, 56
-    pg.draw_rect(fitz.Rect(M, y, W - M, y + bh), color=None, fill=N)
-    pg.draw_rect(fitz.Rect(W - M - zb - 5, y + 5, W - M - 5, y + bh - 5), color=None, fill=B)
-    tl, sl = _fx_cortar((e.get("loc") or "—").upper(), HB, 16, A - zb - 26)
-    _fx_txt(pg, M + 11, y + 24, tl, HB, sl, B)
-    _fx_txt(pg, M + 11, y + 37, ("CP " + str(e.get("cp") or "")).strip(), HB, 10, B)
-    _fx_txt(pg, W - M - zb - 5, y + 19, "ZONA", HB, 6, N, 1, zb)
-    _zt = FLEX_ZONAS_ET.get(_flex_zona_ok(e.get("zona"), e.get("cp")), "")
-    _zs = 12.5                                  # y si alguna vez no entra, se achica sola
-    while _zt and _zs > 6 and _fx_w(_zt, HB, _zs) > zb - 9:
-        _zs -= 0.5
-    _fx_txt(pg, W - M - zb - 5, y + 33, _zt, HB, _zs, N, 1, zb)
+    filas = [("zona", 34), ("localidad", 42), ("direccion", 108), ("piso", 30),
+             ("recibe", 32), ("telefono", 30), ("obs", 26 + len(obs_lin) * 14),
+             ("contenido", 50)]
+    PESO = {"localidad": 1.0, "piso": .9, "recibe": 1.1, "telefono": .9, "obs": 1.0}
+    sob = max(0, (BOT - TOP) - sum(h for _k, h in filas))
+    tot = sum(PESO.get(k, 0) for k, _h in filas) or 1
+    filas = [(k, h + sob * PESO.get(k, 0) / tot) for k, h in filas]
 
-    # 3 · la direccion: la altura va aparte y enorme
-    y += bh + 17
-    _fx_micro(pg, M, y, "DIRECCION")
-    y += 21
-    nom, alt = _fx_partir_calle(e.get("calle"))
-    tn, sn = _fx_cortar(nom or "—", HB, 17.5, A)
-    _fx_txt(pg, M, y, tn, HB, sn, N)
-    if alt:
-        sa = _fx_encajar(alt, HB, 34, A * .62)
-        _fx_txt(pg, M, y + sa * .94, alt, HB, sa, N)
-        y += sa * .94
-    y += 4
+    pg.draw_rect(fitz.Rect(M, TOP, W - M, BOT), color=N, width=1.3)
+    y = TOP
+    for k, h in filas:
+        if y > TOP:
+            pg.draw_line(fitz.Point(M, y), fitz.Point(W - M, y), color=N, width=.8)
 
-    # 4 · piso / depto (address2 de la tienda): un renglon, recortado
-    piso = str(e.get("extra") or "").strip()
-    if piso and y + 18 <= TOPE:
-        y += 18
-        _fx_micro(pg, M, y, "PISO / DEPTO")
-        tp, sp = _fx_cortar(piso, HB, 12.5, A - 78)
-        _fx_txt(pg, M + 78, y + .5, tp, HB, sp, N)
+        if k == "zona":
+            pg.draw_rect(fitz.Rect(M, y, W - M, y + h), color=None, fill=N)
+            zt, zs = _fx_cortar(zona_txt, HB, 22, A - 24)
+            _fx_txt(pg, M, y + h / 2 + 7.5, zt, HB, zs, BL, 1, A)
 
-    # 5 · la nota que escribio el cliente al comprar. Entra lo que entra; si no entra nada,
-    #     no se dibuja ni el rotulo (mejor nada que medio renglon pisando el telefono).
-    obs = str(e.get("nota") or "").strip()
-    if obs:
-        fs, lh = 9.8, 12.2
-        caben = int((TOPE - (y + 34)) / lh) + 1
-        if caben >= 1:
-            y += 20
-            _fx_micro(pg, M, y, "OBSERVACIONES DEL CLIENTE")
-            y += 14
-            ls = _fx_envolver(obs, HV, fs, A - 13)
-            if len(ls) > caben:
-                ls = ls[:caben]
-                ls[-1] = _fx_cortar(ls[-1] + " ...", HV, fs, A - 13)[0]
-            pg.draw_line((M + 1.5, y - 8), (M + 1.5, y + (len(ls) - 1) * lh + 3), color=N, width=1.6)
-            for i, l in enumerate(ls):
-                _fx_txt(pg, M + 13, y + i * lh, l, HV, fs, N)
+        elif k == "localidad":
+            cp = ("CP " + (e.get("cp") or "")).strip()
+            cpw = _fx_w(cp, HB, 11.5)
+            _fx_micro(pg, M + pad, y + 15, "LOCALIDAD")
+            lt, ls = _fx_cortar((e.get("loc") or "").upper(), HB, 16.5, A - 2 * pad - cpw - 14)
+            vy = y + 14 + (h - 14) / 2 + ls * 0.34
+            _fx_txt(pg, M + pad, vy, lt, HB, ls)
+            _fx_txt(pg, W - M - pad, vy, cp, HB, 11.5, N, 2, 0)
 
-    # 6 · quien recibe. Nombre y telefono en renglones SEPARADOS.
-    pg.draw_line((M, reg_y), (W - M, reg_y), color=N, width=.8)
-    _fx_micro(pg, M, lbl_y, "RECIBE")
-    tnm, snm = _fx_cortar(e.get("nombre") or "—", HB, 14.5, A)
-    _fx_txt(pg, M, nom_y, tnm, HB, snm, N)
-    if str(e.get("tel") or "").strip():
-        _fx_micro(pg, M, tel_y - 1, "TELEFONO")
-        _fx_txt(pg, M + 56, tel_y, e["tel"], HB, 14.5, N)
+        elif k == "direccion":
+            q = 86
+            qx = W - M - pad - q
+            pg.draw_line(fitz.Point(qx - pad, y), fitz.Point(qx - pad, y + h), color=N, width=.8)
+            pg.insert_image(fitz.Rect(qx, y + 5, qx + q, y + 5 + q),
+                            stream=_fx_qr(_flex_url_corta(e["cod"])))
+            _fx_txt(pg, qx, y + 5 + q + 15, e["cod"], HB, 16, N, 1, q)   # solo los numeros
+            izq = qx - pad - (M + pad) - 10
+            nom, alt = _fx_partir_calle(e.get("calle"))
+            _fx_micro(pg, M + pad, y + 15, "DIRECCION")
+            ct, cs = _fx_cortar(nom, HB, 16.5, izq)
+            _fx_txt(pg, M + pad, y + 33, ct, HB, cs)
+            at, asz = _fx_cortar(alt or "s/n", HB, 34, izq)
+            _fx_txt(pg, M + pad, y + 33 + (h - 40) / 2 + asz * 0.36, at, HB, asz)
 
-    # 7 · el paquete, cercado aparte para que no se mezcle con la entrega
-    pg.draw_rect(fitz.Rect(M, caja_y, W - M, caja_y + CAJA_H), color=N, fill=B, width=1.1)
-    qs = CAJA_H - 20
-    pg.insert_image(fitz.Rect(M + 10, caja_y + 10, M + 10 + qs, caja_y + 10 + qs),
-                    stream=_fx_qr(_flex_url_corta(e["cod"])))
-    rx = M + 10 + qs + 16
-    der = W - M - 10                                   # borde derecho util de la caja
-    _fx_micro(pg, rx, caja_y + 20, "SEGUIMIENTO")
-    _fx_txt(pg, rx, caja_y + 44, e["cod"], HB, 22, N)
-    _fx_micro(pg, rx, caja_y + 62, "PEDIDO")
-    _fx_txt(pg, rx, caja_y + 81, "#" + str(e.get("num") or ""), HB, 16, N)
-    sku = str(e.get("sku") or "").strip()
-    if sku:
-        _fx_micro(pg, rx, caja_y + 100, "CONTENIDO")
-        anc = der - (rx + 58)
-        ls = _fx_envolver(sku, HB, 12, anc)
-        if len(ls) == 1:
-            t1, s1 = _fx_cortar(ls[0], HB, 13, anc, mini=9.0)
-            _fx_txt(pg, der - _fx_w(t1, HB, s1), caja_y + 101, t1, HB, s1, N)
-        else:
-            ls = ls[:2]
-            if len(_fx_envolver(sku, HB, 12, anc)) > 2:      # rarisimo: 3 productos distintos
-                ls[1] = _fx_cortar(ls[1] + " ...", HB, 12, anc, mini=8.5)[0]
-            for i, l in enumerate(ls):
-                t1, s1 = _fx_cortar(l, HB, 12, anc, mini=8.5)
-                _fx_txt(pg, der - _fx_w(t1, HB, s1), caja_y + 94 + i * 13, t1, HB, s1, N)
-    _fx_txt(pg, M, H - 7, "realprofitapp.com/s/" + e["cod"], HV, 6.6, G)
+        elif k in ("piso", "recibe", "telefono"):
+            rot = {"piso": "PISO / DEPTO", "recibe": "RECIBE", "telefono": "TELEFONO"}[k]
+            val = {"piso": extra, "recibe": e.get("nombre"), "telefono": e.get("tel")}[k]
+            _fx_micro(pg, M + pad, y + 14, rot)
+            if val:
+                vt, vs = _fx_cortar(str(val), HB, 14.5 if k == "recibe" else 13, A - 2 * pad - 8)
+                _fx_txt(pg, M + pad, y + 14 + (h - 14) / 2 + vs * 0.34, vt, HB, vs)
+
+        elif k == "obs":
+            _fx_micro(pg, M + pad, y + 14, "OBSERVACIONES")
+            y0 = y + 14 + (h - 14 - len(obs_lin) * 14) / 2 + 10
+            for i, ln in enumerate(obs_lin):
+                _fx_txt(pg, M + pad, y0 + i * 14, ln, HV, 11.5)
+
+        elif k == "contenido":
+            _fx_micro(pg, M + pad, y + 14, "CONTENIDO")
+            if cont:
+                cw = _fx_w(cont, HB, cont_s) + 20
+                pg.draw_rect(fitz.Rect(M + pad, y + 22, M + pad + cw, y + 44),
+                             color=None, fill=N, radius=0.42)
+                _fx_txt(pg, M + pad + 10, y + 37.5, cont, HB, cont_s, BL)
+            _fx_txt(pg, W - M - pad, y + 37.5, ped, HB, 12, N, 2, 0)
+        y += h
 
 
 def _flex_etiquetas_pdf(envios) -> bytes:
