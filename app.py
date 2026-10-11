@@ -27940,12 +27940,88 @@ def _flex_etiqueta(pg, e):
         y += h
 
 
+def _flex_empaquetar(doc, envios):
+    """Hoja(s) PARA EMPAQUETAR: cuantos van a cada zona y, dentro de cada una, cuantos de
+    cada contenido. Va AL FINAL y en el mismo orden en que salen las etiquetas, asi se va
+    tildando de arriba a abajo (igual que la hoja del estampador de Andreani).
+
+    Pagina sola: con 35 envios y 4 zonas no entra en una hoja de 10x15 y la ultima fila
+    quedaba cortada."""
+    import fitz
+    from collections import Counter as _Cnt
+    M, pad = 15, 11
+    W, H = FLEX_ET_W, FLEX_ET_H
+    N, BL, HB, HV = _FX_N, _FX_B, _FX_HB, _FX_HV
+    A = W - 2 * M
+    TOPE = H - 20                       # abajo de esto no se dibuja nada
+
+    def _caps0(e):
+        return 1 if "CAPS" in (e.get("sku") or "").upper() else 0
+    def _sku0(e):
+        return " ".join((e.get("sku") or "").upper().split()) or "(sin SKU)"
+
+    # Cuanto mide todo con los altos de base, para decidir si hay que apretar. Con 35 envios
+    # sobraban 30 pt y se iba una hoja entera con 4 renglones: mejor achicar un poco.
+    _zc0 = _Cnt(_flex_zona_de(e) for e in envios)
+    _nsku = sum(len(set(_sku0(e) for e in envios if _flex_zona_de(e) == z)) for z in _zc0)
+    _nec = 26 + len(_zc0) * 22 + _nsku * 19 + 22 + 19
+    _k = min(1.0, max(.78, (TOPE - 52) / float(_nec or 1)))
+
+    est = {"pg": None, "y": 0, "n": 0}
+
+    def hoja(titulo):
+        est["pg"] = doc.new_page(width=W, height=H)
+        est["n"] += 1
+        est["pg"].draw_rect(fitz.Rect(M, 16, W - M, 52), color=None, fill=N)
+        _fx_txt(est["pg"], M, 40, titulo, HB, _fx_encajar(titulo, HB, 19, A - 10, 11),
+                BL, 1, A)
+        est["y"] = 52
+
+    def sitio(alto):
+        if est["pg"] is None or est["y"] + alto > TOPE:
+            hoja("PARA EMPAQUETAR (sigue)" if est["pg"] is not None else "PARA EMPAQUETAR")
+
+    def fila(txt, val, alto=19, fondo=False, tam=10.5, casilla=False):
+        alto = alto * _k
+        sitio(alto)
+        pg, y = est["pg"], est["y"]
+        if fondo:
+            pg.draw_rect(fitz.Rect(M, y, W - M, y + alto), color=None, fill=N)
+        else:
+            pg.draw_rect(fitz.Rect(M, y, W - M, y + alto), color=N, width=.8)
+        x = M + pad
+        if casilla:
+            pg.draw_rect(fitz.Rect(x, y + alto / 2 - 4.5, x + 9, y + alto / 2 + 4.5), color=N, width=.9)
+            x += 16
+        col = BL if fondo else N
+        base = y + alto / 2 + tam * 0.34
+        _fx_txt(pg, x, base, txt, HB if fondo else HV, tam, col)
+        _fx_txt(pg, W - M - pad, base, val, HB, tam + 1, col, 2, 0)
+        est["y"] += alto
+
+    _caps, _sku = _caps0, _sku0
+
+    fila("TOTAL", "%d envios" % len(envios), 26, tam=12)
+    zc = _Cnt(_flex_zona_de(e) for e in envios)
+    for z in sorted(zc, key=lambda k: (-zc[k], k or "zzz")):
+        de_zona = [e for e in envios if _flex_zona_de(e) == z]
+        fila(FLEX_ZONAS.get(z, (z or "SIN ZONA").upper()), str(len(de_zona)), 22, True, 12.5)
+        sc = _Cnt(_sku(e) for e in de_zona)
+        for sk in sorted(sc, key=lambda k: (1 if "CAPS" in k else 0, -sc[k], k)):
+            fila(sk, "x%d" % sc[sk], 19, casilla=True)
+
+    fila("POTES EN TOTAL", str(sum(int(e.get("unidades") or 0) for e in envios)), 22, True, 11.5)
+    fila("Envios que llevan CAPS", str(sum(1 for e in envios if _caps(e))), 19)
+
+
 def _flex_etiquetas_pdf(envios) -> bytes:
-    """Una pagina de 10x15 por envio, en el orden que vienen."""
+    """Una pagina de 10x15 por envio, en el orden que vienen, y la hoja PARA EMPAQUETAR al final."""
     import fitz
     doc = fitz.open()
     for e in envios:
         _flex_etiqueta(doc.new_page(width=FLEX_ET_W, height=FLEX_ET_H), e)
+    if envios:
+        _flex_empaquetar(doc, envios)
     out = doc.tobytes()
     doc.close()
     return out
