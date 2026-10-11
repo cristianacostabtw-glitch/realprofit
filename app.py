@@ -23084,7 +23084,11 @@ function openTpl(){
    var can=ok&&SEL;
    return '<div class="tpl-item"><div class="h"><span class="nm">'+esc(t.name)+' <span style="color:var(--mut2);font-weight:400;font-size:12px">'+esc(t.lang||'')+'</span></span>'
     +'<span class="badge'+(ok?'':' no')+'">'+esc(t.status||'')+'</span></div>'
-    +'<div class="bd">'+esc(t.body||'')+'</div>'
+    +'<div class="bd">'+esc(t.body||'')
+      +(t.pie?'<div style="color:var(--mut2);font-size:11.5px;margin-top:6px">'+esc(t.pie)+'</div>':'')+'</div>'
+    +((t.botones&&t.botones.length)?('<div style="display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 2px">'
+      +t.botones.map(function(x){return '<span style="flex:1;min-width:90px;text-align:center;border:1px solid #1f6b5c;color:#7fd8c4;border-radius:7px;padding:5px 8px;font-size:12px;font-weight:600">'+esc(x)+'</span>';}).join('')
+      +'</div><div style="font-size:10.5px;color:var(--mut2);margin-bottom:4px">As&iacute; le aparecen los botones al cliente</div>'):'')
     +'<button '+(can?'':'disabled')+' onclick="sendTpl(\\''+t.name+'\\',\\''+(t.lang||'es')+'\\','+t.nvars+')">'+(SEL?'Enviar a este chat':'Elegí un chat primero')+'</button></div>';
   }).join('')+link;
  });
@@ -25674,8 +25678,16 @@ def wa_plantillas():
             if comp.get("type") == "BODY":
                 body = comp.get("text", "")
                 nvars = len(set(_re.findall(r"{{(\d+)}}", body)))
+        pie = ""; botones = []
+        for comp in t.get("components", []):
+            tipo = (comp.get("type") or "").upper()
+            if tipo == "FOOTER":
+                pie = comp.get("text", "")
+            elif tipo == "BUTTONS":
+                botones = [b.get("text", "") for b in (comp.get("buttons") or [])]
         out.append({"name": t.get("name"), "lang": t.get("language"), "status": t.get("status"),
-                    "cat": t.get("category"), "body": body, "nvars": nvars})
+                    "cat": t.get("category"), "body": body, "nvars": nvars,
+                    "pie": pie, "botones": botones})
     return jsonify({"ok": True, "templates": out})
 
 
