@@ -27958,14 +27958,21 @@ def flex_etiquetas():
         return redirect("/")
     cods = [c.strip() for c in (request.args.get("cods") or "").split(",") if c.strip()]
     envios = _flex_de(email)
-    # el orden de impresion es por ZONA y despues por localidad: salen agrupadas como se
-    # cargan en la moto, no mezcladas.
     # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
     sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo(_flex_norm(c))
            for c in cods if _flex_norm(c) in envios or _flex_norm(c) in FLEX_DEMO_CODS]
-    sel.sort(key=lambda e: (list(FLEX_ZONAS).index(_flex_zona_de(e))
-                            if _flex_zona_de(e) in FLEX_ZONAS else 9,
-                            (e.get("loc") or "").lower(), int(_flex_norm(e["cod"]) or 0)))
+    # ORDEN DE IMPRESION, como en Andreani: primero la ZONA con mas envios y, dentro de
+    # cada zona, la LOCALIDAD con mas envios. Salen agrupadas como se cargan en la moto:
+    # el reparto grande arriba y los sueltos al final, no mezclados.
+    from collections import Counter as _Cnt
+    _zc = _Cnt(_flex_zona_de(e) for e in sel)
+    _lc = _Cnt((_flex_zona_de(e), (e.get("loc") or "").strip().lower()) for e in sel)
+    sel.sort(key=lambda e: (
+        -_zc[_flex_zona_de(e)],                     # zona con mas envios primero
+        _flex_zona_de(e) or "zzz",                  # empate: orden fijo y estable
+        -_lc[(_flex_zona_de(e), (e.get("loc") or "").strip().lower())],
+        (e.get("loc") or "").lower(),               # empate: alfabetico
+        int(_flex_norm(e["cod"]) or 0)))
     if not sel:
         return Response("No hay envíos para etiquetar.", status=400, mimetype="text/plain")
     try:
