@@ -26017,39 +26017,29 @@ cargar(0);
 
 RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
 FLEX_DB = DATA_DIR / "flex_envios.json"     # {email: {"seq": n, "envios": {cod: {...}}}}
-FLEX_SEQ_INICIAL = 5        # los REALES arrancan en el 00006
-# Del 00001 al 00005 son envios de MUESTRA, fijos. Sirven para probar la pagina, el escaner y la
-# impresion de etiquetas sin generar un envio de verdad. NO se guardan en ningun lado: se arman
-# al vuelo cada vez que los piden, y el contador nunca se los asigna a un envio real.
-# Son cinco y no uno porque cada uno pone a prueba una cosa distinta: las tres zonas, los tres
-# estados, con y sin piso, con y sin observaciones, y una nota larga que hay que recortar.
+FLEX_SEQ_INICIAL = 1        # el 00001 es la muestra -> los REALES arrancan en el 00002.
+#                             Solo aplica a una cuenta SIN envios: la que ya tiene
+#                             guarda su propio contador y no se renumera.
+# UN SOLO envio de muestra: el 00001. Sirve para probar el QR, el escaner, la pagina de
+# seguimiento y la impresion de la etiqueta sin generar un envio de verdad. NO se guarda en
+# ningun lado: se arma al vuelo cada vez que lo piden, y el contador nunca le asigna ese
+# numero a un envio real (los REALES arrancan en el 00002).
+# Eran cinco (00001-00005) hasta el 11-10-2026; Cristian pidio dejar solo el del QR.
 _FLEX_DEMOS = [
-    {"cod": "00001", "num": "7457", "nombre": "Gabriel Pollola", "zona": "norte",
-     "loc": "Lomas de Zamora", "prov": "Buenos Aires", "cp": "1832",
-     "calle": "Av. Hipólito Yrigoyen 8299", "extra": "Piso 3, Depto B", "tel": "1154629118",
-     "unidades": 2, "sku": "X2 POTES", "estado": "camino",
-     "nota": "Bicicletería Tonino. Atienden de lunes a sábado de 10 a 13 y de 14 a 18 hs. "
-             "Tocar el timbre de al lado."},
-    {"cod": "00002", "num": "7458", "nombre": "María Elena Suárez", "zona": "caba",
-     "loc": "Villa Crespo", "prov": "Ciudad Autónoma de Buenos Aires", "cp": "1414",
-     "calle": "Av. Corrientes 5420", "extra": "", "tel": "1147882210",
-     "unidades": 1, "sku": "X1 POTE", "estado": "registrado", "nota": ""},
-    {"cod": "00003", "num": "7459", "nombre": "Rodolfo Maidana", "zona": "sur",
-     "loc": "Moreno", "prov": "Buenos Aires", "cp": "1744",
-     "calle": "Int. Corvalan 1150", "extra": "Lote 7", "tel": "1166554433",
-     "unidades": 3, "sku": "X3 POTES", "estado": "entregado",
-     "nota": "Casa con reja verde, al fondo."},
-    {"cod": "00004", "num": "7460", "nombre": "Ana Paz", "zona": "norte",
-     "loc": "Quilmes Oeste", "prov": "Buenos Aires", "cp": "1879",
-     "calle": "Mitre 12", "extra": "Torre B, Piso 11, Depto 4", "tel": "1130001111",
-     "unidades": 1, "sku": "X1 POTE", "estado": "registrado", "nota": ""},
-    {"cod": "00005", "num": "7461", "nombre": "Jorge Luis Etcheverry", "zona": "sur",
-     "loc": "Florencio Varela", "prov": "Buenos Aires", "cp": "1888",
-     "calle": "Avenida Presidente Juan Domingo Perón 14520", "extra": "Manzana 42, Lote 7",
-     "tel": "1122334455", "unidades": 6, "sku": "X6 POTES", "estado": "fallido",
-     "nota": "Barrio cerrado Los Alamos, entrar por la guardia de la calle lateral y avisar al "
-             "encargado. Si no hay nadie dejar con el vecino del 14518. No tocar bocina después "
-             "de las 20 hs por favor."},
+        {'cod': '00001',
+         'num': '7457',
+         'nombre': 'Gabriel Pollola',
+         'zona': 'norte',
+         'loc': 'Lomas de Zamora',
+         'prov': 'Buenos Aires',
+         'cp': '1832',
+         'calle': 'Av. Hipólito Yrigoyen 8299',
+         'extra': 'Piso 3, Depto B',
+         'tel': '1154629118',
+         'nota': 'Bicicletería Tonino. Atienden de lunes a sábado de 10 a 13 y de 14 a 18 hs. Tocar el timbre de al lado.',
+         'sku': 'X2 POTES',
+         'unidades': 2,
+         'estado': 'camino'},
 ]
 FLEX_DEMO_CODS = tuple(d["cod"] for d in _FLEX_DEMOS)
 FLEX_COD_DIG = 5            # siempre 5 digitos, con los ceros adelante (00001, 00042, 01337)
