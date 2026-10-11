@@ -27961,17 +27961,25 @@ def flex_etiquetas():
     # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
     sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo(_flex_norm(c))
            for c in cods if _flex_norm(c) in envios or _flex_norm(c) in FLEX_DEMO_CODS]
-    # ORDEN DE IMPRESION, como en Andreani: primero la ZONA con mas envios y, dentro de
-    # cada zona, la LOCALIDAD con mas envios. Salen agrupadas como se cargan en la moto:
-    # el reparto grande arriba y los sueltos al final, no mezclados.
+    # ORDEN DE IMPRESION, como en Andreani. Son DOS BLOQUES para empaquetar de corrido:
+    #   1) todo lo que es SOLO POTES          2) despues lo que ademas lleva CAPS
+    # y dentro de cada bloque, la ZONA con mas envios primero y la LOCALIDAD con mas
+    # envios arriba: el reparto grande primero y los sueltos al final.
     from collections import Counter as _Cnt
-    _zc = _Cnt(_flex_zona_de(e) for e in sel)
-    _lc = _Cnt((_flex_zona_de(e), (e.get("loc") or "").strip().lower()) for e in sel)
+    def _caps(e):
+        return 1 if "CAPS" in (e.get("sku") or "").upper() else 0
+    def _loc(e):
+        return (e.get("loc") or "").strip().lower()
+    # los conteos se hacen DENTRO de cada bloque: si no, el bloque de CAPS hereda el orden
+    # del otro y la zona grande de arriba puede no tener ni un envio con capsulas.
+    _zc = _Cnt((_caps(e), _flex_zona_de(e)) for e in sel)
+    _lc = _Cnt((_caps(e), _flex_zona_de(e), _loc(e)) for e in sel)
     sel.sort(key=lambda e: (
-        -_zc[_flex_zona_de(e)],                     # zona con mas envios primero
-        _flex_zona_de(e) or "zzz",                  # empate: orden fijo y estable
-        -_lc[(_flex_zona_de(e), (e.get("loc") or "").strip().lower())],
-        (e.get("loc") or "").lower(),               # empate: alfabetico
+        _caps(e),                                            # 1) sin CAPS  2) con CAPS
+        -_zc[(_caps(e), _flex_zona_de(e))],                  # zona con mas envios primero
+        _flex_zona_de(e) or "zzz",                           # empate: estable
+        -_lc[(_caps(e), _flex_zona_de(e), _loc(e))],         # localidad con mas envios
+        (e.get("loc") or "").lower(),                        # empate: alfabetico
         int(_flex_norm(e["cod"]) or 0)))
     if not sel:
         return Response("No hay envíos para etiquetar.", status=400, mimetype="text/plain")
