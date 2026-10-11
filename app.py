@@ -12073,6 +12073,87 @@ def pf_despachos_seg_progreso():
 _WA_TPL_CACHE = {}
 
 
+RESENA_TPL_NOMBRE = "resena_video_35"
+RESENA_TPL_CUERPO = (
+    "Hola {{1}}, soy del equipo de NoxaLab.\n\n"
+    "Hace un tiempo compraste nuestro NAD+ y queremos saber cómo te fue de verdad.\n\n"
+    "Si nos mandás un video corto contando tu experiencia —mínimo 15 segundos, grabado con "
+    "el celular, sin producción— te damos un 35% de descuento en tu próxima compra.\n\n"
+    "Te pedimos que se te vea la cara y que cuentes: cómo te llegó el pedido y qué efectos "
+    "notaste hasta ahora.\n\n"
+    "Respondé este mensaje con el video y te mando el cupón.")
+
+
+@app.post("/wa-tpl-resena")
+def wa_tpl_resena():
+    """Crea la plantilla de la campaña de reseñas en Meta y la manda a aprobación.
+
+    RealProfit solo LEIA plantillas; no habia forma de crear una. El WABA y su token estan
+    en la config de la cuenta (no en variables de entorno), asi que esto corre con la sesion
+    del dueño. Si ya existe, Meta devuelve el error y se muestra tal cual."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    c = _wa_conf(email) or {}
+    waba, tok = str(c.get("waba_id") or ""), c.get("token")
+    if not waba or not tok:
+        return jsonify({"ok": False, "msg": "falta el WABA o el token en Config bot"}), 400
+    payload = {
+        "name": RESENA_TPL_NOMBRE,
+        "language": "es_AR",
+        "category": "MARKETING",
+        "components": [
+            {"type": "BODY", "text": RESENA_TPL_CUERPO,
+             "example": {"body_text": [["Favio"]]}},
+            {"type": "FOOTER", "text": "Respondé BAJA para no recibir más mensajes"},
+            {"type": "BUTTONS", "buttons": [
+                {"type": "QUICK_REPLY", "text": "Quiero el 35%"},
+                {"type": "QUICK_REPLY", "text": "Ahora no"}]},
+        ],
+    }
+    try:
+        r = requests.post("%s/%s/message_templates" % (WA_GRAPH, waba), timeout=30,
+                          headers={"Authorization": "Bearer " + tok,
+                                   "Content-Type": "application/json"},
+                          json=payload)
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:140])}), 500
+    if r.status_code >= 400:
+        e = j.get("error") or {}
+        return jsonify({"ok": False, "http": r.status_code,
+                        "msg": e.get("error_user_msg") or e.get("message") or str(j)[:200],
+                        "detalle": e.get("error_user_title") or ""}), 400
+    return jsonify({"ok": True, "id": j.get("id"), "estado": j.get("status"),
+                    "categoria": j.get("category"), "nombre": RESENA_TPL_NOMBRE,
+                    "msg": "Creada y enviada a aprobación de Meta."})
+
+
+@app.get("/wa-tpl-resena")
+def wa_tpl_resena_ver():
+    """Dice si la plantilla ya existe y en que estado esta (APPROVED / PENDING / REJECTED)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    c = _wa_conf(email) or {}
+    waba, tok = str(c.get("waba_id") or ""), c.get("token")
+    if not waba or not tok:
+        return jsonify({"ok": False, "msg": "falta el WABA o el token en Config bot"}), 400
+    try:
+        r = requests.get("%s/%s/message_templates" % (WA_GRAPH, waba), timeout=25,
+                         headers={"Authorization": "Bearer " + tok},
+                         params={"fields": "name,status,category,language,components", "limit": 100})
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:140])}), 500
+    todas = [{"nombre": t.get("name"), "estado": t.get("status"),
+              "idioma": t.get("language"), "categoria": t.get("category")}
+             for t in (j.get("data") or [])]
+    mia = [t for t in todas if t["nombre"] == RESENA_TPL_NOMBRE]
+    return jsonify({"ok": True, "existe": bool(mia), "resena": mia,
+                    "waba": waba, "todas": todas})
+
+
 def _wa_tpl_body(conf, name):
     """Trae el TEXTO (cuerpo) de una plantilla de WhatsApp desde Meta, cacheado."""
     waba = (conf or {}).get("waba_id"); tok = (conf or {}).get("token")
