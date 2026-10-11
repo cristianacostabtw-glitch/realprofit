@@ -21462,7 +21462,12 @@ def _res_activa(conv) -> bool:
     for m in reversed((conv.get("messages") or [])[-40:]):
         if m.get("dir") == "out" and m.get("type") == "template" and _res_es_plantilla(m.get("text")):
             return True
-        if m.get("dir") == "in" and _res_norm(m.get("text")) in _RES_SI + _RES_NO:
+        # OJO: solo vale el BOTON de verdad (el webhook lo marca type="button"), nunca texto
+        # suelto. Un cliente cualquiera escribe "no gracias" o "ahora no" todo el tiempo y
+        # con eso lo metiamos en la campaña: el bot le contestaba "Listo, sin problema" y le
+        # cerraba el chat en vez de atenderlo.
+        if m.get("dir") == "in" and m.get("type") == "button" \
+                and _res_norm(m.get("text")) in _RES_SI + _RES_NO:
             return True
     return False
 
