@@ -23073,7 +23073,8 @@ function openTpl(){
  ov.classList.add('on');
  get('/wa-plantillas').then(function(r){
   var box=document.getElementById('tpls');
-  var link='<div style="font-size:12px;color:var(--mut);margin-top:6px">¿Crear una nueva? Se hacen en <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank">el Administrador de WhatsApp de Meta</a> (necesitan aprobación).</div>';
+  var link='<div style="margin-top:10px"><button onclick="nuevaTpl()" style="background:#1d5f52;border:1px solid #1f6b5c;color:#c9f5e8;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">&#10133; Nueva plantilla</button>'
+   +'<div style="font-size:11.5px;color:var(--mut);margin-top:6px">Se crea ac&aacute; y la aprueba Meta (suele tardar minutos). Tambi&eacute;n se pueden hacer en <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank">el Administrador de Meta</a>.</div></div>';
   if(!r.ok){ box.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'+link; return; }
   var ts=r.templates||[];
   window.__TPLB={}; ts.forEach(function(t){ window.__TPLB[t.name]=t.body||''; });   // textos, para la vista previa
@@ -23086,6 +23087,77 @@ function openTpl(){
     +'<div class="bd">'+esc(t.body||'')+'</div>'
     +'<button '+(can?'':'disabled')+' onclick="sendTpl(\\''+t.name+'\\',\\''+(t.lang||'es')+'\\','+t.nvars+')">'+(SEL?'Enviar a este chat':'Elegí un chat primero')+'</button></div>';
   }).join('')+link;
+ });
+}
+// ── Crear una plantilla nueva sin salir de ac\u00e1 ──────────────────────────────
+// El backend (/wa-plantilla-crear) ya exist\u00eda pero no lo usaba nadie: la pantalla te
+// mandaba al Administrador de Meta. Las reglas (nombre, variables, largos) las valida el
+// server y el error de Meta se muestra tal cual.
+function _tfld(id,lbl,ph,ayuda){
+ return '<div style="margin-top:11px"><div style="color:var(--mut);font-size:12px;font-weight:600;margin-bottom:4px">'+lbl+'</div>'
+  +'<input id="'+id+'" placeholder="'+(ph||'')+'" style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:9px 11px;font-size:14px">'
+  +(ayuda?'<div style="font-size:11px;color:var(--mut2);margin-top:3px">'+ayuda+'</div>':'')+'</div>';
+}
+function nuevaTpl(){
+ var ov=document.getElementById('ov'), md=document.getElementById('modal');
+ md.innerHTML='<div class="mh"><h3>Nueva plantilla</h3><button class="x" onclick="openTpl()">&times;</button></div>'
+  +'<div style="padding:4px 2px 2px">'
+  +_tfld('tpN','Nombre','ej: resena_video_35','Min&uacute;scula, sin tildes ni espacios.')
+  +'<div style="margin-top:11px"><div style="color:var(--mut);font-size:12px;font-weight:600;margin-bottom:4px">Tipo</div>'
+   +'<select id="tpC" style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:9px 11px;font-size:14px">'
+   +'<option value="UTILITY">Utilidad &#8212; sobre un pedido que ya existe (m&aacute;s barata)</option>'
+   +'<option value="MARKETING">Marketing &#8212; promos y descuentos (m&aacute;s cara)</option></select></div>'
+  +'<div style="margin-top:11px"><div style="color:var(--mut);font-size:12px;font-weight:600;margin-bottom:4px">Mensaje</div>'
+   +'<textarea id="tpB" rows="7" oninput="tplVars()" placeholder="Hola {{1}}, tu pedido ya sali&oacute;..." style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:9px 11px;font-size:14px;font-family:inherit;line-height:1.5"></textarea>'
+   +'<div style="font-size:11px;color:var(--mut2);margin-top:3px">Escrib&iacute; {{1}}, {{2}}&#8230; donde vaya un dato variable (el nombre del cliente, el n&uacute;mero de pedido).</div></div>'
+  +'<div id="tpVars"></div>'
+  +_tfld('tpF','Pie (opcional)','ej: Respond&eacute; BAJA para no recibir m&aacute;s mensajes','Hasta 60 caracteres.')
+  +_tfld('tpBt','Botones (opcional)','ej: Quiero el 35%, Ahora no','Separados por coma. Hasta 3, de 25 caracteres cada uno.')
+  +'<div id="tpMsg" style="font-size:12.5px;margin-top:11px"></div>'
+  +'<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:12px">'
+  +'<button onclick="openTpl()" style="background:#111c2b;border:1px solid #1f2a3d;color:#cbd5e1;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">Volver</button>'
+  +'<button id="tpGo" onclick="crearTpl()" style="background:#1d5f52;border:1px solid #1f6b5c;color:#c9f5e8;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Crear y mandar a aprobaci&oacute;n</button>'
+  +'</div></div>';
+ ov.classList.add('on');
+}
+// Cuantas variables {{n}} tiene el texto. Sin regex a proposito: las barras invertidas
+// dentro del HTML (que es un string de Python) dan SyntaxWarning y se escapan mal.
+function tplNVars(t){
+ var n=0, p=0;
+ while(true){
+  var a=t.indexOf('{{',p); if(a<0) break;
+  var b=t.indexOf('}}',a); if(b<0) break;
+  var k=parseInt(t.slice(a+2,b).replace(/[^0-9]/g,''),10);
+  if(k>n) n=k;
+  p=b+2;
+ }
+ return n;
+}
+function tplVars(){
+ var t=(document.getElementById('tpB')||{}).value||'', n=tplNVars(t);
+ var box=document.getElementById('tpVars'); if(!box)return;
+ if(!n){ box.innerHTML=''; return; }
+ var h='<div style="margin-top:11px;color:var(--mut);font-size:12px;font-weight:600">Ejemplo de cada dato <span style="font-weight:400;color:var(--mut2)">(Meta lo pide para aprobarla)</span></div>';
+ for(var j=1;j<=n;j++){
+  var prev=document.getElementById('tpV'+j), v=prev?prev.value:'';
+  h+='<input id="tpV'+j+'" value="'+esc(v)+'" placeholder="Qu&eacute; va en {{'+j+'}} &#8212; ej: Favio" style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:9px 11px;font-size:14px;margin-top:6px">';
+ }
+ box.innerHTML=h;
+}
+function crearTpl(){
+ var t=(document.getElementById('tpB')||{}).value||'', n=tplNVars(t);
+ var ej=[]; for(var j=1;j<=n;j++){ var e=document.getElementById('tpV'+j); ej.push((e&&e.value||'').trim()); }
+ var bt=((document.getElementById('tpBt')||{}).value||'').split(',');
+ var msg=document.getElementById('tpMsg'), go=document.getElementById('tpGo');
+ if(msg){ msg.style.color='var(--mut)'; msg.textContent='Mand\u00e1ndola a Meta\u2026'; }
+ if(go){ go.disabled=true; }
+ post('/wa-plantilla-crear',{nombre:(document.getElementById('tpN')||{}).value||'',
+   categoria:(document.getElementById('tpC')||{}).value||'UTILITY', cuerpo:t, ejemplos:ej,
+   pie:(document.getElementById('tpF')||{}).value||'', botones:bt}).then(function(r){
+  if(go){ go.disabled=false; }
+  if(!r.ok){ if(msg){ msg.style.color='#fca5a5'; msg.textContent=r.msg||'No se pudo crear.'; } return; }
+  if(msg){ msg.style.color='#86efac'; msg.textContent='Creada. Qued\u00f3 '+(r.estado||'PENDING')+' hasta que Meta la revise.'; }
+  setTimeout(openTpl,1400);
  });
 }
 function sendTpl(name,lang,nvars){
@@ -25565,6 +25637,59 @@ def wa_plantillas():
     return jsonify({"ok": True, "templates": out})
 
 
+_WA_TPL_CAT = ("MARKETING", "UTILITY")
+
+
+def _wa_tpl_armar(d):
+    """Valida lo que vino de la pantalla y arma el payload de Meta. Devuelve (payload, error).
+
+    Las reglas son de Meta y conviene frenarlas ACA: si no, el error vuelve como un
+    "Invalid parameter" pelado que no dice qué arreglar (ver [[errores-reales-en-ui]])."""
+    import re as _r
+    nombre = (d.get("nombre") or "").strip().lower().replace(" ", "_")
+    if not _r.fullmatch(r"[a-z0-9_]{1,512}", nombre or ""):
+        return None, ("El nombre va en minúscula, sin tildes ni espacios (guión bajo sí): "
+                      "ej. resena_video_35")
+    cuerpo = (d.get("cuerpo") or "").strip()
+    if not cuerpo:
+        return None, "Falta el texto del mensaje."
+    if len(cuerpo) > 1024:
+        return None, "El texto es muy largo (%d). Meta permite hasta 1024 caracteres." % len(cuerpo)
+    cat = (d.get("categoria") or "UTILITY").strip().upper()
+    if cat not in _WA_TPL_CAT:
+        return None, "Categoría inválida: va MARKETING o UTILITY."
+
+    # Las variables van {{1}}, {{2}}... correlativas desde 1, y cada una necesita un ejemplo.
+    vars_ = [int(x) for x in _r.findall(r"\{\{\s*(\d+)\s*\}\}", cuerpo)]
+    if vars_ and sorted(set(vars_)) != list(range(1, max(vars_) + 1)):
+        return None, "Las variables tienen que ser {{1}}, {{2}}… correlativas desde 1."
+    n_var = max(vars_) if vars_ else 0
+    ejem = [str(x).strip() for x in (d.get("ejemplos") or []) if str(x).strip()]
+    if n_var and len(ejem) < n_var:
+        return None, ("Faltan ejemplos: el texto tiene %d variable(s) y Meta pide un ejemplo de "
+                      "cada una para aprobarla." % n_var)
+
+    comps = [{"type": "BODY", "text": cuerpo}]
+    if n_var:
+        comps[0]["example"] = {"body_text": [ejem[:n_var]]}
+    pie = (d.get("pie") or "").strip()
+    if pie:
+        if len(pie) > 60:
+            return None, "El pie es muy largo (%d). Meta permite hasta 60 caracteres." % len(pie)
+        comps.append({"type": "FOOTER", "text": pie})
+    btns = [str(b).strip() for b in (d.get("botones") or []) if str(b).strip()]
+    if btns:
+        if len(btns) > 3:
+            return None, "Hasta 3 botones."
+        largo = [b for b in btns if len(b) > 25]
+        if largo:
+            return None, "El botón «%s» es muy largo (máximo 25 caracteres)." % largo[0]
+        comps.append({"type": "BUTTONS",
+                      "buttons": [{"type": "QUICK_REPLY", "text": b} for b in btns]})
+    return {"name": nombre, "language": (d.get("idioma") or WA_TPL_LANG).strip(),
+            "category": cat, "components": comps}, ""
+
+
 @app.post("/wa-plantilla-crear")
 def wa_plantilla_crear():
     """Crea una plantilla en Meta para que la aprueben. El texto va con {{1}}, {{2}}... y hay que
@@ -25576,19 +25701,9 @@ def wa_plantilla_crear():
     c = _wa_conf(email)
     if not c or not c.get("waba_id"):
         return jsonify({"ok": False, "msg": "Falta el WABA ID en Config"})
-    d = request.get_json(silent=True) or {}
-    nombre = (d.get("nombre") or "").strip().lower()
-    cuerpo = (d.get("cuerpo") or "").strip()
-    if not nombre or not cuerpo:
-        return jsonify({"ok": False, "msg": "faltan nombre o cuerpo"})
-    ejemplos = [str(x) for x in (d.get("ejemplos") or [])]
-    comp = {"type": "BODY", "text": cuerpo}
-    if ejemplos:
-        comp["example"] = {"body_text": [ejemplos]}
-    payload = {"name": nombre,
-               "language": (d.get("idioma") or WA_TPL_LANG),
-               "category": (d.get("categoria") or "UTILITY").upper(),
-               "components": [comp]}
+    payload, _err = _wa_tpl_armar(request.get_json(silent=True) or {})
+    if _err:
+        return jsonify({"ok": False, "msg": _err})
     try:
         r = requests.post("%s/%s/message_templates" % (WA_GRAPH, c["waba_id"]),
                           params={"access_token": c["token"]}, json=payload, timeout=25)
@@ -25598,7 +25713,9 @@ def wa_plantilla_crear():
     if r.status_code >= 400:
         return jsonify({"ok": False, "msg": ((j.get("error") or {}).get("error_user_msg")
                                              or (j.get("error") or {}).get("message") or "error")[:200]})
-    return jsonify({"ok": True, "id": j.get("id"), "estado": j.get("status"), "categoria": j.get("category")})
+    _WA_TPL_CACHE.clear()               # que el bot lea la nueva y no la cacheada
+    return jsonify({"ok": True, "id": j.get("id"), "estado": j.get("status"),
+                    "categoria": j.get("category"), "nombre": payload["name"]})
 
 
 @app.post("/wa-plantilla-editar")
