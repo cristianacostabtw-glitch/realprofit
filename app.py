@@ -25826,10 +25826,16 @@ def wa_plantilla_editar():
         for cc in (tpl.get("components") or []):
             if cc.get("type") == "BODY" and cc.get("example"):
                 comp["example"] = cc["example"]
+    # Meta REEMPLAZA todos los componentes: si mando solo el BODY, le borro el pie y los
+    # botones a la plantilla y no avisa nada. Hay que remandar los otros tal cual estaban.
+    orden = {"HEADER": 0, "BODY": 1, "FOOTER": 2, "BUTTONS": 3}
+    comps = [comp] + [cc for cc in (tpl.get("components") or [])
+                      if (cc.get("type") or "").upper() != "BODY"]
+    comps.sort(key=lambda cc: orden.get((cc.get("type") or "").upper(), 9))
     try:
         r2 = requests.post("%s/%s" % (WA_GRAPH, tpl.get("id")),
                            params={"access_token": c["token"]},
-                           json={"components": [comp]}, timeout=25)
+                           json={"components": comps}, timeout=25)
         j2 = r2.json() if r2.content else {}
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:120]})
