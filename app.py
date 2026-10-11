@@ -23190,9 +23190,12 @@ function crearTpl(){
  var msg=document.getElementById('tpMsg'), go=document.getElementById('tpGo');
  if(msg){ msg.style.color='var(--mut)'; msg.textContent='Mand\u00e1ndola a Meta\u2026'; }
  if(go){ go.disabled=true; }
- post('/wa-plantilla-crear',{nombre:(document.getElementById('tpN')||{}).value||'',
+ var cuerpoJson=JSON.stringify({nombre:(document.getElementById('tpN')||{}).value||'',
    categoria:(document.getElementById('tpC')||{}).value||'UTILITY', cuerpo:t, ejemplos:ej,
-   pie:(document.getElementById('tpF')||{}).value||'', botones:bt}).then(function(r){
+   pie:(document.getElementById('tpF')||{}).value||'', botones:bt});
+ // NO usar post(): en esta pagina manda form-urlencoded y el endpoint lee JSON.
+ fetch('/wa-plantilla-crear',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:cuerpoJson}).then(function(r){return r.json();}).then(function(r){
   if(go){ go.disabled=false; }
   if(!r.ok){ if(msg){ msg.style.color='#fca5a5'; msg.textContent=r.msg||'No se pudo crear.'; } return; }
   if(msg){ msg.style.color='#86efac'; msg.textContent='Creada. Qued\u00f3 '+(r.estado||'PENDING')+' hasta que Meta la revise.'; }
