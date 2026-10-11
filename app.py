@@ -26006,12 +26006,12 @@ cargar(0);
 </script></body></html>"""
 
 
-# ============================ FLEX PROPIO (CABA · GBA 1 · GBA 2) ============================
+# ================== FLEX PROPIO (CABA · Zona Norte · Oeste · Sur) ==================
 # Seguimiento propio, sin depender de Envialo/RedChat. Tres piezas:
 #   1) /flex              → pantalla del duenio: que pedidos caen en zona, generar codigo, mover estado
 #   2) /seguimiento/<cod> → la pagina PUBLICA que ve el cliente (sin login, mobile first)
 #   3) el codigo viaja a Shopify (trackingInfo) y por WhatsApp con la plantilla de 24/48 hs
-# Solo se despacha por Flex en CABA, GBA 1 y GBA 2. Todo lo demas sigue yendo por Andreani:
+# Solo se despacha por Flex en CABA y el AMBA (Norte/Oeste/Sur). Lo demas va por Andreani:
 # esta seccion NO toca nada de Despachos ni del flujo de etiquetas.
 
 RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
@@ -26023,7 +26023,7 @@ FLEX_SEQ_INICIAL = 5        # los REALES arrancan en el 00006
 # Son cinco y no uno porque cada uno pone a prueba una cosa distinta: las tres zonas, los tres
 # estados, con y sin piso, con y sin observaciones, y una nota larga que hay que recortar.
 _FLEX_DEMOS = [
-    {"cod": "00001", "num": "7457", "nombre": "Gabriel Pollola", "zona": "gba1",
+    {"cod": "00001", "num": "7457", "nombre": "Gabriel Pollola", "zona": "norte",
      "loc": "Lomas de Zamora", "prov": "Buenos Aires", "cp": "1832",
      "calle": "Av. Hipólito Yrigoyen 8299", "extra": "Piso 3, Depto B", "tel": "1154629118",
      "unidades": 2, "sku": "X2 POTES", "estado": "camino",
@@ -26033,16 +26033,16 @@ _FLEX_DEMOS = [
      "loc": "Villa Crespo", "prov": "Ciudad Autónoma de Buenos Aires", "cp": "1414",
      "calle": "Av. Corrientes 5420", "extra": "", "tel": "1147882210",
      "unidades": 1, "sku": "X1 POTE", "estado": "registrado", "nota": ""},
-    {"cod": "00003", "num": "7459", "nombre": "Rodolfo Maidana", "zona": "gba2",
+    {"cod": "00003", "num": "7459", "nombre": "Rodolfo Maidana", "zona": "sur",
      "loc": "Moreno", "prov": "Buenos Aires", "cp": "1744",
      "calle": "Int. Corvalan 1150", "extra": "Lote 7", "tel": "1166554433",
      "unidades": 3, "sku": "X3 POTES", "estado": "entregado",
      "nota": "Casa con reja verde, al fondo."},
-    {"cod": "00004", "num": "7460", "nombre": "Ana Paz", "zona": "gba1",
+    {"cod": "00004", "num": "7460", "nombre": "Ana Paz", "zona": "norte",
      "loc": "Quilmes Oeste", "prov": "Buenos Aires", "cp": "1879",
      "calle": "Mitre 12", "extra": "Torre B, Piso 11, Depto 4", "tel": "1130001111",
      "unidades": 1, "sku": "X1 POTE", "estado": "registrado", "nota": ""},
-    {"cod": "00005", "num": "7461", "nombre": "Jorge Luis Etcheverry", "zona": "gba2",
+    {"cod": "00005", "num": "7461", "nombre": "Jorge Luis Etcheverry", "zona": "sur",
      "loc": "Florencio Varela", "prov": "Buenos Aires", "cp": "1888",
      "calle": "Avenida Presidente Juan Domingo Perón 14520", "extra": "Manzana 42, Lote 7",
      "tel": "1122334455", "unidades": 6, "sku": "X6 POTES", "estado": "fallido",
@@ -26056,69 +26056,65 @@ FLEX_COD_DIG = 5            # siempre 5 digitos, con los ceros adelante (00001, 
 # --- Zonas por codigo postal -------------------------------------------------------------
 # El CP manda sobre el nombre de la localidad: "Quilmes Oeste", "Bernal Este" y "Don Bosco" son
 # el mismo partido y se escriben de 10 formas. Los sets son por PARTIDO, 4 digitos.
-_FLEX_CP_GBA1 = set(map(str, (
-    # Vicente Lopez
-    1602, 1603, 1604, 1605, 1606, 1636, 1637, 1638,
-    # San Isidro
-    1607, 1609, 1640, 1641, 1642, 1643,
-    # General San Martin
-    1650, 1651, 1653, 1655, 1656,
-    # Tres de Febrero
-    1657, 1674, 1675, 1676, 1678, 1682, 1684, 1702,
-    # Hurlingham
-    1686, 1688,
-    # Moron
-    1706, 1708, 1712, 1713,
-    # Ituzaingo
-    1714,
-    # La Matanza
-    1704, 1751, 1752, 1753, 1754, 1755, 1756, 1757, 1758, 1759,
-    1761, 1762, 1765, 1766, 1767, 1768, 1769, 1770,
-    # Lanus
-    1822, 1824, 1825, 1826, 1827,
-    # Lomas de Zamora
-    1828, 1829, 1830, 1832, 1834, 1836, 1838,
-    # Avellaneda
-    1868, 1869, 1870, 1871, 1872, 1874, 1875,
-    # Quilmes
-    1876, 1877, 1878, 1879, 1880, 1881, 1882,
+# Las zonas son las que usa EL REPARTIDOR para armar el recorrido (CABA / Norte / Oeste /
+# Sur), no anillos por distancia. Antes eran GBA 1 y GBA 2, que miden cuan lejos queda pero
+# no sirven para ordenar la moto: dos pedidos del mismo "GBA 2" pueden estar a 60 km uno del
+# otro, uno en Tigre y el otro en Varela.
+_FLEX_CP_NORTE = set(map(str, (
+    1602, 1603, 1604, 1605, 1606, 1636, 1637, 1638,            # Vicente Lopez
+    1607, 1609, 1640, 1641, 1642, 1643,                        # San Isidro
+    1644, 1645, 1646,                                          # San Fernando
+    1611, 1617, 1618, 1621, 1648, 1649,                        # Tigre
+    1650, 1651, 1653, 1655, 1656,                              # General San Martin
+    1613, 1614, 1615, 1616, 1620,                              # Malvinas Argentinas
+    1665, 1666,                                                # Jose C. Paz
+    1661, 1663, 1664, 1667,                                    # San Miguel
 )))
-_FLEX_CP_GBA2 = set(map(str, (
-    # Tigre
-    1611, 1617, 1618, 1621, 1648, 1649,
-    # San Fernando
-    1644, 1645, 1646,
-    # Malvinas Argentinas
-    1613, 1614, 1615, 1616, 1620,
-    # Jose C. Paz
-    1665, 1666,
-    # San Miguel
-    1661, 1663, 1664, 1667,
-    # Moreno
-    1740, 1742, 1743, 1744, 1746, 1747,
-    # Merlo
-    1718, 1719, 1720, 1721, 1722, 1723,
-    # Ezeiza
-    1802, 1804, 1806, 1808,
-    # Esteban Echeverria
-    1840, 1842, 1844,
-    # Almirante Brown
-    1845, 1846, 1847, 1848, 1849, 1850, 1852, 1854, 1856, 1858,
-    # Berazategui
-    1883, 1884, 1885, 1886, 1887,
-    # Florencio Varela
-    1888, 1889, 1890, 1891, 1894,
+_FLEX_CP_OESTE = set(map(str, (
+    1657, 1674, 1675, 1676, 1678, 1682, 1684, 1702,            # Tres de Febrero
+    1686, 1688,                                                # Hurlingham
+    1706, 1708, 1712, 1713,                                    # Moron
+    1714,                                                      # Ituzaingo
+    1718, 1719, 1720, 1721, 1722, 1723,                        # Merlo
+    1740, 1742, 1743, 1744, 1746, 1747,                        # Moreno
+    1704, 1751, 1752, 1753, 1754, 1755, 1756, 1757, 1758,      # La Matanza
+    1759, 1761, 1762, 1765, 1766, 1767, 1768, 1769, 1770,
 )))
-FLEX_ZONAS = {"caba": "CABA", "gba1": "GBA 1", "gba2": "GBA 2"}
+_FLEX_CP_SUR = set(map(str, (
+    1868, 1869, 1870, 1871, 1872, 1874, 1875,                  # Avellaneda
+    1822, 1824, 1825, 1826, 1827,                              # Lanus
+    1828, 1829, 1830, 1832, 1834, 1836, 1838,                  # Lomas de Zamora
+    1876, 1877, 1878, 1879, 1880, 1881, 1882,                  # Quilmes
+    1840, 1842, 1844,                                          # Esteban Echeverria
+    1802, 1804, 1806, 1808,                                    # Ezeiza
+    1845, 1846, 1847, 1848, 1849, 1850, 1852, 1854, 1856, 1858,  # Almirante Brown
+    1883, 1884, 1885, 1886, 1887,                              # Berazategui
+    1888, 1889, 1890, 1891, 1894,                              # Florencio Varela
+)))
+# El orden es el del recorrido: primero CABA y despues cada zona junta. La etiqueta se
+# imprime en este orden, asi la moto se carga como se reparte.
+FLEX_ZONAS = {"caba": "CABA", "norte": "ZONA NORTE", "oeste": "ZONA OESTE", "sur": "ZONA SUR"}
+# En la ETIQUETA el recuadro ya dice "ZONA" arriba, asi que abajo va solo el rumbo: "ZONA
+# NORTE" no entra en los 56 pt del recuadro y se desbordaba sobre la banda negra.
+FLEX_ZONAS_ET = {"caba": "CABA", "norte": "NORTE", "oeste": "OESTE", "sur": "SUR"}
+# Lo guardado con las zonas viejas lo recalcula _flex_zona_ok() por CP.
+
+
+def _flex_zona_ok(z, cp="", prov="", loc=""):
+    """La zona de un envio YA guardado. Lo que quedo con las viejas (gba1/gba2) se vuelve a
+    calcular por CP: si no, la etiqueta imprimiria el recuadro de ZONA vacio."""
+    z = str(z or "")
+    if z in FLEX_ZONAS:
+        return z
+    return _flex_zona(cp, prov, loc)
 
 
 def _flex_zona(cp, prov="", loc="") -> str:
-    """CABA / GBA 1 / GBA 2 — o "" si el pedido NO entra en Flex (va por Andreani).
+    """CABA / Zona Norte / Zona Oeste / Zona Sur — o "" si NO entra en Flex (va por Andreani).
 
     El corte es por CP de 4 digitos. Dos salvedades:
       - CABA se reconoce tambien por el nombre de la provincia (los CP 1000-1499 son CABA).
-      - un CP del AMBA (16xx-18xx) que no este en ninguna de las dos listas cae en GBA 2,
-        que es el caso mas probable y el mas caro: nunca subestima la distancia. Igual la zona
+      - un CP del AMBA (16xx-18xx) que no este en ninguna lista se parte por rango. La zona
         se puede corregir a mano en la pantalla, porque es la que define el costo del viaje.
     """
     d = "".join(ch for ch in str(cp or "") if ch.isdigit())[:4]
@@ -26129,12 +26125,16 @@ def _flex_zona(cp, prov="", loc="") -> str:
         return "caba"
     if len(d) == 4 and "1000" <= d <= "1499":
         return "caba"
-    if d in _FLEX_CP_GBA1:
-        return "gba1"
-    if d in _FLEX_CP_GBA2:
-        return "gba2"
+    if d in _FLEX_CP_NORTE:
+        return "norte"
+    if d in _FLEX_CP_OESTE:
+        return "oeste"
+    if d in _FLEX_CP_SUR:
+        return "sur"
+    # Un CP del AMBA que no este en ninguna lista: se parte por rango, que para los 16xx-18xx
+    # sigue bastante bien la geografia. Igual la zona se corrige a mano en la pantalla.
     if len(d) == 4 and "1600" <= d <= "1899":
-        return "gba2"
+        return "norte" if d <= "1669" else ("oeste" if d <= "1799" else "sur")
     return ""
 
 
@@ -26244,7 +26244,7 @@ def _flex_crear(email, filas) -> list:
         env = {
             "cod": cod, "num": num,
             "nombre": (f.get("nombre") or "").strip(),
-            "zona": f.get("zona") or _flex_zona(f.get("cp"), f.get("provincia"), f.get("localidad")) or "gba2",
+            "zona": f.get("zona") or _flex_zona(f.get("cp"), f.get("provincia"), f.get("localidad")) or "oeste",
             "loc": f.get("localidad") or "", "prov": f.get("provincia") or "", "cp": str(f.get("cp") or ""),
             "calle": f.get("calle") or "", "extra": f.get("extra") or "",
             "tel": f.get("tel") or "", "unidades": int(f.get("unidades") or 0),
@@ -26921,7 +26921,7 @@ a.lk:hover{text-decoration:underline}
     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M4 16.5 10 10l4 4 6-6.5"/><path d="M15 7.5h5v5"/></svg></span>
    <div><h1>Flex</h1>
-    <p class="sub">Env&iacute;o propio a <b>CABA</b>, <b>GBA 1</b> y <b>GBA 2</b>. Gener&aacute; el
+    <p class="sub">Env&iacute;o propio a <b>CABA</b> y el <b>AMBA</b> (Norte, Oeste y Sur). Gener&aacute; el
      c&oacute;digo, imprim&iacute; la etiqueta y el cliente sigue su pedido en
      <code id="ej">realprofitapp.com/seguimiento/&hellip;</code>. Lo que no entra en zona sigue
      saliendo por Andreani.</p></div>
@@ -26995,7 +26995,7 @@ a.lk:hover{text-decoration:underline}
 </div>
 
 <script>
-var ZN={caba:"CABA",gba1:"GBA 1",gba2:"GBA 2"};
+var ZN={caba:"CABA",norte:"ZONA NORTE",oeste:"ZONA OESTE",sur:"ZONA SUR"};
 var EST=__ESTADOS__;
 var ECOL={},ENOM={},PILL={wait:"p-esp",move:"p-mov",ok:"p-ok",bad:"p-mal",hoy:"p-esp"};
 EST.forEach(function(e){ECOL[e[0]]=e[4];ENOM[e[0]]=e[2];});
@@ -27269,7 +27269,11 @@ def _flex_etiqueta(pg, e):
     _fx_txt(pg, M + 11, y + 24, tl, HB, sl, B)
     _fx_txt(pg, M + 11, y + 37, ("CP " + str(e.get("cp") or "")).strip(), HB, 10, B)
     _fx_txt(pg, W - M - zb - 5, y + 19, "ZONA", HB, 6, N, 1, zb)
-    _fx_txt(pg, W - M - zb - 5, y + 33, FLEX_ZONAS.get(e.get("zona"), ""), HB, 12.5, N, 1, zb)
+    _zt = FLEX_ZONAS_ET.get(_flex_zona_ok(e.get("zona"), e.get("cp")), "")
+    _zs = 12.5                                  # y si alguna vez no entra, se achica sola
+    while _zt and _zs > 6 and _fx_w(_zt, HB, _zs) > zb - 9:
+        _zs -= 0.5
+    _fx_txt(pg, W - M - zb - 5, y + 33, _zt, HB, _zs, N, 1, zb)
 
     # 3 · la direccion: la altura va aparte y enorme
     y += bh + 17
@@ -27371,7 +27375,8 @@ def flex_etiquetas():
     # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
     sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo(_flex_norm(c))
            for c in cods if _flex_norm(c) in envios or _flex_norm(c) in FLEX_DEMO_CODS]
-    sel.sort(key=lambda e: (list(FLEX_ZONAS).index(e.get("zona")) if e.get("zona") in FLEX_ZONAS else 9,
+    sel.sort(key=lambda e: (list(FLEX_ZONAS).index(_flex_zona_ok(e.get("zona"), e.get("cp")))
+                            if _flex_zona_ok(e.get("zona"), e.get("cp")) in FLEX_ZONAS else 9,
                             (e.get("loc") or "").lower(), int(_flex_norm(e["cod"]) or 0)))
     if not sel:
         return Response("No hay envíos para etiquetar.", status=400, mimetype="text/plain")
@@ -27477,7 +27482,7 @@ def _flex_repa_resumen(e) -> dict:
     tit, chip, _frase, col = _FLEX_EST.get(e.get("estado") or "registrado", _FLEX_EST["registrado"])
     return {"cod": e["cod"], "num": e.get("num"), "nombre": e.get("nombre"),
             "calle": e.get("calle"), "extra": e.get("extra"), "loc": e.get("loc"),
-            "cp": e.get("cp"), "zona": FLEX_ZONAS.get(e.get("zona"), ""),
+            "cp": e.get("cp"), "zona": FLEX_ZONAS.get(_flex_zona_ok(e.get("zona"), e.get("cp")), ""),
             "tel": e.get("tel"), "estado": e.get("estado"), "chip": chip, "color": col,
             "puede_deshacer": len(e.get("hist") or []) > 1}
 
@@ -27696,6 +27701,19 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
  font-weight:600;cursor:pointer;min-height:46px}
 .deshacer:active{background:var(--papel2)}
 .vacio{padding:26px 18px;text-align:center;color:var(--tinta3);font-size:13.5px}
+.hcab{display:flex;align-items:baseline;justify-content:space-between;margin:15px 2px 8px}
+.hcab b{font-family:Archivo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.8px;
+ text-transform:uppercase;color:var(--tinta3)}
+.hcab button{background:none;border:0;color:var(--tinta3);font-size:12px;font-family:inherit;
+ padding:4px 2px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.hist{display:flex;flex-direction:column;gap:6px;overflow:auto;-webkit-overflow-scrolling:touch}
+.h{display:flex;align-items:center;gap:10px;background:var(--papel);border:1px solid var(--linea);
+ border-left:3px solid var(--tono,var(--linea));border-radius:12px;padding:9px 12px}
+.h.pend{opacity:.55}
+.h .hc{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:14px;color:var(--tinta);flex:none}
+.h .hq{flex:1;min-width:0;color:var(--tinta2);font-size:12.5px;white-space:nowrap;overflow:hidden;
+ text-overflow:ellipsis}
+.h .ht{flex:none;color:var(--tinta3);font-size:11.5px;font-variant-numeric:tabular-nums}
 
 /* ---- pie ---- */
 .pie{margin-top:auto;padding-top:14px;display:flex;align-items:center;gap:10px}
@@ -27767,6 +27785,10 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
 
   <div class="res" id="res"><div class="vacio">Apunt&aacute; al QR de la etiqueta</div></div>
 
+  <div class="hcab" id="hcab" style="display:none"><b>Escaneados</b>
+   <button onclick="limpiarHist()">Borrar lista</button></div>
+  <div class="hist" id="hist"></div>
+
   <div class="pie">
    <span class="cuenta"><b id="n">0</b><span>escaneados</span></span>
    <span class="cola" id="cola"></span>
@@ -27775,7 +27797,7 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
  </div>
 </div>
 <script>
-var TOK=null, MODO="camino", ULT=null, N=0, COLA=[], ultCod="", ultT=0, scanning=false;
+var TOK=null, MODO="camino", ULT=null, N=0, COLA=[], ultCod="", ultT=0, scanning=false, HIST=[];
 var EST={camino:{t:"var(--acc2)",sb:"rgba(74,155,255,.13)"},
          entregado:{t:"var(--ok)",sb:"var(--ok-sb)"},
          fallido:{t:"var(--mal)",sb:"var(--mal-sb)"},
@@ -27801,10 +27823,11 @@ function validar(t){
   $("alta").style.display="none"; $("barra").style.display=""; $("main").style.display="flex";
   $("yo").textContent=j.nombre;
   var hoy=new Date().toISOString().slice(0,10);
-  if(g("rp_esc_dia")===hoy){ N=parseInt(g("rp_esc_n")||"0",10)||0; } else { s_("rp_esc_dia",hoy); s_("rp_esc_n","0"); }
+  if(g("rp_esc_dia")===hoy){ N=parseInt(g("rp_esc_n")||"0",10)||0; }
+  else { s_("rp_esc_dia",hoy); s_("rp_esc_n","0"); s_("rp_esc_hist","[]"); }  // dia nuevo, lista limpia
   $("n").textContent=N;
   try{ COLA=JSON.parse(g("rp_esc_cola")||"[]"); }catch(e){ COLA=[]; }
-  pintarCola(); camara();
+  histLeer(); pintarCola(); camara();
  }).catch(function(){ $("alta").style.display=""; $("err-alta").textContent="Sin conexi\\u00f3n"; });
 }
 function entrar(){ var v=($("tok").value||"").trim(); if(!v)return;
@@ -27863,29 +27886,36 @@ function camara(){
 function falloCam(m){ $("aviso").style.display="";
  $("aviso").innerHTML='<div class="t">C\u00e1mara no disponible</div><div class="d">'+esc(m)
   +'</div><button class="mano" onclick="aMano()">Escribir el c\u00f3digo</button>'; }
-var _vuelta=0;
+var _vuelta=0, _ultLee=0, _ocupado=false, _lienzoOk=false;
+/* POR QUE NO SE LEE EN CADA FRAME: antes esto corria con requestAnimationFrame, o sea ~60
+   veces por segundo, y cada vuelta reasignaba el canvas (lienzo.width=...), pedia 1,08 MB
+   con getImageData y le daba 270.000 pixeles a jsQR. Eso clava el hilo principal del celular
+   y la camara se ve trabada. Leyendo cada 110 ms el QR se engancha igual de rapido (un QR
+   tarda mas que eso en quedar quieto frente a la camara) y el video va fluido. */
+var LEE_CADA=110, L_MUESTRA=384;
 function leer(){
- if(!scanning){ requestAnimationFrame(leer); return; }
- if(video.readyState===video.HAVE_ENOUGH_DATA){
-  var w=video.videoWidth,h=video.videoHeight;
-  if(w&&h){
-   if(detector){
-    detector.detect(video).then(function(cs){ if(cs&&cs.length) visto(cs[0].rawValue); })
-     .catch(function(){ detector=null; lector(); });   // si el nativo falla, sigue jsQR
-   } else if(window.jsQR){
-    _vuelta++;
-    /* Una vuelta mira el centro (QR cerca, mas nitido) y la siguiente el cuadro entero
-       (QR lejos o descentrado). Alternar las dos cubre las dos formas de apuntar. */
-    var L=520, lado=Math.min(w,h)*((_vuelta%2)?1:0.72);
-    lienzo.width=lienzo.height=L;
-    ctx.drawImage(video,(w-lado)/2,(h-lado)/2,lado,lado,0,0,L,L);
-    var d=ctx.getImageData(0,0,L,L);
-    var c=jsQR(d.data,L,L,{inversionAttempts:"dontInvert"});
-    if(c&&c.data) visto(c.data);
-   }
-  }
+ requestAnimationFrame(leer);                       // se reagenda SIEMPRE, pase lo que pase
+ if(!scanning||_ocupado) return;
+ var t=Date.now(); if(t-_ultLee<LEE_CADA) return;
+ _ultLee=t;
+ if(video.readyState!==video.HAVE_ENOUGH_DATA) return;
+ var w=video.videoWidth,h=video.videoHeight; if(!w||!h) return;
+ if(detector){
+  _ocupado=true;                                    // sin esto se encimaban los detect()
+  detector.detect(video).then(function(cs){ _ocupado=false; if(cs&&cs.length) visto(cs[0].rawValue); })
+   .catch(function(){ _ocupado=false; detector=null; lector(); });   // si el nativo falla, sigue jsQR
+  return;
  }
- requestAnimationFrame(leer);
+ if(!window.jsQR) return;
+ _vuelta++;
+ /* Una vuelta mira el centro (QR cerca, mas nitido) y la siguiente el cuadro entero
+    (QR lejos o descentrado). Alternar las dos cubre las dos formas de apuntar. */
+ if(!_lienzoOk){ lienzo.width=lienzo.height=L_MUESTRA; _lienzoOk=true; }   // UNA sola vez
+ var lado=Math.min(w,h)*((_vuelta%2)?1:0.72);
+ ctx.drawImage(video,(w-lado)/2,(h-lado)/2,lado,lado,0,0,L_MUESTRA,L_MUESTRA);
+ var d=ctx.getImageData(0,0,L_MUESTRA,L_MUESTRA);
+ var c=jsQR(d.data,L_MUESTRA,L_MUESTRA,{inversionAttempts:"dontInvert"});
+ if(c&&c.data) visto(c.data);
 }
 function visto(txt){
  var m=String(txt).match(/(\\d{4,6})\\s*$/);     // .../s/00001 -> 00001
@@ -27897,17 +27927,52 @@ function visto(txt){
  marcar(cod,MODO);
 }
 
+/* ---- historial ---- La lista de lo que ya escaneo, abajo de todo. Entra AL INSTANTE (antes
+   de que conteste el servidor) y despues se completa: en la calle lo que importa es saber si
+   el paquete entro, no esperar. Queda en el telefono, asi sobrevive si se recarga la pagina. */
+function histLeer(){ try{ HIST=JSON.parse(g("rp_esc_hist")||"[]"); }catch(e){ HIST=[]; }
+ if(!HIST||!HIST.length){ HIST=[]; }
+ for(var i=0;i<HIST.length;i++){ HIST[i].pend=0; }   // nada queda "mandando" de la sesion anterior
+ histPintar(); }
+function histGuardar(){ try{ s_("rp_esc_hist",JSON.stringify(HIST.slice(0,40))); }catch(e){} }
+function histAdd(cod,estado){
+ var it={cod:cod,estado:estado,ts:Date.now(),pend:1,q:""};
+ HIST.unshift(it); if(HIST.length>40) HIST.length=40;
+ histPintar(); return it; }
+function histFijar(it,envio,repetido,err){
+ it.pend=0;
+ if(err){ it.err=err; }
+ else if(envio){ it.err=""; it.estado=envio.estado||it.estado;
+  it.q=[envio.loc||"", envio.nombre||""].filter(Boolean).join(" \u00b7 ")
+     + (repetido?" (ya estaba)":""); }
+ histPintar(); histGuardar(); }
+function hhmm(t){ var d=new Date(t);
+ return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+function histPintar(){
+ var c=$("hist"); if(!c) return;
+ $("hcab").style.display=HIST.length?"flex":"none";
+ c.innerHTML=HIST.map(function(it){
+  var col=it.err?"var(--mal)":((EST[it.estado]||EST.registrado).t);
+  var txt=it.err?esc(it.err):(it.pend?"mandando\u2026":(it.q||"\u2014"));
+  return '<div class="h'+(it.pend?" pend":"")+'" style="--tono:'+col+'">'
+   +'<span class="hc">'+esc(it.cod)+'</span>'
+   +'<span class="hq">'+txt+'</span>'
+   +'<span class="ht">'+hhmm(it.ts)+'</span></div>';
+ }).join(""); }
+function limpiarHist(){ HIST=[]; histGuardar(); histPintar(); }
+
 /* ---- marcar ---- */
 function marcar(cod,estado){
  bip(); flash();
- if(!navigator.onLine){ encolar({cod:cod,estado:estado}); return; }
+ var it=histAdd(cod,estado);                 // entra en la lista YA, sin esperar al servidor
+ if(!navigator.onLine){ encolar({cod:cod,estado:estado}); histFijar(it,null,0,"sin se\u00f1al \u00b7 en cola"); return; }
  fetch("/escaner/marcar",{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({token:TOK,cod:cod,estado:estado})})
  .then(function(r){return r.json();}).then(function(j){
-  if(!j.ok){ error(j.msg||"No se pudo",cod); return; }
+  if(!j.ok){ error(j.msg||"No se pudo",cod); histFijar(it,null,0,j.msg||"No se pudo"); return; }
   ULT=j.envio; if(!j.repetido){ N++; s_("rp_esc_n",String(N)); $("n").textContent=N; }
-  pintar(j.envio,j.repetido);
- }).catch(function(){ encolar({cod:cod,estado:estado}); });
+  pintar(j.envio,j.repetido); histFijar(it,j.envio,j.repetido,"");
+ }).catch(function(){ encolar({cod:cod,estado:estado}); histFijar(it,null,0,"sin conexi\u00f3n \u00b7 en cola"); });
 }
 function pintar(e,repetido){
  var c=EST[e.estado]||EST.registrado;
@@ -27959,7 +28024,12 @@ function vaciarCola(){
  fetch("/escaner/marcar",{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({token:TOK,cod:it.cod,estado:it.estado})})
  .then(function(r){return r.json();}).then(function(j){
-  if(j&&(j.ok||j.msg)){ COLA.shift(); s_("rp_esc_cola",JSON.stringify(COLA)); pintarCola(); vaciarCola(); }
+  if(j&&(j.ok||j.msg)){
+   // la fila del historial que quedo en "en cola" se completa ahora, con los datos de verdad
+   for(var i=0;i<HIST.length;i++){
+    if(HIST[i].cod===it.cod && /cola/.test(HIST[i].err||"")){ histFijar(HIST[i], j.envio||null, j.repetido?1:0, j.ok?"":(j.msg||"")); break; }
+   }
+   COLA.shift(); s_("rp_esc_cola",JSON.stringify(COLA)); pintarCola(); vaciarCola(); }
  }).catch(function(){});
 }
 window.addEventListener("online",function(){ pintarCola(); vaciarCola(); });
@@ -28368,8 +28438,9 @@ DESP_LOGI = DATA_DIR / "desp_logistica.json"      # {email: {num: "flex"}}
 _FLEX_COSTO_UNICO = (_os.getenv("FLEX_COSTO", "") or "").strip()
 _FLEX_COSTO_ZONA = {                               # pisa al unico si estan cargados
     "caba": (_os.getenv("FLEX_COSTO_CABA", "") or "").strip(),
-    "gba1": (_os.getenv("FLEX_COSTO_GBA1", "") or "").strip(),
-    "gba2": (_os.getenv("FLEX_COSTO_GBA2", "") or "").strip(),
+    "norte": (_os.getenv("FLEX_COSTO_NORTE", "") or "").strip(),
+    "oeste": (_os.getenv("FLEX_COSTO_OESTE", "") or "").strip(),
+    "sur": (_os.getenv("FLEX_COSTO_SUR", "") or "").strip(),
 }
 
 
