@@ -27687,6 +27687,47 @@ def _fx_encajar(t, f, s, a, mini=7.0):
     return s
 
 
+def _fx_lineas(t, f, s, a, mini=10.0, maxl=2, s2=None, mini2=9.5):
+    """Mete el texto en hasta `maxl` renglones: primero achica, y si aun asi no entra, parte
+    por palabras y vuelve a achicar. Devuelve (lineas, tamaño).
+
+    Esta porque las localidades largas salian cortadas con puntos: "CIUDAD AUTONOMA
+    BUENO..." (6 de 35 etiquetas del 11-10). El repartidor perdia el dato."""
+    t = " ".join(str(t or "").split())
+    if not t:
+        return [""], s
+    s1 = s
+    while s1 > mini and _fx_w(t, f, s1) > a:
+        s1 -= .4
+    if _fx_w(t, f, s1) <= a:
+        return [t], s1
+    # No entra en un renglon. ARRANCO DE NUEVO desde s2, no desde el minimo al que llegue
+    # recien: dos renglones a 13 pt se leen; uno solo a 9,7 no. El tope lo pone el alto de
+    # la fila, que tiene que bancar `maxl` renglones.
+    s = s2 if s2 is not None else s
+    pal = t.split(" ")
+    lineas = [t]
+    while True:
+        lineas, act = [], ""
+        for p in pal:
+            prueba = (act + " " + p).strip()
+            if act and _fx_w(prueba, f, s) > a:
+                lineas.append(act)
+                act = p
+            else:
+                act = prueba
+        if act:
+            lineas.append(act)
+        if len(lineas) <= maxl and all(_fx_w(l, f, s) <= a for l in lineas):
+            return lineas, s
+        if s <= mini2:          # el piso de los renglones partidos es MAS BAJO que el de
+            break               # una sola linea: cortar con puntos es lo ultimo que queremos
+        s -= .4
+    lineas = lineas[:maxl]
+    lineas[-1] = _fx_cortar(lineas[-1], f, s, a, mini=s)[0]   # ultimo recurso
+    return lineas, s
+
+
 def _fx_cortar(t, f, s, a, mini=9.5):
     """Una linea y punta. Achica hasta un minimo y despues corta: un nombre largo NO puede
     pisar el telefono."""
@@ -27844,10 +27885,20 @@ def _flex_etiqueta(pg, e):
             cp = ("CP " + (e.get("cp") or "")).strip()
             cpw = _fx_w(cp, HB, 11.5)
             _fx_micro(pg, M + pad, y + 15, "LOCALIDAD")
-            lt, ls = _fx_cortar((e.get("loc") or "").upper(), HB, 16.5, A - 2 * pad - cpw - 14)
-            vy = y + 14 + (h - 14) / 2 + ls * 0.34
-            _fx_txt(pg, M + pad, vy, lt, HB, ls)
-            _fx_txt(pg, W - M - pad, vy, cp, HB, 11.5, N, 2, 0)
+            _anc = A - 2 * pad - cpw - 14
+            # mini=12.5: si en UNA linea hay que bajar de 12,5 pt, prefiero dos
+            # renglones a 13,5 — en termica, "GUILLERMO ENRIQUE HUDSON" a 10,9 no se lee.
+            _lin, ls = _fx_lineas((e.get("loc") or "").upper(), HB, 16.5, _anc,
+                                  mini=12.5, s2=13.5, mini2=9.5)
+            _cy = y + 14 + (h - 14) / 2                  # centro del espacio util
+            if len(_lin) == 1:
+                _fx_txt(pg, M + pad, _cy + ls * 0.34, _lin[0], HB, ls)
+            else:
+                _sal = ls * 1.02
+                _y0 = _cy - _sal / 2 + ls * 0.34
+                for _i, _l in enumerate(_lin):
+                    _fx_txt(pg, M + pad, _y0 + _i * _sal, _l, HB, ls)
+            _fx_txt(pg, W - M - pad, _cy + 11.5 * 0.34, cp, HB, 11.5, N, 2, 0)
 
         elif k == "direccion":
             q = 86
