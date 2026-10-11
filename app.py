@@ -21330,6 +21330,63 @@ def _bot_canal_ok(c, canal):
     return sel == "ambos" or sel == canal
 
 
+# ══════════ CAMPAÑA DE RESEÑAS EN VIDEO ══════════
+# Al mandar la plantilla `resena_video_35`, el cliente contesta y para el bot eso es una
+# conversacion nueva: le arranca a VENDER encima de la campaña. Pasa porque el bot solo se
+# calla cuando contesto una PERSONA, y las plantillas estan excluidas de ese chequeo a
+# proposito (si no, el seguimiento de despacho lo dejaria mudo para siempre).
+#
+# Mientras el chat este en campaña, el bot sigue este guion y no el cerebro de ventas. NO se
+# queda ciego: si el cliente pregunta otra cosa, cae de nuevo en el cerebro normal, que sigue
+# sabiendo que compro y que pidio.
+CUPON_RESENA = "RESEÑA35"
+_RES_DIAS = 10                       # cuanto queda abierta la campaña en un chat
+_RES_HUELLA = "35% de descuento en tu próxima compra"      # frase de la plantilla
+_RES_SI = ("quiero el 35%", "quiero el 35", "quiero el descuento")
+_RES_NO = ("ahora no", "no gracias", "no me interesa")
+
+_RES_INSTR = ("Dale 🙌\n\nGrabá 15 segundos con el celular, que se te vea la cara, contando:\n\n"
+              "• cómo te llegó el pedido\n• si lo venís usando seguido\n• qué efectos notaste hasta ahora\n\n"
+              "Mandámelo por acá y te paso el código.")
+_RES_CHAU = "Listo, sin problema 🙌 Gracias igual."
+_RES_FORMATO = ("Gracias por contarme 🙌 Para el 35% necesito que sea un video y que se te vea "
+                "la cara — es lo que le da valor al testimonio.")
+
+
+def _res_activa(conv) -> bool:
+    """¿Este chat esta en la campaña? Se detecta por la plantilla enviada o por el boton que
+    toco el cliente, asi funciona se haya mandado desde RealProfit o desde el panel de Meta."""
+    if conv.get("res_cerrada"):
+        return False
+    for m in reversed((conv.get("messages") or [])[-40:]):
+        t = (m.get("text") or "").lower()
+        if m.get("dir") == "out" and m.get("type") == "template" and _RES_HUELLA.lower() in t:
+            return True
+        if m.get("dir") == "in" and t.strip() in _RES_SI + _RES_NO:
+            return True
+    return False
+
+
+def _res_guion(conv, last_in):
+    """Que contesta el bot en campaña. None = no contesta (lo mira Cristian)."""
+    t = (last_in.get("text") or "").strip().lower()
+    tipo = last_in.get("type") or "text"
+    if tipo == "video":
+        # El video lo aprueba Cristian a mano: el bot NO contesta ni promete nada. Solo lo
+        # deja marcado para que aparezca como pendiente.
+        conv["res_video"] = _wa_now()
+        return None
+    if t in _RES_NO:
+        conv["res_cerrada"] = True
+        return _RES_CHAU
+    if t in _RES_SI:
+        conv["res_pedido"] = _wa_now()
+        return _RES_INSTR
+    if tipo in ("image", "audio", "document") or (tipo == "text" and conv.get("res_pedido")):
+        return _RES_FORMATO
+    return None
+
+
 def _wa_bot_run(email, conf, wid, chats, canal="api"):
     """Corre el cerebro sobre la conversación wid y (si corresponde) responde solo.
     Anti-doble-respuesta por id del último entrante. Nunca lanza."""
@@ -21460,6 +21517,30 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             data, mime = _pdf_a_imagen(data)
         if data and (mime.startswith("image/") or last_in.get("type") == "image"):
             imagenes.append((data, mime if mime.startswith("image/") else "image/jpeg"))
+
+    # CAMPAÑA DE RESEÑAS: si el chat esta en campaña, manda el guion y el cerebro de ventas
+    # no corre. Si el guion devuelve None (llego el video, o el cliente escribio otra cosa),
+    # sigue de largo al cerebro normal, que sabe lo que compro.
+    if (not _mudo) and _res_activa(conv):
+        _rmsg = _res_guion(conv, last_in)
+        if last_in.get("type") == "video":
+            # El video lo aprueba Cristian: el bot no contesta, solo lo marca como pendiente.
+            conv["bot_nota"] = "🎥 Video de reseña — revisalo y mandale el cupón %s" % CUPON_RESENA
+            _wa_save_chats(chats)
+            return
+        if _rmsg:
+            if canal == "web":
+                _ok, _mid, _err = _wa_web_send(email, conv.get("web_jid") or wid, _rmsg)
+            else:
+                _ok, _mid, _err = _wa_bot_send(conf, wid, _rmsg)
+            if _ok:
+                conv["messages"].append({"dir": "out", "text": _rmsg, "ts": _wa_now(),
+                                         "type": "text", "id": _mid, "status": "sent", "by": "bot"})
+                conv["updated"] = _wa_now(); conv.pop("bot_nota", None)
+            else:
+                conv["bot_nota"] = "⚠️ Campaña reseñas: falló el envío: " + (_err or "?")
+            _wa_save_chats(chats)
+            return
 
     d = agente_ia.decidir(hist, imagenes=imagenes, nombre=conv.get("name", ""),
                           extra_instr=_bot_extra_instr(conf),
