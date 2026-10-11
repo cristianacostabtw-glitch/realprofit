@@ -17842,6 +17842,55 @@ def _meli_ctx(email):
     return tok, d.get("user_id")
 
 
+@app.get("/meli/prep-ver")
+def meli_prep_ver():
+    """LEE el tiempo de preparacion de cada publicacion. NO cambia nada.
+
+    Existe porque no hay doc publica clara de como guarda ML el "listo para enviar": hay que
+    mirar como viene en las publicaciones REALES antes de escribir el cambio. Lo mismo que se
+    hizo con la estrategia de puja de Meta: leer la cuenta, no adivinar."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, uid = _meli_tok_uid(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "conectá MercadoLibre primero"}), 400
+    h = {"Authorization": "Bearer " + tok}
+    ids, offset = [], 0
+    while len(ids) < 500:
+        try:
+            r = requests.get("%s/users/%s/items/search" % (MELI_API, uid), headers=h,
+                             params={"limit": 100, "offset": offset, "status": "active"}, timeout=30)
+            j = r.json() if r.content else {}
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])}), 500
+        lote = j.get("results") or []
+        ids.extend(lote)
+        offset += 100
+        if len(lote) < 100 or offset >= int((j.get("paging") or {}).get("total", 0)):
+            break
+    out, resumen = [], {}
+    for i in range(0, len(ids), 20):
+        try:
+            r = requests.get("%s/items" % MELI_API, headers=h,
+                             params={"ids": ",".join(ids[i:i + 20])}, timeout=30)
+            for w in (r.json() if r.content else []):
+                b = (w or {}).get("body") or {}
+                if not b.get("id"):
+                    continue
+                mt = next((t for t in (b.get("sale_terms") or [])
+                           if t.get("id") == "MANUFACTURING_TIME"), None)
+                val = (mt or {}).get("value_name") or "(no tiene)"
+                resumen[val] = resumen.get(val, 0) + 1
+                out.append({"id": b["id"], "titulo": (b.get("title") or "")[:60],
+                            "estado": b.get("status"), "prep": val,
+                            "value_id": (mt or {}).get("value_id"),
+                            "struct": (mt or {}).get("value_struct")})
+        except Exception:
+            pass
+    return jsonify({"ok": True, "total": len(out), "resumen": resumen, "items": out[:300]})
+
+
 def _meli_items_full(tok, uid, con_desc=True):
     """TODAS las publicaciones del vendedor con el cuerpo completo (incluye sold_quantity).
     /users/{uid}/items/search pagina de a 100; sin filtro de status trae activas, pausadas y cerradas."""
