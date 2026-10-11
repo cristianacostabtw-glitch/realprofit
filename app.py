@@ -27940,7 +27940,27 @@ def _flex_etiqueta(pg, e):
         y += h
 
 
-def _flex_empaquetar(doc, envios):
+def _flex_falta(e):
+    """Que le falta a este envio para que el repartidor pueda entregarlo. [] = esta bien.
+
+    Sale de un caso real (#7799, 11-10): el cliente cargo la direccion en el campo del
+    NOMBRE y el codigo postal en el de la direccion. La etiqueta salio con DIRECCION "1256"
+    y sin nombre: imposible de entregar. Estas NO se imprimen, se listan aparte."""
+    import re as _r
+    falta = []
+    calle = (e.get("calle") or "").strip()
+    nombre = (e.get("nombre") or "").strip()
+    if not _r.search(r"[A-Za-z\u00c0-\u024f]{3,}", calle):
+        falta.append("sin calle")
+    if not nombre:
+        falta.append("sin nombre")
+    elif _r.search(r"\b(av|avda|avenida|calle|ruta|pje|pasaje)\b", nombre.lower()) \
+            and _r.search(r"\d{3,}", nombre):
+        falta.append("el nombre es una direccion")
+    return falta
+
+
+def _flex_empaquetar(doc, envios, afuera=()):
     """Hoja(s) PARA EMPAQUETAR: cuantos van a cada zona y, dentro de cada una, cuantos de
     cada contenido. Va AL FINAL y en el mismo orden en que salen las etiquetas, asi se va
     tildando de arriba a abajo (igual que la hoja del estampador de Andreani).
@@ -27965,7 +27985,9 @@ def _flex_empaquetar(doc, envios):
     _zc0 = _Cnt(_flex_zona_de(e) for e in envios)
     _nsku = sum(len(set(_sku0(e) for e in envios if _flex_zona_de(e) == z)) for z in _zc0)
     _nec = 26 + len(_zc0) * 22 + _nsku * 19 + 22 + 19
-    _k = min(1.0, max(.78, (TOPE - 52) / float(_nec or 1)))
+    if afuera:
+        _nec += 22 + len(afuera) * 19
+    _k = min(1.0, max(.72, (TOPE - 52) / float(_nec or 1)))
 
     est = {"pg": None, "y": 0, "n": 0}
 
@@ -27983,6 +28005,7 @@ def _flex_empaquetar(doc, envios):
 
     def fila(txt, val, alto=19, fondo=False, tam=10.5, casilla=False):
         alto = alto * _k
+        tam = tam * max(.86, _k)        # si se aprieta mucho, la letra acompaña
         sitio(alto)
         pg, y = est["pg"], est["y"]
         if fondo:
@@ -28013,15 +28036,25 @@ def _flex_empaquetar(doc, envios):
     fila("POTES EN TOTAL", str(sum(int(e.get("unidades") or 0) for e in envios)), 22, True, 11.5)
     fila("Envios que llevan CAPS", str(sum(1 for e in envios if _caps(e))), 19)
 
+    if afuera:
+        fila("NO SE IMPRIMIERON", str(len(afuera)), 22, True, 11.5)
+        for e in afuera:
+            fila("#%s  %s" % (e.get("num"), ", ".join(_flex_falta(e))), e.get("cod", ""), 19)
+
 
 def _flex_etiquetas_pdf(envios) -> bytes:
-    """Una pagina de 10x15 por envio, en el orden que vienen, y la hoja PARA EMPAQUETAR al final."""
+    """Una pagina de 10x15 por envio y la hoja PARA EMPAQUETAR al final.
+
+    Los envios a los que les falta la calle o el nombre NO se imprimen: una etiqueta que el
+    repartidor no puede entregar solo hace perder el viaje. Salen listados en la hoja."""
     import fitz
+    afuera = [e for e in envios if _flex_falta(e)]
+    buenos = [e for e in envios if not _flex_falta(e)]
     doc = fitz.open()
-    for e in envios:
+    for e in buenos:
         _flex_etiqueta(doc.new_page(width=FLEX_ET_W, height=FLEX_ET_H), e)
-    if envios:
-        _flex_empaquetar(doc, envios)
+    if buenos or afuera:
+        _flex_empaquetar(doc, buenos, afuera)
     out = doc.tobytes()
     doc.close()
     return out
