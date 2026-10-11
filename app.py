@@ -21341,9 +21341,29 @@ def _bot_canal_ok(c, canal):
 # sabiendo que compro y que pidio.
 CUPON_RESENA = "RES35"
 _RES_DIAS = 10                       # cuanto queda abierta la campaña en un chat
-_RES_HUELLA = "35% de descuento en tu próxima compra"      # frase de la plantilla
-_RES_SI = ("quiero el 35%", "quiero el 35", "quiero el descuento")
+_RES_SI = ("quiero el 35", "quiero el descuento", "dale quiero el 35")
 _RES_NO = ("ahora no", "no gracias", "no me interesa")
+
+
+def _res_norm(t) -> str:
+    """Texto comparable: sin tildes, sin signos, en minuscula y con un solo espacio.
+    Hace falta porque la plantilla se carga a mano en Meta y basta un '35 %' con espacio o
+    un 'proxima' sin tilde para que un match exacto deje de reconocerla — y ahi el bot le
+    arranca a VENDER al cliente en medio de la campaña."""
+    import unicodedata as _u
+    t = "".join(c for c in _u.normalize("NFD", str(t or "")) if _u.category(c) != "Mn").lower()
+    return " ".join("".join(c if c.isalnum() else " " for c in t).split())
+
+
+def _res_es_plantilla(txt) -> bool:
+    """¿Este texto es la plantilla de la campaña? Se mira por SEÑAS, no por la frase exacta:
+    tiene que hablar de 35 y de descuento, y de video o reseña. Las otras plantillas que
+    manda Cristian (seguimiento de despacho, Flex) no hablan de nada de eso."""
+    n = _res_norm(txt)
+    # "35" + (video o reseña) alcanza y sobra: ninguna otra plantilla de Cristian habla de
+    # video ni de reseñas. Pedir tambien "descuento" era de mas y dejaba afuera un
+    # "35% OFF por tu reseña en video", que es como lo puede reescribir el.
+    return "35" in n and ("video" in n or "resena" in n)
 
 _RES_INSTR = ("Dale 🙌\n\nGrabá 15 segundos con el celular, que se te vea la cara, contando:\n\n"
               "• cómo te llegó el pedido\n• si lo venís usando seguido\n• qué efectos notaste hasta ahora\n\n"
@@ -21359,17 +21379,16 @@ def _res_activa(conv) -> bool:
     if conv.get("res_cerrada"):
         return False
     for m in reversed((conv.get("messages") or [])[-40:]):
-        t = (m.get("text") or "").lower()
-        if m.get("dir") == "out" and m.get("type") == "template" and _RES_HUELLA.lower() in t:
+        if m.get("dir") == "out" and m.get("type") == "template" and _res_es_plantilla(m.get("text")):
             return True
-        if m.get("dir") == "in" and t.strip() in _RES_SI + _RES_NO:
+        if m.get("dir") == "in" and _res_norm(m.get("text")) in _RES_SI + _RES_NO:
             return True
     return False
 
 
 def _res_guion(conv, last_in):
     """Que contesta el bot en campaña. None = no contesta (lo mira Cristian)."""
-    t = (last_in.get("text") or "").strip().lower()
+    t = _res_norm(last_in.get("text"))
     tipo = last_in.get("type") or "text"
     if tipo == "video":
         # El video lo aprueba Cristian a mano: el bot NO contesta ni promete nada. Solo lo
