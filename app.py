@@ -27960,53 +27960,62 @@ def _flex_falta(e):
     return falta
 
 
-def _flex_empaquetar(doc, envios, afuera=()):
-    """Hoja(s) PARA EMPAQUETAR: cuantos van a cada zona y, dentro de cada una, cuantos de
-    cada contenido. Va AL FINAL y en el mismo orden en que salen las etiquetas, asi se va
-    tildando de arriba a abajo (igual que la hoja del estampador de Andreani).
+def _flex_potes(e) -> int:
+    """Cuantos potes lleva, leidos del SKU ("X6 POTE + X1 CAPS" -> 6). Se usa para ordenar
+    la hoja de empaque: el campo `unidades` a veces suma las CAPS y no sirve."""
+    import re as _r
+    m = _r.search(r"(\d+)\s*POTE", (e.get("sku") or "").upper())
+    return int(m.group(1)) if m else int(e.get("unidades") or 0)
 
-    Pagina sola: con 35 envios y 4 zonas no entra en una hoja de 10x15 y la ultima fila
-    quedaba cortada."""
+
+def _flex_empaquetar(doc, envios, afuera=()):
+    """Hoja PARA EMPAQUETAR, al final del PDF.
+
+    Como la del estampador de Andreani: TODO JUNTO, sin separar por zona, agrupado por
+    contenido y ordenado por cantidad de potes (y lo que lleva CAPS al final). Abajo, el
+    total por zona en una linea cada una, solo el numero.
+
+    Es a proposito que NO repita el desglose por zona: la hoja es para armar los paquetes,
+    no para repartir — el orden del reparto ya esta en las etiquetas."""
     import fitz
     from collections import Counter as _Cnt
     M, pad = 15, 11
     W, H = FLEX_ET_W, FLEX_ET_H
     N, BL, HB, HV = _FX_N, _FX_B, _FX_HB, _FX_HV
     A = W - 2 * M
-    TOPE = H - 20                       # abajo de esto no se dibuja nada
+    TOPE = H - 20
 
-    def _caps0(e):
+    def _caps(e):
         return 1 if "CAPS" in (e.get("sku") or "").upper() else 0
-    def _sku0(e):
+    def _sku(e):
         return " ".join((e.get("sku") or "").upper().split()) or "(sin SKU)"
 
-    # Cuanto mide todo con los altos de base, para decidir si hay que apretar. Con 35 envios
-    # sobraban 30 pt y se iba una hoja entera con 4 renglones: mejor achicar un poco.
-    _zc0 = _Cnt(_flex_zona_de(e) for e in envios)
-    _nsku = sum(len(set(_sku0(e) for e in envios if _flex_zona_de(e) == z)) for z in _zc0)
-    _nec = 26 + len(_zc0) * 22 + _nsku * 19 + 22 + 19
+    sc = _Cnt(_sku(e) for e in envios)
+    pot = {}
+    for e in envios:
+        pot.setdefault(_sku(e), (_caps(e), _flex_potes(e)))
+    skus = sorted(sc, key=lambda k: (pot[k][0], pot[k][1], k))     # sin CAPS, y por potes
+    zc = _Cnt(_flex_zona_de(e) for e in envios)
+    zonas = sorted(zc, key=lambda z: (-zc[z], z or "zzz"))
+
+    _nec = 26 + len(skus) * 19 + 8 + len(zonas) * 21
     if afuera:
         _nec += 22 + len(afuera) * 19
     _k = min(1.0, max(.72, (TOPE - 52) / float(_nec or 1)))
 
-    est = {"pg": None, "y": 0, "n": 0}
+    est = {"pg": None, "y": 0}
 
     def hoja(titulo):
         est["pg"] = doc.new_page(width=W, height=H)
-        est["n"] += 1
         est["pg"].draw_rect(fitz.Rect(M, 16, W - M, 52), color=None, fill=N)
-        _fx_txt(est["pg"], M, 40, titulo, HB, _fx_encajar(titulo, HB, 19, A - 10, 11),
-                BL, 1, A)
+        _fx_txt(est["pg"], M, 40, titulo, HB, _fx_encajar(titulo, HB, 19, A - 10, 11), BL, 1, A)
         est["y"] = 52
-
-    def sitio(alto):
-        if est["pg"] is None or est["y"] + alto > TOPE:
-            hoja("PARA EMPAQUETAR (sigue)" if est["pg"] is not None else "PARA EMPAQUETAR")
 
     def fila(txt, val, alto=19, fondo=False, tam=10.5, casilla=False):
         alto = alto * _k
-        tam = tam * max(.86, _k)        # si se aprieta mucho, la letra acompaña
-        sitio(alto)
+        tam = tam * max(.86, _k)
+        if est["pg"] is None or est["y"] + alto > TOPE:
+            hoja("PARA EMPAQUETAR (sigue)" if est["pg"] is not None else "PARA EMPAQUETAR")
         pg, y = est["pg"], est["y"]
         if fondo:
             pg.draw_rect(fitz.Rect(M, y, W - M, y + alto), color=None, fill=N)
@@ -28018,23 +28027,21 @@ def _flex_empaquetar(doc, envios, afuera=()):
             x += 16
         col = BL if fondo else N
         base = y + alto / 2 + tam * 0.34
-        _fx_txt(pg, x, base, txt, HB if fondo else HV, tam, col)
+        # el texto no puede pisar el numero de la derecha: se achica y, si no alcanza, corta
+        libre = (W - M - pad) - x - _fx_w(val, HB, tam + 1) - 8
+        ft = HB if fondo else HV
+        txt, tam2 = _fx_cortar(str(txt), ft, tam, libre, mini=max(6.5, tam * .7))
+        _fx_txt(pg, x, base, txt, ft, tam2, col)
         _fx_txt(pg, W - M - pad, base, val, HB, tam + 1, col, 2, 0)
         est["y"] += alto
 
-    _caps, _sku = _caps0, _sku0
-
     fila("TOTAL", "%d envios" % len(envios), 26, tam=12)
-    zc = _Cnt(_flex_zona_de(e) for e in envios)
-    for z in sorted(zc, key=lambda k: (-zc[k], k or "zzz")):
-        de_zona = [e for e in envios if _flex_zona_de(e) == z]
-        fila(FLEX_ZONAS.get(z, (z or "SIN ZONA").upper()), str(len(de_zona)), 22, True, 12.5)
-        sc = _Cnt(_sku(e) for e in de_zona)
-        for sk in sorted(sc, key=lambda k: (1 if "CAPS" in k else 0, -sc[k], k)):
-            fila(sk, "x%d" % sc[sk], 19, casilla=True)
+    for sk in skus:
+        fila(sk, "x%d" % sc[sk], 19, casilla=True)
 
-    fila("POTES EN TOTAL", str(sum(int(e.get("unidades") or 0) for e in envios)), 22, True, 11.5)
-    fila("Envios que llevan CAPS", str(sum(1 for e in envios if _caps(e))), 19)
+    est["y"] += 8 * _k                                   # respiro antes del corte por zona
+    for z in zonas:
+        fila(FLEX_ZONAS.get(z, (z or "SIN ZONA").upper()), str(zc[z]), 21, True, 11.5)
 
     if afuera:
         fila("NO SE IMPRIMIERON", str(len(afuera)), 22, True, 11.5)
