@@ -1697,12 +1697,18 @@ _SOLO_DASH = r"""
     .catch(function(){ _dStat('Error de conexión.', '#fb7185'); }); };
  window.rpDExcel=function(){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá los pedidos para el Excel.', '#fb7185'); return; }
    _dStat('⏳ Generando Excel Andreani…','#a78bfa');
+   var _dFlexOut=[];
    fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,tienda:_dTienda})})
-    .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';}); return r.blob(); })
+    .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';});
+      // los que ya tienen etiqueta Flex quedan afuera del Excel: hay que DECIRLO, no callarlo
+      _dFlexOut=(r.headers.get('X-Flex-Excluidos')||'').split(',').filter(function(x){return x;});
+      return r.blob(); })
     .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Andreani.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
       // al exportar, los pasa a "Exportadas"
       fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,accion:'exportada'})}).then(function(){ _dLoaded=false; rpDLoad(); });
-      _dStat('✅ Excel descargado ('+sel.length+' pedidos) → Exportadas. Subílo a Andreani.'); })
+      var _n=(_dFlexOut||[]).length;
+      _dStat('✅ Excel descargado ('+(sel.length-_n)+' pedidos) → Exportadas. Subílo a Andreani.'
+        +(_n?('  ⚠️ '+_n+' quedaron afuera porque ya van por Flex: '+_dFlexOut.map(function(x){return '#'+x;}).join(', ')):'')); })
     .catch(function(e){ _dStat('No se pudo generar el Excel'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
  window.rpDEnvialo=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; inp.value='';
    _dStat('⏳ Leyendo el Excel de Envialo…','#38bdf8');
@@ -9169,12 +9175,23 @@ def pf_despachos_excel():
     cpidx, sucs = _and_cfg(wb)   # lista oficial de la propia plantilla (sucursales + Prov/Loc/CP)
     envialo_ov = _envialo_suc(_user_actual())   # si subiste el Excel de Envialo, esas sucursales MANDAN (1=1)
     envialo_excl = _envialo_excl(_user_actual())  # las que NO coincidían con Envialo → se despachan por Envialo, NO van acá
+    # Los que YA tienen envio Flex NO van a Andreani: saldrian dos veces y se pagan dos
+    # fletes. Paso real el 11-10: #7837 y #7882 estaban en el Excel y en las etiquetas de
+    # Flex, y uno de los dos ademas freno la carga por no tener email.
+    try:
+        _flex_ya = set(str(v.get("num")) for v in (_flex_de(email) or {}).values() if v.get("num"))
+    except Exception:
+        _flex_ya = set()
+    por_flex = []
     r_dom = r_suc = 3
     faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
     revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
     por_envialo = []             # pedidos que van por Envialo (no coincidían) → los saco del Excel de Andreani
     unificados = []              # viajan DENTRO del paquete de otro pedido → NO se cargan en Andreani
     for r in sel:
+        if str(r["num"]) in _flex_ya:       # ya tiene etiqueta Flex → no puede ir tambien por Andreani
+            por_flex.append(str(r["num"]))
+            continue
         if str(r["num"]) in envialo_excl:   # no coincidía con Envialo → se despacha por Envialo, no lo meto acá
             por_envialo.append(str(r["num"]))
             continue
@@ -9239,8 +9256,12 @@ def pf_despachos_excel():
     wb.close()
     buf.seek(0)
 
-    return send_file(buf, as_attachment=True, download_name="Andreani.xlsx",
+    resp = send_file(buf, as_attachment=True, download_name="Andreani.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    if por_flex:
+        resp.headers["X-Flex-Excluidos"] = ",".join(por_flex)
+        resp.headers["Access-Control-Expose-Headers"] = "X-Flex-Excluidos"
+    return resp
 
 
 @app.post("/pf-despachos-sku-sync")
