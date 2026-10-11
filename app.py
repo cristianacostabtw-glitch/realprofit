@@ -23334,7 +23334,14 @@ function renderBot(c){
  +'<div class="bsub">Escribí un mensaje como si fueras un cliente y mirá qué contestaría.</div>'
  +'<input id="botTest" placeholder="ej: hola, cuánto sale?" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--pan2);color:var(--ink);margin-bottom:8px">'
  +'<button type="button" class="b p" onclick="probarBot()">&#129514; Probar</button>'
- +'<div id="botTestOut" style="margin-top:10px"></div>';
+ +'<div id="botTestOut" style="margin-top:10px"></div>'
+ // ── campana de resenas: crear la plantilla en Meta
+ +'<hr style="border:0;border-top:1px solid var(--line);margin:16px 0">'
+ +'<div style="font-weight:700;margin-bottom:4px">&#11088; Campa&#241;a de rese&#241;as</div>'
+ +'<div class="bsub">La plantilla <b>resena_video_35</b>: video de 15s con la cara a cambio de 35% (cup&#243;n RES35). Se crea una sola vez y la aprueba Meta.</div>'
+ +'<button type="button" class="b sec2" onclick="resenaVer()">&#128269; Ver estado</button> '
+ +'<button type="button" class="b p" onclick="resenaCrear()">&#10133; Crear plantilla</button>'
+ +'<div id="resenaOut" style="margin-top:10px"></div>';
  var ti=document.getElementById('botInstr');
  if(ti) ti.addEventListener('input',function(){ var n=document.getElementById('botInstrN'); if(n)n.textContent=this.value.length; });
 }
@@ -23464,6 +23471,27 @@ function aprenderChats(inp){
   msg.innerHTML='<div class="msgline msgok">&#10003; Aprendi&oacute; de '+r.pares+' charlas. Ya lo usa el bot (y el Probador).</div>'
     +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--mut)">Ver lo que aprendi&oacute;</summary><pre style="white-space:pre-wrap;font-size:11.5px;background:var(--pan2);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:6px">'+esc(r.resumen||'')+'</pre></details>';
  }).catch(function(){ msg.innerHTML='<div class="msgline msgbad">Error subiendo el archivo.</div>'; }); inp.value='';
+}
+function resenaPinta(h){ var o=document.getElementById('resenaOut'); if(o) o.innerHTML=h; }
+function resenaErr(r){ return '<div class="msgline msgbad">'+esc(r.msg||'error')+(r.detalle?' &#8212; '+esc(r.detalle):'')+'</div>'; }
+function resenaVer(){
+ resenaPinta('Consultando a Meta&#8230;');
+ fetch('/wa-tpl-resena').then(function(r){return r.json();}).then(function(r){
+  if(!r.ok){ resenaPinta(resenaErr(r)); return; }
+  if(!r.existe){ resenaPinta('<div class="msgline">Todav&#237;a no existe. Toc&#225; <b>Crear plantilla</b>.</div>'); return; }
+  var t=r.resena[0]||{}, e=t.estado||'';
+  var col=(e==='APPROVED')?'msgok':((e==='REJECTED')?'msgbad':'');
+  resenaPinta('<div class="msgline '+col+'">Ya existe &#8212; estado <b>'+esc(e)+'</b> ('+esc(t.idioma||'')+')'
+   +(e==='PENDING'?'. Meta suele tardar unos minutos.':'')+'</div>');
+ }).catch(function(){ resenaPinta('<div class="msgline msgbad">No se pudo consultar.</div>'); });
+}
+function resenaCrear(){
+ resenaPinta('Cre&#225;ndola y mand&#225;ndola a aprobaci&#243;n&#8230;');
+ fetch('/wa-tpl-resena',{method:'POST'}).then(function(r){return r.json();}).then(function(r){
+  if(!r.ok){ resenaPinta(resenaErr(r)); return; }
+  resenaPinta('<div class="msgline msgok">&#10003; Creada y enviada a aprobaci&#243;n'
+   +(r.estado?' &#8212; estado <b>'+esc(r.estado)+'</b>':'')+'. Tocá <b>Ver estado</b> en un rato.</div>');
+ }).catch(function(){ resenaPinta('<div class="msgline msgbad">No se pudo crear.</div>'); });
 }
 function probarBot(){
  var t=val('botTest'); if(!t)return;
