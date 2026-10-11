@@ -23133,9 +23133,24 @@ function tplCargar(d){
  var m=document.getElementById('tpMsg');
  if(m){ m.style.color='var(--mut)'; m.textContent='Borrador cargado. Revisalo y tocá Crear.'; }
 }
+// ?probar=<telefono> abre "escribirle a un numero nuevo" con el numero puesto y el chequeo
+// ya corrido: se ve el numero normalizado y la lista de plantillas APROBADAS. Sirve de paso
+// para contestar "¿ya esta la plantilla o no?" sin buscar en ningun lado.
+function tplProbarDesdeURL(){
+ try{
+  var q=(location.search||'').match(/[?&]probar=([^&]+)/); if(!q) return false;
+  var tel=decodeURIComponent(q[1]);
+  history.replaceState(null,'',location.pathname);
+  openNuevo();
+  var e=document.getElementById('nvtel');
+  if(e){ e.value=tel; chequearTel(); }
+  return true;
+ }catch(err){ return false; }
+}
 // ?plantilla=<json en base64url> abre el formulario ya lleno.
 function tplDesdeURL(){
  try{
+  if(tplProbarDesdeURL()) return;
   var q=(location.search||'').match(/[?&]plantilla=([^&]+)/); if(!q) return;
   var b=decodeURIComponent(q[1]).replace(/-/g,'+').replace(/_/g,'/');
   while(b.length%4) b+='=';
