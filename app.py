@@ -22673,7 +22673,7 @@ function boot(){ get('/wa-estado').then(function(s){ EST=s;
    if(_b && s && s.rol && s.rol!='admin') _b.style.display='none';
    if(_x && s && s.quien) _x.title='Cerrar la sesión de '+s.quien;
   }catch(e){}
-  renderApp(); if(s&&s.conectado){ unlock(); _chanPaint('api'); return; }
+  renderApp(); if(s&&s.conectado){ unlock(); _chanPaint('api'); tplDesdeURL(); return; }
   // Solo API oficial (Cloud). Sin la API conectada → candado con el form de conexión.
   _chanPaint('api'); lockScreen();
 }); }
@@ -23098,7 +23098,7 @@ function _tfld(id,lbl,ph,ayuda){
   +'<input id="'+id+'" placeholder="'+(ph||'')+'" style="width:100%;box-sizing:border-box;background:#0b1220;border:1px solid #1f2a3d;color:#e7edf5;border-radius:9px;padding:9px 11px;font-size:14px">'
   +(ayuda?'<div style="font-size:11px;color:var(--mut2);margin-top:3px">'+ayuda+'</div>':'')+'</div>';
 }
-function nuevaTpl(){
+function nuevaTpl(d){
  var ov=document.getElementById('ov'), md=document.getElementById('modal');
  md.innerHTML='<div class="mh"><h3>Nueva plantilla</h3><button class="x" onclick="openTpl()">&times;</button></div>'
   +'<div style="padding:4px 2px 2px">'
@@ -23119,6 +23119,30 @@ function nuevaTpl(){
   +'<button id="tpGo" onclick="crearTpl()" style="background:#1d5f52;border:1px solid #1f6b5c;color:#c9f5e8;border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer">Crear y mandar a aprobaci&oacute;n</button>'
   +'</div></div>';
  ov.classList.add('on');
+ if(d) tplCargar(d);
+}
+// Deja el formulario lleno con un borrador. Sirve para el link prellenado: Claude escribe la
+// plantilla, le pasa el link a Cristian y el solo revisa y toca Crear, sin tipear nada.
+function tplCargar(d){
+ function set(id,v){ var e=document.getElementById(id); if(e) e.value=(v==null?'':''+v); }
+ set('tpN',d.nombre); set('tpB',d.cuerpo); set('tpF',d.pie);
+ set('tpBt',(d.botones||[]).join(', '));
+ var c=document.getElementById('tpC'); if(c&&d.categoria) c.value=(''+d.categoria).toUpperCase();
+ tplVars();
+ var ej=d.ejemplos||[]; for(var i=0;i<ej.length;i++) set('tpV'+(i+1),ej[i]);
+ var m=document.getElementById('tpMsg');
+ if(m){ m.style.color='var(--mut)'; m.textContent='Borrador cargado. Revisalo y tocá Crear.'; }
+}
+// ?plantilla=<json en base64url> abre el formulario ya lleno.
+function tplDesdeURL(){
+ try{
+  var q=(location.search||'').match(/[?&]plantilla=([^&]+)/); if(!q) return;
+  var b=decodeURIComponent(q[1]).replace(/-/g,'+').replace(/_/g,'/');
+  while(b.length%4) b+='=';
+  var d=JSON.parse(decodeURIComponent(escape(atob(b))));
+  history.replaceState(null,'',location.pathname);   // que no quede pegado al recargar
+  nuevaTpl(d);
+ }catch(e){}
 }
 // Cuantas variables {{n}} tiene el texto. Sin regex a proposito: las barras invertidas
 // dentro del HTML (que es un string de Python) dan SyntaxWarning y se escapan mal.
