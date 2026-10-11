@@ -27719,6 +27719,21 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
  font-weight:600;cursor:pointer;min-height:46px}
 .deshacer:active{background:var(--papel2)}
 .vacio{padding:26px 18px;text-align:center;color:var(--tinta3);font-size:13.5px}
+/* Aviso flotante: en la calle el repartidor NO mira la pantalla, escanea uno atras de otro.
+   El toast le confirma en el aire y se va solo; la tarjeta de abajo queda para cuando quiera
+   mirar el detalle. No bloquea la camara (pointer-events:none) ni frena el lector. */
+.toasts{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 58px);z-index:60;
+ display:flex;flex-direction:column;align-items:center;gap:7px;pointer-events:none;padding:0 12px}
+.toast{display:flex;align-items:center;gap:10px;max-width:92vw;
+ background:rgba(9,15,24,.95);border:1px solid var(--linea);
+ border-left:3px solid var(--tono,var(--ok));border-radius:14px;padding:10px 15px;
+ box-shadow:0 12px 34px rgba(0,0,0,.55);animation:toastIn .16s ease-out}
+.toast .tc{font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:15px;color:var(--tinta);flex:none}
+.toast .tq{color:var(--tinta2);font-size:12.5px;font-weight:500;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis}
+.toast.sale{opacity:0;transform:translateY(-10px);transition:opacity .22s,transform .22s}
+@keyframes toastIn{from{opacity:0;transform:translateY(-12px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}.toast.sale{transition:none}}
 .hcab{display:flex;align-items:baseline;justify-content:space-between;margin:15px 2px 8px}
 .hcab b{font-family:Archivo,sans-serif;font-size:12px;font-weight:800;letter-spacing:.8px;
  text-transform:uppercase;color:var(--tinta3)}
@@ -27757,6 +27772,7 @@ h1,h2,.marca{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
  background:linear-gradient(145deg,var(--acc2),var(--acc3));box-shadow:0 6px 18px -7px var(--acc-ln)}
 .err{color:var(--mal);font-size:13.5px;margin-top:12px;min-height:19px}
 </style></head><body>
+<div class="toasts" id="toasts"></div>
 <div class="app" id="app">
  <div class="top" id="barra" style="display:none">
   <span class="mk"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#07101c"
@@ -27945,6 +27961,25 @@ function visto(txt){
  marcar(cod,MODO);
 }
 
+/* ---- aviso flotante ---- */
+function toast(cod, txt, tono, ms){
+ var c=$("toasts"); if(!c) return null;
+ var d=document.createElement("div");
+ d.className="toast"; d.style.setProperty("--tono", tono||"var(--ok)");
+ d.innerHTML='<span class="tc">'+esc(cod)+'</span><span class="tq">'+txt+'</span>';
+ c.appendChild(d);
+ while(c.children.length>3) c.removeChild(c.firstChild);   // 3 a la vez, no tapa la camara
+ d._ir=setTimeout(function(){ d.classList.add("sale");
+   setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); }, 260); }, ms||1600);
+ return d; }
+function toastFin(d, txt, tono, ms){
+ if(!d||!d.parentNode) return;
+ var q=d.querySelector(".tq"); if(q) q.innerHTML=txt;
+ if(tono) d.style.setProperty("--tono", tono);
+ clearTimeout(d._ir);
+ d._ir=setTimeout(function(){ d.classList.add("sale");
+   setTimeout(function(){ if(d.parentNode) d.parentNode.removeChild(d); }, 260); }, ms||1500); }
+
 /* ---- historial ---- La lista de lo que ya escaneo, abajo de todo. Entra AL INSTANTE (antes
    de que conteste el servidor) y despues se completa: en la calle lo que importa es saber si
    el paquete entro, no esperar. Queda en el telefono, asi sobrevive si se recarga la pagina. */
@@ -27983,14 +28018,23 @@ function limpiarHist(){ HIST=[]; histGuardar(); histPintar(); }
 function marcar(cod,estado){
  bip(); flash();
  var it=histAdd(cod,estado);                 // entra en la lista YA, sin esperar al servidor
- if(!navigator.onLine){ encolar({cod:cod,estado:estado}); histFijar(it,null,0,"sin se\u00f1al \u00b7 en cola"); return; }
+ var tt=toast(cod,"escaneado\u2026","var(--esp)",2500);   // y el aviso flotante, al instante
+ if(!navigator.onLine){ encolar({cod:cod,estado:estado});
+  histFijar(it,null,0,"sin se\u00f1al \u00b7 en cola");
+  toastFin(tt,"sin se\u00f1al \u00b7 se manda sola","var(--esp)",1900); return; }
  fetch("/escaner/marcar",{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({token:TOK,cod:cod,estado:estado})})
  .then(function(r){return r.json();}).then(function(j){
-  if(!j.ok){ error(j.msg||"No se pudo",cod); histFijar(it,null,0,j.msg||"No se pudo"); return; }
+  if(!j.ok){ error(j.msg||"No se pudo",cod); histFijar(it,null,0,j.msg||"No se pudo");
+   toastFin(tt,esc(j.msg||"No se pudo"),"var(--mal)",2600); return; }
   ULT=j.envio; if(!j.repetido){ N++; s_("rp_esc_n",String(N)); $("n").textContent=N; }
   pintar(j.envio,j.repetido); histFijar(it,j.envio,j.repetido,"");
- }).catch(function(){ encolar({cod:cod,estado:estado}); histFijar(it,null,0,"sin conexi\u00f3n \u00b7 en cola"); });
+  var _c=EST[j.envio.estado]||EST.registrado;
+  var _d=[j.envio.loc||"", j.envio.nombre||""].filter(Boolean).join(" \u00b7 ") || j.envio.chip;
+  toastFin(tt, esc(_d)+(j.repetido?" (ya estaba)":""), _c.t, 1500);
+ }).catch(function(){ encolar({cod:cod,estado:estado});
+  histFijar(it,null,0,"sin conexi\u00f3n \u00b7 en cola");
+  toastFin(tt,"sin conexi\u00f3n \u00b7 se manda sola","var(--esp)",1900); });
 }
 function pintar(e,repetido){
  var c=EST[e.estado]||EST.registrado;
