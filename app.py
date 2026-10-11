@@ -24577,6 +24577,22 @@ def wa_chats():
     if not email:
         return jsonify({"ok": False})
     emap = _wa_chats_all().get(email, {})
+    # ETIQUETA DE CAMPAÑA: el chat entra al filtro "Reseña" apenas la plantilla esta en el
+    # chat, sin esperar a que el cliente conteste. Asi se ve a quien se le mando y quien
+    # todavia no respondio. Solo se pone si el chat NO tiene otra etiqueta, y una sola vez:
+    # si Cristian se la saca a mano, no vuelve.
+    _etq_nueva = False
+    for _c in emap.values():
+        if _c.get("res_etq") or _c.get("etiqueta"):
+            continue
+        if _res_activa(_c):
+            _c["etiqueta"] = "resena"
+            _c["res_etq"] = True
+            _etq_nueva = True
+    if _etq_nueva:
+        _todo = _wa_chats_all()
+        _todo[email] = emap
+        _wa_save_chats(_todo)
     out = []
     for wid, conv in emap.items():
         msgs = conv.get("messages", [])
