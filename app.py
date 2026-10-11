@@ -21455,20 +21455,30 @@ _RES_FORMATO = ("Gracias por contarme 🙌 Para el 35% necesito que sea un video
 
 
 def _res_activa(conv) -> bool:
-    """¿Este chat esta en la campaña? Se detecta por la plantilla enviada o por el boton que
-    toco el cliente, asi funciona se haya mandado desde RealProfit o desde el panel de Meta."""
-    if conv.get("res_cerrada"):
-        return False
-    for m in reversed((conv.get("messages") or [])[-40:]):
+    """¿Este chat esta en la campaña?
+
+    Gana EL EVENTO MAS NUEVO, no el historial. Antes esto miraba `res_cerrada`, que se
+    prende cuando el cliente toca "Ahora no" y NO SE APAGA NUNCA: le volvias a mandar la
+    plantilla y el bot ya no la reconocia, o el que se arrepentia ("al final si quiero")
+    caia al cerebro de ventas. Pasó de verdad el 11-10 probando con el chat de Cristian.
+    """
+    msgs = (conv.get("messages") or [])[-40:]
+    ultimo_in = next((m for m in reversed(msgs) if m.get("dir") == "in"), None)
+    for m in reversed(msgs):
         if m.get("dir") == "out" and m.get("type") == "template" and _res_es_plantilla(m.get("text")):
             return True
         # OJO: solo vale el BOTON de verdad (el webhook lo marca type="button"), nunca texto
         # suelto. Un cliente cualquiera escribe "no gracias" o "ahora no" todo el tiempo y
         # con eso lo metiamos en la campaña: el bot le contestaba "Listo, sin problema" y le
         # cerraba el chat en vez de atenderlo.
-        if m.get("dir") == "in" and m.get("type") == "button" \
-                and _res_norm(m.get("text")) in _RES_SI + _RES_NO:
-            return True
+        if m.get("dir") == "in" and m.get("type") == "button":
+            n = _res_norm(m.get("text"))
+            if n in _RES_SI:
+                return True
+            if n in _RES_NO:
+                # Dijo que no: sigue "en campaña" solo para poder despedirse esta vez. Si
+                # despues escribe cualquier otra cosa, lo atiende el cerebro normal.
+                return m is ultimo_in
     return False
 
 
