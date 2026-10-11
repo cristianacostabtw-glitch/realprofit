@@ -26017,29 +26017,36 @@ cargar(0);
 
 RP_BASE = WA_URL_PUBLICA          # https://www.realprofitapp.com
 FLEX_DB = DATA_DIR / "flex_envios.json"     # {email: {"seq": n, "envios": {cod: {...}}}}
-FLEX_SEQ_INICIAL = 1        # el 00001 es la muestra -> los REALES arrancan en el 00002.
+FLEX_SEQ_INICIAL = 4        # del 00001 al 00004 son muestras -> los REALES, del 00005.
 #                             Solo aplica a una cuenta SIN envios: la que ya tiene
 #                             guarda su propio contador y no se renumera.
-# UN SOLO envio de muestra: el 00001. Sirve para probar el QR, el escaner, la pagina de
+# CUATRO envios de muestra (00001-00004), uno por zona. Sirven para probar el QR, el escaner, la pagina de
 # seguimiento y la impresion de la etiqueta sin generar un envio de verdad. NO se guarda en
 # ningun lado: se arma al vuelo cada vez que lo piden, y el contador nunca le asigna ese
-# numero a un envio real (los REALES arrancan en el 00002).
-# Eran cinco (00001-00005) hasta el 11-10-2026; Cristian pidio dejar solo el del QR.
+# numero a un envio real (los REALES arrancan en el 00005).
+# Son cuatro y no uno porque cada paquete necesita su PROPIO QR: con uno solo no se
+# puede probar el escaner de verdad (todos caen en el mismo seguimiento).
 _FLEX_DEMOS = [
-        {'cod': '00001',
-         'num': '7457',
-         'nombre': 'Gabriel Pollola',
-         'zona': 'sur',
-         'loc': 'Lomas de Zamora',
-         'prov': 'Buenos Aires',
-         'cp': '1832',
-         'calle': 'Av. Hipólito Yrigoyen 8299',
-         'extra': 'Piso 3, Depto B',
-         'tel': '1154629118',
-         'nota': 'Bicicletería Tonino. Atienden de lunes a sábado de 10 a 13 y de 14 a 18 hs. Tocar el timbre de al lado.',
-         'sku': 'X2 POTES',
-         'unidades': 2,
-         'estado': 'camino'},
+    # Uno por zona, y cada uno pone a prueba algo distinto de la etiqueta.
+    {"cod": "00001", "num": "7457", "nombre": "Gabriel Pollola", "zona": "sur",
+     "loc": "Lomas de Zamora", "prov": "Buenos Aires", "cp": "1832",
+     "calle": "Av. Hipólito Yrigoyen 8299", "extra": "Piso 3, Depto B", "tel": "1154629118",
+     "nota": "Bicicletería Tonino. Atienden de lunes a sábado de 10 a 13 y de 14 a 18 hs.",
+     "sku": "X2 POTES", "unidades": 2, "estado": "registrado"},      # nota larga, se corta con ...
+    {"cod": "00002", "num": "7458", "nombre": "Marina Córdoba", "zona": "caba",
+     "loc": "Caba", "prov": "Ciudad Autónoma de Buenos Aires", "cp": "1428",
+     "calle": "Av. Cabildo 2540", "extra": "", "tel": "+541144567890",
+     "nota": "", "sku": "X1 POTE", "unidades": 1, "estado": "registrado"},   # sin piso ni nota
+    {"cod": "00003", "num": "7459", "nombre": "José Ñandú Gómez", "zona": "norte",
+     "loc": "Vicente López", "prov": "Buenos Aires", "cp": "1638",
+     "calle": "Calle 31 N° 5874, e/159 y 159 A", "extra": "Casa", "tel": "1166284165",
+     "nota": "Dejar en la portería.", "sku": "X6 POTES + 1 ÓXIDO", "unidades": 7,
+     "estado": "registrado"},                                        # tildes, ñ y N° en la calle
+    {"cod": "00004", "num": "7460", "nombre": "Ana Paz", "zona": "oeste",
+     "loc": "San Justo", "prov": "Buenos Aires", "cp": "1765",
+     "calle": "Mocoreta 4685", "extra": "Manzana 42, Lote 7", "tel": "1155059621",
+     "nota": "Tocar timbre del fondo. De 10 a 13 hs.", "sku": "X3 POTES", "unidades": 3,
+     "estado": "registrado"},                                        # manzana y lote
 ]
 FLEX_DEMO_CODS = tuple(d["cod"] for d in _FLEX_DEMOS)
 FLEX_COD_DIG = 5            # siempre 5 digitos, con los ceros adelante (00001, 00042, 01337)
