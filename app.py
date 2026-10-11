@@ -27287,6 +27287,21 @@ def _fx_marca(pg, x, y, alto):
     _fx_txt(pg, x + alto + alto * .32, y + alto * .77, "RealProfit", _FX_HB, alto * .74, _FX_N)
 
 
+def _fx_tel(t):
+    """El telefono como se marca, no como viene de la tienda. Shopify lo guarda pegado
+    (1154629118) o con +54 9 adelante; en la calle eso no se lee de un vistazo."""
+    d = "".join(c for c in str(t or "") if c.isdigit())
+    if d.startswith("549") and len(d) == 13:
+        d = d[3:]
+    elif d.startswith("54") and len(d) == 12:
+        d = d[2:]
+    if len(d) == 10:
+        return "%s %s-%s" % (d[:2], d[2:6], d[6:])
+    if len(d) == 8:
+        return "%s-%s" % (d[:4], d[4:])
+    return str(t or "").strip()
+
+
 def _flex_etiqueta(pg, e):
     """Dibuja UNA etiqueta de 10x15. `e` es el registro de flex_envios.json.
 
@@ -27310,7 +27325,15 @@ def _flex_etiqueta(pg, e):
     zona_txt = FLEX_ZONAS.get(_flex_zona_de(e), "")
     extra = (e.get("extra") or "").strip()            # "Casa", "Piso 3 Depto B" o vacio
     obs = (e.get("nota") or "").strip() or "Sin información"
-    obs_lin = _fx_envolver(obs, HV, 11.5, A - 2 * pad - 6)[:2]
+    # Dos renglones como mucho. Si no entra, el ultimo termina en "..." : cortar en seco
+    # ("...de 10 a 13 y de 14 a 18 hs. Tocar el") hace creer que la nota dice solo eso.
+    _ol = _fx_envolver(obs, HV, 11.5, A - 2 * pad - 6)
+    obs_lin = _ol[:2]
+    if len(_ol) > 2 and obs_lin:
+        _u = obs_lin[-1]
+        while _u and _fx_w(_u + "...", HV, 11.5) > A - 2 * pad - 6:
+            _u = _u[:-1]
+        obs_lin[-1] = _u.rstrip(" ,.;") + "..."
     cont = (e.get("sku") or "").strip()
     ped = "PEDIDO #" + (str(e.get("num") or "").replace("#", ""))
 
@@ -27367,7 +27390,7 @@ def _flex_etiqueta(pg, e):
 
         elif k in ("piso", "recibe", "telefono"):
             rot = {"piso": "PISO / DEPTO", "recibe": "RECIBE", "telefono": "TELEFONO"}[k]
-            val = {"piso": extra, "recibe": e.get("nombre"), "telefono": e.get("tel")}[k]
+            val = {"piso": extra, "recibe": e.get("nombre"), "telefono": _fx_tel(e.get("tel"))}[k]
             _fx_micro(pg, M + pad, y + 14, rot)
             if val:
                 vt, vs = _fx_cortar(str(val), HB, 14.5 if k == "recibe" else 13, A - 2 * pad - 8)
