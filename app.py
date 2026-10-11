@@ -26029,7 +26029,7 @@ _FLEX_DEMOS = [
         {'cod': '00001',
          'num': '7457',
          'nombre': 'Gabriel Pollola',
-         'zona': 'norte',
+         'zona': 'sur',
          'loc': 'Lomas de Zamora',
          'prov': 'Buenos Aires',
          'cp': '1832',
@@ -26088,16 +26088,34 @@ FLEX_ZONAS = {"caba": "CABA", "norte": "ZONA NORTE", "oeste": "ZONA OESTE", "sur
 # En la ETIQUETA el recuadro ya dice "ZONA" arriba, asi que abajo va solo el rumbo: "ZONA
 # NORTE" no entra en los 56 pt del recuadro y se desbordaba sobre la banda negra.
 FLEX_ZONAS_ET = {"caba": "CABA", "norte": "NORTE", "oeste": "OESTE", "sur": "SUR"}
-# Lo guardado con las zonas viejas lo recalcula _flex_zona_ok() por CP.
+# La zona guardada es solo una copia: _flex_zona_de() la recalcula del CP.
 
 
-def _flex_zona_ok(z, cp="", prov="", loc=""):
-    """La zona de un envio YA guardado. Lo que quedo con las viejas (gba1/gba2) se vuelve a
-    calcular por CP: si no, la etiqueta imprimiria el recuadro de ZONA vacio."""
-    z = str(z or "")
-    if z in FLEX_ZONAS:
+def _flex_zona_de(e) -> str:
+    """La zona de un envio YA guardado.
+
+    REGLA: la zona la manda el CP, SIEMPRE. El valor guardado es solo una copia y se ignora,
+    salvo que Cristian la haya corregido a mano (`zona_manual`), que es el unico caso en que
+    una persona sabe mas que el CP (un barrio pegado al limite, una direccion rara).
+
+    Por que asi y no "usar lo guardado si parece valido": el 11-10-2026 el envio de muestra
+    decia ZONA NORTE siendo Lomas de Zamora (CP 1832 = Sur). Habia quedado mal de una
+    conversion anterior y nadie lo noto, porque "norte" es un valor VALIDO. Mientras la copia
+    pueda discrepar del CP sin que nada la corrija, el error vuelve. Ahora no puede."""
+    if not isinstance(e, dict):
+        return ""
+    if e.get("zona_manual") and e.get("zona") in FLEX_ZONAS:
+        return e["zona"]
+    z = _flex_zona(e.get("cp"), e.get("prov") or e.get("provincia"),
+                   e.get("loc") or e.get("localidad"))
+    if z:
         return z
-    return _flex_zona(cp, prov, loc)
+    # Si HAY un CP y da vacio, el paquete NO entra en zona y punto: devolver lo guardado
+    # dejaria a un Mar del Plata (CP 7600) metido en el recorrido como "sur".
+    if len([c for c in str(e.get("cp") or "") if c.isdigit()]) >= 4:
+        return ""
+    # sin CP no hay con que calcular: ahi si vale lo guardado
+    return e.get("zona") if e.get("zona") in FLEX_ZONAS else ""
 
 
 def _flex_zona(cp, prov="", loc="") -> str:
@@ -26240,7 +26258,8 @@ def _flex_crear(email, filas) -> list:
         env = {
             "cod": cod, "num": num,
             "nombre": (f.get("nombre") or "").strip(),
-            "zona": f.get("zona") or _flex_zona(f.get("cp"), f.get("provincia"), f.get("localidad")) or "oeste",
+            # la zona la decide el CP; lo que mande el navegador NO se usa (puede venir viejo)
+            "zona": _flex_zona(f.get("cp"), f.get("provincia"), f.get("localidad")) or "oeste",
             "loc": f.get("localidad") or "", "prov": f.get("provincia") or "", "cp": str(f.get("cp") or ""),
             "calle": f.get("calle") or "", "extra": f.get("extra") or "",
             "tel": f.get("tel") or "", "unidades": int(f.get("unidades") or 0),
@@ -26266,6 +26285,7 @@ def _flex_set(email, cods, estado=None, zona=None) -> int:
             continue
         if zona in FLEX_ZONAS:
             e["zona"] = zona
+            e["zona_manual"] = True      # correccion a mano: gana sobre el CP y no se pisa
         if estado in _FLEX_EST and e.get("estado") != estado:
             e["estado"] = estado
             e.setdefault("hist", []).append({"e": estado, "ts": _flex_ahora(), "por": "oficina"})
@@ -27287,7 +27307,7 @@ def _flex_etiqueta(pg, e):
     A = W - 2 * M
     TOP, BOT = 16, H - 16
 
-    zona_txt = FLEX_ZONAS.get(_flex_zona_ok(e.get("zona"), e.get("cp")), "")
+    zona_txt = FLEX_ZONAS.get(_flex_zona_de(e), "")
     extra = (e.get("extra") or "").strip()            # "Casa", "Piso 3 Depto B" o vacio
     obs = (e.get("nota") or "").strip() or "Sin información"
     obs_lin = _fx_envolver(obs, HV, 11.5, A - 2 * pad - 6)[:2]
@@ -27393,8 +27413,8 @@ def flex_etiquetas():
     # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
     sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo(_flex_norm(c))
            for c in cods if _flex_norm(c) in envios or _flex_norm(c) in FLEX_DEMO_CODS]
-    sel.sort(key=lambda e: (list(FLEX_ZONAS).index(_flex_zona_ok(e.get("zona"), e.get("cp")))
-                            if _flex_zona_ok(e.get("zona"), e.get("cp")) in FLEX_ZONAS else 9,
+    sel.sort(key=lambda e: (list(FLEX_ZONAS).index(_flex_zona_de(e))
+                            if _flex_zona_de(e) in FLEX_ZONAS else 9,
                             (e.get("loc") or "").lower(), int(_flex_norm(e["cod"]) or 0)))
     if not sel:
         return Response("No hay envíos para etiquetar.", status=400, mimetype="text/plain")
@@ -27500,7 +27520,7 @@ def _flex_repa_resumen(e) -> dict:
     tit, chip, _frase, col = _FLEX_EST.get(e.get("estado") or "registrado", _FLEX_EST["registrado"])
     return {"cod": e["cod"], "num": e.get("num"), "nombre": e.get("nombre"),
             "calle": e.get("calle"), "extra": e.get("extra"), "loc": e.get("loc"),
-            "cp": e.get("cp"), "zona": FLEX_ZONAS.get(_flex_zona_ok(e.get("zona"), e.get("cp")), ""),
+            "cp": e.get("cp"), "zona": FLEX_ZONAS.get(_flex_zona_de(e), ""),
             "tel": e.get("tel"), "estado": e.get("estado"), "chip": chip, "color": col,
             "puede_deshacer": len(e.get("hist") or []) > 1}
 
