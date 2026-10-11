@@ -17852,7 +17852,7 @@ def meli_prep_ver():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
-    tok, uid = _meli_tok_uid(email)
+    tok, uid = _meli_ctx(email)
     if not tok or not uid:
         return jsonify({"ok": False, "msg": "conectá MercadoLibre primero"}), 400
     h = {"Authorization": "Bearer " + tok}
@@ -21339,7 +21339,7 @@ def _bot_canal_ok(c, canal):
 # Mientras el chat este en campaña, el bot sigue este guion y no el cerebro de ventas. NO se
 # queda ciego: si el cliente pregunta otra cosa, cae de nuevo en el cerebro normal, que sigue
 # sabiendo que compro y que pidio.
-CUPON_RESENA = "RESEÑA35"
+CUPON_RESENA = "RES35"
 _RES_DIAS = 10                       # cuanto queda abierta la campaña en un chat
 _RES_HUELLA = "35% de descuento en tu próxima compra"      # frase de la plantilla
 _RES_SI = ("quiero el 35%", "quiero el 35", "quiero el descuento")
@@ -21526,6 +21526,7 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
         if last_in.get("type") == "video":
             # El video lo aprueba Cristian: el bot no contesta, solo lo marca como pendiente.
             conv["bot_nota"] = "🎥 Video de reseña — revisalo y mandale el cupón %s" % CUPON_RESENA
+            conv["etiqueta"] = "resena"        # para que salga en el filtro Reseñas
             _wa_save_chats(chats)
             return
         if _rmsg:
@@ -21701,6 +21702,7 @@ _WA_ETIQ = {                      # etiquetas de color por chat (las pone el bot
     "problema_envio":   {"txt": "PROBLEMA ENVÍO",   "col": "#b06000"},
     "problema_producto": {"txt": "PROBLEMA PRODUCTO", "col": "#6b3fa0"},
     "reclamo_mp":       {"txt": "RECLAMO MP",       "col": "#b3261e"},
+    "resena":           {"txt": "RESEÑA",           "col": "#1f6feb"},
 }
 
 
@@ -22753,7 +22755,8 @@ function updateTitle(){ var n=0; CHATS.forEach(function(c){ n+=(c.unread||0); })
 var VISTA='chats';
 // ETIQUETAS: las asigna atención (botón Etiqueta) o el bot. Sirven para filtrar la lista.
 var ETIQS=[['transferencia','TRANSFERENCIA','#0b5d43'],['problema_envio','PROBLEMA ENV\\u00cdO','#b06000'],
-           ['problema_producto','PROBLEMA PRODUCTO','#6b3fa0'],['reclamo_mp','RECLAMO MP','#b3261e']];
+           ['problema_producto','PROBLEMA PRODUCTO','#6b3fa0'],['reclamo_mp','RECLAMO MP','#b3261e'],
+           ['resena','RESE\\u00d1A','#1f6feb']];   // OJO: espeja _WA_ETIQ del server
 var FILTRO='';           // '' = todas
 function etiqDe(k){ for(var i=0;i<ETIQS.length;i++){ if(ETIQS[i][0]===k) return ETIQS[i]; } return null; }
 function setVista(v){ VISTA=v; renderList(); }
