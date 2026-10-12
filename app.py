@@ -29018,25 +29018,27 @@ def flex_etiquetas():
     # el de muestra tambien se imprime: asi se prueba el circuito entero (etiqueta -> escaneo -> pagina)
     sel = [envios[_flex_norm(c)] if _flex_norm(c) in envios else _flex_demo(_flex_norm(c))
            for c in cods if _flex_norm(c) in envios or _flex_norm(c) in FLEX_DEMO_CODS]
-    # ORDEN DE IMPRESION, como en Andreani. Tres niveles:
+    # ORDEN DE IMPRESION. Tres niveles:
     #   1) ZONA, la de mas envios primero
     #   2) dentro de la zona, PRIMERO lo que es solo POTE y al final lo que lleva CAPS
-    #   3) dentro de eso, agrupado por SKU y el grupo mas grande arriba
-    # Queda tipo:  CABA -> 22 x2 POTE, 12 x1 POTE, 6 x6 POTE, 3 x2 POTE + x1 CAPS...
-    # Asi se empaqueta de corrido: 22 iguales seguidas, y las capsulas se tocan una sola
-    # vez por zona en vez de ir y venir.
+    #   3) dentro de eso, por CANTIDAD DE POTES de mayor a menor
+    # Queda tipo:  CABA -> x6 POTES, x3 POTES, x2 POTES, x1 POTE, y recien ahi x2 POTE + x1 CAPS
+    #
+    # Antes el nivel 3 era "el grupo de SKU mas grande arriba", asi que podia salir
+    # x2, x1, x6 y despues las caps. Cristian lo empaqueta bajando de cantidad: termina TODO
+    # lo de potes de mayor a menor y recien cuando sale el ultimo arranca con las caps, que
+    # es ademas el mismo orden que ya tenia la hoja PARA EMPAQUETAR (_flex_potes).
     from collections import Counter as _Cnt
     def _caps(e):
         return 1 if "CAPS" in (e.get("sku") or "").upper() else 0
     def _sku(e):
         return " ".join((e.get("sku") or "").upper().split())
     _zc = _Cnt(_flex_zona_de(e) for e in sel)
-    _sc = _Cnt((_flex_zona_de(e), _sku(e)) for e in sel)      # tamaño del grupo DENTRO de la zona
     sel.sort(key=lambda e: (
         -_zc[_flex_zona_de(e)],                     # 1) zona con mas envios
         _flex_zona_de(e) or "zzz",                  #    empate: estable
         _caps(e),                                   # 2) sin CAPS y despues con CAPS
-        -_sc[(_flex_zona_de(e), _sku(e))],          # 3) el grupo de SKU mas grande arriba
+        -_flex_potes(e),                            # 3) de mayor a menor cantidad de potes
         _sku(e),                                    #    empate: estable
         (e.get("loc") or "").lower(),               #    adentro del grupo, por localidad
         int(_flex_norm(e["cod"]) or 0)))
