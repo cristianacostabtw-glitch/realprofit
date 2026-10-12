@@ -27862,6 +27862,18 @@ def _flex_etiqueta(pg, e):
 
     zona_txt = FLEX_ZONAS.get(_flex_zona_de(e), "")
     extra = (e.get("extra") or "").strip()            # "Casa", "Piso 3 Depto B" o vacio
+    # La ALTURA puede venir en el segundo campo de Shopify (address2), que nosotros usamos
+    # para piso/depto: el cliente escribe la calle en uno y el numero en el otro. Salia
+    # "Concordia / s/n" con un "262" suelto en PISO/DEPTO (#7752 y #7743, 11-10). Si la
+    # calle no trae numero y el extra ES un numero, esa es la altura.
+    _calle_txt = (e.get("calle") or "").strip()
+    if extra and not _fx_partir_calle(_calle_txt)[1]:
+        # SOLO digitos y al menos 2: "262" y "380" son alturas, pero "4" o "4 B" son
+        # piso y depto, y pegarlos a la calle manda al repartidor a otra puerta.
+        _m_alt = _re_and.fullmatch(r"\s*(\d{2,6})\s*", extra)
+        if _m_alt:
+            e = dict(e, calle=("%s %s" % (_calle_txt, _m_alt.group(1))).strip())
+            extra = ""
     obs = (e.get("nota") or "").strip() or "Sin información"
     # Dos renglones como mucho. Si no entra, el ultimo termina en "..." : cortar en seco
     # ("...de 10 a 13 y de 14 a 18 hs. Tocar el") hace creer que la nota dice solo eso.
@@ -27931,18 +27943,34 @@ def _flex_etiqueta(pg, e):
             izq = qx - pad - (M + pad) - 10
             nom, alt = _fx_partir_calle(e.get("calle"))
             _fx_micro(pg, M + pad, y + 15, "DIRECCION")
-            ct, cs = _fx_cortar(nom, HB, 16.5, izq)
-            _fx_txt(pg, M + pad, y + 33, ct, HB, cs)
+            # La calle va en hasta DOS renglones. El espacio que queda a la izquierda del QR
+            # es angosto y los nombres largos salian cortados con puntos ("Calle 31, e/159 y
+            # 159 A, Be..."): el repartidor se queda sin saber adonde va.
+            _cl, cs = _fx_lineas(nom, HB, 16.5, izq, mini=12.5, s2=13.5, mini2=9.5)
+            _cy = y + 31
+            for _i, _l in enumerate(_cl):
+                _fx_txt(pg, M + pad, _cy + _i * cs * 1.05, _l, HB, cs)
+            _bajo = _cy + len(_cl) * cs * 1.05          # donde termina la calle
             at, asz = _fx_cortar(alt or "s/n", HB, 34, izq)
-            _fx_txt(pg, M + pad, y + 33 + (h - 40) / 2 + asz * 0.36, at, HB, asz)
+            _fx_txt(pg, M + pad, _bajo + (y + h - _bajo) / 2 + asz * 0.36, at, HB, asz)
 
         elif k in ("piso", "recibe", "telefono"):
             rot = {"piso": "PISO / DEPTO", "recibe": "RECIBE", "telefono": "TELEFONO"}[k]
             val = {"piso": extra, "recibe": e.get("nombre"), "telefono": _fx_tel(e.get("tel"))}[k]
             _fx_micro(pg, M + pad, y + 14, rot)
             if val:
-                vt, vs = _fx_cortar(str(val), HB, 14.5 if k == "recibe" else 13, A - 2 * pad - 8)
-                _fx_txt(pg, M + pad, y + 14 + (h - 14) / 2 + vs * 0.34, vt, HB, vs)
+                # PISO/DEPTO a veces trae una referencia larga ("Entre Rumania y Groenlandia,
+                # a cuadra y media..."), que es justo lo que el repartidor necesita leer.
+                _b = 14.5 if k == "recibe" else 13
+                _vl, vs = _fx_lineas(str(val), HB, _b, A - 2 * pad - 8,
+                                     mini=_b - 2, s2=min(_b, 11.5), mini2=8.5)
+                _cy = y + 14 + (h - 14) / 2
+                if len(_vl) == 1:
+                    _fx_txt(pg, M + pad, _cy + vs * 0.34, _vl[0], HB, vs)
+                else:
+                    _sal = vs * 1.02
+                    for _i, _l in enumerate(_vl):
+                        _fx_txt(pg, M + pad, _cy - _sal / 2 + vs * 0.34 + _i * _sal, _l, HB, vs)
 
         elif k == "obs":
             _fx_micro(pg, M + pad, y + 14, "OBSERVACIONES")
