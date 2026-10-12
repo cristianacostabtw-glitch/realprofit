@@ -21898,9 +21898,26 @@ def _res_activa(conv) -> bool:
     return False
 
 
+# OJO con las palabras sueltas: "cambio" matcheaba "no he sentido ningun CAMBIO" y el bot le
+# mandaba las instrucciones de la reseña a alguien que decia que el producto no le hizo nada
+# (Jose Antonio Amoros, 12-10 18:55). Van solo frases que no se cruzan con otra cosa.
 _RES_COMPRA = ("comprar", "comprarme", "quiero otro", "quiero dos", "quiero mas",
-               "llevar", "me mandas otro", "otro pote", "dos potes", "tres potes",
-               "cuanto sale", "cuanto esta", "precio", "stock", "cambio", "plata")
+               "me mandas otro", "otro pote", "dos potes", "tres potes", "mas potes",
+               "cuanto sale", "cuanto esta", "que precio", "el precio")
+
+# QUEJAS Y DUDAS DE SALUD. Van ANTES que todo: a alguien que dice que no le hizo efecto no se
+# le pide un video de reseña. El bot no contesta y lo ve una persona.
+_RES_QUEJA = ("no he sentido", "no senti", "no sentí", "no noto", "no note", "ningun cambio",
+              "ninguna mejora", "no me hizo", "no hizo nada", "no funciona", "no me funciono",
+              "no funciono", "no sirve", "no me sirvio", "sin resultados", "no veo resultados",
+              "no veo cambios", "no pasa nada", "no me anda", "no mejore", "sigo igual",
+              "no cambio nada", "me cayo mal", "me hizo mal", "efecto adverso", "alergia",
+              "me siento mal", "peor", "estafa", "no me llego nada", "devolucion", "reembolso")
+
+
+def _res_queja(n) -> bool:
+    """¿Se esta quejando o dice que no le hizo efecto? No es alguien a quien pedirle reseña."""
+    return any(f in n for f in _RES_QUEJA)
 
 
 def _res_compra(n) -> bool:
@@ -21927,6 +21944,19 @@ def _res_guion(conv, last_in):
     t = _res_norm(last_in.get("text"))
     tipo = last_in.get("type") or "text"
 
+    def _no_repetir(msg):
+        """Nunca mandar dos veces seguidas el mismo texto. Es la ultima red: aunque una rama
+        nueva se equivoque, el cliente no ve el mismo mensaje repetido."""
+        if not msg:
+            return msg
+        for m in reversed((conv.get("messages") or [])[-12:]):
+            if m.get("dir") == "out" and m.get("by") == "bot":
+                if (m.get("text") or "").strip() == msg.strip():
+                    conv["res_ojo"] = conv.get("res_ojo") or "insiste y ya le contestamos lo mismo"
+                    return ""
+                break
+        return msg
+
     if tipo == "video":
         # El video NO lo valida el bot: acusa recibo y lo deja pendiente para una persona,
         # que es la que decide y manda el cupon.
@@ -21936,12 +21966,20 @@ def _res_guion(conv, last_in):
 
     if tipo in ("image", "audio", "document"):
         conv["res_instr"] = True
-        return _RES_FORMATO
+        return _no_repetir(_RES_FORMATO)
 
     # ── de aca para abajo es texto ──
+    # PRIMERO la queja: si dice que no le hizo efecto, el bot NO le pide el video ni le
+    # contesta nada. Lo ve una persona. Paso el 12-10 con Jose Antonio Amoros: escribio
+    # "hace casi 2 meses que lo tomo y no he sentido ningun cambio" y el bot le contesto
+    # "Dale, grabá 15 segundos".
+    if _res_queja(t):
+        conv["res_ojo"] = "dice que no le hizo efecto / se queja"
+        return ""
+
     if _res_no_quiere(t):
         conv["res_cerrada"] = True
-        return _RES_CHAU
+        return _no_repetir(_RES_CHAU)
 
     if _res_luego(t):
         # "Luego lo hago": se le agradece y se le dejan los pasos, asi los tiene cuando se
@@ -21951,7 +21989,7 @@ def _res_guion(conv, last_in):
         conv["res_instr"] = True
         if _res_compra(t):
             conv["res_ojo"] = "quiere comprar mas"
-        return _RES_LUEGO + _RES_AYUDA
+        return _no_repetir(_RES_LUEGO + _RES_AYUDA)
 
     if _res_compra(t):
         # Contesto A LA PLANTILLA diciendo que quiere llevar mas potes. Eso sigue siendo
@@ -21962,13 +22000,13 @@ def _res_guion(conv, last_in):
         ya = bool(conv.get("res_instr"))
         conv["res_pedido"] = _wa_now()
         conv["res_instr"] = True
-        return _RES_AYUDA if ya else _RES_INSTR
+        return _no_repetir(_RES_AYUDA if ya else _RES_INSTR)
 
     if _res_quiere(t):
         ya = bool(conv.get("res_instr"))
         conv["res_pedido"] = _wa_now()
         conv["res_instr"] = True
-        return _RES_AYUDA if ya else _RES_INSTR
+        return _no_repetir(_RES_AYUDA if ya else _RES_INSTR)
 
 
     if _res_otro_tema(t):
@@ -21977,9 +22015,17 @@ def _res_guion(conv, last_in):
         conv["res_ojo"] = "pregunta por su pedido"
         return ""
 
-    # Cualquier otra cosa: los pasos del descuento. NUNCA el cerebro de ventas.
+    # Cualquier otra cosa: los pasos del descuento UNA sola vez. Si ya se los explicamos y
+    # sigue escribiendo otra cosa, el bot se calla y lo ve una persona.
+    #
+    # Sin este corte el bot repetia los mismos pasos a cada mensaje: a Sergio (12-10 18:44) le
+    # mando el mismo texto DOS VECES seguidas, la segunda contestando "si me queres llamar
+    # dentro de 1 mes te cuento". Parece un robot roto y quema el chat.
+    if conv.get("res_instr"):
+        conv["res_ojo"] = "ya le explicamos y contestó otra cosa"
+        return ""
     conv["res_instr"] = True
-    return _RES_AYUDA
+    return _no_repetir(_RES_AYUDA)
 
 
 def _wa_bot_run(email, conf, wid, chats, canal="api"):
