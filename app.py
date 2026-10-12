@@ -21727,8 +21727,35 @@ def _bot_canal_ok(c, canal):
 # sabiendo que compro y que pidio.
 CUPON_RESENA = "RES35"
 _RES_DIAS = 10                       # cuanto queda abierta la campaña en un chat
+# Los TEXTOS de los botones de la plantilla. Se siguen usando SOLO para el gate
+# `_res_activa`, que a proposito confia unicamente en botones de verdad (type="button"):
+# un cliente cualquiera escribe "no gracias" todo el tiempo y con texto suelto lo
+# metiamos en la campaña.
 _RES_SI = ("quiero el 35", "quiero el descuento", "dale quiero el 35")
 _RES_NO = ("ahora no", "no gracias", "no me interesa")
+
+# Para CONTESTAR, en cambio, hay que entender como escribe la gente. Con el match exacto
+# de antes el bot se quedaba MUDO justo con el que decia que si ("si", "dale", "me
+# interesa", "como hago" no matcheaban ninguna de las tres frases de arriba), y los 95 de
+# la tanda #1001-#1100 los hubiera tenido que contestar Cristian a mano.
+_RES_NO_FRASE = ("ahora no", "no gracias", "no me interesa", "no quiero", "no puedo",
+                 "no tengo tiempo", "mas adelante", "otro dia", "no por ahora",
+                 "no hace falta", "dejalo", "no me sirve", "prefiero no")
+_RES_NO_PAL = {"no", "nop", "nope", "negativo", "paso"}
+_RES_SI_FRASE = ("quiero el 35", "quiero el descuento", "quiero descuento", "me interesa",
+                 "si quiero", "dale quiero", "quiero hacerlo", "me sumo", "de una",
+                 "como hago", "como es", "como seria", "como lo hago", "como lo mando",
+                 "donde lo mando", "que tengo que hacer", "que hay que hacer", "contame",
+                 "decime como", "si me interesa", "obvio que quiero")
+_RES_SI_PAL = {"si", "sii", "siii", "sisi", "sip", "dale", "obvio", "claro", "ok", "oka",
+               "okey", "listo", "acepto", "quiero", "perfecto", "genial", "buenisimo",
+               "barbaro", "va", "vale", "bueno", "joya", "copado", "interesa"}
+
+# Lo que NO es de la campaña: si el cliente aprovecha para preguntar por su pedido, el bot
+# no le tiene que hablar del video. Cae al cerebro normal, que sigue sabiendo que compro.
+_RES_OTRO_TEMA = ("pedido", "envio", "llego", "llega", "demora", "correo", "andreani",
+                  "seguimiento", "factura", "plata", "precio", "cuanto sale", "devolucion",
+                  "cambio", "reclamo", "stock", "cuando me")
 
 
 def _res_norm(t) -> str:
@@ -21743,20 +21770,72 @@ def _res_norm(t) -> str:
 
 def _res_es_plantilla(txt) -> bool:
     """¿Este texto es la plantilla de la campaña? Se mira por SEÑAS, no por la frase exacta:
-    tiene que hablar de 35 y de descuento, y de video o reseña. Las otras plantillas que
-    manda Cristian (seguimiento de despacho, Flex) no hablan de nada de eso."""
+    tiene que hablar de 35 y de video o reseña. Las otras plantillas que manda Cristian
+    (seguimiento de despacho, Flex, reclamo) no hablan de nada de eso."""
     n = _res_norm(txt)
-    # "35" + (video o reseña) alcanza y sobra: ninguna otra plantilla de Cristian habla de
-    # video ni de reseñas. Pedir tambien "descuento" era de mas y dejaba afuera un
-    # "35% OFF por tu reseña en video", que es como lo puede reescribir el.
     return "35" in n and ("video" in n or "resena" in n)
+
+
+def _res_otro_tema(n) -> bool:
+    """¿Esta preguntando por otra cosa (su pedido, el envio, la plata)?"""
+    return any(f in n for f in _RES_OTRO_TEMA)
+
+
+def _res_no_quiere(n) -> bool:
+    if any(f in n for f in _RES_NO_FRASE):
+        return True
+    pal = n.split()
+    return len(pal) <= 3 and bool(pal) and pal[0] in _RES_NO_PAL
+
+
+def _res_quiere(n) -> bool:
+    """¿Dijo que si? Se evalua DESPUES del no, porque 'no quiero' contiene 'quiero'."""
+    if _res_no_quiere(n):
+        return False
+    if any(f in n for f in _RES_SI_FRASE):
+        return True
+    # Una afirmacion corta y sola ("si", "dale", "ok") se toma como un si SOLO porque el
+    # mensaje anterior fue la plantilla preguntandole si quiere el 35%: sin ese contexto
+    # "dale" no significa nada. Por eso esto se llama unicamente desde `_res_guion`, que
+    # corre nada mas cuando `_res_activa` dio True.
+    pal = n.split()
+    return len(pal) <= 4 and any(x in _RES_SI_PAL for x in pal)
+
 
 _RES_INSTR = ("Dale 🙌\n\nGrabá 15 segundos con el celular, que se te vea la cara, contando:\n\n"
               "• cómo te llegó el pedido\n• si lo venís usando seguido\n• qué efectos notaste hasta ahora\n\n"
               "Mandámelo por acá y te paso el código.")
 _RES_CHAU = "Listo, sin problema 🙌 Gracias igual."
-_RES_FORMATO = ("Gracias por contarme 🙌 Para el 35% necesito que sea un video y que se te vea "
-                "la cara — es lo que le da valor al testimonio.")
+_RES_AYUDA = ("Es más fácil de lo que parece 🙌\n\n"
+              "1. Tocá el clip 📎 acá abajo\n"
+              "2. Elegí Cámara y pasá a video\n"
+              "3. Grabá 15 segundos contando cómo te llegó, si lo usás seguido y qué notaste\n"
+              "4. Mandámelo por acá\n\n"
+              "No hace falta que sea perfecto, al contrario.")
+_RES_FORMATO = ("Gracias por mandarlo 🙌 Para el 35% tiene que ser un video y que se te vea la "
+                "cara — es lo que le da valor al testimonio.\n\n" + _RES_AYUDA)
+_RES_RECIBIDO = ("¡Buenísimo, me llegó! 🙌 Lo revisa una persona del equipo y te pasa el código "
+                 "por acá. Gracias por tomarte el tiempo 💚")
+
+
+def _res_fresca(ts) -> bool:
+    """¿La plantilla se mando hace menos de _RES_DIAS dias?
+
+    `_RES_DIAS` estaba declarado desde el principio y NO SE USABA: la campaña no se cerraba
+    nunca. Un chat que recibio la plantilla quedaba "en campaña" mientras esa plantilla
+    siguiera entre los ultimos 40 mensajes, asi que meses despues el cliente escribia
+    "no quiero" por cualquier otra cosa y el bot le contestaba "Listo, sin problema" y le
+    pegaba la tarjeta de reseñas. Con el reconocimiento de texto libre eso se agravaba.
+    """
+    try:
+        t = _dt.datetime.strptime(str(ts or "")[:19], "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        try:
+            t = _dt.datetime.strptime(str(ts or "")[:16], "%Y-%m-%d %H:%M")
+        except Exception:
+            return False          # sin fecha no se asume que esta viva
+    ahora = _dt.datetime.utcnow() - _dt.timedelta(hours=3)
+    return (ahora - t).days < _RES_DIAS
 
 
 def _res_activa(conv) -> bool:
@@ -21771,7 +21850,9 @@ def _res_activa(conv) -> bool:
     ultimo_in = next((m for m in reversed(msgs) if m.get("dir") == "in"), None)
     for m in reversed(msgs):
         if m.get("dir") == "out" and m.get("type") == "template" and _res_es_plantilla(m.get("text")):
-            return True
+            # Plantilla vieja = campaña cerrada. Se corta aca y NO se sigue buscando mas
+            # atras: si esta es vieja, cualquier otra es todavia mas vieja.
+            return _res_fresca(m.get("ts"))
         # OJO: solo vale el BOTON de verdad (el webhook lo marca type="button"), nunca texto
         # suelto. Un cliente cualquiera escribe "no gracias" o "ahora no" todo el tiempo y
         # con eso lo metiamos en la campaña: el bot le contestaba "Listo, sin problema" y le
@@ -21779,31 +21860,56 @@ def _res_activa(conv) -> bool:
         if m.get("dir") == "in" and m.get("type") == "button":
             n = _res_norm(m.get("text"))
             if n in _RES_SI:
-                return True
+                return _res_fresca(m.get("ts"))
             if n in _RES_NO:
                 # Dijo que no: sigue "en campaña" solo para poder despedirse esta vez. Si
                 # despues escribe cualquier otra cosa, lo atiende el cerebro normal.
-                return m is ultimo_in
+                return (m is ultimo_in) and _res_fresca(m.get("ts"))
     return False
 
 
 def _res_guion(conv, last_in):
-    """Que contesta el bot en campaña. None = no contesta (lo mira Cristian)."""
+    """Que contesta el bot en campaña. None = no contesta (lo mira Cristian).
+
+    El guion acompaña hasta que llega el video. El video NO lo valida el bot: acusa recibo,
+    lo marca pendiente y lo analiza una PERSONA, que es la que despues manda el cupon.
+    """
     t = _res_norm(last_in.get("text"))
     tipo = last_in.get("type") or "text"
+
     if tipo == "video":
-        # El video lo aprueba Cristian a mano: el bot NO contesta ni promete nada. Solo lo
-        # deja marcado para que aparezca como pendiente.
+        # Antes el bot se quedaba MUDO con el video y quedaba feo: la persona grabo, mando y
+        # no le contesto nadie. Ahora acusa recibo y deja la marca para que Cristian lo vea.
         conv["res_video"] = _wa_now()
+        conv.pop("res_video_ok", None)
+        return _RES_RECIBIDO
+
+    # Si aprovecha para preguntar por su pedido o su envio, esto no es de la campaña.
+    if tipo == "text" and _res_otro_tema(t):
         return None
-    if t in _RES_NO:
+
+    if _res_no_quiere(t):
         conv["res_cerrada"] = True
         return _RES_CHAU
-    if t in _RES_SI:
+
+    if _res_quiere(t):
+        # La primera vez se explica que grabar; si vuelve a preguntar, se le dan los pasos
+        # de como mandarlo desde WhatsApp.
+        ya = bool(conv.get("res_instr"))
         conv["res_pedido"] = _wa_now()
-        return _RES_INSTR
-    if tipo in ("image", "audio", "document") or (tipo == "text" and conv.get("res_pedido")):
+        conv["res_instr"] = True
+        return _RES_AYUDA if ya else _RES_INSTR
+
+    # Manda una foto, un audio o un pdf en vez del video: se le explica el formato.
+    if tipo in ("image", "audio", "document"):
+        conv["res_instr"] = True
         return _RES_FORMATO
+
+    # Ya dijo que si y escribe algo que no es otro tema: se le dan los pasos una vez.
+    if tipo == "text" and conv.get("res_pedido") and not conv.get("res_video"):
+        conv["res_instr"] = True
+        return _RES_AYUDA
+
     return None
 
 
@@ -21943,12 +22049,13 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     # sigue de largo al cerebro normal, que sabe lo que compro.
     if (not _mudo) and _res_activa(conv):
         _rmsg = _res_guion(conv, last_in)
-        if last_in.get("type") == "video":
-            # El video lo aprueba Cristian: el bot no contesta, solo lo marca como pendiente.
+        _es_video = last_in.get("type") == "video"
+        if _es_video:
+            # El video NO lo valida el bot: acusa recibo (antes se quedaba mudo y la persona
+            # grababa, mandaba y no le contestaba nadie) y lo deja marcado como PENDIENTE
+            # para que lo analice Cristian, que es el que manda el cupón.
             conv["bot_nota"] = "🎥 Video de reseña — revisalo y mandale el cupón %s" % CUPON_RESENA
             conv["etiqueta"] = "resena"        # para que salga en el filtro Reseñas
-            _wa_save_chats(chats)
-            return
         if _rmsg:
             if canal == "web":
                 _ok, _mid, _err = _wa_web_send(email, conv.get("web_jid") or wid, _rmsg)
@@ -21957,9 +22064,14 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
             if _ok:
                 conv["messages"].append({"dir": "out", "text": _rmsg, "ts": _wa_now(),
                                          "type": "text", "id": _mid, "status": "sent", "by": "bot"})
-                conv["updated"] = _wa_now(); conv.pop("bot_nota", None)
+                conv["updated"] = _wa_now()
+                if not _es_video:
+                    conv.pop("bot_nota", None)   # con video la nota TIENE que quedar
             else:
                 conv["bot_nota"] = "⚠️ Campaña reseñas: falló el envío: " + (_err or "?")
+            _wa_save_chats(chats)
+            return
+        if _es_video:
             _wa_save_chats(chats)
             return
 
@@ -23255,6 +23367,9 @@ function renderList(){
   // Buscando se mezclan las dos pestañas, así que se avisa cuál es de Avisos (si no, no se
   // entiende por qué aparece un chat que en la lista normal no está).
   if(q && c.aviso) chip='<span class="etchip" style="background:#7c6a3a">AVISO</span>'+chip;
+  // Video de reseña esperando revision humana: va ADELANTE de la etiqueta, porque los 95 de
+  // la campaña tienen todos la tarjeta "resena" y asi el que mando el video no se pierde.
+  if(c.resvideo) chip='<span class="etchip" style="background:#7a3ea8">&#127909; VIDEO</span>'+chip;
   return '<div class="chat'+urg+(c.wa_id==SEL?' sel':'')+'"'+_bd+' onclick="openChat(\\''+c.wa_id+'\\')">'
    +'<div class="av">'+esc(ini(c.name))+'</div><div class="info">'
    +'<div class="nm"><span>'+chip+esc(c.name||c.wa_id)+'</span><span class="t">'+hhmm(c.ts)+'</span></div>'
@@ -25299,6 +25414,10 @@ def wa_chats():
 
 
                     "aviso": bool(_avi),
+                    # VIDEO DE RESEÑA PENDIENTE: lo manda el cliente, lo analiza una persona.
+                    # Sin esto la marca `res_video` se escribia y no se mostraba en ningun
+                    # lado: el video llegaba y nadie se enteraba.
+                    "resvideo": bool(conv.get("res_video")) and not conv.get("res_video_ok"),
 
 
 
