@@ -27829,10 +27829,26 @@ def _fx_tel(t):
     """El telefono como se marca, no como viene de la tienda. Shopify lo guarda pegado
     (1154629118) o con +54 9 adelante; en la calle eso no se lee de un vistazo."""
     d = "".join(c for c in str(t or "") if c.isdigit())
-    if d.startswith("549") and len(d) == 13:
-        d = d[3:]
-    elif d.startswith("54") and len(d) == 12:
-        d = d[2:]
+    # Los clientes lo escriben de todas las formas posibles. Sobre los 34 envios del 11-10
+    # habia 5 que quedaban sin formatear: 01123904506, 0111523410059, 91156464546...
+    # Se van sacando los prefijos de a uno mientras sobren digitos (10 es el numero real).
+    for _ in range(4):
+        if len(d) > 10 and d.startswith("00"):
+            d = d[2:]
+        elif len(d) > 10 and d.startswith("54"):
+            d = d[2:]                       # pais
+        elif len(d) > 10 and d.startswith("9"):
+            d = d[1:]                       # el 9 de celular
+        elif len(d) > 10 and d.startswith("0"):
+            d = d[1:]                       # el 0 de larga distancia
+        else:
+            break
+    # el 15 va DESPUES del codigo de area (11 en AMBA, o 3-4 digitos en el interior)
+    if len(d) > 10:
+        for _n in (2, 3, 4):
+            if len(d) - 2 == 10 and d[_n:_n + 2] == "15":
+                d = d[:_n] + d[_n + 2:]
+                break
     if len(d) == 10:
         return "%s %s-%s" % (d[:2], d[2:6], d[6:])
     if len(d) == 8:
