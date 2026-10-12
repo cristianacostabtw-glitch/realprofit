@@ -14607,14 +14607,31 @@ def _ads_token_para_cuenta(cuenta_key):
     return _ads_token()
 
 
-def _ads_call(method, path, data=None, files=None, params=None):
-    p = dict(params or {}); p["access_token"] = _ads_token()
-    r = requests.request(method, "%s/%s" % (_ADS_API, path), data=data, files=files, params=p, timeout=120)
-    j = r.json() if r.content else {}
-    if r.status_code >= 400:
+# Codigos con los que Meta dice "frena un poco". Son TRANSITORIOS: reintentando salen.
+# (4 = limite de la app, 17 = limite del usuario, 32/613 = por hora, 80000-80008 = por
+#  cuenta publicitaria). El 12-10 dejaron a Cristian sin poder cargar conjuntos en la CBO.
+_ADS_LIMITE = {4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80007, 80008}
+
+
+def _ads_call(method, path, data=None, files=None, params=None, reintentos=3):
+    import time as _t
+    espera = 3
+    for _i in range(max(1, reintentos)):
+        p = dict(params or {}); p["access_token"] = _ads_token()
+        r = requests.request(method, "%s/%s" % (_ADS_API, path), data=data, files=files,
+                             params=p, timeout=120)
+        j = r.json() if r.content else {}
+        if r.status_code < 400:
+            return j
         e = j.get("error", {})
+        # Solo se reintenta cuando es limite de llamadas Y la llamada no cambia nada (GET):
+        # repetir un POST podria crear la campaña dos veces.
+        if (e.get("code") in _ADS_LIMITE and method.upper() == "GET"
+                and _i < reintentos - 1 and not files):
+            _t.sleep(espera); espera *= 3
+            continue
         raise RuntimeError(e.get("error_user_msg") or e.get("message") or ("HTTP %d" % r.status_code))
-    return j
+    return {}
 
 
 def _ads_crear(acct, obj, payload):
@@ -16474,6 +16491,9 @@ def pf_ads_conjuntos_config():
     return jsonify({"ok": True, "n": len(out), "conjuntos": out})
 
 
+_ADS_CONJ_CACHE = {}        # campaign_id -> (cuando, conjuntos). Ver abajo por que.
+
+
 @app.get("/pf-ads-conjuntos")
 def pf_ads_conjuntos():
     """Conjuntos (adsets) REALES de una campaña, para elegir cuál duplicar / al que sumar ads."""
@@ -16482,6 +16502,13 @@ def pf_ads_conjuntos():
     cid = (request.args.get("campaign_id") or "").strip()
     if not cid:
         return jsonify({"ok": False, "conjuntos": []})
+    import time as _t
+    # Caché de 2 minutos: la pantalla pide esto cada vez que se toca el desplegable y es lo
+    # que termina gatillando el limite de Meta. Si Meta ya nos corto, sirve lo ultimo bueno
+    # antes que dejarlo sin poder elegir.
+    _ca = _ADS_CONJ_CACHE.get(cid)
+    if _ca and _t.time() - _ca[0] < 120:
+        return jsonify({"ok": True, "conjuntos": _ca[1], "cache": True})
     try:
         # UNA sola llamada (antes hacía 1 request por conjunto para contar ads → N+1 lento que
         # timeouteaba y dejaba el desplegable vacío). Traemos nombre, estado y presupuesto de una.
@@ -16492,8 +16519,11 @@ def pf_ads_conjuntos():
                 "presupuesto": int((s.get("daily_budget") or 0)) // 100}
                for s in r.get("data", [])]
         out.sort(key=lambda x: int(x["id"]) if str(x["id"]).isdigit() else 0, reverse=True)
+        _ADS_CONJ_CACHE[cid] = (_t.time(), out)
         return jsonify({"ok": True, "conjuntos": out})
     except Exception as e:
+        if _ca:                      # Meta nos corto pero teniamos la lista: mejor vieja que nada
+            return jsonify({"ok": True, "conjuntos": _ca[1], "viejo": True})
         return jsonify({"ok": False, "msg": str(e), "conjuntos": []})
 
 
