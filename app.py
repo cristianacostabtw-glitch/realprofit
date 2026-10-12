@@ -23947,9 +23947,16 @@ function resB64(s){
 }
 function resTandaPinta(h){ var e=document.getElementById('resenaTanda'); if(e) e.innerHTML=h; }
 function resTandaInit(){
- var m = (location.search||'').match(/[?&]resenas=([^&]+)/);
+ // va en el FRAGMENTO (#), no en la query: gunicorn corta la linea de request en 4094 bytes
+ // y la lista de 95 mide ~6 KB, asi que por ?resenas= volvia 414 y no cargaba nunca.
+ // El # no se manda al server, por eso no tiene tope.
+ var m = ((location.hash||'') + (location.search||'')).match(/resenas=([^&]+)/);
  if(!m) return;
  var L = resB64(decodeURIComponent(m[1]));
+ // claves cortas para que el link no sea infinito: p=pedido, t=telefono, n=nombre
+ if(L && L.length && L[0] && L[0].t !== undefined){
+  L = L.map(function(x){ return {pedido:x.p, tel:x.t, nombre:x.n}; });
+ }
  if(!L || !L.length){ resTandaPinta('<div class="msgline msgbad">El link de la tanda vino mal.</div>'); return; }
  RESTANDA = L;
  var fil = L.slice(0,6).map(function(p){
