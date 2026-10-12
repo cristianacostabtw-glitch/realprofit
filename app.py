@@ -23779,7 +23779,8 @@ function renderBot(c){
  +'<div class="bsub">La plantilla <b>resena_video_35</b>: video de 15s con la cara a cambio de 35% (cup&#243;n RES35). Se crea una sola vez y la aprueba Meta.</div>'
  +'<button type="button" class="b sec2" onclick="resenaVer()">&#128269; Ver estado</button> '
  +'<button type="button" class="b p" onclick="resenaCrear()">&#10133; Crear plantilla</button>'
- +'<div id="resenaOut" style="margin-top:10px"></div>';
+ +'<div id="resenaOut" style="margin-top:10px"></div>'
+ +'<div id="resenaTanda" style="margin-top:12px"></div>';
  var ti=document.getElementById('botInstr');
  if(ti) ti.addEventListener('input',function(){ var n=document.getElementById('botInstrN'); if(n)n.textContent=this.value.length; });
 }
@@ -23931,6 +23932,61 @@ function resenaCrear(){
    +(r.estado?' &#8212; estado <b>'+esc(r.estado)+'</b>':'')+'. Tocá <b>Ver estado</b> en un rato.</div>');
  }).catch(function(){ resenaPinta('<div class="msgline msgbad">No se pudo crear.</div>'); });
 }
+// ── campana de resenas por link prellenado: /wa?resenas=<base64url de la lista>
+// Los pedidos de mas de 60 dias no los devuelve Shopify (la app no pide read_all_orders), asi que
+// la lista llega por la URL ya filtrada. El server la revalida igual, no se confia en la URL.
+var RESTANDA = null;
+function resB64(s){
+ try{
+  s = String(s||'').replace(/-/g,'+').replace(/_/g,'/');
+  while(s.length % 4) s += '=';
+  var b = atob(s), u = new Uint8Array(b.length);
+  for(var i=0;i<b.length;i++) u[i] = b.charCodeAt(i);
+  return JSON.parse(new TextDecoder('utf-8').decode(u));
+ }catch(e){ return null; }
+}
+function resTandaPinta(h){ var e=document.getElementById('resenaTanda'); if(e) e.innerHTML=h; }
+function resTandaInit(){
+ var m = (location.search||'').match(/[?&]resenas=([^&]+)/);
+ if(!m) return;
+ var L = resB64(decodeURIComponent(m[1]));
+ if(!L || !L.length){ resTandaPinta('<div class="msgline msgbad">El link de la tanda vino mal.</div>'); return; }
+ RESTANDA = L;
+ var fil = L.slice(0,6).map(function(p){
+  return '<div style="font-size:11.5px;color:var(--mut)">#'+esc(String(p.pedido||''))+'  '+esc(p.nombre||'')+'  <span style="opacity:.6">'+esc(p.tel||'')+'</span></div>';
+ }).join('');
+ resTandaPinta('<div style="border:1px solid var(--line);border-radius:10px;padding:11px;background:var(--pan2)">'
+  +'<div style="font-weight:700;margin-bottom:6px">&#128230; Tanda lista: <b>'+L.length+'</b> destinatarios</div>'
+  +fil+(L.length>6?'<div style="font-size:11.5px;color:var(--mut);opacity:.7">&#8230; y '+(L.length-6)+' m&#225;s</div>':'')
+  +'<div style="margin-top:9px"><button type="button" class="b sec2" onclick="resTandaPreview()">&#128269; Revisar</button> '
+  +'<button type="button" class="b p" onclick="resTandaEnviar()">&#9993; Enviar los '+L.length+'</button></div>'
+  +'<div id="resTandaOut" style="margin-top:9px"></div></div>');
+}
+function resTandaPost(enviar){
+ var out=document.getElementById('resTandaOut');
+ if(out) out.innerHTML = enviar ? 'Mandando&#8230; no cierres esto.' : 'Revisando&#8230;';
+ var body = {gente: RESTANDA};
+ if(enviar) body.enviar = 1;
+ return fetch('/wa-resenas',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(r){
+  if(!r.ok){ if(out) out.innerHTML='<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>'; return r; }
+  if(r.preview){
+   var f=(r.fuera||[]).map(function(x){return '<div style="font-size:11px;color:var(--mut)">#'+esc(String(x.pedido||''))+' &#8212; '+esc(x.motivo||'')+'</div>';}).join('');
+   if(out) out.innerHTML='<div class="msgline msgok">Les tocar&#237;a a <b>'+r.cuantos+'</b>.</div>'+(f?'<div style="margin-top:5px"><b style="font-size:11.5px">Afuera:</b>'+f+'</div>':'');
+   return r;
+  }
+  var mal=(r.fallados||[]).map(function(x){return '<div style="font-size:11px;color:#ff9b9b">#'+esc(String(x.pedido||''))+' &#8212; '+esc(x.error||'')+'</div>';}).join('');
+  if(out) out.innerHTML='<div class="msgline msgok">&#10003; Enviados: <b>'+r.enviados+'</b></div>'+(mal?'<div style="margin-top:5px"><b style="font-size:11.5px">Fallaron:</b>'+mal+'</div>':'');
+  return r;
+ }).catch(function(){ if(out) out.innerHTML='<div class="msgline msgbad">No se pudo llamar al server.</div>'; });
+}
+function resTandaPreview(){ return resTandaPost(false); }
+function resTandaEnviar(){
+ if(!RESTANDA || !RESTANDA.length) return;
+ if(!confirm('Mandar la plantilla resena_video_35 a '+RESTANDA.length+' clientes reales?')) return;
+ return resTandaPost(true);
+}
+try{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', resTandaInit); } else { resTandaInit(); } }catch(e){}
 function probarBot(){
  var t=val('botTest'); if(!t)return;
  var out=document.getElementById('botTestOut'); out.innerHTML='Pensando&#8230;';
@@ -26284,6 +26340,36 @@ def _res_destinatarios(email, desde, hasta) -> tuple:
     return out, fuera
 
 
+def _res_lista_dada(lst) -> tuple:
+    """Destinatarios pasados a mano (link prellenado), revalidados aca igual que los de Shopify.
+
+    La app de Shopify no pide `read_all_orders`, asi que la tienda NO devuelve pedidos de mas de
+    60 dias: los #1001-#1100 son de agosto y por la via normal salen 0 (ver [[noxalab-dos-tiendas-shopify]]).
+    Para esos casos la lista llega armada, pero NO se confia: el telefono se vuelve a normalizar con
+    `_tel_ar` y se respeta el log de enviados, que es lo que evita escribirle dos veces a la misma
+    persona.
+    """
+    ya = _res_log()
+    out, fuera, vistos = [], [], set()
+    for it in (lst or [])[:500]:
+        if not isinstance(it, dict):
+            continue
+        ped = str(it.get("pedido") or "").strip()
+        tel, err = _tel_ar(it.get("tel") or "")
+        if not tel:
+            fuera.append({"pedido": ped, "motivo": "telefono: %s" % (err or "no sirve")}); continue
+        if tel in vistos:
+            fuera.append({"pedido": ped, "motivo": "telefono repetido en la lista"}); continue
+        if ya.get(tel):
+            fuera.append({"pedido": ped,
+                          "motivo": "ya recibio la campaña el %s" % ya[tel].get("ts", "")}); continue
+        vistos.add(tel)
+        pila = (str(it.get("nombre") or "").strip())
+        nombre = " ".join(x.capitalize() for x in pila.split()[:2]) or "Hola"
+        out.append({"pedido": ped, "tel": tel, "nombre": nombre})
+    return out, fuera
+
+
 @app.post("/wa-resenas")
 def wa_resenas():
     """Campaña de reseñas por tanda. Sin `enviar` SOLO muestra a quién le tocaría (preview)."""
@@ -26295,7 +26381,11 @@ def wa_resenas():
         desde, hasta = int(d.get("desde") or 1001), int(d.get("hasta") or 1100)
     except Exception:
         return jsonify({"ok": False, "msg": "desde/hasta tienen que ser números"}), 400
-    gente, fuera = _res_destinatarios(email, desde, hasta)
+    dada = d.get("gente")
+    if isinstance(dada, list) and dada:
+        gente, fuera = _res_lista_dada(dada)
+    else:
+        gente, fuera = _res_destinatarios(email, desde, hasta)
     if not d.get("enviar"):
         return jsonify({"ok": True, "preview": True, "cuantos": len(gente),
                         "gente": gente, "fuera": fuera})
