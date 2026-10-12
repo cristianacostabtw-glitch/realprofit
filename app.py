@@ -26237,9 +26237,16 @@ def _res_destinatarios(email, desde, hasta) -> tuple:
         r = requests.post("https://%s/admin/api/2026-07/graphql.json" % tk["shop"], timeout=60,
                           headers={"X-Shopify-Access-Token": tk["access_token"],
                                    "Content-Type": "application/json"}, json={"query": q})
-        nodos = (((r.json() or {}).get("data") or {}).get("orders") or {}).get("nodes") or []
+        j = r.json() if r.content else {}
     except Exception as e:
-        return [], [{"motivo": "no pude leer Shopify: %s" % str(e)[:80]}]
+        return [], [{"motivo": "no pude llamar a Shopify: %s: %s" % (type(e).__name__, str(e)[:90])}]
+    # Shopify contesta 200 con "errors" adentro: si se mira solo data, esto devuelve vacio y
+    # parece que no hay clientes, cuando en realidad fallo la consulta (ver [[errores-reales-en-ui]]).
+    if j.get("errors"):
+        return [], [{"motivo": "Shopify rechazó la consulta: %s" % str(j["errors"])[:220]}]
+    nodos = ((j.get("data") or {}).get("orders") or {}).get("nodes") or []
+    if not nodos:
+        return [], [{"motivo": "Shopify no devolvió pedidos (HTTP %d) %s" % (r.status_code, str(j)[:160])}]
 
     ya = _res_log()
     out, fuera, vistos = [], [], set()
