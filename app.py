@@ -23783,6 +23783,9 @@ function renderBot(c){
  +'<div id="resenaTanda" style="margin-top:12px"></div>';
  var ti=document.getElementById('botInstr');
  if(ti) ti.addEventListener('input',function(){ var n=document.getElementById('botInstrN'); if(n)n.textContent=this.value.length; });
+ // el panel se arma recien cuando se abre Config bot: si el init corrio antes, el div no existia
+ // todavia y la tanda no se pintaba nunca. Por eso se llama TAMBIEN aca, ya con el div puesto.
+ try{ resTandaInit(); }catch(e){}
 }
 var BCFG={}, BEST='resolutivo', BHUM=true;
 function botRow(id){
@@ -23993,7 +23996,16 @@ function resTandaEnviar(){
  if(!confirm('Mandar la plantilla resena_video_35 a '+RESTANDA.length+' clientes reales?')) return;
  return resTandaPost(true);
 }
-try{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', resTandaInit); } else { resTandaInit(); } }catch(e){}
+// Reintenta un rato por si la pestana tarda en dibujarse, y para cuando ya pinto.
+var RESTRY = 0;
+function resTandaBoot(){
+ RESTRY++;
+ try{ resTandaInit(); }catch(e){}
+ var d = document.getElementById('resenaTanda');
+ var listo = d && d.innerHTML;
+ if(!listo && RESTRY < 40) setTimeout(resTandaBoot, 500);
+}
+try{ if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', resTandaBoot); } else { resTandaBoot(); } }catch(e){}
 function probarBot(){
  var t=val('botTest'); if(!t)return;
  var out=document.getElementById('botTestOut'); out.innerHTML='Pensando&#8230;';
