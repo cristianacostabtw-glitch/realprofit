@@ -28634,9 +28634,16 @@ def _fx_partir_calle(c):
     t = str(c or "").strip()
     if not t:
         return ("", "")
+    _todos = _re_and.findall(r"\d{1,6}", t)
     m = _re_and.search(r"^(.*?)(\d+[A-Za-z]?)\s*$", t)
-    if m and m.group(1).strip(" ,-"):
-        return (m.group(1).strip(" ,-"), m.group(2))
+    # El numero del final solo vale si es el MAS LARGO de la direccion. "Ayolas 988 c.2"
+    # termina en 2 (de "casa 2") y con la regla vieja la etiqueta mandaba al 2 en vez del
+    # 988: el repartidor tocaba otra puerta (#7912, 12-10). "Mocoreta 4685" sigue igual
+    # porque ahi el del final ES el mas largo.
+    if m and m.group(1).strip(" ,-") and _todos:
+        _n = _re_and.sub(r"\D", "", m.group(2))
+        if len(_n) >= max(len(x) for x in _todos):
+            return (m.group(1).strip(" ,-"), m.group(2))
     m = _re_and.search(r"(?:n\s*[°º:.]|nro|numero|num)\s*(\d{1,6})", t, _re_and.I)
     if m:
         alt = m.group(1)
