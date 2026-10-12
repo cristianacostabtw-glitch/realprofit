@@ -26198,6 +26198,144 @@ def wa_chat_nuevo():
                     "ya_tiene_chat": bool((_wa_chats_all().get(email) or {}).get(wid))})
 
 
+RESENAS_LOG = DATA_DIR / "resenas_enviadas.json"   # a quien ya se le mando, para NO repetir
+
+
+def _res_log() -> dict:
+    try:
+        return _json.loads(RESENAS_LOG.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _res_log_guardar(d):
+    try:
+        RESENAS_LOG.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _res_destinatarios(email, desde, hasta) -> tuple:
+    """Los clientes de los pedidos #desde a #hasta que SI pueden recibir la campaña.
+
+    Devuelve (lista, descartados). Se cae del listado el que:
+      - no pago (EXPIRED, PENDING, VOIDED), o le devolvimos la plata (REFUNDED / PARTIALLY)
+      - esta cancelado, aunque figure pagado (#1023 del 11-10 era justo eso)
+      - es un pedido de prueba
+      - no tiene telefono utilizable
+      - repite telefono con otro pedido (compro dos veces: una sola vez le escribimos)
+      - ya recibio la campaña antes
+    """
+    tk = _shop_tokens().get(email) or {}
+    if not (tk.get("access_token") and tk.get("shop")):
+        return [], [{"motivo": "Shopify no está conectado"}]
+    q = ("""{ orders(first: 250, sortKey: CREATED_AT, reverse: false) { nodes {
+             name displayFinancialStatus cancelledAt test
+             customer { displayName firstName phone }
+             shippingAddress { phone firstName } } } }""")
+    try:
+        r = requests.post("https://%s/admin/api/2026-07/graphql.json" % tk["shop"], timeout=60,
+                          headers={"X-Shopify-Access-Token": tk["access_token"],
+                                   "Content-Type": "application/json"}, json={"query": q})
+        nodos = (((r.json() or {}).get("data") or {}).get("orders") or {}).get("nodes") or []
+    except Exception as e:
+        return [], [{"motivo": "no pude leer Shopify: %s" % str(e)[:80]}]
+
+    ya = _res_log()
+    out, fuera, vistos = [], [], set()
+    for o in nodos:
+        nom_ped = (o.get("name") or "").lstrip("#")
+        if not nom_ped.isdigit():
+            continue
+        n = int(nom_ped)
+        if n < desde or n > hasta:
+            continue
+        est = (o.get("displayFinancialStatus") or "").upper()
+        def descartar(m):
+            fuera.append({"pedido": n, "motivo": m})
+        if o.get("test"):
+            descartar("pedido de prueba"); continue
+        if o.get("cancelledAt"):
+            descartar("cancelado"); continue
+        if est != "PAID":
+            descartar("no pagado (%s)" % (est or "?")); continue
+        cli = o.get("customer") or {}
+        env = o.get("shippingAddress") or {}
+        tel = _seg_e164(cli.get("phone") or env.get("phone") or "")
+        if not tel:
+            descartar("sin teléfono"); continue
+        if tel in vistos:
+            descartar("mismo cliente que otro pedido"); continue
+        if ya.get(tel):
+            descartar("ya recibió la campaña el %s" % ya[tel].get("ts", "")); continue
+        vistos.add(tel)
+        pila = (cli.get("firstName") or env.get("firstName")
+                or (cli.get("displayName") or "").split(" ")[0] or "").strip()
+        # el nombre va a una plantilla: capitalizado y sin apellido, que suena mejor leido
+        nombre = " ".join(p.capitalize() for p in pila.split()[:2]) or "Hola"
+        out.append({"pedido": n, "tel": tel, "nombre": nombre})
+    return out, fuera
+
+
+@app.post("/wa-resenas")
+def wa_resenas():
+    """Campaña de reseñas por tanda. Sin `enviar` SOLO muestra a quién le tocaría (preview)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    d = request.get_json(silent=True) or {}
+    try:
+        desde, hasta = int(d.get("desde") or 1001), int(d.get("hasta") or 1100)
+    except Exception:
+        return jsonify({"ok": False, "msg": "desde/hasta tienen que ser números"}), 400
+    gente, fuera = _res_destinatarios(email, desde, hasta)
+    if not d.get("enviar"):
+        return jsonify({"ok": True, "preview": True, "cuantos": len(gente),
+                        "gente": gente, "fuera": fuera})
+
+    c = _wa_conf(email) or {}
+    if not (c.get("phone_id") and c.get("token")):
+        return jsonify({"ok": False, "msg": "WhatsApp no está conectado"}), 400
+    tope = int(d.get("tope") or 0) or len(gente)
+    ya = _res_log()
+    chats = _wa_chats_all()
+    enviados, fallados = [], []
+    import time as _tt
+    for p in gente[:tope]:
+        tpl = {"name": RESENA_TPL_NOMBRE, "language": {"code": "es_AR"},
+               "components": [{"type": "body",
+                               "parameters": [{"type": "text", "text": p["nombre"]}]}]}
+        try:
+            r = requests.post("%s/%s/messages" % (WA_GRAPH, c["phone_id"]), timeout=25,
+                              headers={"Authorization": "Bearer " + c["token"]},
+                              json={"messaging_product": "whatsapp", "to": p["tel"],
+                                    "type": "template", "template": tpl})
+            j = r.json() if r.content else {}
+        except Exception as e:
+            fallados.append({**p, "error": "%s: %s" % (type(e).__name__, str(e)[:90])}); continue
+        if r.status_code >= 400:
+            e = j.get("error") or {}
+            fallados.append({**p, "error": (e.get("error_user_msg") or e.get("message") or "?")[:120]})
+            # 131049/130472 = Meta frena por calidad o por limite: no sirve seguir martillando
+            if e.get("code") in (131049, 130472, 131056):
+                break
+            continue
+        mid = (j.get("messages") or [{}])[0].get("id", "")
+        # se anota ANTES de seguir: si el proceso se corta, no se le vuelve a escribir
+        ya[p["tel"]] = {"ts": _wa_now(), "pedido": p["pedido"]}
+        _res_log_guardar(ya)
+        conv = chats.setdefault(email, {}).setdefault(p["tel"],
+                                                      {"name": p["nombre"], "messages": []})
+        conv["messages"].append({"dir": "out", "text": "[plantilla: %s]" % RESENA_TPL_NOMBRE,
+                                 "ts": _wa_now(), "type": "template", "id": mid, "status": "sent"})
+        conv["updated"] = _wa_now()
+        enviados.append(p)
+        _tt.sleep(0.4)                 # no dispararle a Meta todo junto
+    _wa_save_chats(chats)
+    return jsonify({"ok": True, "enviados": len(enviados), "fallados": fallados,
+                    "detalle": enviados})
+
+
 @app.post("/wa-plantilla-enviar")
 def wa_plantilla_enviar():
     email = _user_actual()
