@@ -16560,13 +16560,116 @@ def _voz_resumen(email) -> str:
     return " ".join(partes)
 
 
+_VOZ_CHARLA = {}        # sid de la llamada -> [(quien, texto)]. Se limpia solo al colgar.
+_VOZ_VOZ = "Polly.Mia-Neural"
+_VOZ_IDIOMA = "es-MX"
+
+
+def _voz_say(txt, escuchar=True, pausa=0):
+    """Un TwiML. Si `escuchar`, despues de hablar abre el microfono y espera la respuesta."""
+    from xml.sax.saxutils import escape as _esc
+    x = ['<?xml version="1.0" encoding="UTF-8"?><Response>']
+    if pausa:
+        x.append('<Pause length="%d"/>' % pausa)
+    if escuchar:
+        # El <Say> va DENTRO del Gather: asi el microfono ya esta abierto mientras habla y
+        # puede interrumpirlo, como con el OK Google. Afuera, hay que esperar a que termine.
+        x.append('<Gather input="speech" language="es-AR" speechTimeout="auto" '
+                 'action="/voz-charla" method="POST" actionOnEmptyResult="true">')
+        x.append('<Say voice="%s" language="%s">%s</Say>' % (_VOZ_VOZ, _VOZ_IDIOMA, _esc(txt)))
+        x.append('</Gather>')
+    else:
+        x.append('<Say voice="%s" language="%s">%s</Say><Hangup/>' % (_VOZ_VOZ, _VOZ_IDIOMA, _esc(txt)))
+    x.append('</Response>')
+    return Response("".join(x), mimetype="text/xml")
+
+
+_VOZ_CHAU = ("chau", "listo gracias", "nada mas", "cortá", "corta", "adios", "adiós",
+             "gracias nada mas", "ya esta", "ya está", "no nada mas", "cortar")
+
+
+def _voz_contexto(email) -> str:
+    """Los datos del negocio que el asistente tiene A MANO para contestar por telefono.
+    Es el mismo resumen que lee al atender, mas lo que puede llegar a preguntar."""
+    import datetime as _d
+    hoy = _d.date.today().isoformat()
+    ayer = (_d.date.today() - _d.timedelta(days=1)).isoformat()
+    L = []
+    for et, f in (("AYER", ayer), ("HOY", hoy)):
+        try:
+            r = (_pf_periodo_blob(email, f, f) or {}).get("raw") or {}
+        except Exception:
+            continue
+        L.append("%s (%s): %d pedidos, facturado %s, ganancia %s, ROAS %s, pauta %s" % (
+            et, f, int(r.get("tot_ordenes") or 0), int(r.get("tot_facturado") or 0),
+            int(r.get("tot_ganancia") or 0), round(float(r.get("roas") or 0), 2),
+            int(r.get("publi_ars") or 0)))
+    try:
+        pend = [x for x in (_despachos_orders(email) or []) if not x.get("estado")]
+        L.append("Pedidos sin despachar: %d" % len(pend))
+    except Exception:
+        pass
+    try:
+        fx = [v for v in (_flex_de(email) or {}).values() if v.get("estado") == "registrado"]
+        L.append("Envios Flex sin salir: %d" % len(fx))
+    except Exception:
+        pass
+    return "\n".join(L) or "(no pude leer los numeros ahora)"
+
+
+def _voz_pensar(email, sid, dijo) -> str:
+    """Que contesta. Usa el mismo Claude que el bot de WhatsApp (ANTHROPIC_API_KEY ya esta
+    en Render). Respuestas CORTAS: por telefono un parrafo largo no se sigue."""
+    hist = _VOZ_CHARLA.setdefault(sid, [])
+    hist.append(("cliente", dijo))
+    sis = ("Sos el asistente de Cristian, dueño de NoxaLab, y le estas hablando POR TELEFONO "
+           "a la mañana temprano. Contesta en argentino, en UNA o DOS frases cortas, sin "
+           "listas ni simbolos: todo lo que escribas se va a leer en voz alta. Si te pregunta "
+           "por numeros del negocio, usa SOLO los datos de abajo y no inventes. Si no los "
+           "tenes, decilo. Si te pregunta otra cosa cualquiera, contesta igual, corto.\n\n"
+           "DATOS DE HOY:\n" + _voz_contexto(email))
+    msgs = [{"role": ("user" if q == "cliente" else "assistant"), "content": t}
+            for q, t in hist[-12:]]
+    try:
+        r = requests.post("https://api.anthropic.com/v1/messages", timeout=25,
+                          headers={"x-api-key": _os.getenv("ANTHROPIC_API_KEY", ""),
+                                   "anthropic-version": "2023-06-01",
+                                   "content-type": "application/json"},
+                          json={"model": "claude-opus-4-8", "max_tokens": 200,
+                                "system": sis, "messages": msgs})
+        j = r.json()
+        txt = "".join(b.get("text", "") for b in (j.get("content") or [])).strip()
+    except Exception:
+        txt = ""
+    if not txt:
+        txt = "Perdón, no te escuché bien. ¿Me lo repetís?"
+    hist.append(("bot", txt))
+    return txt
+
+
+@app.post("/voz-charla")
+def voz_charla():
+    """Cada vuelta de la conversacion: Twilio manda lo que dijo Cristian, contestamos."""
+    sid = (request.form.get("CallSid") or "").strip()
+    dijo = (request.form.get("SpeechResult") or "").strip()
+    email = _os.getenv("MCP_EMAIL", "") or _os.getenv("META_OWNER_EMAIL", "")
+    if not dijo:
+        if _VOZ_CHARLA.get(sid, []) and len(_VOZ_CHARLA[sid]) > 2:
+            _VOZ_CHARLA.pop(sid, None)
+            return _voz_say("Bueno, te dejo. Buen día.", escuchar=False)
+        return _voz_say("¿Estás ahí? Preguntame lo que quieras.")
+    if _res_norm(dijo) in [_res_norm(x) for x in _VOZ_CHAU]:
+        _VOZ_CHARLA.pop(sid, None)
+        return _voz_say("Dale, buen día Cristian.", escuchar=False)
+    return _voz_say(_voz_pensar(email, sid, dijo))
+
+
 @app.get("/voz-resumen")
 def voz_resumen():
     """Lo que Twilio pide cuando el cliente atiende: TwiML con el texto a leer.
 
     Va SIN sesion a proposito — lo llama Twilio, no un navegador — pero lleva la clave en la
     URL. Si no coincide, se corta sin decir nada: no se filtran los numeros del negocio."""
-    from xml.sax.saxutils import escape as _esc
     if LLAMADA_CLAVE and (request.args.get("clave") or "") != LLAMADA_CLAVE:
         return Response('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>',
                         mimetype="text/xml")
@@ -16574,10 +16677,8 @@ def voz_resumen():
         txt = _voz_resumen(_os.getenv("MCP_EMAIL", "") or _os.getenv("META_OWNER_EMAIL", ""))
     except Exception as e:
         txt = "No pude leer los números hoy. %s" % type(e).__name__
-    xml = ('<?xml version="1.0" encoding="UTF-8"?><Response>'
-           '<Pause length="1"/><Say voice="Polly.Mia-Neural" language="es-MX">%s</Say>'
-           '<Hangup/></Response>' % _esc(txt))
-    return Response(xml, mimetype="text/xml")
+    # Despues del resumen NO corta: queda escuchando, que es la gracia.
+    return _voz_say(txt + " ¿Querés preguntarme algo?", escuchar=True, pausa=1)
 
 
 def _llamar(a=None) -> dict:
