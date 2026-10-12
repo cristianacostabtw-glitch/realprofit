@@ -16494,6 +16494,143 @@ def pf_ads_conjuntos_config():
 _ADS_CONJ_CACHE = {}        # campaign_id -> (cuando, conjuntos). Ver abajo por que.
 
 
+# ══════════════════════ Llamada de la mañana ══════════════════════
+# Twilio llama al celular y lee el resumen del dia anterior. La gracia no es el despertador
+# (eso lo hace el iPhone) sino escuchar los numeros antes de levantarse.
+#
+# Hace falta en Render:  TWILIO_SID · TWILIO_TOKEN · TWILIO_FROM (el numero comprado)
+#                        LLAMADA_A (a quien llamar)  ·  LLAMADA_CLAVE (para el cron)
+TWILIO_SID = (_os.getenv("TWILIO_SID", "") or "").strip()
+TWILIO_TOKEN = (_os.getenv("TWILIO_TOKEN", "") or "").strip()
+TWILIO_FROM = (_os.getenv("TWILIO_FROM", "") or "").strip()
+LLAMADA_A = (_os.getenv("LLAMADA_A", "") or "").strip()
+LLAMADA_CLAVE = (_os.getenv("LLAMADA_CLAVE", "") or "").strip()
+
+
+def _voz_plata(n) -> str:
+    """Los numeros como se DICEN, no como se escriben. '1.240.500' leido por el sintetizador
+    sale 'uno punto doscientos cuarenta' — en millones y miles se entiende."""
+    n = int(round(float(n or 0)))
+    if n >= 1000000:
+        m = round(n / 1000000.0, 1)
+        ent = int(m)
+        if m == ent:
+            return "%d %s de pesos" % (ent, "millón" if ent == 1 else "millones")
+        return "%s %s de pesos" % (("%.1f" % m).replace(".", " coma "),
+                                   "millón" if ent == 0 else "millones")
+    if n >= 1000:
+        resto = n % 1000
+        return "%d mil%s pesos" % (n // 1000, (" %d" % resto) if resto else "")
+    return "%d pesos" % n
+
+
+def _voz_resumen(email) -> str:
+    """El texto que se lee por telefono. Son los MISMOS numeros del dashboard: se llama a
+    _pf_periodo_blob, no se recalcula nada aparte (si no, dirian cosas distintas)."""
+    import datetime as _d
+    ayer = (_d.date.today() - _d.timedelta(days=1)).isoformat()
+    partes = ["Buen día Cristian."]
+    try:
+        r = (_pf_periodo_blob(email, ayer, ayer) or {}).get("raw") or {}
+    except Exception:
+        r = {}
+    ordenes = int(r.get("tot_ordenes") or r.get("ordenes") or 0)
+    if ordenes:
+        partes.append("Ayer vendiste %s en %d pedidos." %
+                      (_voz_plata(r.get("tot_facturado") or r.get("facturado")), ordenes))
+        if float(r.get("ganancia") or 0):
+            partes.append("La ganancia fue %s." % _voz_plata(r.get("tot_ganancia") or r.get("ganancia")))
+        if float(r.get("roas") or 0):
+            partes.append("El ROAS, %s." % ("%.2f" % float(r["roas"])).replace(".", " coma "))
+    else:
+        partes.append("Ayer no hubo ventas registradas.")
+    try:
+        pend = [x for x in (_despachos_orders(email) or []) if not x.get("estado")]
+        if pend:
+            partes.append("Tenés %d pedidos para despachar." % len(pend))
+    except Exception:
+        pass
+    try:
+        _fx = [v for v in (_flex_de(email) or {}).values() if v.get("estado") == "registrado"]
+        if _fx:
+            partes.append("%d son de Flex, todavía sin salir." % len(_fx))
+    except Exception:
+        pass
+    partes.append("Que tengas buen día.")
+    return " ".join(partes)
+
+
+@app.get("/voz-resumen")
+def voz_resumen():
+    """Lo que Twilio pide cuando el cliente atiende: TwiML con el texto a leer.
+
+    Va SIN sesion a proposito — lo llama Twilio, no un navegador — pero lleva la clave en la
+    URL. Si no coincide, se corta sin decir nada: no se filtran los numeros del negocio."""
+    from xml.sax.saxutils import escape as _esc
+    if LLAMADA_CLAVE and (request.args.get("clave") or "") != LLAMADA_CLAVE:
+        return Response('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>',
+                        mimetype="text/xml")
+    try:
+        txt = _voz_resumen(_os.getenv("MCP_EMAIL", "") or _os.getenv("META_OWNER_EMAIL", ""))
+    except Exception as e:
+        txt = "No pude leer los números hoy. %s" % type(e).__name__
+    xml = ('<?xml version="1.0" encoding="UTF-8"?><Response>'
+           '<Pause length="1"/><Say voice="Polly.Mia-Neural" language="es-MX">%s</Say>'
+           '<Hangup/></Response>' % _esc(txt))
+    return Response(xml, mimetype="text/xml")
+
+
+def _llamar(a=None) -> dict:
+    """Dispara la llamada. Devuelve {ok, msg/sid}."""
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
+        return {"ok": False, "msg": "faltan TWILIO_SID / TWILIO_TOKEN / TWILIO_FROM en Render"}
+    destino = (a or LLAMADA_A or "").strip()
+    if not destino:
+        return {"ok": False, "msg": "falta LLAMADA_A (a qué número llamar)"}
+    url = "%s/voz-resumen" % RP_BASE.rstrip("/")
+    if LLAMADA_CLAVE:
+        url += "?clave=" + _url.quote(LLAMADA_CLAVE)
+    try:
+        r = requests.post("https://api.twilio.com/2010-04-01/Accounts/%s/Calls.json" % TWILIO_SID,
+                          auth=(TWILIO_SID, TWILIO_TOKEN), timeout=30,
+                          data={"To": destino, "From": TWILIO_FROM, "Url": url, "Method": "GET"})
+        j = r.json() if r.content else {}
+    except Exception as e:
+        return {"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:140])}
+    if r.status_code >= 400:
+        return {"ok": False, "msg": j.get("message") or ("HTTP %d" % r.status_code),
+                "codigo": j.get("code")}
+    return {"ok": True, "sid": j.get("sid"), "a": destino}
+
+
+@app.post("/pf-llamar")
+def pf_llamar():
+    """Botón 'llamame ahora' — para probar sin esperar a las 7."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify(_llamar((request.get_json(silent=True) or {}).get("a")))
+
+
+@app.get("/cron-llamada")
+def cron_llamada():
+    """Lo pega el cron a las 7. Clave en la URL porque no hay sesión."""
+    if not LLAMADA_CLAVE or (request.args.get("clave") or "") != LLAMADA_CLAVE:
+        return Response("no existe", status=404, mimetype="text/plain")
+    res = _llamar()
+    return jsonify(res)
+
+
+@app.get("/voz-probar")
+def voz_probar():
+    """Qué diría la llamada, en texto. Sirve para afinar el guión sin gastar llamadas."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "texto": _voz_resumen(email),
+                    "twilio": bool(TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM),
+                    "a": LLAMADA_A or "(falta LLAMADA_A)"})
+
+
 @app.get("/pf-ads-conjuntos")
 def pf_ads_conjuntos():
     """Conjuntos (adsets) REALES de una campaña, para elegir cuál duplicar / al que sumar ads."""
