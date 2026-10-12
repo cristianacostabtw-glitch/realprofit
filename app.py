@@ -21751,11 +21751,16 @@ _RES_SI_PAL = {"si", "sii", "siii", "sisi", "sip", "dale", "obvio", "claro", "ok
                "okey", "listo", "acepto", "quiero", "perfecto", "genial", "buenisimo",
                "barbaro", "va", "vale", "bueno", "joya", "copado", "interesa"}
 
-# Lo que NO es de la campaña: si el cliente aprovecha para preguntar por su pedido, el bot
-# no le tiene que hablar del video. Cae al cerebro normal, que sigue sabiendo que compro.
+# "Lo hago mas tarde": no es un no. Se le agradece y se le dejan los pasos igual.
+_RES_LUEGO_FRASE = ("luego", "despues", "mas tarde", "manana", "en un rato", "cuando pueda",
+                    "cuando tenga tiempo", "ahora no puedo", "en breve", "ya lo hago",
+                    "lo hago", "mas adelante lo hago", "mas rato", "a la noche")
+
+# Preguntas de logistica: NO se las contesta el guion de la campaña, pero TAMPOCO van al
+# cerebro de ventas mientras la tarjeta este puesta. Quedan marcadas para que las vea una
+# persona. Si se dejaran pasar al cerebro, volveria a mandar precio y links.
 _RES_OTRO_TEMA = ("pedido", "envio", "llego", "llega", "demora", "correo", "andreani",
-                  "seguimiento", "factura", "plata", "precio", "cuanto sale", "devolucion",
-                  "cambio", "reclamo", "stock", "cuando me")
+                  "seguimiento", "factura", "devolucion", "reclamo", "no me llego")
 
 
 def _res_norm(t) -> str:
@@ -21788,6 +21793,11 @@ def _res_no_quiere(n) -> bool:
     return len(pal) <= 3 and bool(pal) and pal[0] in _RES_NO_PAL
 
 
+def _res_luego(n) -> bool:
+    """¿Lo deja para mas tarde? No es un no: se le dejan los pasos igual."""
+    return any(f in n for f in _RES_LUEGO_FRASE)
+
+
 def _res_quiere(n) -> bool:
     """¿Dijo que si? Se evalua DESPUES del no, porque 'no quiero' contiene 'quiero'."""
     if _res_no_quiere(n):
@@ -21814,6 +21824,7 @@ _RES_AYUDA = ("Es más fácil de lo que parece 🙌\n\n"
               "No hace falta que sea perfecto, al contrario.")
 _RES_FORMATO = ("Gracias por mandarlo 🙌 Para el 35% tiene que ser un video y que se te vea la "
                 "cara — es lo que le da valor al testimonio.\n\n" + _RES_AYUDA)
+_RES_LUEGO = ("Dale, cuando puedas 🙌 Te dejo los pasos así los tenés a mano:\n\n")
 _RES_RECIBIDO = ("¡Buenísimo, me llegó! 🙌 Lo revisa una persona del equipo y te pasa el código "
                  "por acá. Gracias por tomarte el tiempo 💚")
 
@@ -21868,49 +21879,85 @@ def _res_activa(conv) -> bool:
     return False
 
 
-def _res_guion(conv, last_in):
-    """Que contesta el bot en campaña. None = no contesta (lo mira Cristian).
+_RES_COMPRA = ("comprar", "comprarme", "quiero otro", "quiero dos", "quiero mas",
+               "llevar", "me mandas otro", "otro pote", "dos potes", "tres potes",
+               "cuanto sale", "cuanto esta", "precio", "stock", "cambio", "plata")
 
-    El guion acompaña hasta que llega el video. El video NO lo valida el bot: acusa recibo,
-    lo marca pendiente y lo analiza una PERSONA, que es la que despues manda el cupon.
+
+def _res_compra(n) -> bool:
+    """¿Esta hablando de comprar mas? Con la tarjeta puesta esto NO lo cierra el bot."""
+    return any(f in n for f in _RES_COMPRA)
+
+
+def _res_guion(conv, last_in):
+    """Que contesta el bot mientras el chat tiene la TARJETA DE RESEÑAS.
+
+    REGLA DURA: con la tarjeta puesta el bot NUNCA pasa por el cerebro de ventas. Le pasa
+    LOS PASOS del descuento y nada mas — ni precio, ni alias, ni links.
+
+    Paso de verdad el 12-10-2026 con Nilton Carlos: a los 2 minutos de recibir la plantilla
+    contesto "Hola. Bueno. Luego lo hago. Estoy por comprar dos postes mas." y el bot le
+    mando precio, alias de transferencia, link de descuento y el de Mercado Libre encima de
+    la campaña. El guion devolvia None y ese None caia derecho al cerebro de ventas.
+
+    Devuelve:
+      texto -> se lo manda
+      ""    -> NO contesta y lo deja marcado para que lo mire una persona
+      None  -> solo si el chat ya no esta en campaña (no deberia pasar aca)
     """
     t = _res_norm(last_in.get("text"))
     tipo = last_in.get("type") or "text"
 
     if tipo == "video":
-        # Antes el bot se quedaba MUDO con el video y quedaba feo: la persona grabo, mando y
-        # no le contesto nadie. Ahora acusa recibo y deja la marca para que Cristian lo vea.
+        # El video NO lo valida el bot: acusa recibo y lo deja pendiente para una persona,
+        # que es la que decide y manda el cupon.
         conv["res_video"] = _wa_now()
         conv.pop("res_video_ok", None)
         return _RES_RECIBIDO
 
-    # Si aprovecha para preguntar por su pedido o su envio, esto no es de la campaña.
-    if tipo == "text" and _res_otro_tema(t):
-        return None
+    if tipo in ("image", "audio", "document"):
+        conv["res_instr"] = True
+        return _RES_FORMATO
 
+    # ── de aca para abajo es texto ──
     if _res_no_quiere(t):
         conv["res_cerrada"] = True
         return _RES_CHAU
 
+    if _res_luego(t):
+        # "Luego lo hago": se le agradece y se le dejan los pasos, asi los tiene cuando se
+        # ponga. Si ademas menciono que quiere comprar mas, se marca para que Cristian lo
+        # cierre a mano: esa venta la hace una persona, no un link automatico.
+        conv["res_luego"] = _wa_now()
+        conv["res_instr"] = True
+        if _res_compra(t):
+            conv["res_ojo"] = "quiere comprar mas"
+        return _RES_LUEGO + _RES_AYUDA
+
+    if _res_compra(t):
+        # Quiere comprar mas EN MEDIO de la campaña: el bot no le tira el link; lo deja
+        # para Cristian, que lo cierra el. Va ANTES del "si" a proposito: "quiero comprar
+        # 2 mas" tiene la palabra "quiero" y si no, se lo tomaba como que acepta la reseña
+        # y le mandaba que grabar.
+        conv["res_ojo"] = "quiere comprar mas"
+        return ""
+
     if _res_quiere(t):
-        # La primera vez se explica que grabar; si vuelve a preguntar, se le dan los pasos
-        # de como mandarlo desde WhatsApp.
         ya = bool(conv.get("res_instr"))
         conv["res_pedido"] = _wa_now()
         conv["res_instr"] = True
         return _RES_AYUDA if ya else _RES_INSTR
 
-    # Manda una foto, un audio o un pdf en vez del video: se le explica el formato.
-    if tipo in ("image", "audio", "document"):
-        conv["res_instr"] = True
-        return _RES_FORMATO
 
-    # Ya dijo que si y escribe algo que no es otro tema: se le dan los pasos una vez.
-    if tipo == "text" and conv.get("res_pedido") and not conv.get("res_video"):
-        conv["res_instr"] = True
-        return _RES_AYUDA
+    if _res_otro_tema(t):
+        # Pregunta por su pedido o su envio: no es de la campaña, pero tampoco va al
+        # cerebro de ventas con la tarjeta puesta. Lo ve una persona.
+        conv["res_ojo"] = "pregunta por su pedido"
+        return ""
 
-    return None
+    # Cualquier otra cosa: los pasos del descuento. NUNCA el cerebro de ventas.
+    conv["res_instr"] = True
+    return _RES_AYUDA
 
 
 def _wa_bot_run(email, conf, wid, chats, canal="api"):
@@ -22050,6 +22097,16 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
     if (not _mudo) and _res_activa(conv):
         _rmsg = _res_guion(conv, last_in)
         _es_video = last_in.get("type") == "video"
+        # "" = el guion decide NO contestar: con la tarjeta de reseñas puesta el bot no pasa
+        # al cerebro de ventas ni para preguntas de pedido ni para "quiero comprar mas". Eso
+        # lo cierra una persona. (Sin tarjeta, `_res_activa` da False y ni entra acá: ahí el
+        # cerebro contesta como siempre.)
+        if _rmsg == "":
+            conv["bot_nota"] = "⭐ Campaña reseñas — %s. Contestale vos: el bot no le manda links." % (
+                conv.get("res_ojo") or "contestó algo que el guion no cubre")
+            conv["etiqueta"] = conv.get("etiqueta") or "resena"
+            _wa_save_chats(chats)
+            return
         if _es_video:
             # El video NO lo valida el bot: acusa recibo (antes se quedaba mudo y la persona
             # grababa, mandaba y no le contestaba nadie) y lo deja marcado como PENDIENTE
@@ -22065,8 +22122,10 @@ def _wa_bot_run(email, conf, wid, chats, canal="api"):
                 conv["messages"].append({"dir": "out", "text": _rmsg, "ts": _wa_now(),
                                          "type": "text", "id": _mid, "status": "sent", "by": "bot"})
                 conv["updated"] = _wa_now()
-                if not _es_video:
-                    conv.pop("bot_nota", None)   # con video la nota TIENE que quedar
+                if not _es_video and not conv.get("res_ojo"):
+                    conv.pop("bot_nota", None)   # con video o con marca, la nota TIENE que quedar
+                elif conv.get("res_ojo"):
+                    conv["bot_nota"] = "⭐ Campaña reseñas — %s. Fijate si lo cerrás vos." % conv["res_ojo"]
             else:
                 conv["bot_nota"] = "⚠️ Campaña reseñas: falló el envío: " + (_err or "?")
             _wa_save_chats(chats)
