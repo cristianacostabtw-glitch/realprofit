@@ -16673,12 +16673,15 @@ def voz_resumen():
     if LLAMADA_CLAVE and (request.args.get("clave") or "") != LLAMADA_CLAVE:
         return Response('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>',
                         mimetype="text/xml")
-    try:
-        txt = _voz_resumen(_os.getenv("MCP_EMAIL", "") or _os.getenv("META_OWNER_EMAIL", ""))
-    except Exception as e:
-        txt = "No pude leer los números hoy. %s" % type(e).__name__
-    # Despues del resumen NO corta: queda escuchando, que es la gracia.
-    return _voz_say(txt + " ¿Querés preguntarme algo?", escuchar=True, pausa=1)
+    import datetime as _dv
+    _h = _dv.datetime.now().hour
+    txt = ("Buen día Cristian, arriba. Son las %d y algo. Dale, despertate." % _h) if _h < 12 \
+        else "Hola Cristian, soy tu asistente. ¿Qué necesitás?"
+    txt += " Si querés te paso los números del negocio, o preguntame lo que sea."
+    # DESPERTADOR, no informe. La gracia es que suene el telefono y que haya alguien del
+    # otro lado: a una alarma la apagas dormido, a una llamada la tenes que atender y
+    # contestar. Por eso arranca despertandolo y recien da los numeros SI los pide.
+    return _voz_say(txt, escuchar=True, pausa=1)
 
 
 def _llamar(a=None) -> dict:
