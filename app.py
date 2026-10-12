@@ -806,7 +806,7 @@ _SOLO_DASH = r"""
  <div style="width:100%;max-width:560px;background:#0e1521;border:1px solid #1a2333;border-radius:18px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,.6)">
   <div style="display:flex;align-items:flex-start;gap:12px">
    <div style="width:40px;height:40px;border-radius:11px;background:#2a1119;border:1px solid #5a2333;display:flex;align-items:center;justify-content:center;flex:none"><span class="material-symbols-outlined" style="color:#fb7185;font-size:20px">local_shipping</span></div>
-   <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Enviar seguimiento</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Sub&iacute; el PDF de Andreani: leemos el <b style="color:#cbd5e1">N&deg; Interno + seguimiento</b>, te lo mostramos y al enviar le avisamos a tu tienda (Shopify/Tiendanube) &mdash; al cliente le llega el mail con el tracking.</div></div>
+   <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#f1f5f9">Enviar seguimiento</div><div style="color:#8493a8;font-size:12.5px;margin-top:3px;line-height:1.45">Sub&iacute; el PDF de etiquetas &mdash; <b style="color:#cbd5e1">Andreani, Flex o Envialo</b>, o los tres mezclados. Leemos cada r&oacute;tulo, te lo mostramos, y al enviar le avisamos a tu tienda y al cliente con el link del transportista que corresponda.</div></div>
    <button onclick="rpDCloseSeg()" style="flex:none;background:#111c2b;border:1px solid #1a2333;color:#cbd5e1;width:32px;height:32px;border-radius:9px;cursor:pointer">&#10005;</button>
   </div>
   <div id="rp-dseg-tienda" style="display:none;gap:8px;margin-top:16px;align-items:center;flex-wrap:wrap"></div>
@@ -11511,6 +11511,8 @@ def _seg_leer_pdf(fp) -> list:
     Se decide PAGINA POR PAGINA, asi que un PDF mezclado tambien sale bien.
 
       - Andreani:       'N° Interno: #7210'  +  'seguimiento: 360000...'
+      - Flex PROPIO:    'PEDIDO #7686'  +  el codigo de 5 digitos debajo del QR (00034).
+        Es el que genera RealProfit; el link va a realprofitapp.com/seguimiento/00034.
       - Envialo Flex:   'Rte.:ENVIALO'  +  'Venta: 7210'  +  'Envio: e0037804'
         El codigo de RedChat son los digitos del 'Envio' SIN el 'e00' de adelante
         (e0037804 -> 37804 -> app.redchat.com.ar/seguimiento/37804, verificado 05-10-2026).
@@ -11522,7 +11524,17 @@ def _seg_leer_pdf(fp) -> list:
     out, vistos = [], set()
     for pg in doc:
         t = pg.get_text()
-        if re.search(r"Rte\.?\s*:\s*ENVIALO", t, re.I) or re.search(r"Envio:\s*e\d{5,}", t, re.I):
+        # Flex PROPIO (las que genera RealProfit): el pedido va como "PEDIDO #7686" y el
+        # seguimiento es el codigo de 5 digitos que esta debajo del QR. Se reconoce por los
+        # rotulos espaciados del diseño ("D I R E C C I O N"), que no los tiene ninguna otra.
+        _es_rp = re.search(r"P\s?E\s?D\s?I\s?D\s?O\s*#\s*\d+", t) and \
+            re.search(r"D\s?I\s?R\s?E\s?C\s?C\s?I\s?O\s?N", t)
+        if _es_rp:
+            carrier = "rpflex"
+            ped = re.search(r"P\s?E\s?D\s?I\s?D\s?O\s*#\s*(\d+)", t)
+            seg = re.search(r"^\s*(\d{5})\s*$", t, re.M)
+            dest = re.search(r"R\s?E\s?C\s?I\s?B\s?E\s*\n\s*(.+)", t)
+        elif re.search(r"Rte\.?\s*:\s*ENVIALO", t, re.I) or re.search(r"Envio:\s*e\d{5,}", t, re.I):
             carrier = "envialo"
             ped = re.search(r"Venta:\s*#?\s*(\d+)", t, re.I)
             seg = re.search(r"Envio:\s*e0*(\d+)", t, re.I)
@@ -11958,7 +11970,8 @@ def pf_despachos_seg_leer():
         except Exception:
             pass
     if not items:
-        return jsonify({"ok": False, "msg": "no encontré etiquetas (N° Interno + seguimiento) en ese PDF"})
+        return jsonify({"ok": False, "msg": "no reconocí ninguna etiqueta en ese PDF. Sirven las de Andreani, "
+                                       "las de Flex de RealProfit y las de Envialo."})
     # JOB EN SEGUNDO PLANO: buscar los pedidos en la tienda (Shopify/TN) puede tardar. NO lo hacemos
     # dentro del request (colgaba el server 5 min y saturaba los hilos si tocabas subir varias veces).
     # El request vuelve YA con un job; el frontend consulta /pf-despachos-seg-progreso hasta que termina.
