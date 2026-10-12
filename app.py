@@ -29021,24 +29021,33 @@ def flex_etiquetas():
     # ORDEN DE IMPRESION. Tres niveles:
     #   1) ZONA, la de mas envios primero
     #   2) dentro de la zona, PRIMERO lo que es solo POTE y al final lo que lleva CAPS
-    #   3) dentro de eso, por CANTIDAD DE POTES de mayor a menor
-    # Queda tipo:  CABA -> x6 POTES, x3 POTES, x2 POTES, x1 POTE, y recien ahi x2 POTE + x1 CAPS
+    #   3) dentro de eso, el grupo de SKU que se lleva MAS POTES EN TOTAL primero
     #
-    # Antes el nivel 3 era "el grupo de SKU mas grande arriba", asi que podia salir
-    # x2, x1, x6 y despues las caps. Cristian lo empaqueta bajando de cantidad: termina TODO
-    # lo de potes de mayor a menor y recien cuando sale el ultimo arranca con las caps, que
-    # es ademas el mismo orden que ya tenia la hoja PARA EMPAQUETAR (_flex_potes).
+    # El nivel 3 es cantidad de envios x potes de cada uno, NO los potes de un pedido suelto:
+    # 85 paquetes de x2 son 170 potes y van antes que 6 de x6 (36 potes), aunque el x6 lleve
+    # mas por paquete. Es el mismo criterio que ya usaba la hoja PARA EMPAQUETAR, asi que
+    # ahora las dos van en el MISMO orden y se empaqueta siguiendo cualquiera de las dos.
+    # El volumen se cuenta GLOBAL (no por zona) para que la secuencia de SKUs sea igual en
+    # todas las zonas y en la hoja.
     from collections import Counter as _Cnt
     def _caps(e):
         return 1 if "CAPS" in (e.get("sku") or "").upper() else 0
     def _sku(e):
         return " ".join((e.get("sku") or "").upper().split())
     _zc = _Cnt(_flex_zona_de(e) for e in sel)
+    _gc = _Cnt(_sku(e) for e in sel)                # cuantos paquetes de cada SKU, en total
+    _gp = {}
+    for _e in sel:
+        _gp.setdefault(_sku(_e), _flex_potes(_e))   # potes por paquete de ese SKU
+    def _vol(e):
+        k = _sku(e)
+        return _gc[k] * _gp.get(k, 0)               # potes totales que mueve ese grupo
     sel.sort(key=lambda e: (
         -_zc[_flex_zona_de(e)],                     # 1) zona con mas envios
         _flex_zona_de(e) or "zzz",                  #    empate: estable
         _caps(e),                                   # 2) sin CAPS y despues con CAPS
-        -_flex_potes(e),                            # 3) de mayor a menor cantidad de potes
+        -_vol(e),                                   # 3) el grupo que mueve mas potes arriba
+        -_gc[_sku(e)],                              #    empate: el de mas paquetes
         _sku(e),                                    #    empate: estable
         (e.get("loc") or "").lower(),               #    adentro del grupo, por localidad
         int(_flex_norm(e["cod"]) or 0)))
