@@ -21935,12 +21935,15 @@ def _res_guion(conv, last_in):
         return _RES_LUEGO + _RES_AYUDA
 
     if _res_compra(t):
-        # Quiere comprar mas EN MEDIO de la campaña: el bot no le tira el link; lo deja
-        # para Cristian, que lo cierra el. Va ANTES del "si" a proposito: "quiero comprar
-        # 2 mas" tiene la palabra "quiero" y si no, se lo tomaba como que acepta la reseña
-        # y le mandaba que grabar.
+        # Contesto A LA PLANTILLA diciendo que quiere llevar mas potes. Eso sigue siendo
+        # la campaña: se le pasan LAS INSTRUCCIONES, igual que si hubiera tocado el boton.
+        # NO se le tira el link ni el precio — eso fue lo que paso con Nilton Carlos.
+        # Ademas queda marcado para que Cristian le cierre la venta a mano.
         conv["res_ojo"] = "quiere comprar mas"
-        return ""
+        ya = bool(conv.get("res_instr"))
+        conv["res_pedido"] = _wa_now()
+        conv["res_instr"] = True
+        return _RES_AYUDA if ya else _RES_INSTR
 
     if _res_quiere(t):
         ya = bool(conv.get("res_instr"))
