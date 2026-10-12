@@ -28264,11 +28264,19 @@ a.lk:hover{text-decoration:underline}
  <div class="panel">
   <div class="ph"><h2>Env&iacute;os Flex</h2><span class="cnt" id="n-env">&mdash;</span></div>
   <div class="bar"><span class="q">Seleccionados: <b id="q-sel">0</b></span>
+   <select id="filtro" onchange="setFil(this.value)" title="Qu&eacute; envíos ves">
+    <option value="act">Para despachar</option>
+    <option value="prep">En preparaci&oacute;n</option>
+    <option value="calle">En la calle</option>
+    <option value="ok">Entregados</option>
+    <option value="all">Todos</option></select>
    <select id="mover"><option value="">Mover a&hellip;</option></select>
    <button class="btn" id="b-mover" onclick="mover()" disabled>Aplicar</button>
    <button class="btn" id="b-etiq" onclick="etiquetas()" disabled>Etiquetas</button>
    <button class="btn" id="b-shop" onclick="avisar(1,0)" disabled>Cargar en Shopify</button>
    <button class="btn ok" id="b-wpp" onclick="avisar(0,1)" disabled>Avisar por WhatsApp</button></div>
+  <style>tr.tanda td{background:#141d2e;color:#8fb3e8;font-size:11.5px;font-weight:800;
+   letter-spacing:.6px;text-transform:uppercase;padding:7px 12px;border-top:2px solid #24344d}</style>
   <div class="tw"><table>
    <thead><tr><th style="width:38px"><input type="checkbox" onclick="todos(this,'e')"></th>
     <th>C&oacute;digo</th><th>Pedido</th><th>Cliente</th><th>Zona</th><th>Destino</th>
@@ -28311,6 +28319,27 @@ function refrescar(){
  $("b-crear").disabled=!np; $("q-sel").textContent=ne;
  ["b-mover","b-etiq","b-shop","b-wpp"].forEach(function(id){$(id).disabled=!ne;});
 }
+// Que envios se ven. Por defecto SOLO los que faltan despachar: al generar codigos nuevos
+// caian en la misma lista que los ya entregados y no se distinguia la tanda de hoy de la de
+// la semana pasada (35 envios mezclados).
+function diaTxt(d){
+ if(!d) return "Sin fecha";
+ var h=new Date(), p=new Date(h.getTime()-86400000);
+ var f=function(x){ return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2); };
+ if(d==f(h)) return "HOY";
+ if(d==f(p)) return "AYER";
+ var q=d.split("-");
+ return q[2]+"/"+q[1];
+}
+var FIL="act";
+function setFil(v){ FIL=v; pintar(); }
+function envFiltrados(){
+ if(FIL=="all") return ENV;
+ if(FIL=="ok")   return ENV.filter(function(e){ return e.estado=="entregado"; });
+ if(FIL=="prep") return ENV.filter(function(e){ return e.estado=="registrado"; });
+ if(FIL=="calle")return ENV.filter(function(e){ return e.estado!="entregado" && e.estado!="registrado"; });
+ return ENV.filter(function(e){ return e.estado!="entregado"; });   // act
+}
 function pintar(){
  var tp=$("tb-pend");
  if(!PEND.length){tp.innerHTML='<tr><td colspan="7" class="vacio"><b>Nada en zona por ahora</b>'
@@ -28323,20 +28352,35 @@ function pintar(){
    +'<td class="dim">'+esc(p.unidades)+'</td></tr>';}).join("");}
  $("n-pend").textContent=PEND.length+(PEND.length==1?" pedido":" pedidos");
 
- var te=$("tb-env");
+ var te=$("tb-env"), VIS=envFiltrados();
  if(!ENV.length){te.innerHTML='<tr><td colspan="8" class="vacio"><b>Todav\\u00eda no generaste ninguno</b>'
   +'Tild\\u00e1 pedidos arriba y toc\\u00e1 Generar c\\u00f3digos.</td></tr>';}
- else{te.innerHTML=ENV.map(function(e){
+ else if(!VIS.length){te.innerHTML='<tr><td colspan="8" class="vacio"><b>Nada ac\\u00e1</b>'
+  +'Con este filtro no hay env\\u00edos. Prob\\u00e1 con <b>Todos</b>.</td></tr>';}
+ else{
+  // CORTE POR TANDA: cada dia de generacion arranca su propio bloque con titulo. Asi los
+  // codigos que se acaban de generar quedan separados solos de los de la semana pasada,
+  // sin tener que tocar ningun filtro.
+  var _dia="";
+  te.innerHTML=VIS.map(function(e){
+  var d=(e.creado||"").slice(0,10), sep="";
+  if(d!=_dia){
+   _dia=d;
+   var n=VIS.filter(function(x){ return (x.creado||"").slice(0,10)==d; }).length;
+   sep='<tr class="tanda"><td colspan="8">'+esc(diaTxt(d))+' &middot; '+n
+      +(n==1?" env\\u00edo":" env\\u00edos")+'</td></tr>';
+  }
   var op=EST.map(function(x){return '<option value="'+x[0]+'"'+(x[0]==e.estado?" selected":"")+'>'+x[1]+'</option>';}).join("");
   var zp=Object.keys(ZN).map(function(z){return '<option value="'+z+'"'+(z==e.zona?" selected":"")+'>'+ZN[z]+'</option>';}).join("");
-  return '<tr><td><input type="checkbox" class="ck-e" value="'+esc(e.cod)+'" onchange="refrescar()"></td>'
+  return sep+'<tr><td><input type="checkbox" class="ck-e" value="'+esc(e.cod)+'" onchange="refrescar()"></td>'
    +'<td class="mono">'+esc(e.cod)+'</td><td class="dim">#'+esc(e.num)+'</td><td>'+esc(e.nombre)+'</td>'
    +'<td><select onchange="unaZona(\\''+esc(e.cod)+'\\',this.value)">'+zp+'</select></td>'
    +'<td class="dim">'+esc(e.loc)+'</td>'
    +'<td><span class="pill '+(PILL[ECOL[e.estado]]||"p-esp")+'" style="margin-right:8px">'+esc(ENOM[e.estado]||e.estado)+'</span>'
    +'<select onchange="unoEstado(\\''+esc(e.cod)+'\\',this.value)">'+op+'</select></td>'
    +'<td><a class="lk" href="'+BASE+'/seguimiento/'+esc(e.cod)+'" target="_blank">/s/'+esc(e.cod)+'</a></td></tr>';}).join("");}
- $("n-env").textContent=ENV.length+(ENV.length==1?" env\\u00edo":" env\\u00edos");
+ $("n-env").textContent=(VIS.length==ENV.length? ENV.length+(ENV.length==1?" env\\u00edo":" env\\u00edos")
+                          : VIS.length+" de "+ENV.length);
  var pr=0,ca=0,ok=0;
  ENV.forEach(function(e){ if(e.estado=="entregado")ok++; else if(e.estado=="registrado")pr++; else ca++; });
  $("k-pend").textContent=PEND.length; $("k-prep").textContent=pr;
