@@ -27911,9 +27911,36 @@ def _flex_etiqueta(pg, e):
             cont_s = _s
             break
 
-    filas = [("zona", 34), ("localidad", 42), ("direccion", 108), ("piso", 30),
+    # La CALLE: solo hay ~124 pt a la izquierda del QR (que no se puede achicar, 86 pt es el
+    # piso para que lea la termica). Para que no quede en 10 pt se permite un TERCER
+    # renglon y se sube el piso a 12: mejor tres lineas legibles que dos ilegibles.
+    _qq = 86
+    _izq = (W - M - pad - _qq) - pad - (M + pad) - 10
+    _nom0, _alt0 = _fx_partir_calle((e.get("calle") or "") if not _calle_txt else _calle_txt)
+    cal_lin, cal_s = _fx_lineas(_nom0, HB, 16.5, _izq, mini=12.5, s2=14, mini2=12, maxl=3)
+    dir_h = max(108, 31 + len(cal_lin) * cal_s * 1.05 + 42)
+
+    # PISO / DEPTO a veces no es un piso sino una referencia larga ("Entre Rumania y
+    # Groenlandia, a cuadra y media de ruta 26, partido de Pilar"), que es justo lo que el
+    # repartidor necesita. Se mide ANTES para que la fila crezca: si no, el segundo renglon
+    # se monta sobre la linea de abajo. La de observaciones ya hacia esto.
+    piso_lin, piso_s = _fx_lineas(str(extra), HB, 13, A - 2 * pad - 8,
+                                  mini=11.5, s2=11.5, mini2=8.5) if extra else ([], 13)
+    piso_h = max(30, 16 + len(piso_lin) * piso_s * 1.18 + 6)
+
+    filas = [("zona", 34), ("localidad", 42), ("direccion", dir_h), ("piso", piso_h),
              ("recibe", 32), ("telefono", 30), ("obs", 26 + len(obs_lin) * 14),
              ("contenido", 50)]
+    # Si entre la calle de 3 renglones y un piso largo se pasan del alto de la etiqueta,
+    # se devuelve lo que crecieron (primero la direccion) en vez de desbordar el recuadro.
+    _exceso = sum(h for _k, h in filas) - (BOT - TOP)
+    if _exceso > 0:
+        _dev = min(_exceso, dir_h - 108)
+        dir_h -= _dev; _exceso -= _dev
+        if _exceso > 0:
+            piso_h = max(30, piso_h - _exceso)
+        filas = [(k, dir_h if k == "direccion" else piso_h if k == "piso" else h)
+                 for k, h in filas]
     PESO = {"localidad": 1.0, "piso": .9, "recibe": 1.1, "telefono": .9, "obs": 1.0}
     sob = max(0, (BOT - TOP) - sum(h for _k, h in filas))
     tot = sum(PESO.get(k, 0) for k, _h in filas) or 1
@@ -27962,7 +27989,8 @@ def _flex_etiqueta(pg, e):
             # La calle va en hasta DOS renglones. El espacio que queda a la izquierda del QR
             # es angosto y los nombres largos salian cortados con puntos ("Calle 31, e/159 y
             # 159 A, Be..."): el repartidor se queda sin saber adonde va.
-            _cl, cs = _fx_lineas(nom, HB, 16.5, izq, mini=12.5, s2=13.5, mini2=9.5)
+            _cl, cs = (cal_lin, cal_s) if 31 + len(cal_lin) * cal_s * 1.05 + 42 <= h \
+                else _fx_lineas(nom, HB, 16.5, izq, mini=12.5, s2=13.5, mini2=9.5)
             _cy = y + 31
             for _i, _l in enumerate(_cl):
                 _fx_txt(pg, M + pad, _cy + _i * cs * 1.05, _l, HB, cs)
@@ -27977,9 +28005,12 @@ def _flex_etiqueta(pg, e):
             if val:
                 # PISO/DEPTO a veces trae una referencia larga ("Entre Rumania y Groenlandia,
                 # a cuadra y media..."), que es justo lo que el repartidor necesita leer.
-                _b = 14.5 if k == "recibe" else 13
-                _vl, vs = _fx_lineas(str(val), HB, _b, A - 2 * pad - 8,
-                                     mini=_b - 2, s2=min(_b, 11.5), mini2=8.5)
+                if k == "piso":
+                    _vl, vs = piso_lin, piso_s          # ya medido arriba, con su alto
+                else:
+                    _b = 14.5 if k == "recibe" else 13
+                    _vl, vs = _fx_lineas(str(val), HB, _b, A - 2 * pad - 8,
+                                         mini=_b - 2, s2=min(_b, 11.5), mini2=8.5)
                 _cy = y + 14 + (h - 14) / 2
                 if len(_vl) == 1:
                     _fx_txt(pg, M + pad, _cy + vs * 0.34, _vl[0], HB, vs)
