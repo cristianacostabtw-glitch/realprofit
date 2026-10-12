@@ -28727,6 +28727,7 @@ def _flex_etiqueta(pg, e):
     # "Concordia / s/n" con un "262" suelto en PISO/DEPTO (#7752 y #7743, 11-10). Si la
     # calle no trae numero y el extra ES un numero, esa es la altura.
     _calle_txt = (e.get("calle") or "").strip()
+    _alt_libre = ""                                   # altura "tal cual la escribio el cliente"
     if extra and not _fx_partir_calle(_calle_txt)[1]:
         # SOLO digitos y al menos 2: "262" y "380" son alturas, pero "4" o "4 B" son
         # piso y depto, y pegarlos a la calle manda al repartidor a otra puerta.
@@ -28734,17 +28735,17 @@ def _flex_etiqueta(pg, e):
         if _m_alt:
             e = dict(e, calle=("%s %s" % (_calle_txt, _m_alt.group(1))).strip())
             extra = ""
-        else:
-            # Y a veces el cliente mete TODO junto en el segundo campo: "209 7 3" es
-            # altura 209, piso 7, depto 3. Salia "Martin de Gainza s/n" con "209 7 3"
-            # en PISO/DEPTO (#7937, 12-10). Se toma el PRIMER numero como altura y el
-            # resto queda como piso/depto.
-            # Pide 3 digitos a proposito: con 2 no se distingue de un piso ("12 B" es
-            # piso 12 depto B, no altura 12) y pegarlo a la calle manda a otra puerta.
-            _m_alt2 = _re_and.match(r"\s*(\d{3,6})\s+(.+)$", extra)
-            if _m_alt2:
-                e = dict(e, calle=("%s %s" % (_calle_txt, _m_alt2.group(1))).strip())
-                extra = _m_alt2.group(2).strip()
+        elif _re_and.match(r"\s*\d{3,6}(\D|$)", extra):
+            # Y a veces el cliente mete TODO junto en el segundo campo: "209      7     3"
+            # es altura 209, piso 7, depto 3 (#7937, 12-10). NO se adivina cual es cual:
+            # regla de Cristian, "la calle que la busquen asi, en s/n no pongas s/n,
+            # pone 209 7 3". Va el campo ENTERO como altura y PISO/DEPTO queda vacio,
+            # que es mejor que un s/n gigante con el numero escondido abajo.
+            #
+            # Pide 3+ digitos para NO tocar lo que ya salia bien: "12 B" es piso 12 depto B,
+            # no una altura, y Cristian pidio arreglar SOLO este caso ("los demas no").
+            _alt_libre = " ".join(extra.split())
+            extra = ""
     obs = (e.get("nota") or "").strip() or "Sin información"
     # Dos renglones como mucho. Si no entra, el ultimo termina en "..." : cortar en seco
     # ("...de 10 a 13 y de 14 a 18 hs. Tocar el") hace creer que la nota dice solo eso.
@@ -28850,7 +28851,9 @@ def _flex_etiqueta(pg, e):
             for _i, _l in enumerate(_cl):
                 _fx_txt(pg, M + pad, _cy + _i * cs * 1.05, _l, HB, cs)
             _bajo = _cy + len(_cl) * cs * 1.05          # donde termina la calle
-            at, asz = _fx_cortar(alt or "s/n", HB, 34, izq)
+            # NUNCA "s/n" si hay algo con que ubicar la puerta: va lo que escribio el
+            # cliente en el segundo campo.
+            at, asz = _fx_cortar(alt or _alt_libre or "s/n", HB, 34, izq)
             _fx_txt(pg, M + pad, _bajo + (y + h - _bajo) / 2 + asz * 0.36, at, HB, asz)
 
         elif k in ("piso", "recibe", "telefono"):
