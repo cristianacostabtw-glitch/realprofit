@@ -1960,7 +1960,7 @@ _SOLO_DASH = r"""
    var r={ambos:0,solo_tn:0,solo_wpp:0,nada:0}; _dSeg.forEach(function(o){ if(o.tn&&o.wpp)r.ambos++; else if(o.tn)r.solo_tn++; else if(o.wpp)r.solo_wpp++; else r.nada++; });
    var _vis=_dSeg.filter(function(o){ return !o.tn || (_dSegWppOn && !o.wpp); });   // en la tabla, SOLO las que faltan
    var _nflex=_dSeg.filter(function(o){return o.carrier==='envialo';}).length, _nand=_dSeg.length-_nflex;
-   var filas=_vis.map(function(o){ var tpl=(o.carrier==='envialo')?('⚡ flex · '+(o.unidades||0)+'u'):((o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—'));
+   var filas=_vis.map(function(o){ var _fx=(o.carrier==='envialo'||o.carrier==='rpflex'); var tpl=_fx?('⚡ flex · '+(o.unidades||0)+'u'):((o.unidades>=2)?('combo · '+o.unidades+'u'):(o.unidades==1?'simple · 1u':'—'));
      var st=!o.wa_id?' <span style="color:#fb7185;font-size:10px">sin tel</span>':'';
      return '<tr><td style="padding:8px;border-top:1px solid #141c2a;color:#cbd5e1;font-weight:700">#'+_dEsc(o.num)+'</td>'
        +'<td style="padding:8px;border-top:1px solid #141c2a;color:#e7edf5">'+_dEsc(o.nombre||'')+st+'</td>'
