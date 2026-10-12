@@ -28734,6 +28734,17 @@ def _flex_etiqueta(pg, e):
         if _m_alt:
             e = dict(e, calle=("%s %s" % (_calle_txt, _m_alt.group(1))).strip())
             extra = ""
+        else:
+            # Y a veces el cliente mete TODO junto en el segundo campo: "209 7 3" es
+            # altura 209, piso 7, depto 3. Salia "Martin de Gainza s/n" con "209 7 3"
+            # en PISO/DEPTO (#7937, 12-10). Se toma el PRIMER numero como altura y el
+            # resto queda como piso/depto.
+            # Pide 3 digitos a proposito: con 2 no se distingue de un piso ("12 B" es
+            # piso 12 depto B, no altura 12) y pegarlo a la calle manda a otra puerta.
+            _m_alt2 = _re_and.match(r"\s*(\d{3,6})\s+(.+)$", extra)
+            if _m_alt2:
+                e = dict(e, calle=("%s %s" % (_calle_txt, _m_alt2.group(1))).strip())
+                extra = _m_alt2.group(2).strip()
     obs = (e.get("nota") or "").strip() or "Sin información"
     # Dos renglones como mucho. Si no entra, el ultimo termina en "..." : cortar en seco
     # ("...de 10 a 13 y de 14 a 18 hs. Tocar el") hace creer que la nota dice solo eso.
