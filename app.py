@@ -17188,6 +17188,25 @@ _PF_LOCKS_G = threading.Lock()     # candado del diccionario de candados
 PF_DIAS = DATA_DIR / "pf_dias.json"   # un dia CERRADO ya calculado: no cambia nunca mas
 
 
+def _pf_costos_ver() -> str:
+    """Firma de la tarifa de envio. Entra en la CLAVE del cache de dias cerrados.
+
+    Sin esto, cambiar una tarifa no cambiaba nada hacia atras: el dia cerrado ya estaba
+    guardado con el costo viejo y "no cambia nunca mas". Paso el 12-10-2026 al cargar
+    FLEX_COSTO=4000: los 35 envios Flex del 8 y el 11 de octubre seguian costeados con la
+    tabla de Andreani ($7.115 AMBA a domicilio), $3.115 de mas cada uno.
+
+    Al cambiar la firma, la clave cambia y esos dias se recalculan solos UNA vez.
+    """
+    import hashlib as _hl
+    v = "|".join((_os.getenv(k, "") or "").strip() for k in
+                 ("FLEX_COSTO", "FLEX_COSTO_CABA", "FLEX_COSTO_NORTE",
+                  "FLEX_COSTO_OESTE", "FLEX_COSTO_SUR"))
+    if not v.strip("|"):
+        return "base"                       # sin tarifa cargada: clave de siempre
+    return _hl.md5(v.encode()).hexdigest()[:8]
+
+
 def _pf_dias_cache() -> dict:
     try:
         return _json.loads(PF_DIAS.read_text(encoding="utf-8"))
@@ -17235,7 +17254,7 @@ def _pf_canales_dia(email, dia):
     """Un DIA suelto, cacheado en disco si ya cerro. Un dia pasado no cambia nunca, asi que se
     calcula UNA vez y despues sale de disco."""
     cerrado = _pf_cerrado(dia)
-    ck = "%s|%s" % (email, dia)
+    ck = "%s|%s|%s" % (email, dia, _pf_costos_ver())
     if cerrado:
         g = _pf_dias_cache().get(ck)
         if g:
