@@ -28659,9 +28659,33 @@ def _fx_partir_calle(c):
     resto = _re_and.sub(r"\s+,", ",", resto)              # "Calle 31 ," -> "Calle 31,"
     resto = _re_and.sub(r",(?=\s*,|\s*$)", "", resto)
     resto = _re_and.sub(r"\s{2,}", " ", resto).strip(" ,-")
+    # El nombre de la calle termina ANTES de la altura: lo que viene despues no es calle.
+    # "Ayolas 988 c.2" salia como calle "Ayolas c.2" con el c.2 pegado, cuando PISO/DEPTO ya
+    # decia "Casa 2" (#7912, 12-10). Lo de atras lo recoge _fx_cola_calle para PISO/DEPTO.
+    _ix = t.find(alt)
+    if _ix > 0:
+        _antes = _re_and.sub(r"(?:n\s*[°º:.]|nro\.?|numero|num\.?)\s*$", "", t[:_ix],
+                             flags=_re_and.I)
+        _antes = _re_and.sub(r"\s{2,}", " ", _antes).strip(" ,-")
+        if _antes and not _antes.isdigit():
+            return (_antes, alt)
     if not resto or resto.isdigit():
         return ("", alt)
     return (resto, alt)
+
+
+def _fx_cola_calle(c) -> str:
+    """Lo que queda DESPUES de la altura ("c.2" en "Ayolas 988 c.2"). Va a PISO/DEPTO: no es
+    parte del nombre de la calle, pero tampoco se tira porque suele ser casa, lote o entre
+    calles."""
+    t = str(c or "").strip()
+    _nom, alt = _fx_partir_calle(t)
+    if not alt:
+        return ""
+    i = t.find(alt)
+    if i < 0:
+        return ""
+    return _re_and.sub(r"\s{2,}", " ", t[i + len(alt):]).strip(" ,-.")
 
 
 def _fx_marca(pg, x, y, alto):
@@ -28753,6 +28777,21 @@ def _flex_etiqueta(pg, e):
             # no una altura, y Cristian pidio arreglar SOLO este caso ("los demas no").
             _alt_libre = " ".join(extra.split())
             extra = ""
+    # La cola de la calle ("c.2") a PISO/DEPTO, salvo que ya este dicho ahi.
+    _cola = _fx_cola_calle(e.get("calle"))
+    _dig = lambda x: "".join(ch for ch in str(x or "") if ch.isdigit())
+    if _cola:
+        _nn = lambda x: "".join(ch for ch in str(x or "").lower() if ch.isalnum())
+        if not extra:
+            extra = _cola
+        elif _nn(_cola) in _nn(extra) or (_dig(_cola) and _dig(_cola) == _dig(extra)):
+            pass            # ya esta dicho: "c.2" cuando PISO/DEPTO dice "Casa 2"
+        else:
+            extra = "%s · %s" % (extra, _cola)
+    # PISO/DEPTO no repite la altura: "las rosas 5404" con extra "5404" mostraba el numero
+    # dos veces (#7966, 12-10).
+    if extra and _dig(extra) and _dig(extra) == _dig(_fx_partir_calle(e.get("calle"))[1]):
+        extra = ""
     obs = (e.get("nota") or "").strip() or "Sin información"
     # Dos renglones como mucho. Si no entra, el ultimo termina en "..." : cortar en seco
     # ("...de 10 a 13 y de 14 a 18 hs. Tocar el") hace creer que la nota dice solo eso.
