@@ -28399,11 +28399,27 @@ function crear(){
  var ns=selP(),filas=PEND.filter(function(p){return ns.indexOf(p.num)>=0;});
  if(!filas.length)return;
  $("b-crear").disabled=true;
+ // La pestana de las etiquetas se abre ACA, con el click todavia en curso. Si se abriera
+ // adentro del .then (cuando ya volvio el POST) el navegador la bloquea por popup y no
+ // pasaba nada. Se abre vacia y despues se le pone la URL con los codigos recien creados.
+ var w=null; try{ w=window.open("","_blank"); }catch(e){}
+ if(w){ try{ w.document.write("<title>Etiquetas</title><body style=\'background:#0b1220;"
+   +"color:#9fb4d4;font:15px -apple-system,system-ui;display:grid;place-items:center;"
+   +"height:100vh;margin:0\'>Generando las etiquetas...</body>"); }catch(e){} }
  fetch("/flex-crear",{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({filas:filas})}).then(function(r){return r.json();}).then(function(j){
-  if(!j.ok){aviso("No se pudieron generar","e");return;}
-  aviso("Listo: "+j.creados+" c\\u00f3digo"+(j.creados==1?"":"s")+" generado"+(j.creados==1?"":"s")+".","b");
-  cargar(0);}).catch(function(e){aviso("Error: "+e,"e");});
+  if(!j.ok){aviso("No se pudieron generar","e"); if(w){try{w.close();}catch(e){}} return;}
+  // Las etiquetas salen SOLAS con los codigos que se acaban de crear: ya vienen con el QR,
+  // el SKU y la hoja PARA EMPAQUETAR al final. Antes habia que bajar, tildarlos y apretar
+  // Etiquetas; con la lista mezclada eso era justo lo dificil.
+  var cods=(j.envios||[]).map(function(e){return e.cod;}).filter(Boolean);
+  aviso("Listo: "+j.creados+" codigo"+(j.creados==1?"":"s")+" generado"+(j.creados==1?"":"s")
+   +(cods.length?". Abriendo las etiquetas...":"."),"b");
+  if(w){
+   if(cods.length){ w.location="/flex-etiquetas?cods="+encodeURIComponent(cods.join(",")); }
+   else { try{w.close();}catch(e){} }
+  }
+  cargar(0);}).catch(function(e){aviso("Error: "+e,"e"); if(w){try{w.close();}catch(x){}}});
 }
 function setear(cods,estado,zona){
  return fetch("/flex-set",{method:"POST",headers:{"Content-Type":"application/json"},
