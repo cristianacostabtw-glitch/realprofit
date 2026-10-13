@@ -17522,6 +17522,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _r0["publi_meli"] = round(_pub_ml, 2)
         _r0["ganancia"] = round(float(_r0.get("ganancia", 0) or 0) - _pub_ml, 2)
         if _r0.get("meli_ganancia") is not None:
+            # queda la de ANTES de la pauta para poder auditar la resta desde afuera
+            _r0["meli_gan_sin_pauta"] = round(float(_r0.get("meli_ganancia", 0) or 0), 2)
             _r0["meli_ganancia"] = round(float(_r0.get("meli_ganancia", 0) or 0) - _pub_ml, 2)
 
     # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
