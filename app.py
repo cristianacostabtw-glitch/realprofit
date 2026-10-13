@@ -233,9 +233,15 @@ def meli_ads_diag():
         if not _r.startswith("/advertising/"):
             return jsonify({"ok": False, "msg": "solo rutas /advertising/"}), 400
         _v = (request.args.get("v") or "1").strip()
+        _body = (request.args.get("body") or "").strip()   # si viene, se manda POST con ese JSON
         try:
-            rr = requests.get(MELI_API + _r, timeout=25,
-                              headers={"Authorization": "Bearer " + tok, "Api-Version": _v})
+            _h = {"Authorization": "Bearer " + tok, "Api-Version": _v}
+            if _body:
+                _h["Content-Type"] = "application/json"
+                rr = requests.post(MELI_API + _r, timeout=25, headers=_h,
+                                   data=_body.encode("utf-8"))
+            else:
+                rr = requests.get(MELI_API + _r, timeout=25, headers=_h)
             return jsonify({"ok": True, "ruta": _r, "http": rr.status_code,
                             "body": (rr.text or "")[:1500]})
         except Exception as e:
