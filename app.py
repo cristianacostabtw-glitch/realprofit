@@ -236,6 +236,13 @@ def meli_ads_diag():
         _body = (request.args.get("body") or "").strip()   # si viene, se manda POST con ese JSON
         try:
             _h = {"Authorization": "Bearer " + tok, "Api-Version": _v}
+            # ?hdr=clave:valor,clave:valor  -> cabeceras extra (la API de ads pide algunas
+            # por header, como advertiser_id)
+            for _par in (request.args.get("hdr") or "").split(","):
+                if ":" in _par:
+                    _k, _val = _par.split(":", 1)
+                    if _k.strip():
+                        _h[_k.strip()] = _val.strip()
             if _body:
                 _h["Content-Type"] = "application/json"
                 rr = requests.post(MELI_API + _r, timeout=25, headers=_h,
