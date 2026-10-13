@@ -17236,7 +17236,8 @@ PF_DIAS = DATA_DIR / "pf_dias.json"   # un dia CERRADO ya calculado: no cambia n
 # linea con detail_sub_type = "PADS" y su fecha. Verificado el 13-10-2026: viene por dia, dos
 # lineas por dia alrededor de las 5:45 am.
 MELI_PADS = DATA_DIR / "meli_pads.json"   # {email: {periodo: {ts, cerrado, dias:{dia: monto}}}}
-_MELI_PADS_TTL = 3 * 3600                 # el periodo abierto se refresca cada 3 h
+_MELI_PADS_TTL = 20 * 60                  # el periodo abierto se refresca cada 20 min:
+# MELI no carga un solo cargo por dia, va sumando lineas, asi que el numero del dia SUBE.
 
 
 def _meli_pads_cache() -> dict:
@@ -17312,7 +17313,7 @@ def _meli_pads_bajar(email, periodo):
     return dias
 
 
-def _meli_pads_sync(email, dias_atras=70):
+def _meli_pads_sync(email, dias_atras=70, forzar=False):
     """Refresca el cache de los periodos que tocan los ultimos ~2 meses. Un periodo CERRADO ya
     no cambia, asi que se baja una sola vez."""
     hoy = _dt.date.today()
@@ -17327,9 +17328,10 @@ def _meli_pads_sync(email, dias_atras=70):
         if h < tope:
             continue
         g = cache.get(p["key"]) or {}
-        if g.get("cerrado") and g.get("dias") is not None:
+        if g.get("cerrado") and g.get("dias") is not None and not forzar:
             continue                        # cerrado y ya bajado: no cambia nunca mas
-        if (not p["cerrado"]) and (_time.time() - float(g.get("ts") or 0)) < _MELI_PADS_TTL:
+        if (not forzar) and (not p["cerrado"]) \
+                and (_time.time() - float(g.get("ts") or 0)) < _MELI_PADS_TTL:
             continue                        # abierto pero fresco
         d = _meli_pads_bajar(email, p["key"])
         if d is None:
@@ -17359,8 +17361,10 @@ def meli_publi_sync():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    _fz = (request.args.get("forzar") or "") in ("1", "si", "true")
     try:
-        return jsonify({"ok": True, "periodos": _meli_pads_sync(email)})
+        return jsonify({"ok": True, "forzado": _fz,
+                        "periodos": _meli_pads_sync(email, forzar=_fz)})
     except Exception as e:
         return jsonify({"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:200])})
 
