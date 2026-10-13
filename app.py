@@ -3264,6 +3264,10 @@ _SOLO_DASH = r"""
          schedule();
        }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
   [0,150,350,700,1300,2600].forEach(function(ms){ setTimeout(tick, ms); });   // arranques rápidos → sin parpadeo de Finanzas
+  // Publicidad de MercadoLibre: el gasto sale de la API de facturacion de MELI y tarda ~20s en
+  // bajarse, asi que NO se hace adentro del dashboard. Se dispara aca y queda cacheado en disco:
+  // la pantalla de la proxima vez ya lo tiene. Si falla, no pasa nada.
+  setTimeout(function(){ try{ fetch('/meli-publi-sync').catch(function(){}); }catch(e){} }, 4000);
   setInterval(function(){ if(_raw && !_busy){ try{ fixFacturacion(); }catch(e){} } }, 400);   // red de seguridad (el arreglo real va sincronico, arriba)
   // Fallback: NO destapo la grilla con las etiquetas nativas (ROAS mal + True ROAS). Reintento el remapeo
   // hasta que funcione y recién ahí destapo. Último recurso ~12s (por si algo raro, mejor mostrar algo).
@@ -17333,6 +17337,142 @@ _PF_LOCKS_G = threading.Lock()     # candado del diccionario de candados
 
 PF_DIAS = DATA_DIR / "pf_dias.json"   # un dia CERRADO ya calculado: no cambia nunca mas
 
+# ---------------- Publicidad de MercadoLibre (Product Ads) ----------------
+# El gasto de la pauta de MELI NO sale de la API de publicidad: esa API esta rota (devuelve el
+# advertiser pero 404 en todo lo demas). Sale de la API de FACTURACION, donde cada cargo es una
+# linea con detail_sub_type = "PADS" y su fecha. Verificado el 13-10-2026: viene por dia, dos
+# lineas por dia alrededor de las 5:45 am.
+MELI_PADS = DATA_DIR / "meli_pads.json"   # {email: {periodo: {ts, cerrado, dias:{dia: monto}}}}
+_MELI_PADS_TTL = 3 * 3600                 # el periodo abierto se refresca cada 3 h
+
+
+def _meli_pads_cache() -> dict:
+    try:
+        return _json.loads(MELI_PADS.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _meli_pads_guardar(email, periodo, blob):
+    """Fusiona, nunca reemplaza: son 2 workers y el que escribe entero pisa al otro."""
+    try:
+        d = _meli_pads_cache()
+        d.setdefault(str(email), {})[str(periodo)] = blob
+        MELI_PADS.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _meli_pads_periodos(email):
+    """Los periodos de facturacion del grupo ML, del mas nuevo al mas viejo."""
+    tok = _meli_token(email)
+    if not tok:
+        return []
+    h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
+    u = ("%s/billing/integration/monthly/periods?group=ML&document_type=BILL"
+         "&offset=0&limit=12" % MELI_API)
+    r = requests.get(u, headers=h, timeout=30)
+    if r.status_code != 200:
+        return []
+    out = []
+    for it in (r.json().get("results") or []):
+        per = it.get("period") or {}
+        out.append({"key": it.get("key"), "desde": per.get("date_from"),
+                    "hasta": per.get("date_to"),
+                    "cerrado": (it.get("period_status") or "") == "CLOSED"})
+    return [x for x in out if x["key"]]
+
+
+def _meli_pads_bajar(email, periodo):
+    """Baja TODO el detalle del periodo y se queda solo con las lineas de publicidad, sumadas
+    por dia. Hay que paginar entero porque la API ignora el filtro por concepto, y el endpoint
+    tiene un tope de 5 pedidos por minuto."""
+    tok = _meli_token(email)
+    if not tok:
+        return None
+    h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
+    base = ("%s/billing/integration/periods/key/%s/group/ML/details"
+            "?document_type=BILL&limit=1000&offset=" % (MELI_API, periodo))
+    dias = {}
+    off = 0
+    for i in range(25):
+        if i:
+            _time.sleep(13)                 # 5 pedidos por minuto
+        r = requests.get(base + str(off), headers=h, timeout=45)
+        if r.status_code == 429:
+            _time.sleep(15)
+            r = requests.get(base + str(off), headers=h, timeout=45)
+        if r.status_code != 200:
+            return None                     # no guardo a medias: mejor sin dato que mal
+        j = r.json()
+        res = j.get("results") or []
+        for it in res:
+            ci = it.get("charge_info") or {}
+            if (ci.get("detail_sub_type") or "") != "PADS":
+                continue
+            f = (ci.get("creation_date_time") or "")[:10]
+            if len(f) == 10:
+                dias[f] = round(dias.get(f, 0.0) + float(ci.get("detail_amount") or 0), 2)
+        off += len(res)
+        if not res or off >= int(j.get("total") or 0):
+            break
+    return dias
+
+
+def _meli_pads_sync(email, dias_atras=70):
+    """Refresca el cache de los periodos que tocan los ultimos ~2 meses. Un periodo CERRADO ya
+    no cambia, asi que se baja una sola vez."""
+    hoy = _dt.date.today()
+    tope = hoy - _dt.timedelta(days=dias_atras)
+    cache = (_meli_pads_cache().get(str(email)) or {})
+    hechos = []
+    for p in _meli_pads_periodos(email):
+        try:
+            h = _dt.date.fromisoformat(p["hasta"])
+        except Exception:
+            continue
+        if h < tope:
+            continue
+        g = cache.get(p["key"]) or {}
+        if g.get("cerrado") and g.get("dias") is not None:
+            continue                        # cerrado y ya bajado: no cambia nunca mas
+        if (not p["cerrado"]) and (_time.time() - float(g.get("ts") or 0)) < _MELI_PADS_TTL:
+            continue                        # abierto pero fresco
+        d = _meli_pads_bajar(email, p["key"])
+        if d is None:
+            continue
+        _meli_pads_guardar(email, p["key"], {"ts": _time.time(), "cerrado": p["cerrado"],
+                                             "dias": d})
+        hechos.append({"periodo": p["key"], "dias": len(d),
+                       "monto": round(sum(d.values()), 2)})
+    return hechos
+
+
+def _meli_publi(email, desde, hasta):
+    """Lo que se gasto en publicidad de MercadoLibre entre dos fechas. SOLO lee el cache: nunca
+    sale a la API, para no clavar el dashboard."""
+    tot = 0.0
+    for blob in (_meli_pads_cache().get(str(email)) or {}).values():
+        for dia, monto in (blob.get("dias") or {}).items():
+            if desde <= dia <= hasta:
+                tot += float(monto or 0)
+    return round(tot, 2)
+
+
+@app.get("/meli-publi-sync")
+def meli_publi_sync():
+    """Refresca el gasto de publicidad de MELI. Lo llama la pantalla al abrirse (y tarda, por
+    eso no se hace adentro del dashboard)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    try:
+        return jsonify({"ok": True, "periodos": _meli_pads_sync(email)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:200])})
+
+
+
 
 def _pf_costos_ver() -> str:
     """Firma de la tarifa de envio. Entra en la CLAVE del cache de dias cerrados.
@@ -17475,6 +17615,22 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         blob["raw"]["dolar"] = round(_dolar_ars_vivo() or 1200, 2)   # cotización para ver en USD
     except Exception:
         blob["raw"]["dolar"] = 1200
+    # Publicidad de MERCADOLIBRE (Product Ads). Va como linea APARTE: no entra en el CPA ni en
+    # el ROAS, porque esa pauta trae ventas del marketplace, no de la tienda (mismo criterio que
+    # el CPA de Meta, ver abajo). Pero SI es plata que sale, asi que baja la ganancia. Como es un
+    # costo del canal MELI, tambien se lo resto a meli_ganancia: si no, el corte por canal se lo
+    # cargaba a la tienda, que sale por diferencia.
+    try:
+        _pub_ml = _meli_publi(email, desde, hasta)
+    except Exception:
+        _pub_ml = 0.0
+    if _pub_ml:
+        _r0 = blob["raw"]
+        _r0["publi_meli"] = round(_pub_ml, 2)
+        _r0["ganancia"] = round(float(_r0.get("ganancia", 0) or 0) - _pub_ml, 2)
+        if _r0.get("meli_ganancia") is not None:
+            _r0["meli_ganancia"] = round(float(_r0.get("meli_ganancia", 0) or 0) - _pub_ml, 2)
+
     # Gasto en ads de Meta (cuenta elegida) → INVERSIÓN ADS / ROAS / CPA / ganancia.
     spend = _meta_spend(email, desde, hasta)
     try:                                     # TikTok Ads suma a la MISMA inversión (plata es plata)
@@ -17589,7 +17745,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
                  + (r.get("mp_costo_real", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0) \
-                 + (r.get("meli_adelanto", 0) or 0)
+                 + (r.get("meli_adelanto", 0) or 0) \
+                 + (r.get("publi_meli", 0) or 0)
     # La PERCEPCION de IVA se suma ENTERA, no dividida por 1,21: ya es IVA, no un precio que lo
     # contiene. La RETENCION de IIBB no entra aca: es otro impuesto (ver la nota en IIBB_PCT).
     _iva_cred = _base_cred * _F + (r.get("percep_iva", 0) or 0)
@@ -17621,7 +17778,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
         # El adelanto de ML viene con IVA adentro. Las retenciones y el cargo por envio NO.
         _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)
-                    + (r.get("meli_adelanto", 0) or 0)) * _F
+                    + (r.get("meli_adelanto", 0) or 0)
+                    + (r.get("publi_meli", 0) or 0)) * _F
         _ml_iva = _ml_deb - _ml_cred
         r["ml_iva_total"] = round(_ml_deb, 2)
         r["ml_iva_favor"] = round(_ml_cred, 2)
