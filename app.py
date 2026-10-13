@@ -230,8 +230,9 @@ def meli_ads_diag():
     # ni a otro recurso de la cuenta.
     _r = (request.args.get("ruta") or "").strip()
     if _r:
-        if not _r.startswith("/advertising/"):
-            return jsonify({"ok": False, "msg": "solo rutas /advertising/"}), 400
+        if not (_r.startswith("/advertising/") or _r.startswith("/marketplace/advertising/")):
+            return jsonify({"ok": False,
+                            "msg": "solo /advertising/ o /marketplace/advertising/"}), 400
         _v = (request.args.get("v") or "1").strip()
         _body = (request.args.get("body") or "").strip()   # si viene, se manda POST con ese JSON
         try:
