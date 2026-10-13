@@ -262,8 +262,9 @@ def meli_ads_diag():
     _per = (request.args.get("conceptos") or "").strip()
     if _per:
         _h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
-        base = ("%s/billing/integration/periods/key/%s/group/ML/details"
-                "?document_type=BILL&limit=1000&offset=" % (MELI_API, _per))
+        _g = "MP" if (request.args.get("grupo") or "ML").strip().upper() == "MP" else "ML"
+        base = ("%s/billing/integration/periods/key/%s/group/%s/details"
+                "?document_type=BILL&limit=1000&offset=" % (MELI_API, _per, _g))
         tot = {}
         off = 0
         leidos = 0
@@ -292,7 +293,7 @@ def meli_ads_diag():
             _time.sleep(13)
         for a in tot.values():
             a["monto"] = round(a["monto"], 2)
-        return jsonify({"ok": not err, "periodo": _per, "leidos": leidos,
+        return jsonify({"ok": not err, "periodo": _per, "grupo": _g, "leidos": leidos,
                         "error": err, "conceptos": tot})
 
     out = {}
