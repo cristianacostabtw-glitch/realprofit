@@ -257,6 +257,36 @@ def meli_ads_diag():
             return jsonify({"ok": False, "ruta": _r,
                             "error": "%s: %s" % (type(e).__name__, str(e)[:150])})
 
+    # ?pads=2026-11-01[&off=0] -> devuelve SOLO las lineas de publicidad (Product Ads) con su
+    # fecha y monto, para ver si el cargo viene por dia o en bollo.
+    _pk = (request.args.get("pads") or "").strip()
+    if _pk:
+        try:
+            off = max(0, int(request.args.get("off") or 0))
+        except Exception:
+            off = 0
+        _h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
+        u = ("%s/billing/integration/periods/key/%s/group/ML/details"
+             "?document_type=BILL&limit=1000&offset=%d" % (MELI_API, _pk, off))
+        rr = requests.get(u, headers=_h, timeout=40)
+        if rr.status_code != 200:
+            return jsonify({"ok": False, "http": rr.status_code, "body": (rr.text or "")[:300]})
+        j = rr.json()
+        res = j.get("results") or []
+        filas = []
+        for it in res:
+            ci = it.get("charge_info") or {}
+            if (ci.get("detail_sub_type") or "") != "PADS":
+                continue
+            filas.append({"fecha": ci.get("creation_date_time"),
+                          "monto": ci.get("detail_amount"),
+                          "detalle": ci.get("transaction_detail"),
+                          "estado": ci.get("status"),
+                          "doc": ci.get("legal_document_number"),
+                          "id": ci.get("detail_id")})
+        return jsonify({"ok": True, "periodo": _pk, "off": off, "leidos": len(res),
+                        "total": j.get("total"), "pads": filas})
+
     # ?conceptos=2026-10-01[&grupo=MP][&off=0][&paginas=3] -> suma el detalle de facturacion
     # por concepto. Va por tandas porque el proxy corta a los 100s y el detalle tiene miles
     # de lineas con un limite de 5 pedidos por minuto.
