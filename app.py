@@ -197,6 +197,44 @@ def _meli_token(email):
     return d.get("access_token")
 
 
+@app.get("/meli-ads-diag")
+def meli_ads_diag():
+    """Que ve el token de MELI en la API de PUBLICIDAD (Product Ads). Solo lectura.
+
+    Existe para no adivinar: la API de advertising cambio de forma varias veces y segun los
+    scopes del token algunos endpoints contestan 401/403. Esto prueba los candidatos y
+    devuelve el codigo y un pedazo del cuerpo de cada uno.
+    """
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    tok = _meli_token(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "MercadoLibre no está conectado"})
+    uid = (_meli_tokens().get(str(email)) or {}).get("user_id", "")
+    h1 = {"Authorization": "Bearer " + tok, "Api-Version": "1"}
+    h2 = {"Authorization": "Bearer " + tok, "Api-Version": "2"}
+    hoy = _dt.date.today()
+    d0 = (hoy - _dt.timedelta(days=7)).isoformat()
+    d1 = hoy.isoformat()
+    pruebas = [
+        ("advertisers_PADS", "%s/advertising/advertisers?product_id=PADS" % MELI_API, h1),
+        ("advertisers_v2", "%s/advertising/advertisers?product_id=PADS" % MELI_API, h2),
+        ("users_me", "%s/users/me" % MELI_API, {"Authorization": "Bearer " + tok}),
+        ("campaigns_search", "%s/advertising/campaigns/search?limit=5" % MELI_API, h1),
+        ("pads_user", "%s/advertising/product_ads/campaigns?user_id=%s&date_from=%s&date_to=%s"
+         % (MELI_API, uid, d0, d1), h1),
+    ]
+    out = {}
+    for nombre, url, hh in pruebas:
+        try:
+            r = requests.get(url, headers=hh, timeout=25)
+            out[nombre] = {"http": r.status_code, "body": (r.text or "")[:400]}
+        except Exception as e:
+            out[nombre] = {"error": "%s: %s" % (type(e).__name__, str(e)[:120])}
+    return jsonify({"ok": True, "user_id": uid, "pruebas": out})
+
+
 # ---------------- Meta (Facebook / Instagram Ads) OAuth ----------------
 META_SECRETS = RAIZ / "meta_secrets.json"     # App ID + App Secret (dueño de la app)
 META_TOKENS = DATA_DIR / "meta_tokens.json"   # tokens por usuario (persistente)
