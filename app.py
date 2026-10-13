@@ -2575,12 +2575,12 @@ _SOLO_DASH = r"""
     add(_rpcClon(tpl,AM,'percent','Margen',_rpcPct(_raw.ml_margen||0),'Ganancia ÷ facturación de ML',(+(_raw.ml_margen||0))<0?ROJO:VERDE));
     var m1=_rpcClon(tpl,AM,'campaign','Publicidad',_rpcPlata(pml),
         pml? p(pml,(+(_raw.publi_ars||0))+pml)+' de toda la pauta del período' : 'Sin pauta en MercadoLibre');
-    m1.style.gridColumn='span 2'; add(m1);
+    add(m1);
     var m2=_rpcClon(tpl,AM,'bolt','ROAS',(prs?prs.toFixed(2):'0.00')+'x',
         'Facturación de ML ÷ pauta de ML');
-    m2.style.gridColumn='span 2'; add(m2);
-    var a1=_rpcClon(tpl,AM,'savings','Neto entrado',_rpcPlata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'); a1.style.gridColumn='span 2'; add(a1);
-    var a2=_rpcClon(tpl,AM,'receipt_long','Ticket prom',_rpcPlata(_raw.ml_aov||0),'Contra '+_rpcPlata(_raw.ticket||0)+' del total'); a2.style.gridColumn='span 2'; add(a2);
+    add(m2);
+    var a1=_rpcClon(tpl,AM,'savings','Neto entrado',_rpcPlata(_raw.ml_neto||0),'Menos comisión y 2,5% de adelanto'); add(a1);
+    var a2=_rpcClon(tpl,AM,'receipt_long','Ticket prom',_rpcPlata(_raw.ml_aov||0),'Contra '+_rpcPlata(_raw.ticket||0)+' del total'); add(a2);
     add(tit('Shopify',SH,8));
     add(_rpcClon(tpl,SH,'storefront','Ventas',String(Math.round(wv)), p(wv,ord)+' de las '+ord+' del período'));
     add(_rpcClon(tpl,SH,'payments','Facturación',_rpcPlata(wf), p(wf,fac)+' de la facturación total'));
@@ -2588,12 +2588,12 @@ _SOLO_DASH = r"""
     add(_rpcClon(tpl,SH,'percent','Margen',_rpcPct(_raw.web_margen||0),'Ganancia ÷ facturación de la tienda',(+(_raw.web_margen||0))<0?ROJO:VERDE));
     var w1=_rpcClon(tpl,SH,'campaign','Publicidad',_rpcPlata(pma),
         pma? p(pma,pma+pml)+' de toda la pauta del período' : 'Sin pauta de Meta');
-    w1.style.gridColumn='span 2'; add(w1);
+    add(w1);
     var w2=_rpcClon(tpl,SH,'bolt','ROAS',(wrs?wrs.toFixed(2):'0.00')+'x',
         'Facturación de la tienda ÷ pauta de Meta');
-    w2.style.gridColumn='span 2'; add(w2);
-    var b1=_rpcClon(tpl,SH,'savings','Neto entrado',_rpcPlata(_raw.web_neto||0),'Menos '+_rpcPlata(_raw.mp_costo_real||0)+' de MercadoPago'); b1.style.gridColumn='span 2'; add(b1);
-    var b2=_rpcClon(tpl,SH,'receipt_long','Ticket prom',_rpcPlata(_raw.web_aov||0),'Contra '+_rpcPlata(_raw.ticket||0)+' del total'); b2.style.gridColumn='span 2'; add(b2);
+    add(w2);
+    var b1=_rpcClon(tpl,SH,'savings','Neto entrado',_rpcPlata(_raw.web_neto||0),'Menos '+_rpcPlata(_raw.mp_costo_real||0)+' de MercadoPago'); add(b1);
+    var b2=_rpcClon(tpl,SH,'receipt_long','Ticket prom',_rpcPlata(_raw.web_aov||0),'Contra '+_rpcPlata(_raw.ticket||0)+' del total'); add(b2);
     try{ grid.insertBefore(caja, filaTit); }catch(e){ return false; }
     return true;
   }
