@@ -257,6 +257,44 @@ def meli_ads_diag():
             return jsonify({"ok": False, "ruta": _r,
                             "error": "%s: %s" % (type(e).__name__, str(e)[:150])})
 
+    # ?conceptos=2026-10-01 -> pagina el detalle de facturacion de ese periodo y suma por
+    # concepto. Sirve para encontrar con que nombre factura MELI la publicidad (Product Ads).
+    _per = (request.args.get("conceptos") or "").strip()
+    if _per:
+        _h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
+        base = ("%s/billing/integration/periods/key/%s/group/ML/details"
+                "?document_type=BILL&limit=1000&offset=" % (MELI_API, _per))
+        tot = {}
+        off = 0
+        leidos = 0
+        err = ""
+        for _ in range(12):
+            rr = requests.get(base + str(off), headers=_h, timeout=60)
+            if rr.status_code == 429:
+                _time.sleep(14)
+                continue
+            if rr.status_code != 200:
+                err = "http %d: %s" % (rr.status_code, (rr.text or "")[:200])
+                break
+            j = rr.json()
+            res = j.get("results") or []
+            for it in res:
+                ci = it.get("charge_info") or {}
+                k = "%s | %s" % (ci.get("detail_sub_type") or "?",
+                                 ci.get("transaction_detail") or "?")
+                a = tot.setdefault(k, {"n": 0, "monto": 0.0})
+                a["n"] += 1
+                a["monto"] += float(ci.get("detail_amount") or 0)
+            leidos += len(res)
+            off += len(res)
+            if not res or leidos >= int(j.get("total") or 0):
+                break
+            _time.sleep(13)
+        for a in tot.values():
+            a["monto"] = round(a["monto"], 2)
+        return jsonify({"ok": not err, "periodo": _per, "leidos": leidos,
+                        "error": err, "conceptos": tot})
+
     out = {}
     for nombre, url, hh in pruebas:
         try:
