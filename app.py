@@ -17287,9 +17287,9 @@ def _meli_pads_bajar(email, periodo):
     h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
     base = ("%s/billing/integration/periods/key/%s/group/ML/details"
             "?document_type=BILL&limit=1000&offset=" % (MELI_API, periodo))
-    dias = {}
-    off = 0
-    for i in range(25):
+    vistos = {}                             # detail_id -> (dia, monto). Clave: el periodo ABIERTO
+    off = 0                                 # crece mientras paginamos, las filas se corren y la
+    for i in range(25):                     # misma linea puede caer dos veces en el barrido.
         if i:
             _time.sleep(13)                 # 5 pedidos por minuto
         r = requests.get(base + str(off), headers=h, timeout=45)
@@ -17305,12 +17305,69 @@ def _meli_pads_bajar(email, periodo):
             if (ci.get("detail_sub_type") or "") != "PADS":
                 continue
             f = (ci.get("creation_date_time") or "")[:10]
-            if len(f) == 10:
-                dias[f] = round(dias.get(f, 0.0) + float(ci.get("detail_amount") or 0), 2)
+            did = ci.get("detail_id")
+            if len(f) != 10 or did is None:
+                continue
+            vistos[str(did)] = (f, float(ci.get("detail_amount") or 0))
         off += len(res)
         if not res or off >= int(j.get("total") or 0):
             break
+    dias = {}
+    for f, monto in vistos.values():
+        dias[f] = round(dias.get(f, 0.0) + monto, 2)
     return dias
+
+
+def _meli_pads_lineas(email, periodo):
+    """Las lineas de publicidad crudas del periodo, para poder auditar el numero."""
+    tok = _meli_token(email)
+    if not tok:
+        return []
+    h = {"Authorization": "Bearer " + tok, "x-format-new": "true"}
+    base = ("%s/billing/integration/periods/key/%s/group/ML/details"
+            "?document_type=BILL&limit=1000&offset=" % (MELI_API, periodo))
+    out = {}
+    off = 0
+    for i in range(25):
+        if i:
+            _time.sleep(13)
+        r = requests.get(base + str(off), headers=h, timeout=45)
+        if r.status_code != 200:
+            break
+        j = r.json()
+        res = j.get("results") or []
+        for it in res:
+            ci = it.get("charge_info") or {}
+            if (ci.get("detail_sub_type") or "") != "PADS":
+                continue
+            out[str(ci.get("detail_id"))] = {"id": ci.get("detail_id"),
+                                             "fecha": ci.get("creation_date_time"),
+                                             "monto": ci.get("detail_amount")}
+        off += len(res)
+        if not res or off >= int(j.get("total") or 0):
+            break
+    return sorted(out.values(), key=lambda x: (x.get("fecha") or ""))
+
+
+@app.get("/meli-publi-detalle")
+def meli_publi_detalle():
+    """Las lineas de publicidad de MELI de un periodo, una por una. Solo lectura."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    per = (request.args.get("periodo") or "").strip()
+    if not per:
+        pers = _meli_pads_periodos(email)
+        per = pers[0]["key"] if pers else ""
+    if not per:
+        return jsonify({"ok": False, "msg": "sin períodos"})
+    ls = _meli_pads_lineas(email, per)
+    por_dia = {}
+    for x in ls:
+        d = (x.get("fecha") or "")[:10]
+        por_dia[d] = round(por_dia.get(d, 0.0) + float(x.get("monto") or 0), 2)
+    return jsonify({"ok": True, "periodo": per, "lineas": ls, "por_dia": por_dia,
+                    "total": round(sum(por_dia.values()), 2)})
 
 
 def _meli_pads_sync(email, dias_atras=70, forzar=False):
