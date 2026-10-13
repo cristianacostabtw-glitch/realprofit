@@ -225,6 +225,23 @@ def meli_ads_diag():
         ("pads_user", "%s/advertising/product_ads/campaigns?user_id=%s&date_from=%s&date_to=%s"
          % (MELI_API, uid, d0, d1), h1),
     ]
+    # ?ruta=/advertising/... prueba UNA ruta puntual, para no deployar por cada intento.
+    # Solo lectura y SOLO bajo /advertising/ de la API de MELI: no se puede apuntar a otro host
+    # ni a otro recurso de la cuenta.
+    _r = (request.args.get("ruta") or "").strip()
+    if _r:
+        if not _r.startswith("/advertising/"):
+            return jsonify({"ok": False, "msg": "solo rutas /advertising/"}), 400
+        _v = (request.args.get("v") or "1").strip()
+        try:
+            rr = requests.get(MELI_API + _r, timeout=25,
+                              headers={"Authorization": "Bearer " + tok, "Api-Version": _v})
+            return jsonify({"ok": True, "ruta": _r, "http": rr.status_code,
+                            "body": (rr.text or "")[:1500]})
+        except Exception as e:
+            return jsonify({"ok": False, "ruta": _r,
+                            "error": "%s: %s" % (type(e).__name__, str(e)[:150])})
+
     out = {}
     for nombre, url, hh in pruebas:
         try:
