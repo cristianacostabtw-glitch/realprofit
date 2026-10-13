@@ -2623,7 +2623,9 @@ _SOLO_DASH = r"""
          if(_rawpub>(window._rpPubMax||0)) window._rpPubMax=_rawpub;                       // solo crece
          var pub=window._rpPubMax||0;
          var ratio = _rawpub>0 ? (pub/_rawpub) : 1;
-         window._rpOvVals.rpinv   = money(pub);
+         // La tarjeta muestra la pauta TOTAL (Meta + MELI). El resto de los overlays sigue
+         // derivando de 'pub' (Meta estabilizado) porque el CPA y el ROAS miden solo Meta.
+         window._rpOvVals.rpinv   = money(pub + (+(_ov.publi_meli||0)));
          window._rpOvVals.rpcpa   = money(Math.round((+(_ov.cpa||0))*ratio));             // CPA ∝ gasto
          window._rpOvVals.rproas  = num(ratio>0 ? (+(_ov.roas||0))/ratio : 0)+'x';        // ROAS ∝ 1/gasto
          window._rpOvVals.rpgan   = money(Math.round((+(_ov.ganancia||_ov.tot_ganancia||0)) + _rawpub - pub)); // ganancia baja lo que subió el gasto
