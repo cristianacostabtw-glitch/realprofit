@@ -11537,7 +11537,11 @@ def meli_pendientes_lista():
             elif _edad > 45:
                 _refrescando = True                   # ya lo esta refrescando el otro worker
             # NO se muestra nada viejo: lo guardado se confirma contra ML antes de mostrarlo.
-            _fd, _verif = _meli_verificar(email, _fd)
+            # Salvo en el poll automatico (sinver=1), que solo pregunta si el barrido de fondo
+            # ya termino: volver a confirmar cada 9 s ocupaba los 2 workers y hacia esperar al
+            # resto de la pagina (Ventas tardaba 14 s por eso).
+            _sinver = (request.args.get("sinver") or "") in ("1", "true", "si")
+            _fd, _verif = (_fd, False) if _sinver else _meli_verificar(email, _fd)
             if _verif:
                 _edad = 0
                 _meli_listos_guardar(email, _fd)
@@ -21776,14 +21780,7 @@ function renderEtiquetas(){
   +'<div id="etqm2" style="font-size:12.5px;font-weight:600;margin-top:10px;min-height:16px"></div>'
   +'<div id="etqlista" style="margin-top:12px;color:#7aa2c8;font-size:13px">Buscando ventas pendientes&#8230;</div>'
   +'</div>'
-  +'<div class="card" style="margin-top:16px">'
-  +'<b style="font-size:14px">&#191;Ten&#233;s el PDF bajado a mano?</b>'
-  +'<p style="color:#7aa2c8;font-size:12.5px;margin:6px 0 12px">Sub&#237; el PDF de Mercado Libre (con la hoja &#171;Identificaci&#243;n Productos&#187;) y le estampo el SKU igual.</p>'
-  +'<input type="file" id="etqf" accept="application/pdf" style="display:block;margin-bottom:14px;color:#9fb3cc;font-size:13px">'
-  +'<button id="etqb" onclick="etqProc()" style="background:transparent;color:#ffe600;border:1px solid #6b5f18;border-radius:10px;padding:11px 20px;font-weight:700;font-size:13.5px;cursor:pointer">Procesar ese PDF</button>'
-  +' <span id="etqm" style="font-size:12.5px;font-weight:600;margin-left:8px"></span>'
-  +'<div id="etqres" style="margin-top:16px"></div>'
-  +'</div>';
+  ;   // la tarjeta de "subir el PDF a mano" se saco: era de cuando no estaba la API de ML
  etqCargar();
 }
 var ETQTODAS=false;
@@ -21853,8 +21850,10 @@ function etqPintar(j){
    avis='<div id="etqfresh" style="background:#101b2a;border:1px solid #1d3147;color:#7aa2c8;border-radius:10px;'
       +'padding:8px 12px;margin-bottom:12px;font-size:12px;font-weight:600">&#10003; Estas '+e.length
       +' estan confirmadas ahora &#183; &#8635; buscando si entraron ventas nuevas&#8230;</div>';
+   // El poll NO vuelve a verificar contra ML (eso ocupa los 2 workers y dejaba sin aire
+   // al resto de la pagina: Ventas tardaba 14 s). Solo pregunta si el barrido ya termino.
    clearTimeout(window._etqPoll);
-   window._etqPoll=setTimeout(function(){ etqCargar(); }, 9000);
+   window._etqPoll=setTimeout(function(){ etqCargar(0,1); }, 9000);
   } else if(edad>120){
    avis='<div style="color:#7aa2c8;font-size:12px;margin-bottom:10px">Datos de hace '
       +Math.round(edad/60)+' min &#183; tocá Actualizar para traer lo de ahora.</div>';
@@ -21862,10 +21861,10 @@ function etqPintar(j){
   L.innerHTML=avis+tog+av+cards;
   etqCnt();
 }
-function etqCargar(fresco){
+function etqCargar(fresco, callado){
  var L=document.getElementById('etqlista');
- if(!L)return;
- var yaHabia = (!!_ETQJ && !fresco);
+ if(!L)return;                              // no esta a la vista (p.ej. estas en Ventas)
+ var yaHabia = (!!_ETQJ && !fresco) || !!callado;
  if(yaHabia){
   etqPintar(_ETQJ);                       // en pantalla al instante, sin esperar nada
  } else {
@@ -21875,7 +21874,7 @@ function etqCargar(fresco){
   window._etqTk=setInterval(function(){var c=document.getElementById('etqcrono');
     if(!c){clearInterval(window._etqTk);return;} c.textContent='('+Math.round((Date.now()-t0)/1000)+'s)';},1000);
  }
- var _qs=[]; if(ETQTODAS)_qs.push('todas=1'); if(fresco)_qs.push('fresco=1');
+ var _qs=[]; if(ETQTODAS)_qs.push('todas=1'); if(fresco)_qs.push('fresco=1'); if(callado)_qs.push('sinver=1');
  fetch('/meli/pendientes-lista'+(_qs.length?('?'+_qs.join('&')):''))
  .then(function(r){return r.json();})
  .then(function(j){
