@@ -10651,6 +10651,30 @@ _MELI_LISTOS_T = {}            # {email: {"ordenes":s, "envios":s, "resto":s, "n
 # La lista TAMBIEN va a disco. Dos razones: son 2 workers (lo que cachea uno no lo ve el otro)
 # y gunicorn recicla el worker cada tantas requests, llevandose cualquier cosa en memoria.
 _MELI_LISTOS_FILE = DATA_DIR / "meli_listos.json"      # {email: {"ts":…, "filas":[…]}}
+# El nombre del comprador hay que pedirlo con /orders/{id} de a UNO (orders/search solo trae el
+# nickname). Con 70 ventas eran 70 llamadas = 47 s de los 70 s que tardaba la pantalla. Un
+# nombre no cambia nunca, asi que se guarda en disco y se pide UNA sola vez en la vida.
+_MELI_NOMBRES = DATA_DIR / "meli_nombres.json"         # {order_id: "Nombre Apellido"}
+
+
+def _meli_nombres_leer():
+    try:
+        return _json.loads(_MELI_NOMBRES.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _meli_nombres_guardar(nuevos):
+    if not nuevos:
+        return
+    try:
+        d = _meli_nombres_leer()
+        d.update(nuevos)
+        if len(d) > 30000:
+            d = dict(list(d.items())[-20000:])
+        _MELI_NOMBRES.write_text(_json.dumps(d), encoding="utf-8")
+    except Exception:
+        pass
 _MELI_LISTOS_LOCK = DATA_DIR / "meli_listos_lock.json"  # {email: ts} — refresco en curso
 
 
@@ -10700,6 +10724,49 @@ def _meli_refresco_soltar(email):
         _MELI_LISTOS_LOCK.write_text(_json.dumps(d), encoding="utf-8")
     except Exception:
         pass
+
+
+def _meli_verificar(email, filas):
+    """Re-chequea CONTRA MERCADO LIBRE, ahora mismo, solo los envios de la lista guardada.
+
+    Es la mitad rapida del asunto: lo caro es barrer 400 ordenes buscando ventas NUEVAS, pero
+    confirmar que las que ya conocemos siguen listas son unas pocas llamadas y van todas en
+    paralelo (2-4 s con 60 envios). Asi la pantalla nunca muestra una venta que ya se despacho
+    o que el comprador cancelo: lo que se ve esta verificado al segundo, y las nuevas entran
+    cuando termina el barrido de fondo.
+    Devuelve (filas_vivas, se_pudo_verificar)."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not filas:
+        return filas, False
+    sids = [f.get("sid") for f in filas if f.get("sid")]
+    if not sids:
+        return filas, False
+    from concurrent.futures import ThreadPoolExecutor as _TPEv
+
+    def _ver(sid):
+        try:
+            r = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=6,
+                             headers={"Authorization": "Bearer " + tok, "x-format-new": "true"})
+            return sid, (r.json() if r.content else {})
+        except Exception:
+            return sid, None                       # None = no se pudo, NO se descarta la fila
+
+    estado = {}
+    with _TPEv(max_workers=24) as _ex:
+        for _sid, _js in _ex.map(_ver, sids):
+            estado[_sid] = _js
+    vivas, fuera = [], 0
+    for f in filas:
+        js = estado.get(f.get("sid"), None)
+        if js is None:                             # fallo la consulta: la dejo, no invento
+            vivas.append(f); continue
+        if (js.get("status") or "") != "ready_to_ship":
+            fuera += 1; continue                   # ya se despacho / se cancelo / cambio
+        f["tracking"] = js.get("tracking_number") or f.get("tracking") or ""
+        vivas.append(f)
+    if fuera:
+        print("[MELI verificar] %d ya no estan listas (de %d)" % (fuera, len(filas)), flush=True)
+    return vivas, True
 
 
 def _meli_refrescar_atras(email):
@@ -10851,6 +10918,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
     _T2 = _tcr.time()
     # Los nombres reales de los compradores, también en paralelo y SOLO de los que quedan listos
     # (/orders/search devuelve el buyer sin nombre, sólo el nickname — verificado 13/09).
+    _nomdisk = _meli_nombres_leer()
     _faltan = []
     for o in res:
         _s = (o.get("shipping") or {}).get("id")
@@ -10862,20 +10930,47 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
         if ((cache.get(_s) or {}).get("status") or "") != "ready_to_ship":
             continue
         _b0 = o.get("buyer") or {}
-        if not (_b0.get("first_name") or _b0.get("last_name")):
-            _faltan.append(o.get("id"))
+        if _b0.get("first_name") or _b0.get("last_name"):
+            continue
+        if str(o.get("id")) in _nomdisk:          # ya lo pedimos alguna vez: no se vuelve a pedir
+            continue
+        _faltan.append(o.get("id"))
 
     def _traer_orden(oid):
         try:
-            return oid, requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=8).json()
+            return oid, requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=6).json()
         except Exception:
             return oid, {}
 
     _ords = {}
     if _faltan:
-        with _TPE(max_workers=24) as _ex:
-            for _oid, _js in _ex.map(_traer_orden, _faltan):
-                _ords[_oid] = _js
+        # PRESUPUESTO DE TIEMPO. Si ML viene lento, se cortan los nombres que falten: la
+        # pantalla sale con el nickname y el nombre entra en el proximo barrido. Antes esto
+        # se llevaba 47 de los 70 segundos y por un dato que es solo cosmetico en la lista.
+        _tope = _tcr.time() + 6.0
+        _fut = {}
+        _ex = _TPE(max_workers=24)
+        try:
+            for _o in _faltan:
+                _fut[_ex.submit(_traer_orden, _o)] = _o
+            import concurrent.futures as _cf
+            _hechos, _ = _cf.wait(list(_fut), timeout=max(0.5, _tope - _tcr.time()))
+            for _f in _hechos:
+                try:
+                    _oid, _js = _f.result()
+                    _ords[_oid] = _js
+                except Exception:
+                    pass
+        finally:
+            _ex.shutdown(wait=False, cancel_futures=True)
+        _nuevos = {}
+        for _oid, _js in _ords.items():
+            _bb = (_js or {}).get("buyer") or {}
+            _nm = (" ".join(x for x in [_bb.get("first_name"), _bb.get("last_name")] if x)).strip()
+            if _nm:
+                _nuevos[str(_oid)] = _nm
+        _meli_nombres_guardar(_nuevos)
+        _nomdisk.update(_nuevos)
 
     for o in res:
         sid = (o.get("shipping") or {}).get("id")
@@ -10888,6 +10983,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
         if (sj.get("status") or "") != "ready_to_ship":
             continue
         _b = o.get("buyer") or {}
+        _nomgu = _nomdisk.get(str(o.get("id"))) or ""
         if not (_b.get("first_name") or _b.get("last_name")):
             _b = (_ords.get(o.get("id")) or {}).get("buyer") or _b
         e = envios.setdefault(sid, {
@@ -10896,8 +10992,8 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
             "fecha": (o.get("date_created") or "")[:10],
             "fecha_hora": o.get("date_created") or "",
             "buyer": _b.get("nickname", ""),
-            "nombre": (" ".join(x for x in [_b.get("first_name"),
-                                            _b.get("last_name")] if x)).strip(),
+            "nombre": ((" ".join(x for x in [_b.get("first_name"),
+                                             _b.get("last_name")] if x)).strip() or _nomgu),
             "titulo": "", "sku": "", "sabor": "", "precio": 0.0, "foto": "",
             # FLEX = lo entrega el vendedor el mismo dia. Va aparte de las de correo: las
             # etiquetas son distintas y el plazo tambien (Flex vence a las 21 hs).
@@ -11424,6 +11520,11 @@ def meli_pendientes_lista():
                 _refrescando = True
             elif _edad > 45:
                 _refrescando = True                   # ya lo esta refrescando el otro worker
+            # NO se muestra nada viejo: lo guardado se confirma contra ML antes de mostrarlo.
+            _fd, _verif = _meli_verificar(email, _fd)
+            if _verif:
+                _edad = 0
+                _meli_listos_guardar(email, _fd)
             filas, err = _fd, ""
         else:
             filas, err = None, None
@@ -21670,8 +21771,8 @@ function etqCargar(fresco){
   var edad=j.edad||0, avis='';
   if(j.refrescando){
    avis='<div id="etqfresh" style="background:#101b2a;border:1px solid #1d3147;color:#7aa2c8;border-radius:10px;'
-      +'padding:8px 12px;margin-bottom:12px;font-size:12px;font-weight:600">&#8635; Mostrando lo de hace '
-      +(edad<60?(edad+' s'):(Math.round(edad/60)+' min'))+' &#183; buscando ventas nuevas&#8230;</div>';
+      +'padding:8px 12px;margin-bottom:12px;font-size:12px;font-weight:600">&#10003; Estas '+e.length
+      +' estan confirmadas ahora &#183; &#8635; buscando si entraron ventas nuevas&#8230;</div>';
    clearTimeout(window._etqPoll);
    window._etqPoll=setTimeout(function(){ etqCargar(); }, 9000);
   } else if(edad>120){
