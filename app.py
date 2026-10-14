@@ -17259,6 +17259,333 @@ _PF_LOCKS_G = threading.Lock()     # candado del diccionario de candados
 
 PF_DIAS = DATA_DIR / "pf_dias.json"   # un dia CERRADO ya calculado: no cambia nunca mas
 
+# ---------------- Generador de creativos: biblioteca de moldes ----------------
+# Los moldes son estaticos REALES de la competencia bajados de la Meta Ad Library, filtrados
+# (sin videos, sin duplicados por hash, sin "ugly ads" sin texto) y rankeados por impresiones,
+# duplicados y antiguedad. Se suben desde la Mac en miniatura; el original se queda alla porque
+# el replicador corre ahi.
+GEN_DIR = DATA_DIR / "moldes"
+GEN_META = DATA_DIR / "moldes_meta.json"
+
+
+def _gen_meta() -> dict:
+    try:
+        return _json.loads(GEN_META.read_text(encoding="utf-8"))
+    except Exception:
+        return {"moldes": [], "actualizado": ""}
+
+
+@app.post("/gen-subir")
+def gen_subir():
+    """Recibe un zip con las miniaturas + el json de metadatos. Solo para el dueno."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    import zipfile, io as _io
+    f = request.files.get("zip")
+    meta = request.form.get("meta") or ""
+    if not f:
+        return jsonify({"ok": False, "msg": "falta el zip"}), 400
+    GEN_DIR.mkdir(parents=True, exist_ok=True)
+    n = 0
+    try:
+        with zipfile.ZipFile(_io.BytesIO(f.read())) as z:
+            for nom in z.namelist():
+                if not nom.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    continue
+                base = _os.path.basename(nom)
+                if not base or "/" in base or "\\" in base:
+                    continue
+                (GEN_DIR / base).write_bytes(z.read(nom))
+                n += 1
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 400
+    if meta:
+        GEN_META.write_text(meta, encoding="utf-8")
+    return jsonify({"ok": True, "imagenes": n, "moldes": len(_gen_meta().get("moldes") or [])})
+
+
+@app.get("/gen-datos")
+def gen_datos():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, **_gen_meta()})
+
+
+@app.get("/gen-img/<path:arch>")
+def gen_img(arch):
+    if not _user_actual():
+        return "", 401
+    base = _os.path.basename(arch)
+    f = GEN_DIR / base
+    if not f.exists():
+        return "", 404
+    return send_file(str(f), mimetype="image/jpeg", max_age=86400)
+
+
+@app.get("/generador")
+def generador():
+    if not _user_actual():
+        return redirect("/login")
+    return Response(_GEN_PAGE, mimetype="text/html")
+
+
+_GEN_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Generador &middot; RealProfit</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{
+ --acc:#7c6cff; --acc2:#a99bff; --acc3:#5b47e0; --acc-sb:rgba(124,108,255,.1); --acc-ln:rgba(124,108,255,.3);
+ --ink:#e9eff8; --ink2:#96a4b8; --ink3:#64748b;
+ --bg:#070b12; --surf:#101925; --surf2:#18222f; --line:#1f2c3d; --line2:#2a3a50;
+ --ok:#4ade80; --ok-sb:rgba(74,222,128,.1); --ok-ln:rgba(74,222,128,.26);
+ --esp:#eabd63; --esp-sb:rgba(234,189,99,.1); --esp-ln:rgba(234,189,99,.26);
+ --r:20px; --r-m:12px; --r-s:9px;
+ --s1:0 1px 2px rgba(0,0,0,.35);
+ --s2:0 1px 2px rgba(0,0,0,.35), 0 12px 26px -14px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;
+ font-family:Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;
+ position:relative;min-height:100vh}
+body:before{content:"";position:fixed;inset:0 0 auto 0;height:420px;pointer-events:none;z-index:0;
+ background:radial-gradient(85% 150% at 50% -45%, rgba(124,108,255,.13), transparent 70%)}
+h1,h2,.kv{font-family:Archivo,Inter,sans-serif;letter-spacing:-.025em}
+.wrap{max-width:1420px;margin:0 auto;padding:26px 20px 80px;position:relative;z-index:1;
+ display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end;justify-content:space-between}
+.tit{display:flex;align-items:flex-start;gap:13px}
+.mk{width:38px;height:38px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;
+ background:linear-gradient(145deg,var(--acc2),var(--acc3));margin-top:3px;
+ box-shadow:0 5px 16px -4px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.3)}
+h1{font-size:28px;font-weight:800;margin:0;line-height:1.1}
+.sub{color:var(--ink2);font-size:13px;margin:6px 0 0;max-width:660px}
+.sub b{color:var(--ink);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--surf);color:var(--ink);border-radius:var(--r-m);
+ padding:10px 15px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;
+ text-decoration:none;display:inline-flex;align-items:center;gap:7px;box-shadow:var(--s1);
+ transition:transform .15s,border-color .15s,background .15s}
+.btn:hover{transform:translateY(-1px);border-color:var(--line2)}
+.btn.pri{border-color:transparent;color:#0b0820;background:linear-gradient(145deg,var(--acc2),var(--acc3));
+ box-shadow:0 5px 16px -6px var(--acc-ln), inset 0 1px 0 rgba(255,255,255,.26)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+@media(max-width:860px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.k{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;
+ box-shadow:var(--s2);position:relative;overflow:hidden}
+.k:before{content:"";position:absolute;inset:0;pointer-events:none;
+ background:linear-gradient(160deg,var(--tono-sb),transparent 55%)}
+.k .l{color:var(--ink3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;position:relative}
+.kv{font-size:30px;font-weight:800;margin-top:6px;line-height:1;color:var(--tono);position:relative}
+.k.a{--tono:var(--acc);--tono-sb:var(--acc-sb)} .k.b{--tono:var(--esp);--tono-sb:var(--esp-sb)}
+.k.c{--tono:#4cc9f0;--tono-sb:rgba(76,201,240,.1)} .k.d{--tono:var(--ok);--tono-sb:var(--ok-sb)}
+.panel{background:var(--surf);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--s2);overflow:hidden}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:13px 18px;
+ background:linear-gradient(var(--surf2),transparent);border-bottom:1px solid var(--surf2)}
+.bar .q{color:var(--ink2);font-size:13px;margin-right:auto}
+.bar .q b{color:var(--ink)}
+select,input[type=search]{background:var(--surf2);border:1px solid var(--line);color:var(--ink);
+ border-radius:var(--r-s);padding:9px 11px;font-size:13px;font-family:inherit;cursor:pointer}
+select:focus,input:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-sb)}
+.fil{display:flex;gap:7px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--surf2)}
+.f{border:1px solid var(--line);background:var(--surf2);color:var(--ink2);border-radius:999px;
+ padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;
+ transition:background .14s,color .14s,border-color .14s;white-space:nowrap}
+.f:hover{color:var(--ink)}
+.f.on{background:var(--acc-sb);border-color:var(--acc-ln);color:var(--acc2)}
+.f .n{opacity:.6;margin-left:5px;font-size:11px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:14px;padding:18px}
+.m{background:var(--surf2);border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden;
+ cursor:pointer;position:relative;transition:transform .15s,border-color .15s,box-shadow .15s}
+.m:hover{transform:translateY(-2px);border-color:var(--line2);box-shadow:var(--s2)}
+.m.sel{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-sb)}
+.m img{width:100%;display:block;aspect-ratio:1/1;object-fit:cover;background:#0b1118}
+.m .inf{padding:9px 11px 11px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.m .sc{font-family:Archivo,sans-serif;font-weight:800;font-size:14px;color:var(--acc2)}
+.m .mc{color:var(--ink3);font-size:11px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m .dp{color:var(--ink2);font-size:10.5px;font-weight:700;background:var(--surf);border:1px solid var(--line);
+ border-radius:999px;padding:2px 7px}
+.m .tick{position:absolute;top:9px;right:9px;width:24px;height:24px;border-radius:50%;
+ background:var(--acc);color:#0b0820;display:none;align-items:center;justify-content:center;
+ font-weight:800;font-size:14px;box-shadow:var(--s2)}
+.m.sel .tick{display:flex}
+.m .pais{position:absolute;top:9px;left:9px;background:rgba(7,11,18,.8);backdrop-filter:blur(6px);
+ border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:700;
+ letter-spacing:.06em;color:var(--ink2)}
+.vacio{padding:60px 20px;text-align:center;color:var(--ink3);font-size:13.5px}
+.vacio b{display:block;color:var(--ink2);font-size:16px;margin-bottom:6px;font-family:Archivo,sans-serif}
+.ov{position:fixed;inset:0;z-index:50;background:rgba(4,8,14,.8);backdrop-filter:blur(6px);
+ display:none;align-items:center;justify-content:center;padding:20px}
+.ov.on{display:flex}
+.ov .box{width:100%;max-width:960px;max-height:90vh;overflow:auto;background:var(--surf);
+ border:1px solid var(--line);border-radius:var(--r);box-shadow:0 24px 50px -24px #000;
+ display:grid;grid-template-columns:1fr 340px}
+@media(max-width:800px){.ov .box{grid-template-columns:1fr}}
+.ov .box img{width:100%;display:block;background:#0b1118}
+.ov .lado{padding:20px;display:flex;flex-direction:column;gap:12px}
+.ov h2{font-size:17px;margin:0}
+.ov .dato{display:flex;justify-content:space-between;gap:10px;font-size:13px;
+ padding:7px 0;border-top:1px solid var(--surf2)}
+.ov .dato span:first-child{color:var(--ink3)}
+.ov .copy{background:var(--surf2);border:1px solid var(--line);border-radius:var(--r-s);
+ padding:11px 13px;font-size:12.5px;color:var(--ink2);max-height:190px;overflow:auto;line-height:1.5}
+.tags{display:flex;gap:6px;flex-wrap:wrap}
+.tg{background:var(--acc-sb);border:1px solid var(--acc-ln);color:var(--acc2);border-radius:999px;
+ padding:3px 10px;font-size:10.5px;font-weight:700;letter-spacing:.04em}
+.cerrar{background:var(--surf2);border:1px solid var(--line);color:var(--ink2);width:32px;height:32px;
+ border-radius:var(--r-s);cursor:pointer;font-size:15px;position:absolute;top:14px;right:14px;z-index:2}
+</style></head><body>
+<div class="wrap">
+ <header>
+  <div class="tit">
+   <span class="mk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0b0820"
+    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/>
+    <rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+    <path d="M17.5 14v7M14 17.5h7"/></svg></span>
+   <div><h1>Generador</h1>
+    <p class="sub">Est&aacute;ticos <b>reales</b> de la competencia, bajados de la Meta Ad Library.
+     Sin videos, sin duplicados y sin fotos sueltas. Ordenados por lo que de verdad est&aacute;
+     escalando: posici&oacute;n en impresiones, veces duplicado y d&iacute;as al aire.</p></div>
+  </div>
+  <div class="acts"><a class="btn" href="/">&larr; Volver</a>
+   <button class="btn pri" onclick="verCola()">Elegidos <span id="ncola">0</span></button></div>
+ </header>
+ <div class="kpis">
+  <div class="k a"><div class="l">Moldes</div><div class="kv" id="k1">&mdash;</div></div>
+  <div class="k b"><div class="l">Marcas</div><div class="kv" id="k2">&mdash;</div></div>
+  <div class="k c"><div class="l">Pa&iacute;ses</div><div class="kv" id="k3">&mdash;</div></div>
+  <div class="k d"><div class="l">Elegidos</div><div class="kv" id="k4">0</div></div>
+ </div>
+ <div class="panel">
+  <div class="bar">
+   <span class="q"><b id="cuantos">0</b> moldes</span>
+   <input type="search" id="bus" placeholder="Buscar en el texto del aviso&hellip;" oninput="pintar()" style="min-width:230px">
+   <select id="marca" onchange="pintar()"><option value="">Todas las marcas</option></select>
+   <select id="orden" onchange="pintar()">
+    <option value="score">Mejor score</option><option value="dups">M&aacute;s duplicados</option>
+    <option value="dias">M&aacute;s d&iacute;as al aire</option></select>
+  </div>
+  <div class="fil" id="fmts"></div>
+  <div class="grid" id="grid"></div>
+ </div>
+</div>
+<div class="ov" id="ov" onclick="if(event.target===this)cerrar()"><div class="box" style="position:relative">
+ <button class="cerrar" onclick="cerrar()">&times;</button>
+ <img id="ovimg" src="">
+ <div class="lado">
+  <h2 id="ovtit">&mdash;</h2>
+  <div class="tags" id="ovtags"></div>
+  <div><div class="dato"><span>Score</span><b id="ovsc"></b></div>
+   <div class="dato"><span>Marca</span><b id="ovmc"></b></div>
+   <div class="dato"><span>Duplicados</span><b id="ovdp"></b></div>
+   <div class="dato"><span>D&iacute;as al aire</span><b id="ovdi"></b></div>
+   <div class="dato"><span>Posici&oacute;n impresiones</span><b id="ovps"></b></div></div>
+  <div class="copy" id="ovcopy"></div>
+  <button class="btn pri" id="ovbtn" onclick="elegir()" style="justify-content:center">Elegir para replicar</button>
+ </div></div></div>
+<script>
+var D=[], COLA={}, FMT='', ACT=null;
+function esc(t){return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+fetch('/gen-datos').then(function(r){return r.json();}).then(function(j){
+  D=j.moldes||[]; (j.cola||[]).forEach(function(a){COLA[a]=1;});
+  var mc={},pz={};
+  D.forEach(function(m){ mc[m.marca]=(mc[m.marca]||0)+1; pz[m.pais||'US']=1; });
+  document.getElementById('k1').textContent=D.length;
+  document.getElementById('k2').textContent=Object.keys(mc).length;
+  document.getElementById('k3').textContent=Object.keys(pz).length;
+  var sel=document.getElementById('marca');
+  Object.keys(mc).sort().forEach(function(k){ var o=document.createElement('option');
+    o.value=k; o.textContent=k+' ('+mc[k]+')'; sel.appendChild(o); });
+  var ff={}; D.forEach(function(m){ (m.formatos||[]).forEach(function(f){ ff[f]=(ff[f]||0)+1; }); });
+  var h='<button class="f on" onclick="setF(\'\')">Todos<span class="n">'+D.length+'</span></button>';
+  Object.keys(ff).sort(function(a,b){return ff[b]-ff[a];}).forEach(function(f){
+    h+='<button class="f" onclick="setF(\''+f+'\')">'+f.replace(/_/g,' ')+'<span class="n">'+ff[f]+'</span></button>';});
+  document.getElementById('fmts').innerHTML=h;
+  cnt(); pintar();
+}).catch(function(){ document.getElementById('grid').innerHTML='<div class="vacio"><b>No pude leer la biblioteca</b>Todav&iacute;a no se subieron los moldes.</div>'; });
+function setF(f){ FMT=f; var b=document.querySelectorAll('.f');
+  for(var i=0;i<b.length;i++) b[i].classList.toggle('on', (b[i].textContent.indexOf(f.replace(/_/g,' '))===0) || (f===''&&i===0));
+  pintar(); }
+function cnt(){ var n=Object.keys(COLA).length;
+  document.getElementById('ncola').textContent=n; document.getElementById('k4').textContent=n; }
+function filtrados(){
+  var q=(document.getElementById('bus').value||'').toLowerCase();
+  var mk=document.getElementById('marca').value, or=document.getElementById('orden').value;
+  var L=D.filter(function(m){
+    if(FMT && (m.formatos||[]).indexOf(FMT)<0) return false;
+    if(mk && m.marca!==mk) return false;
+    if(q && ((m.texto||'')+' '+(m.titulo||'')).toLowerCase().indexOf(q)<0) return false;
+    return true; });
+  L.sort(function(a,b){ return (b[or]||0)-(a[or]||0); });
+  return L;
+}
+function pintar(){
+  var L=filtrados();
+  document.getElementById('cuantos').textContent=L.length;
+  if(!L.length){ document.getElementById('grid').innerHTML='<div class="vacio"><b>Nada con ese filtro</b>Prob&aacute; con otro formato o limpi&aacute; la b&uacute;squeda.</div>'; return; }
+  var h='';
+  L.forEach(function(m,i){
+    h+='<div class="m'+(COLA[m.arch]?' sel':'')+'" onclick="abrir('+i+')">'
+      +'<span class="tick">&#10003;</span>'
+      +'<span class="pais">'+esc(m.pais||'US')+'</span>'
+      +'<img loading="lazy" src="/gen-img/'+encodeURIComponent(m.arch)+'">'
+      +'<div class="inf"><span class="sc">'+(m.score||0).toFixed(2)+'</span>'
+      +'<span class="mc">'+esc(m.marca||'')+'</span>'
+      +'<span class="dp">'+(m.dups||0)+'x &middot; '+(m.dias||0)+'d</span></div></div>';
+  });
+  document.getElementById('grid').innerHTML=h;
+  window.__L=L;
+}
+function abrir(i){ var m=window.__L[i]; ACT=m;
+  document.getElementById('ovimg').src='/gen-img/'+encodeURIComponent(m.arch);
+  document.getElementById('ovtit').textContent=m.titulo||m.marca||'Molde';
+  document.getElementById('ovsc').textContent=(m.score||0).toFixed(2);
+  document.getElementById('ovmc').textContent=m.marca||'';
+  document.getElementById('ovdp').textContent=(m.dups||0)+' anuncios';
+  document.getElementById('ovdi').textContent=(m.dias||0)+' días';
+  document.getElementById('ovps').textContent='#'+(m.pos||0);
+  document.getElementById('ovcopy').textContent=(m.texto||m.cuerpo||'(sin texto)').slice(0,900);
+  document.getElementById('ovtags').innerHTML=(m.formatos||[]).map(function(f){
+    return '<span class="tg">'+f.replace(/_/g,' ')+'</span>';}).join('');
+  document.getElementById('ovbtn').textContent=COLA[m.arch]?'Sacar de la lista':'Elegir para replicar';
+  document.getElementById('ov').classList.add('on');
+}
+function cerrar(){ document.getElementById('ov').classList.remove('on'); }
+function elegir(){ if(!ACT) return;
+  fetch('/gen-elegir',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({arch:ACT.arch})}).then(function(r){return r.json();}).then(function(j){
+    if(j.en_cola) COLA[ACT.arch]=1; else delete COLA[ACT.arch];
+    cnt(); pintar(); cerrar(); });
+}
+function verCola(){ var k=Object.keys(COLA);
+  alert(k.length? ('Elegidos para replicar ('+k.length+'):\n\n'+k.join('\n')) : 'Todavía no elegiste ninguno.'); }
+</script></body></html>
+"""
+
+
+@app.post("/gen-elegir")
+def gen_elegir():
+    """Marca/desmarca un molde como ELEGIDO para replicar. La cola la lee la Mac."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    j = request.get_json(silent=True) or {}
+    arch = _os.path.basename(str(j.get("arch") or ""))
+    if not arch:
+        return jsonify({"ok": False, "msg": "falta arch"}), 400
+    d = _gen_meta()
+    cola = set(d.get("cola") or [])
+    if arch in cola:
+        cola.discard(arch)
+    else:
+        cola.add(arch)
+    d["cola"] = sorted(cola)
+    try:
+        GEN_META.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    return jsonify({"ok": True, "en_cola": arch in cola, "cola": len(cola)})
+
+
 # ---------------- Publicidad de MercadoLibre (Product Ads) ----------------
 # El gasto de la pauta de MELI NO sale de la API de publicidad: esa API esta rota (devuelve el
 # advertiser pero 404 en todo lo demas). Sale de la API de FACTURACION, donde cada cargo es una
