@@ -10743,12 +10743,16 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
     from concurrent.futures import ThreadPoolExecutor as _TPE
 
     def _traer_envio(sid):
-        try:
-            return sid, requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
-                                     headers={"Authorization": "Bearer " + tok,
-                                              "x-format-new": "true"}).json()
-        except Exception:
-            return sid, {}
+        # timeout CORTO con un reintento en vez de uno largo: con 24 hilos el total lo marca
+        # la llamada mas lenta, asi que una sola colgada de 20 s frenaba toda la pantalla.
+        for _t in (6, 9):
+            try:
+                return sid, requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=_t,
+                                         headers={"Authorization": "Bearer " + tok,
+                                                  "x-format-new": "true"}).json()
+            except Exception:
+                continue
+        return sid, {}
 
     _fin = _meli_ship_est()               # envíos ya cerrados: no hay que volver a preguntarlos
     _sids = []
@@ -10796,7 +10800,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
 
     def _traer_orden(oid):
         try:
-            return oid, requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=20).json()
+            return oid, requests.get("%s/orders/%s" % (MELI_API, oid), headers=h, timeout=8).json()
         except Exception:
             return oid, {}
 
@@ -10892,6 +10896,9 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
     _crono["total"] = round(_tcr.time() - _T0, 1)
     _crono["resto"] = round(_crono["total"] - _crono.get("ordenes", 0) - _crono.get("envios", 0), 1)
     _MELI_LISTOS_T[email] = _crono
+    print("[MELI listos] total=%ss ordenes=%ss envios=%ss(%d) resto=%ss ordenes_leidas=%d filas=%d"
+          % (_crono.get("total"), _crono.get("ordenes"), _crono.get("envios"),
+             _crono.get("n_env", 0), _crono.get("resto"), len(res), len(filas)), flush=True)
     if not sids:                       # solo se cachea la lista COMPLETA, no una seleccion
         _MELI_LISTOS_CACHE[email] = (_tcr.time(), filas)
     return filas, ""
