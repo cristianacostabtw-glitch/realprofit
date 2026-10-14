@@ -10405,6 +10405,7 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
     labels = []
     seen = set()
     sin_match = []
+    flex_hits = set()        # las ubicadas por "Envio:" (FLEX): el sello va en otro lado
     for i in label_pages:
         pg = doc[i]
         W, H = pg.rect.width, pg.rect.height
@@ -10417,12 +10418,38 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
             rr = pg.search_for(trak)
             if rr:
                 en_hoja.append(((rr[0].x0 + rr[0].x1) / 2.0, trak, rr[0]))
+        # FLEX (self_service): la etiqueta NO trae el HC...AR. Trae el MISMO numero de
+        # seguimiento que da la API, pero impreso partido con un espacio:
+        #     Envio: 4825368 7513     ->  48253687513
+        # Por eso buscarlo entero nunca lo encontraba, la hoja se descartaba y el PDF salia
+        # vacio (o, despues del primer arreglo, salia cortado pero SIN el SKU estampado).
+        # Aca rearmo el numero juntando las palabras numericas que siguen a "Envio:".
         if not en_hoja:
-            sin_match.append(i)          # p.ej. las etiquetas FLEX: no imprimen el HC...AR
+            _pal = pg.get_text("words")
+            for _i2, _w in enumerate(_pal):
+                if not _w[4].lower().startswith("envio"):
+                    continue
+                _num = ""
+                _r = fitz.Rect(_w[0], _w[1], _w[2], _w[3])
+                for _w2 in _pal[_i2 + 1:_i2 + 7]:
+                    if abs(_w2[1] - _w[1]) > 3:          # ya es otra linea
+                        break
+                    _tx = _w2[4].strip()
+                    if not _tx.isdigit():
+                        break
+                    _num += _tx
+                    _r |= fitz.Rect(_w2[0], _w2[1], _w2[2], _w2[3])
+                if _num and _num in mapa and _num not in seen:
+                    en_hoja.append(((_r.x0 + _r.x1) / 2.0, _num, _r))
+                    flex_hits.add(_num)
+        if not en_hoja:
+            sin_match.append(i)          # ni HC...AR ni "Envio:": la hoja va entera
             continue
         en_hoja.sort(key=lambda z: z[0])
         n = len(en_hoja)
         for (_xc, trak, rr) in en_hoja:
+            if trak in flex_hits:
+                continue      # se estampa mas abajo, cuando ya se sabe el recuadro de la etiqueta
             _meli_stamp(pg, rr, mapa[trak]["potes"])
         # Rango vertical del contenido de la hoja (para no dejar franjas blancas arriba/abajo).
         blocks = pg.get_text("blocks")
@@ -10449,6 +10476,14 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
             seen.add(trak)
             info = mapa[trak]
             bbox = fitz.Rect(lo, top, hi, bot) & pg.rect
+            if trak in flex_hits:
+                # En la etiqueta FLEX el sello va arriba a la derecha, que es la unica zona
+                # realmente vacia: debajo del "Envio:" esta el "Pack ID" y mas abajo el QR.
+                _t = "X%d %s" % (info["potes"], "POTE" if info["potes"] == 1 else "POTES")
+                _wt = fitz.get_text_length(_t, fontname="hebo", fontsize=13.0)
+                _xs = max(bbox.x0 + 6, bbox.x1 - _wt - 16)
+                _ys = bbox.y0 + 28
+                _meli_stamp(pg, fitz.Rect(_xs, _ys - 20, _xs, _ys - 20), info["potes"])
             labels.append({"page": i, "bbox": bbox, "potes": info["potes"],
                            "trak": trak, "buyer": info["buyer"], "sku": info["sku"]})
 
