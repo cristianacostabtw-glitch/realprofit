@@ -10660,10 +10660,42 @@ def _meli_envios_listos(email, sids=None):
     res = []
     try:
         import time as _tml
-        _off = 0
+
+        def _pagina(_off):
+            """Una pagina de /orders/search, con reintentos. Devuelve (ok, results, total)."""
+            _r = None
+            for _try in range(3):          # 429/5xx: reintentar, NO dar la lista por vacia
+                _r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
+                                  params={"seller": uid, "sort": "date_desc",
+                                          "limit": 50, "offset": _off})
+                if _r.status_code < 400:
+                    break
+                _tml.sleep(1.2 * (_try + 1))
+            if _r is None or _r.status_code >= 400:
+                return (_r.status_code if _r is not None else 0), [], 0
+            _j = _r.json() if _r.content else {}
+            return 200, (_j.get("results") or []), int((_j.get("paging") or {}).get("total") or 0)
+
+        # LAS PAGINAS VAN EN PARALELO. Antes eran hasta 8 llamadas EN FILA (400 ordenes de a 50)
+        # y cada una tarda ~1-2 s: solo esto se comia 10-15 s de la carga de la pantalla. La
+        # primera pagina dice cuantas ordenes hay en total (paging.total), asi que el resto se
+        # piden todas juntas. El resultado es identico, solo que sin la espera.
+        from concurrent.futures import ThreadPoolExecutor as _TPE0
+        _cod, _lote0, _total = _pagina(0)
+        if _cod != 200:
+            return [], ("MercadoLibre contesto %s al pedir las ventas. No es que no haya nada "
+                        "para despachar: volve a intentar en un minuto." % _cod)
+        res = list(_lote0)
+        _offs = list(range(50, min(400, _total), 50))
+        if _offs:
+            with _TPE0(max_workers=6) as _ex0:
+                for _c, _l, _t in _ex0.map(_pagina, _offs):
+                    if _c == 200:
+                        res += _l
+        _off = 400                       # ya estan todas: el while de abajo no entra
         while _off < 400:
             r = None
-            for _try in range(3):          # 429/5xx: reintentar, NO dar la lista por vacia
+            for _try in range(3):
                 r = requests.get("%s/orders/search" % MELI_API, headers=h, timeout=30,
                                  params={"seller": uid, "sort": "date_desc",
                                          "limit": 50, "offset": _off})
