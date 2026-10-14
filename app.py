@@ -10644,7 +10644,12 @@ def _meli_units_sku(sku):
     return 1, False
 
 
-def _meli_envios_listos(email, sids=None):
+_MELI_LISTOS_CACHE = {}        # {email: (ts, filas)} — vale pocos segundos, ver abajo
+_MELI_LISTOS_TTL = 90
+_MELI_LISTOS_T = {}            # {email: {"ordenes":s, "envios":s, "nombres":s, "n_env":n}}
+
+
+def _meli_envios_listos(email, sids=None, _fresco=False):
     """[{sid,tracking,buyer,titulo,sku,cant,potes,dudoso,detalle}] de los envios ready_to_ship.
 
     Agrupa POR ENVIO y suma TODOS los order_items de TODAS las ordenes de ese envio: un carrito
@@ -10654,6 +10659,16 @@ def _meli_envios_listos(email, sids=None):
     if not tok or not uid:
         return [], "MercadoLibre no conectado"
     h = {"Authorization": "Bearer " + tok}
+    import time as _tcr
+    _T0 = _tcr.time()
+    _crono = {}
+    # CACHE CORTO. La pantalla pide esto al abrir, al tocar Actualizar y de nuevo al bajar las
+    # etiquetas: eran tres barridos completos de ~45 s cada uno. Con 90 s de cache el segundo y
+    # el tercero salen al instante. "Actualizar" manda fresco=1 y lo saltea.
+    if not sids and not _fresco:
+        _c = _MELI_LISTOS_CACHE.get(email)
+        if _c and (_tcr.time() - _c[0]) < _MELI_LISTOS_TTL:
+            return _c[1], ""
     # PAGINAR. Con limit=50 se miraban SOLO las 50 ordenes mas nuevas: medido 14-sep la cuenta
     # tiene 66, asi que un envio listo para despachar mas viejo que esa ventana no aparecia en la
     # lista NI en el total de potes. Mismo bug que tenia el stock con Shopify.
@@ -10718,6 +10733,7 @@ def _meli_envios_listos(email, sids=None):
             _off += 50
     except Exception as e:
         return [], "%s: %s" % (type(e).__name__, str(e)[:120])
+    _crono["ordenes"] = round(_tcr.time() - _T0, 1); _T1 = _tcr.time()
     sel = set(str(x) for x in (sids or []))
     envios, cache = {}, {}
     # EN PARALELO. Antes esto pedía /shipments/{sid} de a uno dentro del for: con ~400 órdenes
@@ -10751,13 +10767,17 @@ def _meli_envios_listos(email, sids=None):
         cache[_s] = None
         _sids.append(_s)
     if _sids:
-        with _TPE(max_workers=12) as _ex:
+        # 24 y no 12: son GET independientes y chicos; el cuello es la latencia, no ML.
+        with _TPE(max_workers=24) as _ex:
             for _sid, _js in _ex.map(_traer_envio, _sids):
                 cache[_sid] = _js
         _meli_ship_est_guardar({k: (cache[k] or {}).get("status")
                                 for k in _sids
                                 if (cache[k] or {}).get("status") in _MELI_SHIP_FIN})
 
+    _crono["envios"] = round(_tcr.time() - _T1, 1)
+    _crono["n_env"] = len(_sids)
+    _T2 = _tcr.time()
     # Los nombres reales de los compradores, también en paralelo y SOLO de los que quedan listos
     # (/orders/search devuelve el buyer sin nombre, sólo el nickname — verificado 13/09).
     _faltan = []
@@ -10782,7 +10802,7 @@ def _meli_envios_listos(email, sids=None):
 
     _ords = {}
     if _faltan:
-        with _TPE(max_workers=12) as _ex:
+        with _TPE(max_workers=24) as _ex:
             for _oid, _js in _ex.map(_traer_orden, _faltan):
                 _ords[_oid] = _js
 
@@ -10869,6 +10889,11 @@ def _meli_envios_listos(email, sids=None):
         for x in e["detalle"]:
             x["foto"] = fotos.get(x.get("item_id")) or ""
         e["foto"] = (e["detalle"][0].get("foto") if e["detalle"] else "") or ""
+    _crono["total"] = round(_tcr.time() - _T0, 1)
+    _crono["resto"] = round(_crono["total"] - _crono.get("ordenes", 0) - _crono.get("envios", 0), 1)
+    _MELI_LISTOS_T[email] = _crono
+    if not sids:                       # solo se cachea la lista COMPLETA, no una seleccion
+        _MELI_LISTOS_CACHE[email] = (_tcr.time(), filas)
     return filas, ""
 
 
@@ -11307,8 +11332,9 @@ def meli_pendientes_lista():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
+    _fr = (request.args.get("fresco") or "") in ("1", "true", "si")
     try:
-        filas, err = _meli_envios_listos(email)
+        filas, err = _meli_envios_listos(email, _fresco=_fr)
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
     if err:
@@ -11321,7 +11347,8 @@ def meli_pendientes_lista():
     if not todas:                                   # las ya bajadas no vuelven a aparecer
         filas = [f for f in filas if not f["bajada"]]
     return jsonify({"ok": True, "envios": filas, "ya_bajadas": ya, "todas": todas,
-                    "potes": sum(f.get("potes") or 0 for f in filas)})
+                    "potes": sum(f.get("potes") or 0 for f in filas),
+                    "crono": _MELI_LISTOS_T.get(email) or {}})
 
 
 @app.post("/meli/etiquetas-bajar")
@@ -21462,7 +21489,7 @@ function renderEtiquetas(){
   +'<b style="font-size:15px">Ventas listas para despachar</b>'
   +'<span id="etqcnt" style="font-size:12.5px;color:#7aa2c8"></span>'
   +'<span style="flex:1;min-width:8px"></span>'
-  +'<button class="btn gh" onclick="etqCargar()">&#8635; Actualizar</button>'
+  +'<button class="btn gh" onclick="etqCargar(1)">&#8635; Actualizar</button>'
   +'<button class="btn gh" id="etqbajaflex" onclick="etqBajarSel(1)" style="border-color:var(--acc-ln);color:var(--acc)">&#11015; Etiquetas FLEX</button>'
   +'<button class="btn" id="etqbaja" onclick="etqBajarSel(0)">&#11015; Etiquetas env&iacute;o normal</button>'
   +'</div>'
@@ -21493,10 +21520,17 @@ function etqFecha(s){
  function p(n){ return (n<10?'0':'')+n; }
  return d.getDate()+' '+M[d.getMonth()]+' '+p(d.getHours())+':'+p(d.getMinutes())+' hs';
 }
-function etqCargar(){
+function etqCargar(fresco){
  var L=document.getElementById('etqlista'), C=document.getElementById('etqcnt');
- if(!L)return; L.innerHTML='Buscando ventas pendientes&#8230;'; if(C)C.textContent='';
- fetch('/meli/pendientes-lista'+(ETQTODAS?'?todas=1':'')).then(function(r){return r.json();}).then(function(j){
+ if(!L)return;
+ var t0=Date.now();
+ L.innerHTML='Buscando ventas pendientes&#8230; <span id="etqcrono" style="color:#7aa2c8"></span>';
+ var _tk=setInterval(function(){var c=document.getElementById('etqcrono');
+   if(!c){clearInterval(_tk);return;} c.textContent='('+Math.round((Date.now()-t0)/1000)+'s)';},1000);
+ if(C)C.textContent='';
+ var _qs=[]; if(ETQTODAS)_qs.push('todas=1'); if(fresco)_qs.push('fresco=1');
+ fetch('/meli/pendientes-lista'+(_qs.length?('?'+_qs.join('&')):'')).then(function(r){return r.json();}).then(function(j){
+  clearInterval(_tk);
   if(!j||!j.ok){ L.innerHTML='<span style="color:#e0637f">'+esc((j&&j.msg)||'No pude leer las ventas')+'</span>'; return; }
   var e=j.envios||[], yb=j.ya_bajadas||0;
   var tog = ETQTODAS
