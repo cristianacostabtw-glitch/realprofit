@@ -10751,10 +10751,26 @@ def _meli_verificar(email, filas):
         except Exception:
             return sid, None                       # None = no se pudo, NO se descarta la fila
 
+    # TOPE DE 4 SEGUNDOS. Medido: confirmar 70 envios tardaba 14 s porque /shipments de ML
+    # tarda 3-5 s cada uno. Lo que no vuelve a tiempo se deja como estaba (no se inventa ni se
+    # descarta) y el barrido de fondo lo corrige unos segundos despues. La pantalla nunca
+    # espera mas de ~4 s.
     estado = {}
-    with _TPEv(max_workers=24) as _ex:
-        for _sid, _js in _ex.map(_ver, sids):
-            estado[_sid] = _js
+    import concurrent.futures as _cfv
+    _exv = _TPEv(max_workers=min(40, max(8, len(sids))))
+    try:
+        _fs = {_exv.submit(_ver, _s): _s for _s in sids}
+        _ok, _no = _cfv.wait(list(_fs), timeout=4.0)
+        for _f in _ok:
+            try:
+                _sid, _js = _f.result()
+                estado[_sid] = _js
+            except Exception:
+                pass
+        if _no:
+            print("[MELI verificar] %d sin confirmar a tiempo (de %d)" % (len(_no), len(sids)), flush=True)
+    finally:
+        _exv.shutdown(wait=False, cancel_futures=True)
     vivas, fuera = [], 0
     for f in filas:
         js = estado.get(f.get("sid"), None)
@@ -20978,6 +20994,17 @@ h1{font-size:28px;margin:0 0 6px;font-weight:800;line-height:1.1}
  box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px var(--line), var(--s1)}
 .btn.gh:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,.1), inset 0 0 0 1px var(--line2), var(--sh)}
 
+/* ---- encabezado de la tarjeta: titulo a la izquierda, acciones a la derecha, UNA linea ---- */
+.hrow{display:flex;align-items:center;gap:14px;flex-wrap:nowrap}
+.htit{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+.htit b{font-family:var(--fh);font-size:15px;letter-spacing:-.02em;white-space:nowrap}
+.htit span{font-size:12.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hact{display:flex;align-items:center;gap:8px;flex:none;flex-wrap:nowrap}
+.btn.sm{padding:9px 13px;font-size:12.5px;gap:6px}
+.btn.gh.sm#etqbajaflex{color:var(--acc);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.08), inset 0 0 0 1px var(--acc-ln), var(--s1)}
+@media(max-width:860px){.hrow{flex-wrap:wrap}.hact{width:100%}}
+
 /* ---- filtros de tildado ---- */
 .pick{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;
  position:relative}
@@ -21731,13 +21758,14 @@ function renderEtiquetas(){
  m.innerHTML='<h1>Etiquetas + SKU (MercadoLibre)</h1>'
   +'<p class="lead">Tildá las ventas que vas a despachar y bajá las etiquetas ya estampadas con el SKU en <b>potes</b>, con la hoja <b>PARA EMPAQUETAR</b> al final.</p>'
   +'<div class="card">'
-  +'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-  +'<b style="font-size:15px">Ventas listas para despachar</b>'
-  +'<span id="etqcnt" style="font-size:12.5px;color:#7aa2c8"></span>'
-  +'<span style="flex:1;min-width:8px"></span>'
-  +'<button class="btn gh" onclick="etqCargar(1)">&#8635; Actualizar</button>'
-  +'<button class="btn gh" id="etqbajaflex" onclick="etqBajarSel(1)" style="border-color:var(--acc-ln);color:var(--acc)">&#11015; Etiquetas FLEX</button>'
-  +'<button class="btn" id="etqbaja" onclick="etqBajarSel(0)">&#11015; Etiquetas env&iacute;o normal</button>'
+  +'<div class="hrow">'
+  +'<div class="htit"><b>Ventas listas para despachar</b>'
+   +'<span id="etqcnt"></span></div>'
+  +'<div class="hact">'
+   +'<button class="btn gh sm" onclick="etqCargar(1)" title="Traer lo de ahora">&#8635; Actualizar</button>'
+   +'<button class="btn gh sm" id="etqbajaflex" onclick="etqBajarSel(1)">&#11015; FLEX</button>'
+   +'<button class="btn sm" id="etqbaja" onclick="etqBajarSel(0)">&#11015; Env&iacute;o normal</button>'
+  +'</div>'
   +'</div>'
   +'<div class="pick"><span class="pl">Tildar</span>'
    +'<button class="pk" id="pkflex" onclick="etqPick(\'flex\')"><i class="pt pt-f"></i>FLEX <b id="nflex">0</b></button>'
