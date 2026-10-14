@@ -10404,6 +10404,7 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
     label_pages = [i for i in range(len(doc)) if i not in ident_pages]
     labels = []
     seen = set()
+    sin_match = []
     for i in label_pages:
         pg = doc[i]
         W, H = pg.rect.width, pg.rect.height
@@ -10417,6 +10418,7 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
             if rr:
                 en_hoja.append(((rr[0].x0 + rr[0].x1) / 2.0, trak, rr[0]))
         if not en_hoja:
+            sin_match.append(i)          # p.ej. las etiquetas FLEX: no imprimen el HC...AR
             continue
         en_hoja.sort(key=lambda z: z[0])
         n = len(en_hoja)
@@ -10450,6 +10452,41 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
             labels.append({"page": i, "bbox": bbox, "potes": info["potes"],
                            "trak": trak, "buyer": info["buyer"], "sku": info["sku"]})
 
+    # 3-bis) HOJAS DONDE NO SE UBICO NINGUN TRACKING.
+    # Las etiquetas FLEX (self_service) no traen impreso el HC...AR ni el numero de seguimiento
+    # como texto, asi que el recorte por posicion del tracking no encuentra nada y antes la hoja
+    # se descartaba entera. Cuando TODAS las hojas eran asi el PDF quedaba en cero paginas y el
+    # guardado reventaba con "cannot save with zero pages" (lo que le pasaba a Cristian al pedir
+    # las FLEX). Ahora esas hojas se cortan por el MARCO de cada etiqueta, y si no hay marcos se
+    # emite la hoja entera. Los datos (potes/SKU/comprador) se toman de los envios que quedaron
+    # sin aparear, en el mismo orden.
+    if sin_match:
+        _sobran = [t for t in mapa if t not in seen]
+        _ix = 0
+        for i in sin_match:
+            pg = doc[i]
+            W, H = pg.rect.width, pg.rect.height
+            blocks = pg.get_text("blocks")
+            _y0 = max(0.0, min([b[1] for b in blocks] or [0.0]) - 4)
+            _y1 = min(H, max([b[3] for b in blocks] or [H]) + 4)
+            _marcos = _meli_frames(pg) or []
+            if _marcos:
+                _cajas = [fitz.Rect(max(0.0, f.x0 - 2), _y0, min(W, f.x1 + 2), _y1) for f in
+                          sorted(_marcos, key=lambda f: f.x0)]
+            else:
+                _x0 = max(0.0, min([b[0] for b in blocks] or [0.0]) - 4)
+                _x1 = min(W, max([b[2] for b in blocks] or [W]) + 4)
+                _cajas = [fitz.Rect(_x0, _y0, _x1, _y1)]
+            for _bb in _cajas:
+                trak = _sobran[_ix] if _ix < len(_sobran) else ""
+                _ix += 1
+                info = mapa.get(trak) or {}
+                if trak:
+                    seen.add(trak)
+                labels.append({"page": i, "bbox": _bb & pg.rect,
+                               "potes": int(info.get("potes") or 1), "trak": trak,
+                               "buyer": info.get("buyer") or "", "sku": info.get("sku") or ""})
+
     # 4) Una hoja de 10×15 cm por etiqueta, sin deformar.
     # ORDEN: el mismo que la hoja PARA EMPAQUETAR y que Insertar SKU — el grupo MÁS GRANDE primero.
     # Antes iba por potes de menor a mayor (x1, x2, x3) y no coincidía con la hoja, así que el que
@@ -10479,6 +10516,13 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
                        "sku_meli": d["sku"], "potes": d["potes"]})
     if detalle:
         _sku_hoja_empaquetar(out, detalle)          # hoja final PARA EMPAQUETAR
+    if not len(out):
+        # Ultimo recurso: devolver el PDF tal cual vino de ML en vez de reventar con
+        # "cannot save with zero pages". Al menos la etiqueta se baja y se puede imprimir.
+        out.close()
+        doc.close()
+        return data, [], {"paquetes": 0, "potes": 0, "sin_estampar": len(mapa),
+                          "sin_cortar": True}
     buf = io.BytesIO()
     out.save(buf, garbage=3, deflate=True)
     out.close()
@@ -11235,6 +11279,7 @@ def meli_etiquetas_bajar():
     resp.headers["X-Paquetes"] = str(stats.get("paquetes", 0))
     resp.headers["X-Potes"] = str(stats.get("potes", 0))
     resp.headers["X-Sin-Estampar"] = str(stats.get("sin_estampar", 0))
+    resp.headers["X-Sin-Cortar"] = "1" if stats.get("sin_cortar") else ""
     resp.headers["X-Fallidos"] = ",".join(info.get("fallidos") or [])
     _meli_baj_marcar(email, info.get("sids") or [])   # no vuelven a salir en la lista
     return resp
@@ -21450,7 +21495,7 @@ function etqBajarSel(soloFlex){
  if(m){m.textContent='Bajando las etiquetas de Mercado Libre y estampando el SKU\u2026';m.style.color='#7aa2c8';}
  var H={};
  fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:ids})})
- .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos');
+ .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos'); H.nc=r.headers.get('X-Sin-Cortar');
    H.ok=r.ok; H.ct=r.headers.get('Content-Type')||'';
    return (H.ok && H.ct.indexOf('pdf')>=0) ? r.blob() : r.text(); })
  .then(function(x){
@@ -21461,6 +21506,7 @@ function etqBajarSel(soloFlex){
   a.download=soloFlex?'MELI-etiquetas-FLEX.pdf':'MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(u);},1500);
   var _fx=(H.f||'').split(',').filter(function(z){return z;});
+  if(H.nc==='1'){ if(m){m.innerHTML='\u2713 Etiqueta bajada, pero SIN recortar ni estampar: ML la mand\u00f3 en un formato que no pude cortar. Imprimila igual.'; m.style.color='#ffb35a';} etqCargar(); return; }
   if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'
    +(_fx.length?(' &#183; <span style="color:#e0637f">'+_fx.length+' que ML no pudo imprimir: '+_fx.join(', ')+'</span>'):'')+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
   etqCargar();                       // las que acaba de bajar ya no tienen que salir
