@@ -17305,6 +17305,50 @@ def gen_subir():
     return jsonify({"ok": True, "imagenes": n, "moldes": len(_gen_meta().get("moldes") or [])})
 
 
+@app.post("/gen-subir-parte")
+def gen_subir_parte():
+    """Sube el zip de moldes EN TRAMOS. Un paquete de 14 MB no entra en una sola llamada de
+    JavaScript, asi que llega partido en base64 y se arma en disco."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    import base64 as _b64, zipfile, io as _io
+    j = request.get_json(silent=True) or {}
+    try:
+        i = int(j.get("i", 0)); tot = int(j.get("n", 1))
+    except Exception:
+        return jsonify({"ok": False, "msg": "i/n invalidos"}), 400
+    tmp = DATA_DIR / "_gen_tmp.zip"
+    datos = _b64.b64decode(j.get("b64") or "")
+    with open(str(tmp), "wb" if i == 0 else "ab") as fh:
+        fh.write(datos)
+    if i < tot - 1:
+        return jsonify({"ok": True, "parte": i + 1, "de": tot,
+                        "bytes": _os.path.getsize(str(tmp))})
+    GEN_DIR.mkdir(parents=True, exist_ok=True)
+    n_img = 0
+    try:
+        with zipfile.ZipFile(str(tmp)) as z:
+            for nom in z.namelist():
+                if not nom.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    continue
+                base = _os.path.basename(nom)
+                if not base:
+                    continue
+                (GEN_DIR / base).write_bytes(z.read(nom))
+                n_img += 1
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 400
+    meta = j.get("meta")
+    if meta:
+        GEN_META.write_text(_json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    try:
+        _os.remove(str(tmp))
+    except Exception:
+        pass
+    return jsonify({"ok": True, "listo": True, "imagenes": n_img,
+                    "moldes": len((_gen_meta().get("moldes") or []))})
+
+
 @app.get("/gen-datos")
 def gen_datos():
     if not _user_actual():
