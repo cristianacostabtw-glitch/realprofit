@@ -10644,9 +10644,76 @@ def _meli_units_sku(sku):
     return 1, False
 
 
-_MELI_LISTOS_CACHE = {}        # {email: (ts, filas)} — vale pocos segundos, ver abajo
+_MELI_LISTOS_CACHE = {}        # {email: (ts, filas)} — copia en memoria del worker
 _MELI_LISTOS_TTL = 90
-_MELI_LISTOS_T = {}            # {email: {"ordenes":s, "envios":s, "nombres":s, "n_env":n}}
+_MELI_LISTOS_T = {}            # {email: {"ordenes":s, "envios":s, "resto":s, "n_env":n}}
+
+# La lista TAMBIEN va a disco. Dos razones: son 2 workers (lo que cachea uno no lo ve el otro)
+# y gunicorn recicla el worker cada tantas requests, llevandose cualquier cosa en memoria.
+_MELI_LISTOS_FILE = DATA_DIR / "meli_listos.json"      # {email: {"ts":…, "filas":[…]}}
+_MELI_LISTOS_LOCK = DATA_DIR / "meli_listos_lock.json"  # {email: ts} — refresco en curso
+
+
+def _meli_listos_disco(email):
+    """(ts, filas) del ultimo barrido guardado, o (0, None)."""
+    try:
+        d = _json.loads(_MELI_LISTOS_FILE.read_text(encoding="utf-8")).get(email) or {}
+        return float(d.get("ts") or 0), d.get("filas")
+    except Exception:
+        return 0.0, None
+
+
+def _meli_listos_guardar(email, filas):
+    try:
+        try:
+            d = _json.loads(_MELI_LISTOS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+        d[email] = {"ts": _time.time(), "filas": filas}
+        _MELI_LISTOS_FILE.write_text(_json.dumps(d), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _meli_refresco_tomar(email, max_seg=240):
+    """True si me toca refrescar. El candado va a DISCO para que no refresquen los 2 workers
+    a la vez; si quedo colgado mas de max_seg se libera solo."""
+    try:
+        try:
+            d = _json.loads(_MELI_LISTOS_LOCK.read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+        t = float(d.get(email) or 0)
+        if t and (_time.time() - t) < max_seg:
+            return False
+        d[email] = _time.time()
+        _MELI_LISTOS_LOCK.write_text(_json.dumps(d), encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def _meli_refresco_soltar(email):
+    try:
+        d = _json.loads(_MELI_LISTOS_LOCK.read_text(encoding="utf-8"))
+        d.pop(email, None)
+        _MELI_LISTOS_LOCK.write_text(_json.dumps(d), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _meli_refrescar_atras(email):
+    """Rehace el barrido en segundo plano y lo deja EN DISCO (no en memoria: el poll puede
+    caer en el otro worker)."""
+    def _correr():
+        try:
+            _meli_envios_listos(email, _fresco=True)
+        except Exception:
+            pass
+        finally:
+            _meli_refresco_soltar(email)
+    _t = threading.Thread(target=_correr, daemon=True)
+    _t.start()
 
 
 def _meli_envios_listos(email, sids=None, _fresco=False):
@@ -10901,6 +10968,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
              _crono.get("n_env", 0), _crono.get("resto"), len(res), len(filas)), flush=True)
     if not sids:                       # solo se cachea la lista COMPLETA, no una seleccion
         _MELI_LISTOS_CACHE[email] = (_tcr.time(), filas)
+        _meli_listos_guardar(email, filas)
     return filas, ""
 
 
@@ -11340,10 +11408,33 @@ def meli_pendientes_lista():
     if not email:
         return jsonify({"ok": False}), 401
     _fr = (request.args.get("fresco") or "") in ("1", "true", "si")
-    try:
-        filas, err = _meli_envios_listos(email, _fresco=_fr)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+    # LA PANTALLA NO ESPERA AL BARRIDO.
+    # Barrer MercadoLibre tarda lo que tarda (hay que preguntarle envio por envio). Antes la
+    # pantalla se quedaba 40 s en "Buscando ventas pendientes". Ahora: lo ultimo barrido vive
+    # EN DISCO y se devuelve al instante; si esta viejo se dispara un refresco en segundo
+    # plano y la pantalla lo vuelve a pedir sola cuando termina. "Actualizar" (fresco=1) si
+    # espera, porque ahi el pedido es justamente tener el dato del momento.
+    _refrescando = False
+    if not _fr:
+        _ts, _fd = _meli_listos_disco(email)
+        _edad = (_time.time() - _ts) if _ts else 1e9
+        if _fd is not None and _edad < 1800:          # hasta media hora: sirve y refresca
+            if _edad > 45 and _meli_refresco_tomar(email):
+                _meli_refrescar_atras(email)
+                _refrescando = True
+            elif _edad > 45:
+                _refrescando = True                   # ya lo esta refrescando el otro worker
+            filas, err = _fd, ""
+        else:
+            filas, err = None, None
+    else:
+        filas, err = None, None
+    if filas is None:
+        try:
+            filas, err = _meli_envios_listos(email, _fresco=_fr)
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:160])}), 500
+        _edad = 0
     if err:
         return jsonify({"ok": False, "msg": err})
     todas = (request.args.get("todas") or "") in ("1", "true", "si")
@@ -11355,6 +11446,7 @@ def meli_pendientes_lista():
         filas = [f for f in filas if not f["bajada"]]
     return jsonify({"ok": True, "envios": filas, "ya_bajadas": ya, "todas": todas,
                     "potes": sum(f.get("potes") or 0 for f in filas),
+                    "edad": int(_edad if _edad < 1e8 else 0), "refrescando": _refrescando,
                     "crono": _MELI_LISTOS_T.get(email) or {}})
 
 
@@ -17336,10 +17428,10 @@ def _pf_mejor(email, blob, desde, hasta, key=None, now=None):
         if not (desde == hasta == _hoy()):
             return blob                     # el snapshot de disco es SOLO el del dia de hoy
         import time as _tm
-        if _PF_DISCO["email"] != email or (_tm.time() - _PF_DISCO["ts"]) > 5:
+        if _PF_DISCO["email"] != email or (_time.time() - _PF_DISCO["ts"]) > 5:
             _PF_DISCO["blob"] = _load_last_blob(email)
             _PF_DISCO["email"] = email
-            _PF_DISCO["ts"] = _tm.time()
+            _PF_DISCO["ts"] = _time.time()
         otro = _PF_DISCO["blob"]
         if otro and _pf_blob_ts(otro) > _pf_blob_ts(blob):
             if key is not None and now is not None:
@@ -21573,9 +21665,22 @@ function etqCargar(fresco){
     +'<div style="padding:0 13px 11px;font-size:11.5px;color:#34d399;font-weight:600">Etiqueta lista para imprimir &#183; <span style="color:#7aa2c8;font-weight:500">'+esc(o.tracking||'')+'</span></div>'
    +'</div>';
   }).join('');
-  L.innerHTML=tog+av+cards;
+  // Aviso de antiguedad: la lista sale al toque desde el ultimo barrido guardado. Si se esta
+  // refrescando por atras, la pantalla se vuelve a pedir sola cuando termina.
+  var edad=j.edad||0, avis='';
+  if(j.refrescando){
+   avis='<div id="etqfresh" style="background:#101b2a;border:1px solid #1d3147;color:#7aa2c8;border-radius:10px;'
+      +'padding:8px 12px;margin-bottom:12px;font-size:12px;font-weight:600">&#8635; Mostrando lo de hace '
+      +(edad<60?(edad+' s'):(Math.round(edad/60)+' min'))+' &#183; buscando ventas nuevas&#8230;</div>';
+   clearTimeout(window._etqPoll);
+   window._etqPoll=setTimeout(function(){ etqCargar(); }, 9000);
+  } else if(edad>120){
+   avis='<div style="color:#7aa2c8;font-size:12px;margin-bottom:10px">Datos de hace '
+      +Math.round(edad/60)+' min &#183; tocá Actualizar para traer lo de ahora.</div>';
+  }
+  L.innerHTML=avis+tog+av+cards;
   etqCnt();
- }).catch(function(){ L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
+ }).catch(function(){ clearInterval(_tk); L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
 }
 function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++)c[i].checked=v; etqCnt(); }
 function etqCnt(){
