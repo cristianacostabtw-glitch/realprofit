@@ -20860,18 +20860,15 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--acc);cursor:point
 <script>
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
-var CONN=false, NICK='', SEL='ventas';
-var _STKN=null;   // cuantas esperan stock, para el numerito de la barra
+var CONN=false, NICK='', SEL='etiquetas';
+var _STKN=null;
+// SOLO lo que se usa. Pedido de Cristian (14-10-2026): el resto de las secciones no las
+// toca nunca y ademas costaban plata en velocidad — "Stock pendiente" disparaba
+// /meli/stock-esperando en cada carga de la pagina. El codigo de las otras secciones
+// queda en el archivo por si alguna vuelve: basta con agregarlas de nuevo a esta lista.
 var FEATURES=[
- {k:'ventas',ic:'📈',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
- {k:'mensajes',ic:'💬',bg:'#1a2410',t:'Preguntas y mensajes',d:'Preguntas sin responder de tus publicaciones — respondé desde acá.',soon:false},
- {k:'stkpend',ic:'⏳',bg:'#241a10',t:'Stock pendiente',d:'Las ventas que esperan que confirmes "Ya tengo el producto". Hasta que no lo hagas, ML no genera la etiqueta y no aparecen en Envíos.',soon:false},
- {k:'envios',ic:'📦',bg:'#0d1b30',t:'Envíos',d:'Las ventas listas para despachar. Al bajar la etiqueta pasan a archivadas, no se borran.',soon:false},
- {k:'sku',ic:'🏷️',bg:'#241a10',t:'Publicaciones y SKU',d:'Tus publicaciones activas: editá y guardá el SKU de cada una.',soon:false},
- {k:'stock',ic:'📊',bg:'#101c2e',t:'Stock',d:'Stock unificado en botellas de 30 ml. Un Pack X2 descuenta 2. Sincronizá a ML con un clic.',soon:false},
  {k:'etiquetas',ic:'🖨️',bg:'#241a10',t:'Etiquetas + SKU',d:'Tildá las ventas a despachar y bajá las etiquetas ya estampadas con el SKU (potes) y la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
- {k:'metricas',ic:'⭐',bg:'#1a1526',t:'Métricas y reputación',d:'Reputación, nivel y salud de tu cuenta.',soon:false},
- {k:'clonar',ic:'📤',bg:'#101c2e',t:'Clonar a otra cuenta',d:'Copiá tus publicaciones a una segunda cuenta de Mercado Libre. Primero probálo sin publicar: te dice qué aceptaría y qué no.',soon:false}
+ {k:'ventas',ic:'📈',bg:'#0d1b30',t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false}
 ];
 function renderSide(){
  var s=document.getElementById('side');
@@ -21639,10 +21636,8 @@ function boot(){ renderSide(); renderMain();
  fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
   var e=document.getElementById('estado'); if(CONN){ e.className='chip on'; e.textContent='✓ Conectado'+(NICK?(' · '+NICK):''); } else { e.className='chip off'; e.textContent='No conectado'; }
   renderMain();
-  // el numerito de "Stock pendiente" desde el arranque (el server lo cachea 2 minutos)
-  if(CONN) fetch('/meli/stock-esperando').then(function(r){return r.json();}).then(function(k){
-    if(k&&k.ok){ _STK=k.ventas||[]; _STKN=_STK.length; renderSide(); if(SEL==='stkpend') stkPintar(); }
-  }).catch(function(){});
+  // Ya no se pide /meli/stock-esperando al abrir: esa seccion no esta mas y la llamada
+  // tardaba ~30 s con los 2 workers ocupados, retrasando la lista de etiquetas.
  }).catch(function(){});
 }
 boot();
