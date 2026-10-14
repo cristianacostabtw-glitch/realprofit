@@ -4311,7 +4311,7 @@ _SOLO_DASH = r"""
   if(ESTR!='minimo'&&!rpaPujas().length){alert('Elegiste '+(ESTR=='costcap'?'objetivo de costo por resultado':'límite de puja')+': agregá al menos una puja.');return;}
   var body={cuenta:($('rpa-cuenta').value||'cp1'),drive:$('rpa-drive').value,upload_id:UPLOAD_ID,page:$('rpa-page').value,pixel:$('rpa-pixel').value,ig:$('rpa-ig').value,
    modo_campana:CMP=='exist'?'existente':'nueva',campaign_id:$('rpa-cmp').value,angulo:$('rpa-ang').value,tipo:TIPO,budget_sharing:(TIPO=='abo'&&SHARE),presupuesto:$('rpa-presup').value,
-   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:rpaNConj(),repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'&&!rpaEsc()),reparto_map:RMAP,
+   modo_conjunto:CMP=='exist'?CJ:'nuevo',adset_src_id:$('rpa-cjsel').value,presup_conjunto:(($('rpa-cjpresup')||{}).value||''),camp_cbo:(function(){var c=CMPS.filter(function(x){return x.id==$('rpa-cmp').value;})[0];return c?(c.cbo?1:0):0;})(),conjunto_nombre:$('rpa-cjnombre').value,conjuntos:rpaNConj(),repartir:(REPARTIR&&NCONJ>1&&CMP=='nueva'&&MODO!='escala'),reparto_map:RMAP,
    modo:MODO,posts:rpaPostIds(),estrategia:ESTR,pujas:rpaPujas(),
    titulo:$('rpa-titulo').value,subtitulo:$('rpa-sub').value,copy:$('rpa-copy').value,url:$('rpa-url').value,
    estado:EST,fecha:$('rpa-fecha').value,hora:$('rpa-hora').value};
