@@ -21787,7 +21787,7 @@ function renderEtiquetas(){
  etqCargar();
 }
 var ETQTODAS=false;
-function etqVerTodas(v){ ETQTODAS=v; etqCargar(); }
+function etqVerTodas(v){ ETQTODAS=v; _ETQJ=null; etqCargar(); }
 function etqDesmarcar(sid){
  fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
  .then(function(){ etqCargar(); }).catch(function(){});
@@ -21800,17 +21800,14 @@ function etqFecha(s){
  function p(n){ return (n<10?'0':'')+n; }
  return d.getDate()+' '+M[d.getMonth()]+' '+p(d.getHours())+':'+p(d.getMinutes())+' hs';
 }
-function etqCargar(fresco){
+// Lo ultimo que trajo el server se guarda ACA. Al volver de Ventas la seccion se rearma
+// entera, y antes eso disparaba el barrido de nuevo: 20 segundos mirando "Buscando ventas
+// pendientes" aunque ya lo tuvieras en pantalla hace 10 segundos. Ahora se pinta al toque lo
+// que ya habia y el pedido al server va callado por atras.
+var _ETQJ=null;
+function etqPintar(j){
  var L=document.getElementById('etqlista'), C=document.getElementById('etqcnt');
  if(!L)return;
- var t0=Date.now();
- L.innerHTML='Buscando ventas pendientes&#8230; <span id="etqcrono" style="color:#7aa2c8"></span>';
- var _tk=setInterval(function(){var c=document.getElementById('etqcrono');
-   if(!c){clearInterval(_tk);return;} c.textContent='('+Math.round((Date.now()-t0)/1000)+'s)';},1000);
- if(C)C.textContent='';
- var _qs=[]; if(ETQTODAS)_qs.push('todas=1'); if(fresco)_qs.push('fresco=1');
- fetch('/meli/pendientes-lista'+(_qs.length?('?'+_qs.join('&')):'')).then(function(r){return r.json();}).then(function(j){
-  clearInterval(_tk);
   if(!j||!j.ok){ L.innerHTML='<span style="color:#e0637f">'+esc((j&&j.msg)||'No pude leer las ventas')+'</span>'; return; }
   var e=j.envios||[], yb=j.ya_bajadas||0;
   var tog = ETQTODAS
@@ -21864,7 +21861,35 @@ function etqCargar(fresco){
   }
   L.innerHTML=avis+tog+av+cards;
   etqCnt();
- }).catch(function(){ clearInterval(_tk); L.innerHTML='<span style="color:#e0637f">Error de red</span>'; });
+}
+function etqCargar(fresco){
+ var L=document.getElementById('etqlista');
+ if(!L)return;
+ var yaHabia = (!!_ETQJ && !fresco);
+ if(yaHabia){
+  etqPintar(_ETQJ);                       // en pantalla al instante, sin esperar nada
+ } else {
+  var t0=Date.now();
+  L.innerHTML='Buscando ventas pendientes&#8230; <span id="etqcrono" style="color:#7aa2c8"></span>';
+  clearInterval(window._etqTk);
+  window._etqTk=setInterval(function(){var c=document.getElementById('etqcrono');
+    if(!c){clearInterval(window._etqTk);return;} c.textContent='('+Math.round((Date.now()-t0)/1000)+'s)';},1000);
+ }
+ var _qs=[]; if(ETQTODAS)_qs.push('todas=1'); if(fresco)_qs.push('fresco=1');
+ fetch('/meli/pendientes-lista'+(_qs.length?('?'+_qs.join('&')):''))
+ .then(function(r){return r.json();})
+ .then(function(j){
+  clearInterval(window._etqTk);
+  if(!j||!j.ok){
+   if(!yaHabia){ var L2=document.getElementById('etqlista');
+     if(L2)L2.innerHTML='<span style="color:#e0637f">'+esc((j&&j.msg)||'No pude leer las ventas')+'</span>'; }
+   return;
+  }
+  _ETQJ=j; etqPintar(j);
+ })
+ .catch(function(){ clearInterval(window._etqTk);
+  if(!yaHabia){ var L3=document.getElementById('etqlista');
+    if(L3)L3.innerHTML='<span style="color:#e0637f">Error de red</span>'; } });
 }
 function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++)c[i].checked=v; etqCnt(); }
 // Tildar por tipo de envio. Los botones de bajar NO cambian: siguen filtrando ellos por
