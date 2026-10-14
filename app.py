@@ -10699,7 +10699,11 @@ def _meli_envios_listos(email, sids=None):
             "titulo": "", "sku": "", "sabor": "", "precio": 0.0, "foto": "",
             # FLEX = lo entrega el vendedor el mismo dia. Va aparte de las de correo: las
             # etiquetas son distintas y el plazo tambien (Flex vence a las 21 hs).
-            "flex": (sj.get("logistic_type") or "") == "self_service",
+            # OJO: el API NUEVO de envios lo anida en logistic.type; el viejo lo tenia plano
+            # como logistic_type. Se miran los dos. Verificado 14-10-2026 contra un envio real:
+            # {"logistic":{"direction":"forward","mode":"me2","type":"self_service"}}
+            "flex": (((sj.get("logistic") or {}).get("type")
+                      or sj.get("logistic_type") or "") == "self_service"),
             "cant": 0, "potes": 0, "dudoso": False, "detalle": []})
         for it in (o.get("order_items") or []):
             itm = it.get("item") or {}
