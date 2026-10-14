@@ -10782,22 +10782,39 @@ def _meli_etiquetas_pendientes(email, sids=None):
     # una lista ilimitada en shipment_ids, así que se pide por tandas y se unen los PDF.
     ids = [f["sid"] for f in filas]
     LOTE = 50
-    crudos, total_bytes = [], 0
-    for _i in range(0, len(ids), LOTE):
-        _chunk = ids[_i:_i + LOTE]
+
+    def _pdf_lote(_ids, _prof=0):
+        """Pide a ML el PDF de esos envios. Si contesta mal, PARTE EL LOTE AL MEDIO y reintenta,
+        hasta aislar el envio que rompe. Antes un solo envio con problema (cancelado, direccion
+        incompleta, estado raro) tiraba abajo las 20 etiquetas y no bajabas ninguna.
+        Devuelve (pdfs_que_salieron, sids_que_fallaron)."""
+        if not _ids:
+            return [], []
         try:
             rr = requests.get("%s/shipment_labels?shipment_ids=%s&response_type=pdf"
-                              % (MELI_API, ",".join(_chunk)),
+                              % (MELI_API, ",".join(_ids)),
                               headers={"Authorization": "Bearer " + tok}, timeout=90)
-        except Exception as e:
-            return None, [], {}, {"msg": "%s: %s" % (type(e).__name__, str(e)[:120])}
-        if rr.status_code >= 400 or (rr.content or b"")[:4] != b"%PDF":
-            return None, [], {}, {"msg": "ML no devolvio el PDF de los envios %s-%s (status %s)"
-                                         % (_i + 1, _i + len(_chunk), rr.status_code)}
-        crudos.append(rr.content)
-        total_bytes += len(rr.content)
+        except Exception:
+            rr = None
+        if rr is not None and rr.status_code < 400 and (rr.content or b"")[:4] == b"%PDF":
+            return [rr.content], []
+        if len(_ids) == 1 or _prof > 8:
+            return [], list(_ids)
+        _m = len(_ids) // 2
+        _a, _fa = _pdf_lote(_ids[:_m], _prof + 1)
+        _b, _fb = _pdf_lote(_ids[_m:], _prof + 1)
+        return _a + _b, _fa + _fb
+
+    crudos, fallidos, total_bytes = [], [], 0
+    for _i in range(0, len(ids), LOTE):
+        _p, _f = _pdf_lote(ids[_i:_i + LOTE])
+        crudos += _p
+        fallidos += _f
+    for _c in crudos:
+        total_bytes += len(_c)
     if not crudos:
-        return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+        return None, [], {}, {"msg": "ML no devolvio el PDF de ninguno de los %d envios. "
+                                     "Probalos de a uno para ver cual rompe." % len(ids)}
     if len(crudos) == 1:
         crudo = crudos[0]
     else:                                   # unir los PDF de cada tanda en uno solo
@@ -10815,8 +10832,12 @@ def _meli_etiquetas_pendientes(email, sids=None):
         except Exception as e:
             return None, [], {}, {"msg": "no pude unir las tandas de etiquetas: %s" % str(e)[:120]}
     pdf, orders, stats = _meli_etiquetas_procesar(crudo, mapa_ext=mapa)
+    # OJO: en "sids" van SOLO los que salieron. Los que fallaron no se marcan como bajados,
+    # si no desaparecian de la lista sin que exista su etiqueta.
+    _ok = [x for x in ids if x not in set(fallidos)]
     return pdf, orders, stats, {"envios": len(ids), "tandas": len(crudos),
-                                "crudo_bytes": total_bytes, "sids": ids}
+                                "crudo_bytes": total_bytes, "sids": _ok,
+                                "fallidos": fallidos}
 
 
 def _meli_esperando_stock(email):
@@ -11214,6 +11235,7 @@ def meli_etiquetas_bajar():
     resp.headers["X-Paquetes"] = str(stats.get("paquetes", 0))
     resp.headers["X-Potes"] = str(stats.get("potes", 0))
     resp.headers["X-Sin-Estampar"] = str(stats.get("sin_estampar", 0))
+    resp.headers["X-Fallidos"] = ",".join(info.get("fallidos") or [])
     _meli_baj_marcar(email, info.get("sids") or [])   # no vuelven a salir en la lista
     return resp
 
@@ -20997,7 +21019,7 @@ function etqBajarSel(soloFlex){
  if(m){m.textContent='Bajando las etiquetas de Mercado Libre y estampando el SKU\u2026';m.style.color='#7aa2c8';}
  var H={};
  fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:ids})})
- .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar');
+ .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos');
    H.ok=r.ok; H.ct=r.headers.get('Content-Type')||'';
    return (H.ok && H.ct.indexOf('pdf')>=0) ? r.blob() : r.text(); })
  .then(function(x){
@@ -21007,7 +21029,9 @@ function etqBajarSel(soloFlex){
   var u=URL.createObjectURL(x); var a=document.createElement('a'); a.href=u;
   a.download=soloFlex?'MELI-etiquetas-FLEX.pdf':'MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(u);},1500);
-  if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
+  var _fx=(H.f||'').split(',').filter(function(z){return z;});
+  if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'
+   +(_fx.length?(' &#183; <span style="color:#e0637f">'+_fx.length+' que ML no pudo imprimir: '+_fx.join(', ')+'</span>'):'')+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
   etqCargar();                       // las que acaba de bajar ya no tienen que salir
  }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
 }
