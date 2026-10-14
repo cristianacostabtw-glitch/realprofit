@@ -10697,6 +10697,9 @@ def _meli_envios_listos(email, sids=None):
             "nombre": (" ".join(x for x in [_b.get("first_name"),
                                             _b.get("last_name")] if x)).strip(),
             "titulo": "", "sku": "", "sabor": "", "precio": 0.0, "foto": "",
+            # FLEX = lo entrega el vendedor el mismo dia. Va aparte de las de correo: las
+            # etiquetas son distintas y el plazo tambien (Flex vence a las 21 hs).
+            "flex": (sj.get("logistic_type") or "") == "self_service",
             "cant": 0, "potes": 0, "dudoso": False, "detalle": []})
         for it in (o.get("order_items") or []):
             itm = it.get("item") or {}
@@ -20891,7 +20894,8 @@ function renderEtiquetas(){
   +'<span id="etqcnt" style="font-size:12.5px;color:#7aa2c8"></span>'
   +'<span style="flex:1;min-width:8px"></span>'
   +'<button onclick="etqCargar()" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:9px;padding:9px 14px;font-size:12.5px;cursor:pointer">&#8635; Actualizar</button>'
-  +'<button id="etqbaja" onclick="etqBajarSel()" style="background:#ffe600;color:#2d3277;border:0;border-radius:10px;padding:11px 20px;font-weight:800;font-size:13.5px;cursor:pointer">&#11015; Descargar etiquetas con SKU</button>'
+  +'<button id="etqbajaflex" onclick="etqBajarSel(1)" style="background:#2d3277;color:#ffe600;border:1px solid #ffe600;border-radius:10px;padding:11px 18px;font-weight:800;font-size:13.5px;cursor:pointer">&#11015; Etiquetas FLEX</button>'
+  +'<button id="etqbaja" onclick="etqBajarSel(0)" style="background:#ffe600;color:#2d3277;border:0;border-radius:10px;padding:11px 20px;font-weight:800;font-size:13.5px;cursor:pointer">&#11015; Etiquetas env&iacute;o normal</button>'
   +'</div>'
   +'<div id="etqm2" style="font-size:12.5px;font-weight:600;margin-top:10px;min-height:16px"></div>'
   +'<div id="etqlista" style="margin-top:12px;color:#7aa2c8;font-size:13px">Buscando ventas pendientes&#8230;</div>'
@@ -20939,7 +20943,8 @@ function etqCargar(){
                   :('<div style="width:44px;height:44px;border-radius:9px;background:#16202e;flex:none"></div>');
    return '<div style="border:1px solid #1b2635;border-radius:14px;margin-bottom:10px;overflow:hidden;background:linear-gradient(180deg,#0f1723,#0b111b);'+(bj?'opacity:.5':'')+'">'
     +'<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid #16202e;background:#0c131e;flex-wrap:wrap">'
-     +'<input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:16px;height:16px;cursor:pointer;flex:none">'
+     +'<input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" data-flex="'+(o.flex?1:0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:16px;height:16px;cursor:pointer;flex:none">'
+     +(o.flex?'<span style="background:#ffe600;color:#2d3277;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:900;letter-spacing:.4px">FLEX</span>':'')'
      +'<span style="font-size:12.5px;font-weight:700;color:#c4d0de">#'+esc(o.numero||'')+'</span>'
      +'<span style="font-size:12px;color:#7aa2c8">'+esc(etqFecha(o.fecha_hora))+'</span>'
      +'<span style="flex:1;min-width:6px"></span>'
@@ -20971,11 +20976,19 @@ function etqCnt(){
  for(var i=0;i<c.length;i++){ if(c[i].checked){ n++; p+=parseInt(c[i].getAttribute('data-potes')||'0',10); } }
  var C=document.getElementById('etqcnt'); if(C)C.innerHTML=n+' seleccionada'+(n===1?'':'s')+' de '+c.length+' &#183; '+p+' potes';
 }
-function etqBajarSel(){
+function etqBajarSel(soloFlex){
+ // soloFlex=1 -> SOLO las de Flex. soloFlex=0 -> SOLO las de correo. Nunca mezcladas:
+ // la etiqueta de Flex es distinta y el plazo vence a las 21 hs del mismo dia.
+ soloFlex = soloFlex ? 1 : 0;
  var c=document.querySelectorAll('.etqck'), ids=[];
- for(var i=0;i<c.length;i++) if(c[i].checked) ids.push(c[i].value);
- var m=document.getElementById('etqm2'), b=document.getElementById('etqbaja');
- if(!ids.length){ if(m){m.textContent='Tild\u00e1 al menos una venta';m.style.color='#e0637f';} return; }
+ for(var i=0;i<c.length;i++){
+   if(!c[i].checked) continue;
+   if((c[i].getAttribute('data-flex')==='1'?1:0) !== soloFlex) continue;
+   ids.push(c[i].value);
+ }
+ var m=document.getElementById('etqm2');
+ var b=document.getElementById(soloFlex?'etqbajaflex':'etqbaja');
+ if(!ids.length){ if(m){m.textContent=soloFlex?'No hay ventas FLEX tildadas':'No hay ventas de env\u00edo normal tildadas';m.style.color='#e0637f';} return; }
  if(b)b.disabled=true;
  if(m){m.textContent='Bajando las etiquetas de Mercado Libre y estampando el SKU\u2026';m.style.color='#7aa2c8';}
  var H={};
@@ -20988,7 +21001,7 @@ function etqBajarSel(){
   if(typeof x==='string'){ var msg='No se pudo generar'; try{ var j=JSON.parse(x); msg=j.msg||msg; }catch(e){}
    if(m){m.textContent=msg;m.style.color='#e0637f';} return; }
   var u=URL.createObjectURL(x); var a=document.createElement('a'); a.href=u;
-  a.download='MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
+  a.download=soloFlex?'MELI-etiquetas-FLEX.pdf':'MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(u);},1500);
   if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
   etqCargar();                       // las que acaba de bajar ya no tienen que salir
