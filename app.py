@@ -20944,7 +20944,7 @@ function etqCargar(){
    return '<div style="border:1px solid #1b2635;border-radius:14px;margin-bottom:10px;overflow:hidden;background:linear-gradient(180deg,#0f1723,#0b111b);'+(bj?'opacity:.5':'')+'">'
     +'<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid #16202e;background:#0c131e;flex-wrap:wrap">'
      +'<input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" data-flex="'+(o.flex?1:0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:16px;height:16px;cursor:pointer;flex:none">'
-     +(o.flex?'<span style="background:#ffe600;color:#2d3277;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:900;letter-spacing:.4px">FLEX</span>':'')'
+     +(o.flex?'<span style="background:#ffe600;color:#2d3277;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:900;letter-spacing:.4px">FLEX</span>':'')
      +'<span style="font-size:12.5px;font-weight:700;color:#c4d0de">#'+esc(o.numero||'')+'</span>'
      +'<span style="font-size:12px;color:#7aa2c8">'+esc(etqFecha(o.fecha_hora))+'</span>'
      +'<span style="flex:1;min-width:6px"></span>'
