@@ -691,6 +691,16 @@ _SOLO_DASH = r"""
    <button onclick="rpDesp(false)" title="Cerrar" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:38px;height:38px;border-radius:10px;font-size:16px;cursor:pointer">&#10005;</button>
   </div>
 
+  <details id="rp-flexc" style="margin:14px 0 0;background:#0e1521;border:1px solid #1a2333;border-radius:14px;padding:12px 15px">
+   <summary style="cursor:pointer;color:#cbd5e1;font-size:13px;font-weight:700;list-style:none">&#128230; Costos reales de Env&iacute;alo <span style="color:#5b6b82;font-weight:500">&#183; peg&aacute; la tabla de RedChat</span></summary>
+   <div style="color:#8493a8;font-size:12.5px;margin:9px 0 10px;line-height:1.5">En RedChat abr&iacute; <b style="color:#cbd5e1">&Oacute;rdenes</b>, filtr&aacute; log&iacute;stica <b style="color:#cbd5e1">Envialo Flex</b>, seleccion&aacute; la tabla y copiala (&#8984;C). Peg&aacute;la ac&aacute;: cada pedido queda con <b style="color:#cbd5e1">lo que Env&iacute;alo cobr&oacute; de verdad</b>, en vez de una tarifa por zona (Env&iacute;alo cobra por distancia, no por nuestras zonas: San Isidro $6.200 y San Fernando $6.300 son los dos &laquo;norte&raquo;).</div>
+   <textarea id="rp-flexc-t" rows="5" placeholder="8140  Marcelo Ponce  Quilmes Oeste (B1879LQJ)  $ 70.890,00  Recibido  $ 6.600,00&#10;8139  Juan oscar Castellanos  Buenos Aires (1255)  $ 70.890,00  Recibido  $ 5.900,00" style="width:100%;background:#0a111c;border:1px solid #1e2b3d;color:#e2e8f0;border-radius:10px;padding:10px 12px;font-size:12px;font-family:ui-monospace,Menlo,monospace;outline:none;resize:vertical"></textarea>
+   <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
+    <button onclick="rpFlexCostos()" style="background:#1d4ed8;border:0;color:#fff;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer">Cargar costos</button>
+    <span id="rp-flexc-m" style="font-size:12.5px;font-weight:600"></span>
+   </div>
+  </details>
+
   <div id="rp-d-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin:20px 0">
    <button class="rp-dc rp-on" data-f="empaquetar" onclick="rpDFilt('empaquetar')" style="background:#0e1521;border:1px solid #5a4a1e;border-radius:16px;padding:16px 18px;cursor:pointer;text-align:left;min-height:100px">
     <div style="display:flex;align-items:center;justify-content:space-between"><span style="width:31px;height:31px;border-radius:9px;background:#241c0b;color:#f0b429;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:17px">inventory_2</span></span><span class="rp-dl" style="color:#f0b429;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px">Por empaquetar</span></div>
@@ -1670,6 +1680,19 @@ _SOLO_DASH = r"""
        +'<td style="'+td+';text-align:right;font-weight:700">'+_dFmt(r.total)+'</td></tr>';
    }).join('');
    var sa=document.getElementById('rp-d-all'); if(sa)sa.checked=false; rpDCnt(); };
+ window.rpFlexCostos=function(){
+  var t=document.getElementById('rp-flexc-t'), m=document.getElementById('rp-flexc-m');
+  if(!t||!m)return;
+  m.style.color='#8493a8'; m.textContent='Leyendo\u2026';
+  fetch('/pf-flex-costos',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({texto:t.value})})
+  .then(function(r){return r.json();}).then(function(j){
+    if(!j||!j.ok){ m.style.color='#f87171'; m.textContent=(j&&j.msg)||'No se pudo'; return; }
+    m.style.color='#34d399';
+    m.textContent='\u2713 '+j.cargados+' pedido(s) cargados \u00b7 '+j.total+' en total';
+    t.value='';
+  }).catch(function(){ m.style.color='#f87171'; m.textContent='Error de red'; });
+ };
  window.rpDFilt=function(f){ _dFilt=f;
    var cs=document.querySelectorAll('#rp-d-cards .rp-dc');
    for(var i=0;i<cs.length;i++){ var on=cs[i].getAttribute('data-f')===f; cs[i].style.borderColor=on?'#5a4a1e':'#1a2333'; cs[i].style.background=on?'linear-gradient(165deg,rgba(240,180,41,.07),transparent 60%)':'#0e1521'; var lb=cs[i].querySelector('.rp-dl'); if(lb)lb.style.color=on?'#f0b429':'#8493a8'; }
@@ -18200,7 +18223,7 @@ def _pf_costos_ver() -> str:
     import hashlib as _hl
     v = "|".join((_os.getenv(k, "") or "").strip() for k in
                  ("FLEX_COSTO", "FLEX_COSTO_CABA", "FLEX_COSTO_NORTE",
-                  "FLEX_COSTO_OESTE", "FLEX_COSTO_SUR"))
+                  "FLEX_COSTO_OESTE", "FLEX_COSTO_SUR", "FLEX_TARIFAS"))
     if not v.strip("|"):
         return "base"                       # sin tarifa cargada: clave de siempre
     return _hl.md5(v.encode()).hexdigest()[:8]
@@ -31468,11 +31491,116 @@ def _logi_set(email, nums, cual) -> int:
     return n
 
 
+# TARIFAS DE FLEX CON FECHA.
+# Hasta el 12-10 el Flex era propio y costaba $4.000 planos. Desde el 14-10-2026 a las 00:00
+# lo lleva Envialo y cobra por zona, asi que un pedido del 10 NO puede costearse con la tarifa
+# del 14: cada envio se cobra con la tarifa que regia EL DIA que se hizo.
+# Formato de la env FLEX_TARIFAS (JSON):
+#   [{"desde":"2026-10-14","caba":0,"norte":0,"oeste":0,"sur":0,"unico":0}, ...]
+# Lo de antes de la primera fecha cae en FLEX_COSTO / FLEX_COSTO_<ZONA>, como siempre.
+try:
+    _FLEX_TARIFAS = sorted(_json.loads(_os.getenv("FLEX_TARIFAS", "") or "[]"),
+                           key=lambda t: t.get("desde") or "")
+except Exception:
+    _FLEX_TARIFAS = []
+
+
+# COSTOS REALES DE ENVIALO, PEDIDO POR PEDIDO.
+# Envialo no cobra por las 4 zonas nuestras sino por anillo de distancia: San Isidro $6.200 y
+# San Fernando $6.300 son los dos "norte"; Lanus $6.200 y Glew $6.300 son los dos "sur".
+# Cualquier tabla por zona le erra. Pero RedChat muestra el costo de CADA envio con el numero
+# de venta de Shopify al lado, que es la misma clave que usa RealProfit: se pega esa tabla y
+# cada pedido queda con lo que Envialo cobro DE VERDAD. Sin promedios.
+FLEX_COSTOS_F = DATA_DIR / "flex_costos.json"      # {num_pedido: costo}
+
+
+def _flex_costos_all() -> dict:
+    try:
+        return _json.loads(FLEX_COSTOS_F.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+_RE_FLEX_FILA = _re_and.compile(
+    r"(?:^|\s)(\d{3,6})\b.{0,200}?\$\s*([\d.]+(?:,\d{2})?)", _re_and.S)
+
+
+def _flex_costos_parsear(txt: str) -> dict:
+    """Lee lo que se pego de RedChat. Cada fila trae el numero de venta y mas adelante el
+    costo con signo $. Se toma el ULTIMO monto de la fila: el primero es el total de la venta
+    ($70.890) y el que interesa es el costo de envio ($6.600)."""
+    out = {}
+    for linea in (txt or "").splitlines():
+        l = linea.strip()
+        if not l:
+            continue
+        m = _re_and.match(r"^#?(\d{3,6})\b", l)
+        if not m:
+            continue
+        montos = _re_and.findall(r"\$\s*([\d.]+(?:,\d{2})?)", l)
+        if not montos:
+            continue
+        v = montos[-1].replace(".", "").replace(",", ".")
+        try:
+            c = float(v)
+        except Exception:
+            continue
+        if c > 0:
+            out[m.group(1)] = round(c, 2)
+    return out
+
+
+@app.post("/pf-flex-costos")
+def pf_flex_costos():
+    """Pegar la tabla de RedChat (Ordenes filtradas por Envialo Flex)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    if d.get("ver"):
+        a = _flex_costos_all()
+        return jsonify({"ok": True, "cuantos": len(a),
+                        "ultimos": sorted(a.items(), key=lambda x: -int(x[0]))[:12]})
+    nuevos = _flex_costos_parsear(d.get("texto") or "")
+    if not nuevos:
+        return jsonify({"ok": False, "msg": "No reconoci ninguna fila. Pega las filas con el "
+                                            "numero de venta y el costo de envio."}), 400
+    todo = _flex_costos_all()
+    todo.update({str(k): v for k, v in nuevos.items()})
+    try:
+        tmp = FLEX_COSTOS_F.with_suffix(".tmp")
+        tmp.write_text(_json.dumps(todo, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(FLEX_COSTOS_F)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])}), 500
+    return jsonify({"ok": True, "cargados": len(nuevos), "total": len(todo),
+                    "detalle": sorted(nuevos.items(), key=lambda x: -int(x[0]))[:15]})
+
+
+def _flex_fecha_de(o) -> str:
+    for k in ("created_at", "processed_at", "fecha", "date_created"):
+        v = (o or {}).get(k)
+        if v:
+            return str(v)[:10]
+    return _dt.date.today().isoformat()
+
+
 def _flex_costo_envio(o) -> float:
-    """Lo que cuesta de verdad llevarlo por Flex. Si no esta configurado devuelve None y el
-    pedido se sigue costeando con la tabla de Andreani (mejor eso que inventar un numero)."""
+    """Lo que cuesta de verdad llevarlo por Flex, con la tarifa vigente el dia del pedido.
+    Si no hay nada configurado devuelve None y el pedido se sigue costeando con la tabla de
+    Andreani (mejor eso que inventar un numero)."""
+    _num = str((o or {}).get("order_number") or (o or {}).get("name") or "").lstrip("#")
+    _real = _flex_costos_all().get(_num)
+    if _real:
+        return float(_real)                      # lo que Envialo cobro de verdad, gana siempre
     z = _flex_zona(_prov_cp(o)[1], _prov_cp(o)[0]) or ""
-    v = _FLEX_COSTO_ZONA.get(z) or _FLEX_COSTO_UNICO
+    dia = _flex_fecha_de(o)
+    v = ""
+    for t in _FLEX_TARIFAS:                      # ordenadas: gana la ultima que ya empezo
+        if (t.get("desde") or "") <= dia:
+            v = t.get(z) or t.get("unico") or ""
+    if not v:
+        v = _FLEX_COSTO_ZONA.get(z) or _FLEX_COSTO_UNICO
     try:
         return float(str(v).replace(".", "").replace(",", ".")) if v else None
     except Exception:
