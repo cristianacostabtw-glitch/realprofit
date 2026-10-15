@@ -11180,10 +11180,23 @@ def _meli_etiquetas_pendientes(email, sids=None):
     pdf, orders, stats = _meli_etiquetas_procesar(crudo, mapa_ext=mapa)
     # OJO: en "sids" van SOLO los que salieron. Los que fallaron no se marcan como bajados,
     # si no desaparecian de la lista sin que exista su etiqueta.
-    _ok = [x for x in ids if x not in set(fallidos)]
+    # ML puede contestar 200 con un PDF VALIDO pero con MENOS etiquetas de las pedidas: se come
+    # una sin avisar. Paso el 15-10-2026: 6 envios FLEX tildados, volvieron 5 (y el cartel decia
+    # "1 sin estampar"). Antes se marcaban los 6 como bajados, asi que el que falto DESAPARECIA
+    # de la lista y no habia forma de reintentarlo. Ahora solo se marca el que salio en el PDF.
+    _fall = set(fallidos)
+    _trk = {f["sid"]: (f.get("tracking") or "") for f in filas}
+    _salieron = {(o.get("tracking") or "") for o in (orders or [])} - {""}
+    if stats.get("sin_cortar") or any(not _trk.get(x) for x in ids):
+        _ok, _falta = [x for x in ids if x not in _fall], []   # no se puede aparear: queda como antes
+    else:
+        _ok = [x for x in ids if x not in _fall and _trk.get(x, "") in _salieron]
+        _falta = [x for x in ids if x not in _fall and x not in set(_ok)]
+    _nom = {f["sid"]: (f.get("buyer") or f["sid"]) for f in filas}
     return pdf, orders, stats, {"envios": len(ids), "tandas": len(crudos),
                                 "crudo_bytes": total_bytes, "sids": _ok,
-                                "fallidos": fallidos}
+                                "fallidos": fallidos,
+                                "faltantes": [_nom.get(x, x) for x in _falta]}
 
 
 def _meli_esperando_stock(email):
@@ -11618,6 +11631,9 @@ def meli_etiquetas_bajar():
     resp.headers["X-Sin-Estampar"] = str(stats.get("sin_estampar", 0))
     resp.headers["X-Sin-Cortar"] = "1" if stats.get("sin_cortar") else ""
     resp.headers["X-Fallidos"] = ",".join(info.get("fallidos") or [])
+    import unicodedata as _ud                      # los headers van en latin-1: saco los acentos
+    resp.headers["X-Faltantes"] = _ud.normalize(
+        "NFKD", ", ".join(info.get("faltantes") or [])).encode("ascii", "ignore").decode()
     _meli_baj_marcar(email, info.get("sids") or [])   # no vuelven a salir en la lista
     return resp
 
@@ -21953,7 +21969,7 @@ function etqBajarSel(soloFlex){
  if(m){m.textContent='Bajando las etiquetas de Mercado Libre y estampando el SKU\u2026';m.style.color='#7aa2c8';}
  var H={};
  fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:ids})})
- .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos'); H.nc=r.headers.get('X-Sin-Cortar');
+ .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos'); H.nc=r.headers.get('X-Sin-Cortar'); H.fa=r.headers.get('X-Faltantes');
    H.ok=r.ok; H.ct=r.headers.get('Content-Type')||'';
    return (H.ok && H.ct.indexOf('pdf')>=0) ? r.blob() : r.text(); })
  .then(function(x){
@@ -21964,9 +21980,12 @@ function etqBajarSel(soloFlex){
   a.download=soloFlex?'MELI-etiquetas-FLEX.pdf':'MELI-etiquetas-SKU.pdf'; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){URL.revokeObjectURL(u);},1500);
   var _fx=(H.f||'').split(',').filter(function(z){return z;});
+  var _ft=(H.fa||'').split(', ').filter(function(z){return z;});
   if(H.nc==='1'){ if(m){m.innerHTML='\u2713 Etiqueta bajada, pero SIN recortar ni estampar: ML la mand\u00f3 en un formato que no pude cortar. Imprimila igual.'; m.style.color='#ffb35a';} etqCargar(); return; }
   if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'
-   +(_fx.length?(' &#183; <span style="color:#e0637f">'+_fx.length+' que ML no pudo imprimir: '+_fx.join(', ')+'</span>'):'')+((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
+   +(_fx.length?(' &#183; <span style="color:#e0637f">'+_fx.length+' que ML no pudo imprimir: '+_fx.join(', ')+'</span>'):'')
+   +(_ft.length?(' &#183; <span style="color:#e0637f">'+_ft.length+' que ML no mando (siguen en la lista): '+_ft.join(', ')+'</span>'):'')
+   +((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
   etqCargar();                       // las que acaba de bajar ya no tienen que salir
  }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
 }
