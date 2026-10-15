@@ -11118,6 +11118,12 @@ def _meli_etiquetas_pendientes(email, sids=None):
         return None, [], {}, {"msg": err}
     if not filas:
         return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+    # Las que se tildaron pero YA NO estan ready_to_ship. La pantalla las muestra desde la foto
+    # guardada sin reconfirmarlas contra ML (el tope de 4s que la hace rapida), asi que podes
+    # tildar 10 y que 2 ya se hayan movido: alguien las imprimio del panel, o ya se despacharon.
+    # Antes bajaban 8 sin una palabra; ahora se dicen por nombre.
+    _vivos = {f["sid"] for f in filas}
+    _viejas = [x for x in (sids or []) if x not in _vivos]
     mapa = {}
     for f in filas:
         if f["tracking"]:
@@ -11196,7 +11202,8 @@ def _meli_etiquetas_pendientes(email, sids=None):
     return pdf, orders, stats, {"envios": len(ids), "tandas": len(crudos),
                                 "crudo_bytes": total_bytes, "sids": _ok,
                                 "fallidos": fallidos,
-                                "faltantes": [_nom.get(x, x) for x in _falta]}
+                                "faltantes": [_nom.get(x, x) for x in _falta],
+                                "yanolistas": _viejas}
 
 
 def _meli_esperando_stock(email):
@@ -11634,6 +11641,7 @@ def meli_etiquetas_bajar():
     import unicodedata as _ud                      # los headers van en latin-1: saco los acentos
     resp.headers["X-Faltantes"] = _ud.normalize(
         "NFKD", ", ".join(info.get("faltantes") or [])).encode("ascii", "ignore").decode()
+    resp.headers["X-Ya-No-Listas"] = str(len(info.get("yanolistas") or []))
     _meli_baj_marcar(email, info.get("sids") or [])   # no vuelven a salir en la lista
     return resp
 
@@ -21969,7 +21977,7 @@ function etqBajarSel(soloFlex){
  if(m){m.textContent='Bajando las etiquetas de Mercado Libre y estampando el SKU\u2026';m.style.color='#7aa2c8';}
  var H={};
  fetch('/meli/etiquetas-bajar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:ids})})
- .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos'); H.nc=r.headers.get('X-Sin-Cortar'); H.fa=r.headers.get('X-Faltantes');
+ .then(function(r){ H.p=r.headers.get('X-Paquetes'); H.t=r.headers.get('X-Potes'); H.s=r.headers.get('X-Sin-Estampar'); H.f=r.headers.get('X-Fallidos'); H.nc=r.headers.get('X-Sin-Cortar'); H.fa=r.headers.get('X-Faltantes'); H.yn=r.headers.get('X-Ya-No-Listas');
    H.ok=r.ok; H.ct=r.headers.get('Content-Type')||'';
    return (H.ok && H.ct.indexOf('pdf')>=0) ? r.blob() : r.text(); })
  .then(function(x){
@@ -21985,6 +21993,7 @@ function etqBajarSel(soloFlex){
   if(m){ m.innerHTML='\u2713 '+(H.p||ids.length)+' etiquetas &#183; '+(H.t||'?')+' potes'
    +(_fx.length?(' &#183; <span style="color:#e0637f">'+_fx.length+' que ML no pudo imprimir: '+_fx.join(', ')+'</span>'):'')
    +(_ft.length?(' &#183; <span style="color:#e0637f">'+_ft.length+' que ML no mando (siguen en la lista): '+_ft.join(', ')+'</span>'):'')
+   +((H.yn&&H.yn!=='0')?(' &#183; <span style="color:#ffb35a">'+H.yn+' que ya no estaban listas en ML (cambiaron de estado)</span>'):'')
    +((H.s&&H.s!=='0')?(' &#183; <span style="color:#ffb35a">'+H.s+' sin estampar</span>'):''); m.style.color='#34d399'; }
   etqCargar();                       // las que acaba de bajar ya no tienen que salir
  }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
