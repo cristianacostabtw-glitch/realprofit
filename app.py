@@ -10329,21 +10329,22 @@ def pf_despachos_partir_descargar():
                      download_name=nombre, mimetype="application/pdf")
 
 
-# ---------- MELI: unir los PDF cuando ML corta la descarga ----------
-# ML contesta 200 con un PDF valido pero con MENOS etiquetas de las pedidas (verificado el
-# 15-10-2026: 6 pedidas, 5 en el PDF). Las que faltan quedan en la lista y se bajan de nuevo,
-# asi que a la hora de imprimir hay 2 o 3 PDF sueltos. Esto los junta en UNO:
-#   - tira las hojas PARA EMPAQUETAR viejas y arma una sola con los totales reales,
-#   - saca las etiquetas REPETIDAS (misma guia) para no despachar dos veces el mismo paquete,
-#   - y estampa el SKU en las que ML mando sin estampar, cuando en su archivo no hay duda.
-# El PDF resultante se baja por /pf-despachos-partir-descargar, igual que el de Despachos.
+# ---------- MELI: unir los PDF de etiquetas ----------
+# Dos cosas que pasan seguido y obligan a juntar PDF a mano:
+#   1. ML contesta 200 con un PDF valido pero con MENOS etiquetas de las pedidas (verificado el
+#      15-10-2026: 6 pedidas, 5 en el PDF). Las que faltan quedan en la lista y se bajan de nuevo.
+#   2. Bajar del panel de ML en vez de aca: ese PDF viene A4 apaisado con TRES etiquetas por hoja
+#      y una hoja final "Identificacion Productos" con el SKU de cada Pack ID.
+# Esto junta todo eso en un PDF listo para imprimir: una etiqueta de 10x15 por hoja, sin
+# repetidas, con el SKU estampado y UNA sola hoja PARA EMPAQUETAR con los totales reales.
 _MELI_HOJA_RE = re.compile(r"(\d+)\s*X\s+BOLSAS?\s+DE\s+(X\s*\d+\s+POTES?)", re.I)
+_MELI_W15, _MELI_H15 = 283.0, 425.0          # 10x15 cm en puntos
 
 
 def _meli_unir_guia(pg, txt):
-    """(guia, rect) que identifica a la etiqueta. El tracking HC…AR en Mercado Envios; en FLEX
-    la etiqueta NO lo trae, trae 'Envio: 4825368 7513' (el mismo numero partido con un espacio),
-    asi que se rearma juntando las palabras numericas que siguen. ('', None) si no se reconoce."""
+    """(guia, rect) que identifica a la etiqueta. En Mercado Envios el tracking HC…AR; en FLEX
+    la etiqueta NO lo trae, trae 'Envio: 4825368 7513' (el numero partido con un espacio), asi
+    que se rearma juntando las palabras numericas que siguen. ('', None) si no se reconoce."""
     m = _re_and.search(r"HC[0-9A-Z]+AR", txt or "")
     if m:
         rr = pg.search_for(m.group(0))
@@ -10377,20 +10378,49 @@ def _meli_unir_potes(sku):
     return int(m.group(1)) if m else 0
 
 
+def _meli_unir_txt(pg, caja=None):
+    """El texto de la hoja, o solo el de un recuadro cuando la hoja trae varias etiquetas."""
+    if caja is None:
+        return pg.get_text() or ""
+    return " ".join(w[4] for w in pg.get_text("words")
+                    if caja.x0 <= w[0] < caja.x1 and caja.y0 <= w[1] < caja.y1)
+
+
+def _meli_unir_ident(txt):
+    """{pack_id: (comprador, potes)} de una hoja 'Identificacion Productos' del panel de ML.
+    Es la fuente mas confiable que hay: el SKU y la cantidad los pone ML, no los deducimos."""
+    out = {}
+    for b in re.split(r"(?=Pack ID:)", txt or "")[1:]:
+        mp = _re_and.search(r"Pack ID:\s*([\d ]+)", b)
+        ms = _re_and.search(r"SKU:\s*(\S+)", b)
+        if not (mp and ms):
+            continue
+        mc = _re_and.search(r"Cantidad:\s*(\d+)", b)
+        u = _meli_unir_potes(ms.group(1)) or 1
+        lineas = [x.strip() for x in b.splitlines() if x.strip()]
+        quien = ""
+        for k, l in enumerate(lineas):
+            if l.startswith("SKU:") and k > 0:
+                quien = lineas[k - 1]
+                break
+        out[mp.group(1).replace(" ", "")] = (quien, u * int(mc.group(1) if mc else 1))
+    return out
+
+
 @app.post("/meli/unir")
 @_heavy
 def meli_unir():
     if not _user_actual():
         return jsonify({"ok": False}), 401
     files = [f for f in request.files.getlist("pdf") if f]
-    if len(files) < 2:
-        return jsonify({"ok": False, "msg": "Eleg&iacute; al menos 2 PDF para unir."})
+    if not files:
+        return jsonify({"ok": False, "msg": "Eleg&iacute; los PDF para unir."})
     from collections import Counter
     try:
         import fitz
     except Exception as e:
         return jsonify({"ok": False, "msg": "Falta PyMuPDF: %s" % str(e)[:80]})
-    docs, etiq, hojas = [], [], []
+    docs, etiq, hojas, packs = [], [], [], {}
     try:
         for f in files:
             try:
@@ -10402,24 +10432,42 @@ def meli_unir():
             fi = len(docs) - 1
             cnt = Counter()
             for i in range(len(d)):
-                t = d[i].get_text() or ""
+                pg = d[i]
+                t = pg.get_text() or ""
+                if ("SKU:" in t) and ("Cantidad:" in t):     # hoja Identificacion Productos
+                    packs.update(_meli_unir_ident(t))
+                    continue
                 if "PARA EMPAQUETAR" in t.upper():
                     for n, sku in _MELI_HOJA_RE.findall(t):
                         cnt[re.sub(r"\s+", " ", sku).strip().upper()] += int(n)
                     continue
-                g, r = _meli_unir_guia(d[i], t)
-                etiq.append({"f": fi, "p": i, "sku": _partir_sku_pagina(t).upper(),
-                             "guia": g, "rect": r})
+                # ¿una etiqueta por hoja (lo que baja RealProfit) o tres (el panel de ML)?
+                marcos = _meli_frames(pg) if pg.rect.width > pg.rect.height else []
+                cajas = marcos if len(marcos) >= 2 else [None]
+                for caja in cajas:
+                    tt = _meli_unir_txt(pg, caja)
+                    g, r = _meli_unir_guia(pg, tt)
+                    if caja is not None and (r is None or not caja.contains(r.tl)):
+                        r = None                              # el rect es de otra columna
+                    mp = _re_and.search(r"Pack ID:\s*([\d ]{10,25})", tt)
+                    ms = _re_and.search(r"(x\d+\s+POTES?)", tt, _re_and.I)
+                    etiq.append({"f": fi, "p": i, "caja": caja, "guia": g, "rect": r,
+                                 "pack": (re.sub(r"\D", "", mp.group(1))[:16] if mp else ""),
+                                 "sku": (ms.group(1).upper() if ms else "")})
             hojas.append(cnt)
         if not etiq:
             return jsonify({"ok": False, "msg": "No encontr&eacute; etiquetas en lo que subiste."})
 
-        # 1) ESTAMPAR las que ML mando sin sello, ARCHIVO POR ARCHIVO y ANTES de sacar repetidas
-        #    (si primero sacara repetidas, la cuenta de ese archivo ya no cerraria contra su
-        #    hoja). Solo cuando no hay ambiguedad: la hoja del archivo menos lo ya sellado tiene
-        #    que dar UN solo tipo de pack y justo tantos como etiquetas sin sello. Si no, no
-        #    invento nada y la etiqueta queda sin sello, dicho en la respuesta.
-        estampadas = 0
+        # 1) EL SKU. Primero lo que diga ML en la hoja de identificacion (es el dato de ellos),
+        #    despues lo que ya viniera estampado.
+        for e in etiq:
+            if e["pack"] in packs:
+                p = packs[e["pack"]][1]
+                e["sku"] = "X%d %s" % (p, "POTE" if p == 1 else "POTES")
+
+        # 2) Las que siguen sin SKU: se completan ARCHIVO POR ARCHIVO y solo si no hay duda, o
+        #    sea cuando la hoja de ese archivo menos lo ya sellado da UN solo tipo de pack y
+        #    justo tantos como etiquetas sin sellar. Si no, no invento nada.
         for fi in range(len(docs)):
             sellado = Counter(e["sku"] for e in etiq if e["f"] == fi and e["sku"])
             faltan = [e for e in etiq if e["f"] == fi and not e["sku"]]
@@ -10429,68 +10477,50 @@ def meli_unir():
             for k, v in sellado.items():
                 resto[k] -= v
             resto = {k: v for k, v in resto.items() if v > 0}
-            if len(resto) != 1:
-                continue
-            sku = list(resto)[0]
-            if resto[sku] != len(faltan):
-                continue
-            potes = _meli_unir_potes(sku)
-            if not potes:
+            if len(resto) != 1 or list(resto.values())[0] != len(faltan):
                 continue
             for e in faltan:
-                if not e["rect"]:
-                    continue
-                try:
-                    _meli_stamp(docs[e["f"]][e["p"]], e["rect"], potes)
-                    e["sku"] = sku
-                    estampadas += 1
-                except Exception:
-                    pass
+                e["sku"] = list(resto)[0]
 
-        # 2) REPETIDAS. Si una etiqueta aparece en dos archivos (bajaste de nuevo y ML te la
-        #    mando otra vez) queda UNA sola: imprimirla dos veces es despachar el paquete dos
-        #    veces. Verificado el 17-10-2026 con dos PDF FLEX reales: compartian 2 etiquetas.
+        # 3) REPETIDAS. La misma etiqueta en dos archivos queda UNA sola: imprimirla dos veces
+        #    es despachar el paquete dos veces. Verificado el 17-10-2026 con dos PDF FLEX
+        #    reales: compartian 2 etiquetas.
         vistas, keep, repes = {}, [], []
         for e in etiq:
-            g = e["guia"]
-            if g and g in vistas:
-                repes.append((e, vistas[g]))
+            k = e["pack"] or e["guia"]
+            if k and k in vistas:
+                gem = vistas[k]
+                if not gem["sku"] and e["sku"]:
+                    gem["sku"] = e["sku"]
+                repes.append(e)
                 continue
-            if g:
-                vistas[g] = e
+            if k:
+                vistas[k] = e
             keep.append(e)
 
-        # 3) LOS TOTALES salen de las hojas ORIGINALES de cada PDF (contar solo lo sellado daria
-        #    de menos, porque ML manda etiquetas sin sello). A esa suma se le restan las
-        #    repetidas: el pack de la repetida es el de su gemela, aunque ella venga sin sello.
-        total = Counter()
-        for c in hojas:
-            total.update(c)
-        dudosas = 0
-        for e, gem in repes:
-            sku = e["sku"] or gem["sku"]
-            if sku and total.get(sku):
-                total[sku] -= 1
-            else:
-                dudosas += 1
-        if sum(total.values()) == 0:          # ningun PDF traia hoja: cuento lo estampado
-            for e in keep:
-                if e["sku"]:
-                    total[e["sku"]] += 1
-
-        # 4) ORDEN: el mismo que la hoja (potes solos, mixtos, el resto), para empaquetar de
-        #    corrido. Las que quedaron sin SKU van al final, no mezcladas.
-        gr = Counter(e["sku"] for e in keep if e["sku"])
-        pri = _sku_palabra_principal(gr)
-        keep.sort(key=lambda e: (1, 9, 0, "") if not e["sku"]
-                  else (0, _sku_bloque(e["sku"], pri), -gr[e["sku"]], e["sku"]))
+        # 4) ORDEN: primero los packs mas grandes y las que no tienen SKU al final, que es como
+        #    se empaqueta.
+        keep.sort(key=lambda e: (0 if e["sku"] else 1, -_meli_unir_potes(e["sku"]), e["pack"]))
 
         out = fitz.open()
         for e in keep:
-            out.insert_pdf(docs[e["f"]], from_page=e["p"], to_page=e["p"])
-        detalle = []
-        for sku, n in total.items():
-            detalle += [{"sku": sku}] * max(0, n)
+            pg0 = docs[e["f"]][e["p"]]
+            potes = _meli_unir_potes(e["sku"])
+            if e["caja"] is None:
+                out.insert_pdf(docs[e["f"]], from_page=e["p"], to_page=e["p"])
+                pg = out[-1]
+                if potes and not _re_and.search(r"x\d+\s+POTES?", pg0.get_text() or "", _re_and.I):
+                    _meli_unir_sello(pg, fitz.Rect(0, 0, pg.rect.width, pg.rect.height), potes)
+            else:
+                esc = min(_MELI_W15 / e["caja"].width, _MELI_H15 / e["caja"].height)
+                aw, ah = e["caja"].width * esc, e["caja"].height * esc
+                dest = fitz.Rect((_MELI_W15 - aw) / 2.0, (_MELI_H15 - ah) / 2.0,
+                                 (_MELI_W15 + aw) / 2.0, (_MELI_H15 + ah) / 2.0)
+                pg = out.new_page(width=_MELI_W15, height=_MELI_H15)
+                pg.show_pdf_page(dest, docs[e["f"]], e["p"], clip=e["caja"])
+                if potes:
+                    _meli_unir_sello(pg, dest, potes)
+        detalle = [{"sku": e["sku"]} for e in keep if e["sku"]]
         if detalle:
             _sku_hoja_empaquetar(out, detalle)
         import io as _io
@@ -10498,6 +10528,7 @@ def meli_unir():
         out.save(buf, garbage=3, deflate=True)
         out.close()
         pdf = buf.getvalue()
+        total = Counter(e["sku"] for e in keep if e["sku"])
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:140])}), 500
     finally:
@@ -10513,14 +10544,31 @@ def meli_unir():
         (_JOBS_DIR / (job + ".a.pdf")).write_bytes(pdf)
     except Exception:
         pass
-    bolsas = sum(total.values())
-    potes = sum(_meli_unir_potes(k) * v for k, v in total.items())
+    sinsku = len([e for e in keep if not e["sku"]])
     return jsonify({"ok": True, "job": job, "archivos": len(docs), "etiquetas": len(keep),
-                    "repetidas": len(repes), "dudosas": dudosas, "estampadas": estampadas,
-                    "sin_sku": len([e for e in keep if not e["sku"]]),
-                    "bolsas": bolsas, "potes": potes,
-                    "cuadra": (bolsas == len(keep)),
-                    "desglose": [{"sku": k, "cant": v} for k, v in sorted(total.items()) if v > 0]})
+                    "repetidas": len(repes), "sin_sku": sinsku, "ident": len(packs),
+                    "bolsas": sum(total.values()),
+                    "potes": sum(_meli_unir_potes(k) * v for k, v in total.items()),
+                    "cuadra": (sinsku == 0),
+                    "desglose": [{"sku": k, "cant": v} for k, v in sorted(total.items())]})
+
+
+def _meli_unir_sello(pg, caja, potes):
+    """El sello 'X2 POTES' arriba a la derecha de la etiqueta: caja negra, texto blanco. Es el
+    unico lugar realmente libre de la FLEX (debajo del 'Envio:' esta el Pack ID y despues el QR)
+    y es donde ya lo pone el bajador, asi que todas las etiquetas quedan iguales."""
+    import fitz
+    txt = "X%d %s" % (potes, "POTE" if potes == 1 else "POTES")
+    fs = 13.0
+    w = fitz.get_text_length(txt, fontname="hebo", fontsize=fs)
+    x1 = caja.x1 - 6.0
+    x0 = x1 - w
+    y = caja.y0 + 30.0
+    cap = fs * 0.72
+    px, py = 4.5, 3.5
+    pg.draw_rect(fitz.Rect(x0 - px, y - cap - py, x1 + px, y + py),
+                 fill=(0, 0, 0), color=(0, 0, 0), width=0)
+    pg.insert_text(fitz.Point(x0, y), txt, fontsize=fs, fontname="hebo", color=(1, 1, 1))
 
 
 # ---------- MercadoLibre: etiquetas → estampar SKU (potes) + hoja PARA EMPAQUETAR ----------
@@ -11320,9 +11368,16 @@ def _meli_etiquetas_pendientes(email, sids=None):
     _viejas = [x for x in (sids or []) if x not in _vivos]
     mapa = {}
     for f in filas:
+        _d = {"sku": f["sku"], "cant": f["cant"], "buyer": f["buyer"], "potes": f["potes"]}
         if f["tracking"]:
-            mapa[f["tracking"]] = {"sku": f["sku"], "cant": f["cant"],
-                                   "buyer": f["buyer"], "potes": f["potes"]}
+            mapa[f["tracking"]] = _d
+        # TAMBIEN por numero de envio. En FLEX (self_service) ML no devuelve tracking_number:
+        # el envio no entraba al mapa, la etiqueta no se podia aparear, caia en la rama "hoja
+        # sin tracking" -- se cortaba bien por el marco pero SIN estampar -- y Cristian recibia
+        # las FLEX sin el SKU. La etiqueta FLEX imprime "Envio: 4827651 3403", que es este
+        # mismo id partido con un espacio, asi que apareando por sid se estampan como el resto.
+        if f.get("sid"):
+            mapa.setdefault(str(f["sid"]), _d)
     # TODOS los envíos, en tandas de 50. ANTES esto era `[:50]` y cortaba ahí sin avisar: con 54
     # seleccionadas bajabas 50 etiquetas y te faltaban 4, y el PDF no decía nada. ML no acepta
     # una lista ilimitada en shipment_ids, así que se pide por tandas y se unen los PDF.
@@ -20584,6 +20639,104 @@ def meli_envio_crudo():
                     "claves_viejo": sorted(viejo.keys()) if isinstance(viejo, dict) else [],
                     "fechas_nuevo": _fechas(crudo), "fechas_viejo": _fechas(viejo),
                     "crudo": crudo})
+
+
+@app.get("/meli/contar-flex")
+def meli_contar_flex():
+    """SOLO LECTURA: cuantas ventas hubo entre dos momentos y cuantas son FLEX.
+
+    Existe porque la pregunta "cuantos pedidos FLEX entraron de tal hora a tal hora" no se podia
+    contestar: /meli/ventas trae las ultimas 30 sin filtro de fecha, y la lista de etiquetas solo
+    mira las que estan ready_to_ship ahora. Aca se le pide a ML el rango exacto (hora incluida,
+    en hora de Argentina) y se mira el envio de cada orden para saber si es self_service (FLEX).
+    No cambia el estado de nada."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return jsonify({"ok": False, "msg": "MercadoLibre no conectado"})
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    if not desde or not hasta:
+        return jsonify({"ok": False, "msg": "falta desde/hasta (AAAA-MM-DDTHH:MM)"}), 400
+
+    def _iso(s):
+        s = s.replace(" ", "T")
+        if len(s) == 16:
+            s += ":00.000-03:00"
+        elif len(s) == 19:
+            s += ".000-03:00"
+        return s
+
+    h = {"Authorization": "Bearer " + tok}
+    pars = {"seller": uid, "sort": "date_asc", "limit": 50,
+            "order.date_created.from": _iso(desde), "order.date_created.to": _iso(hasta)}
+    ordenes, off = [], 0
+    try:
+        while off < 400:
+            p = dict(pars); p["offset"] = off
+            r = requests.get("%s/orders/search" % MELI_API, headers=h, params=p, timeout=30)
+            if r.status_code >= 400:
+                return jsonify({"ok": False, "msg": "ML %s: %s" % (r.status_code, r.text[:160])})
+            j = r.json() if r.content else {}
+            res = j.get("results") or []
+            ordenes += res
+            tot = int((j.get("paging") or {}).get("total") or 0)
+            off += 50
+            if off >= tot or not res:
+                break
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])}), 502
+
+    # El envio de cada orden, en paralelo: la orden no dice si es FLEX, lo dice el shipment.
+    sids = []
+    for o in ordenes:
+        s = (o.get("shipping") or {}).get("id")
+        if s:
+            sids.append(str(s))
+    envios = {}
+    if sids:
+        import concurrent.futures as _cf
+
+        def _uno(sid):
+            try:
+                rr = requests.get("%s/shipments/%s" % (MELI_API, sid), timeout=20,
+                                  headers={"Authorization": "Bearer " + tok, "x-format-new": "true"})
+                return sid, (rr.json() if rr.content else {})
+            except Exception:
+                return sid, {}
+        with _cf.ThreadPoolExecutor(max_workers=8) as ex:
+            for sid, sj in ex.map(_uno, sids):
+                envios[sid] = sj
+
+    filas, flex, otros = [], 0, 0
+    for o in ordenes:
+        sid = str((o.get("shipping") or {}).get("id") or "")
+        sj = envios.get(sid) or {}
+        # ML lo manda como logistic.type en el formato nuevo y como logistic_type en el viejo.
+        tipo = ((sj.get("logistic") or {}).get("type") or sj.get("logistic_type") or "")
+        es = (tipo == "self_service")
+        if es:
+            flex += 1
+        else:
+            otros += 1
+        items = o.get("order_items") or []
+        potes = 0
+        for it in items:
+            _s = str((it.get("item") or {}).get("seller_sku")
+                     or (it.get("item") or {}).get("seller_custom_field") or "").strip()
+            potes += _meli_units_sku(_s)[0] * int(it.get("quantity") or 1)
+        filas.append({"id": o.get("id"), "fecha": o.get("date_created"), "flex": es,
+                      "tipo": tipo, "estado": o.get("status"),
+                      "comprador": (o.get("buyer") or {}).get("nickname", ""),
+                      "total": o.get("total_amount", 0), "potes": potes,
+                      "envio": sid, "envio_estado": sj.get("status") or ""})
+    return jsonify({"ok": True, "desde": _iso(desde), "hasta": _iso(hasta),
+                    "ventas": len(ordenes), "flex": flex, "no_flex": otros,
+                    "potes_flex": sum(f["potes"] for f in filas if f["flex"]),
+                    "plata_flex": sum(float(f["total"] or 0) for f in filas if f["flex"]),
+                    "detalle": filas})
 
 
 @app.get("/meli/etiquetas-diag")
