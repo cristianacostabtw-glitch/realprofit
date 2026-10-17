@@ -10329,6 +10329,200 @@ def pf_despachos_partir_descargar():
                      download_name=nombre, mimetype="application/pdf")
 
 
+# ---------- MELI: unir los PDF cuando ML corta la descarga ----------
+# ML contesta 200 con un PDF valido pero con MENOS etiquetas de las pedidas (verificado el
+# 15-10-2026: 6 pedidas, 5 en el PDF). Las que faltan quedan en la lista y se bajan de nuevo,
+# asi que a la hora de imprimir hay 2 o 3 PDF sueltos. Esto los junta en UNO:
+#   - tira las hojas PARA EMPAQUETAR viejas y arma una sola con los totales reales,
+#   - saca las etiquetas REPETIDAS (misma guia) para no despachar dos veces el mismo paquete,
+#   - y estampa el SKU en las que ML mando sin estampar, cuando en su archivo no hay duda.
+# El PDF resultante se baja por /pf-despachos-partir-descargar, igual que el de Despachos.
+_MELI_HOJA_RE = re.compile(r"(\d+)\s*X\s+BOLSAS?\s+DE\s+(X\s*\d+\s+POTES?)", re.I)
+
+
+def _meli_unir_guia(pg, txt):
+    """(guia, rect) que identifica a la etiqueta. El tracking HC…AR en Mercado Envios; en FLEX
+    la etiqueta NO lo trae, trae 'Envio: 4825368 7513' (el mismo numero partido con un espacio),
+    asi que se rearma juntando las palabras numericas que siguen. ('', None) si no se reconoce."""
+    m = _re_and.search(r"HC[0-9A-Z]+AR", txt or "")
+    if m:
+        rr = pg.search_for(m.group(0))
+        return m.group(0), (rr[0] if rr else None)
+    try:
+        import fitz
+        pal = pg.get_text("words")
+    except Exception:
+        return "", None
+    for i, w in enumerate(pal):
+        if not w[4].lower().startswith("envio"):
+            continue
+        num = ""
+        r = fitz.Rect(w[0], w[1], w[2], w[3])
+        for w2 in pal[i + 1:i + 7]:
+            if abs(w2[1] - w[1]) > 3:          # ya es otra linea
+                break
+            t = w2[4].strip()
+            if not t.isdigit():
+                break
+            num += t
+            r |= fitz.Rect(w2[0], w2[1], w2[2], w2[3])
+        if num:
+            return num, r
+    return "", None
+
+
+def _meli_unir_potes(sku):
+    """'X2 POTES' → 2. 0 si no se entiende."""
+    m = _re_and.search(r"x\s*(\d+)", str(sku or ""), _re_and.I)
+    return int(m.group(1)) if m else 0
+
+
+@app.post("/meli/unir")
+@_heavy
+def meli_unir():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    files = [f for f in request.files.getlist("pdf") if f]
+    if len(files) < 2:
+        return jsonify({"ok": False, "msg": "Eleg&iacute; al menos 2 PDF para unir."})
+    from collections import Counter
+    try:
+        import fitz
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "Falta PyMuPDF: %s" % str(e)[:80]})
+    docs, etiq, hojas = [], [], []
+    try:
+        for f in files:
+            try:
+                d = fitz.open(stream=f.read(), filetype="pdf")
+            except Exception as e:
+                return jsonify({"ok": False, "msg": "No pude abrir %s: %s"
+                                                    % (getattr(f, "filename", "el PDF"), str(e)[:70])})
+            docs.append(d)
+            fi = len(docs) - 1
+            cnt = Counter()
+            for i in range(len(d)):
+                t = d[i].get_text() or ""
+                if "PARA EMPAQUETAR" in t.upper():
+                    for n, sku in _MELI_HOJA_RE.findall(t):
+                        cnt[re.sub(r"\s+", " ", sku).strip().upper()] += int(n)
+                    continue
+                g, r = _meli_unir_guia(d[i], t)
+                etiq.append({"f": fi, "p": i, "sku": _partir_sku_pagina(t).upper(),
+                             "guia": g, "rect": r})
+            hojas.append(cnt)
+        if not etiq:
+            return jsonify({"ok": False, "msg": "No encontr&eacute; etiquetas en lo que subiste."})
+
+        # 1) ESTAMPAR las que ML mando sin sello, ARCHIVO POR ARCHIVO y ANTES de sacar repetidas
+        #    (si primero sacara repetidas, la cuenta de ese archivo ya no cerraria contra su
+        #    hoja). Solo cuando no hay ambiguedad: la hoja del archivo menos lo ya sellado tiene
+        #    que dar UN solo tipo de pack y justo tantos como etiquetas sin sello. Si no, no
+        #    invento nada y la etiqueta queda sin sello, dicho en la respuesta.
+        estampadas = 0
+        for fi in range(len(docs)):
+            sellado = Counter(e["sku"] for e in etiq if e["f"] == fi and e["sku"])
+            faltan = [e for e in etiq if e["f"] == fi and not e["sku"]]
+            if not faltan:
+                continue
+            resto = hojas[fi].copy()
+            for k, v in sellado.items():
+                resto[k] -= v
+            resto = {k: v for k, v in resto.items() if v > 0}
+            if len(resto) != 1:
+                continue
+            sku = list(resto)[0]
+            if resto[sku] != len(faltan):
+                continue
+            potes = _meli_unir_potes(sku)
+            if not potes:
+                continue
+            for e in faltan:
+                if not e["rect"]:
+                    continue
+                try:
+                    _meli_stamp(docs[e["f"]][e["p"]], e["rect"], potes)
+                    e["sku"] = sku
+                    estampadas += 1
+                except Exception:
+                    pass
+
+        # 2) REPETIDAS. Si una etiqueta aparece en dos archivos (bajaste de nuevo y ML te la
+        #    mando otra vez) queda UNA sola: imprimirla dos veces es despachar el paquete dos
+        #    veces. Verificado el 17-10-2026 con dos PDF FLEX reales: compartian 2 etiquetas.
+        vistas, keep, repes = {}, [], []
+        for e in etiq:
+            g = e["guia"]
+            if g and g in vistas:
+                repes.append((e, vistas[g]))
+                continue
+            if g:
+                vistas[g] = e
+            keep.append(e)
+
+        # 3) LOS TOTALES salen de las hojas ORIGINALES de cada PDF (contar solo lo sellado daria
+        #    de menos, porque ML manda etiquetas sin sello). A esa suma se le restan las
+        #    repetidas: el pack de la repetida es el de su gemela, aunque ella venga sin sello.
+        total = Counter()
+        for c in hojas:
+            total.update(c)
+        dudosas = 0
+        for e, gem in repes:
+            sku = e["sku"] or gem["sku"]
+            if sku and total.get(sku):
+                total[sku] -= 1
+            else:
+                dudosas += 1
+        if sum(total.values()) == 0:          # ningun PDF traia hoja: cuento lo estampado
+            for e in keep:
+                if e["sku"]:
+                    total[e["sku"]] += 1
+
+        # 4) ORDEN: el mismo que la hoja (potes solos, mixtos, el resto), para empaquetar de
+        #    corrido. Las que quedaron sin SKU van al final, no mezcladas.
+        gr = Counter(e["sku"] for e in keep if e["sku"])
+        pri = _sku_palabra_principal(gr)
+        keep.sort(key=lambda e: (1, 9, 0, "") if not e["sku"]
+                  else (0, _sku_bloque(e["sku"], pri), -gr[e["sku"]], e["sku"]))
+
+        out = fitz.open()
+        for e in keep:
+            out.insert_pdf(docs[e["f"]], from_page=e["p"], to_page=e["p"])
+        detalle = []
+        for sku, n in total.items():
+            detalle += [{"sku": sku}] * max(0, n)
+        if detalle:
+            _sku_hoja_empaquetar(out, detalle)
+        import io as _io
+        buf = _io.BytesIO()
+        out.save(buf, garbage=3, deflate=True)
+        out.close()
+        pdf = buf.getvalue()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:140])}), 500
+    finally:
+        for d in docs:
+            try:
+                d.close()
+            except Exception:
+                pass
+    job = _secrets.token_hex(6)
+    _PARTIR_JOBS[job] = {"a": pdf, "b": None}
+    try:                                   # a disco: con 2 workers la descarga cae en cualquiera
+        _JOBS_DIR.mkdir(parents=True, exist_ok=True)
+        (_JOBS_DIR / (job + ".a.pdf")).write_bytes(pdf)
+    except Exception:
+        pass
+    bolsas = sum(total.values())
+    potes = sum(_meli_unir_potes(k) * v for k, v in total.items())
+    return jsonify({"ok": True, "job": job, "archivos": len(docs), "etiquetas": len(keep),
+                    "repetidas": len(repes), "dudosas": dudosas, "estampadas": estampadas,
+                    "sin_sku": len([e for e in keep if not e["sku"]]),
+                    "bolsas": bolsas, "potes": potes,
+                    "cuadra": (bolsas == len(keep)),
+                    "desglose": [{"sku": k, "cant": v} for k, v in sorted(total.items()) if v > 0]})
+
+
 # ---------- MercadoLibre: etiquetas → estampar SKU (potes) + hoja PARA EMPAQUETAR ----------
 # Las etiquetas de MELI ya traen al final una hoja "Identificación Productos" con el SKU y la
 # cantidad de cada tracking (HC…AR). De ahí sacamos los potes SIN depender de la API de MELI.
@@ -21827,8 +22021,61 @@ function renderEtiquetas(){
   +'<div id="etqm2" style="font-size:12.5px;font-weight:600;margin-top:10px;min-height:16px"></div>'
   +'<div id="etqlista" style="margin-top:12px;color:#7aa2c8;font-size:13px">Buscando ventas pendientes&#8230;</div>'
   +'</div>'
+  // ML a veces contesta 200 con MENOS etiquetas de las pedidas. Las que faltan se quedan en la
+  // lista y se bajan de nuevo, asi que quedan 2 o 3 PDF sueltos para imprimir. Esto los junta.
+  +'<div class="card" style="margin-top:14px">'
+  +'<div class="hrow"><div class="htit"><b>Unir PDF de etiquetas</b></div></div>'
+  +'<div style="color:#8493a8;font-size:12.5px;line-height:1.5;margin-top:4px">'
+   +'Cuando ML te manda <b style="color:#cbd5e1">menos etiquetas de las que ped&iacute;ste</b> y baj&aacute;s las que faltan aparte, '
+   +'sub&iacute; ac&aacute; los dos (o tres) PDF y te los dejo en uno solo: sin etiquetas repetidas, '
+   +'con el SKU estampado donde se pueda y con <b style="color:#cbd5e1">una sola hoja PARA EMPAQUETAR</b> con los totales reales.'
+  +'</div>'
+  +'<label style="display:block;margin-top:13px;border:1.5px dashed #2b3a52;border-radius:14px;padding:26px 18px;text-align:center;cursor:pointer">'
+   +'<input type="file" accept="application/pdf" multiple style="display:none" onchange="etqUnirSubir(this)">'
+   +'<div style="color:#e7edf5;font-size:13.5px;font-weight:700">Eleg&iacute; los PDF para unir</div>'
+   +'<div style="color:#5b6b82;font-size:12px;margin-top:4px">Dos o m&aacute;s &#183; no toca las etiquetas, solo las junta</div>'
+  +'</label>'
+  +'<div id="etqunires" style="margin-top:12px"></div>'
+  +'</div>'
   ;   // la tarjeta de "subir el PDF a mano" se saco: era de cuando no estaba la API de ML
  etqCargar();
+}
+function etqUnirMsg(h,col){ var r=document.getElementById('etqunires'); if(r)r.innerHTML='<div style="background:#0b1220;border:1px solid #1f2a3d;border-radius:12px;padding:12px 14px;color:'+(col||'#9fb3c8')+';font-size:12.5px;font-weight:600">'+h+'</div>'; }
+function etqUnirSubir(inp){
+ var L=inp.files; if(!L||!L.length) return;
+ if(L.length<2){ etqUnirMsg('Eleg&iacute; al menos 2 PDF (mantene Cmd apretado para marcar varios).','#ffb35a'); inp.value=''; return; }
+ var fd=new FormData(); for(var i=0;i<L.length;i++){ fd.append('pdf',L[i]); }
+ etqUnirMsg('&#9203; Uniendo '+L.length+' archivos&#8230;','#c9f5e8');
+ fetch('/meli/unir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){ throw (j&&j.msg)||'No pude unirlos.'; }
+   etqUnirPintar(j);
+ }).catch(function(e){ etqUnirMsg('&#10060; '+esc(String(e)),'#fca5a5'); });
+ inp.value='';
+}
+function etqUnirPintar(j){
+ var u='/pf-despachos-partir-descargar?job='+encodeURIComponent(j.job)+'&parte=1&modo=unir';
+ var des=(j.desglose||[]).map(function(d){ return d.cant+'&#215; '+esc(d.sku); }).join(' &#183; ');
+ var avisos='';
+ if(j.repetidas) avisos+='<div style="color:#ffe600">&#9888; Saqu&eacute; '+j.repetidas+' etiqueta(s) repetida(s): ven&iacute;an en m&aacute;s de un PDF.</div>';
+ if(j.estampadas) avisos+='<div style="color:#86efac">&#10003; Le estamp&eacute; el SKU a '+j.estampadas+' que ML mand&oacute; sin sello.</div>';
+ if(j.sin_sku) avisos+='<div style="color:#ffb35a">&#9888; '+j.sin_sku+' quedaron SIN el SKU impreso (en ese PDF no hab&iacute;a forma de saber cu&aacute;l era cu&aacute;l). La hoja igual tiene los totales bien.</div>';
+ if(!j.cuadra) avisos+='<div style="color:#fca5a5">&#9888; Ojo: la hoja suma '+j.bolsas+' bolsas y hay '+j.etiquetas+' etiquetas. Revisalo antes de imprimir.</div>';
+ var r=document.getElementById('etqunires');
+ r.innerHTML='<div style="background:#0d2018;border:1px solid #1f5f45;border-radius:12px;padding:14px">'
+  +'<div style="color:#86efac;font-size:13.5px;font-weight:800">&#10003; '+j.etiquetas+' etiquetas &#183; '+j.potes+' potes &#183; '+j.bolsas+' bolsas</div>'
+  +(des?('<div style="color:#9fb3c8;font-size:12px;margin-top:5px">'+des+'</div>'):'')
+  +'<button onclick="etqUnirBajar(\''+u+'\',this)" style="margin-top:12px;width:100%;background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:11px;font-size:13px;font-weight:800;cursor:pointer">&#11015; Bajar el PDF unido</button>'
+  +(avisos?('<div style="margin-top:10px;font-size:11.5px;line-height:1.6">'+avisos+'</div>'):'')
+  +'</div>';
+}
+function etqUnirBajar(u,btn){
+ if(btn){ btn.disabled=true; btn.textContent='Bajando\u2026'; }
+ fetch(u).then(function(r){ if(!r.ok) throw 0; return r.blob(); }).then(function(b){
+   var a=document.createElement('a'); a.href=URL.createObjectURL(b);
+   a.download='MELI-etiquetas-unidas.pdf'; document.body.appendChild(a); a.click();
+   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },900);
+   if(btn){ btn.disabled=false; btn.innerHTML='&#10003; Bajado'; }
+ }).catch(function(){ if(btn){ btn.disabled=false; btn.innerHTML='&#11015; Bajar el PDF unido'; } });
 }
 var ETQTODAS=false;
 function etqVerTodas(v){ ETQTODAS=v; _ETQJ=null; etqCargar(); }
