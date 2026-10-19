@@ -12078,13 +12078,19 @@ def wa_cambiar_numero():
 
 @app.post("/meli/etiquetas-desmarcar")
 def meli_etiquetas_desmarcar():
-    """Vuelve a habilitar un envio ya bajado (para reimprimir una etiqueta)."""
+    """Vuelve a habilitar un envio ya bajado (para reimprimir una etiqueta).
+
+    Con {"marcar": true} hace lo contrario: lo da por bajado. Sirve para arreglar a mano los
+    que quedaron mal marcados por un bug (pasó el 19-10-2026 con las FLEX cuyo tracking no es
+    el numero de envio: la etiqueta estaba impresa y el envio seguia saliendo en la lista)."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False}), 401
     d = request.get_json(silent=True) or {}
-    _meli_baj_marcar(email, d.get("sids") or [], borrar=True)
-    return jsonify({"ok": True})
+    sids = [str(x) for x in (d.get("sids") or []) if str(x).strip()]
+    marcar = bool(d.get("marcar"))
+    _meli_baj_marcar(email, sids, borrar=(not marcar))
+    return jsonify({"ok": True, "sids": sids, "accion": "marcados" if marcar else "rehabilitados"})
 
 
 @app.get("/meli/etiquetas-pendientes")
