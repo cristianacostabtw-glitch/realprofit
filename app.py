@@ -10627,6 +10627,19 @@ def _meli_frames(pg):
     return ded
 
 
+def _meli_marcar_visto(mapa, seen, clave):
+    """Marca como vista la clave y TODAS las otras claves del MISMO envio (tracking y numero
+    de envio apuntan al mismo dict). Sin esto la etiqueta que trae los dos impresos aparea dos
+    veces y sale duplicada."""
+    seen.add(clave)
+    info = mapa.get(clave)
+    if info is None:
+        return
+    for k, v in mapa.items():
+        if v is info:
+            seen.add(k)
+
+
 def _meli_etiquetas_procesar(data, mapa_ext=None):
     """Devuelve (pdf_bytes, orders, stats). Estampa los potes en cada etiqueta y agrega la hoja
     PARA EMPAQUETAR.
@@ -10677,12 +10690,16 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
         txt = pg.get_text()
         # trackings presentes en ESTA hoja, con su rect, ordenados por x (izq→der)
         en_hoja = []
+        _ya_en_hoja = []
         for trak in mapa:
             if trak in seen or trak not in txt:
                 continue
+            if any(mapa[trak] is _i for _i in _ya_en_hoja):
+                continue          # ya tome este envio por su otra clave en esta misma hoja
             rr = pg.search_for(trak)
             if rr:
                 en_hoja.append(((rr[0].x0 + rr[0].x1) / 2.0, trak, rr[0]))
+                _ya_en_hoja.append(mapa[trak])
         # FLEX (self_service): la etiqueta NO trae el HC...AR. Trae el MISMO numero de
         # seguimiento que da la API, pero impreso partido con un espacio:
         #     Envio: 4825368 7513     ->  48253687513
@@ -10738,7 +10755,7 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
                 rgap = (en_hoja[k + 1][0] - xc) if k < n - 1 else (xc - en_hoja[k - 1][0])
                 lo = max(0.0, xc - lgap / 2.0)
                 hi = min(W, xc + rgap / 2.0)
-            seen.add(trak)
+            _meli_marcar_visto(mapa, seen, trak)
             info = mapa[trak]
             bbox = fitz.Rect(lo, top, hi, bot) & pg.rect
             if trak in flex_hits:
@@ -10782,7 +10799,7 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
                 _ix += 1
                 info = mapa.get(trak) or {}
                 if trak:
-                    seen.add(trak)
+                    _meli_marcar_visto(mapa, seen, trak)
                 labels.append({"page": i, "bbox": _bb & pg.rect,
                                "potes": int(info.get("potes") or 1), "trak": trak,
                                "buyer": info.get("buyer") or "", "sku": info.get("sku") or ""})
@@ -11369,18 +11386,20 @@ def _meli_etiquetas_pendientes(email, sids=None):
     mapa = {}
     for f in filas:
         _d = {"sku": f["sku"], "cant": f["cant"], "buyer": f["buyer"], "potes": f["potes"]}
+        # DOS CLAVES por envio: el tracking y el numero de envio, las dos al MISMO dict.
+        # Hacen falta las dos porque la etiqueta FLEX no imprime el tracking sino
+        # "Envio: 4829 0368581", y hay FLEX cuyo tracking ni siquiera es ese numero
+        # (visto el 18-10-2026: sid 48290368581 con tracking XKOXTC5NZ5LH3I5EA745FODILE).
+        # Sin la clave por sid esa etiqueta no aparea y sale sin el SKU.
+        #
+        # Que apunten al MISMO dict es lo que evita el duplicado: la etiqueta de Mercado
+        # Envios trae impresos el HC...AR Y el numero de envio, asi que aparea por las dos
+        # claves. Al marcar una se marcan todas las del mismo envio (ver _meli_marcar_visto).
+        # Sin eso, el 18-10-2026 Cristian tildo 36 envios y le bajaron 68 etiquetas.
         if f["tracking"]:
             mapa[f["tracking"]] = _d
-        elif f.get("sid"):
-            # SOLO cuando no hay tracking, que es el caso FLEX (self_service): ahi ML no manda
-            # tracking_number, el envio no entraba al mapa y la etiqueta salia sin el SKU.
-            # La etiqueta FLEX imprime "Envio: 4827651 3403", que es este mismo id partido.
-            #
-            # OJO: la clave por sid va con ELIF, no con un if suelto. Con las dos claves a la
-            # vez la etiqueta de Mercado Envios -- que trae impresos el HC...AR Y el numero de
-            # envio -- apareaba DOS VECES y salia duplicada: el 18-10-2026 Cristian tildo 36 y
-            # le bajaron 68 etiquetas. Una etiqueta repetida es un paquete despachado dos veces.
-            mapa[str(f["sid"])] = _d
+        if f.get("sid"):
+            mapa.setdefault(str(f["sid"]), _d)
     # TODOS los envíos, en tandas de 50. ANTES esto era `[:50]` y cortaba ahí sin avisar: con 54
     # seleccionadas bajabas 50 etiquetas y te faltaban 4, y el PDF no decía nada. ML no acepta
     # una lista ilimitada en shipment_ids, así que se pide por tandas y se unen los PDF.
