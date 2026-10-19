@@ -11371,13 +11371,16 @@ def _meli_etiquetas_pendientes(email, sids=None):
         _d = {"sku": f["sku"], "cant": f["cant"], "buyer": f["buyer"], "potes": f["potes"]}
         if f["tracking"]:
             mapa[f["tracking"]] = _d
-        # TAMBIEN por numero de envio. En FLEX (self_service) ML no devuelve tracking_number:
-        # el envio no entraba al mapa, la etiqueta no se podia aparear, caia en la rama "hoja
-        # sin tracking" -- se cortaba bien por el marco pero SIN estampar -- y Cristian recibia
-        # las FLEX sin el SKU. La etiqueta FLEX imprime "Envio: 4827651 3403", que es este
-        # mismo id partido con un espacio, asi que apareando por sid se estampan como el resto.
-        if f.get("sid"):
-            mapa.setdefault(str(f["sid"]), _d)
+        elif f.get("sid"):
+            # SOLO cuando no hay tracking, que es el caso FLEX (self_service): ahi ML no manda
+            # tracking_number, el envio no entraba al mapa y la etiqueta salia sin el SKU.
+            # La etiqueta FLEX imprime "Envio: 4827651 3403", que es este mismo id partido.
+            #
+            # OJO: la clave por sid va con ELIF, no con un if suelto. Con las dos claves a la
+            # vez la etiqueta de Mercado Envios -- que trae impresos el HC...AR Y el numero de
+            # envio -- apareaba DOS VECES y salia duplicada: el 18-10-2026 Cristian tildo 36 y
+            # le bajaron 68 etiquetas. Una etiqueta repetida es un paquete despachado dos veces.
+            mapa[str(f["sid"])] = _d
     # TODOS los envíos, en tandas de 50. ANTES esto era `[:50]` y cortaba ahí sin avisar: con 54
     # seleccionadas bajabas 50 etiquetas y te faltaban 4, y el PDF no decía nada. ML no acepta
     # una lista ilimitada en shipment_ids, así que se pide por tandas y se unen los PDF.
