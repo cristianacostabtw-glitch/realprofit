@@ -11471,12 +11471,28 @@ def _meli_etiquetas_pendientes(email, sids=None):
     # "no se pudieron descargar" aunque la etiqueta estuviera en el PDF, y volvian a salir en
     # la lista una y otra vez. Visto el 18-10-2026: sid 48290368581 con tracking
     # XKOXTC5NZ5LH3I5EA745FODILE.
+    _pedidos = [x for x in ids if x not in _fall]
     if stats.get("sin_cortar"):
-        _ok, _falta = [x for x in ids if x not in _fall], []   # no se puede aparear: queda como antes
+        _ok, _falta = _pedidos, []        # no se puede aparear: queda como antes
+    elif int(stats.get("paquetes") or 0) >= len(_pedidos):
+        # RED DE SEGURIDAD POR CONTEO. Si el PDF trae tantas etiquetas como envios pedidos,
+        # NO falta ninguna, aunque alguna no se haya podido aparear por nombre. Sin esto, un
+        # apareo fallido se reportaba como "no se pudieron descargar" y el envio volvia a la
+        # lista para siempre, con la etiqueta ya impresa. Le paso a Cristian dos veces
+        # (17 y 19-10-2026) y es el peor error posible: te hace imprimir dos veces el mismo
+        # paquete. Solo se reporta faltante cuando de verdad vinieron MENOS etiquetas.
+        _ok, _falta = _pedidos, []
     else:
-        _ok = [x for x in ids
-               if x not in _fall and (_trk.get(x, "") in _salieron or str(x) in _salieron)]
-        _falta = [x for x in ids if x not in _fall and x not in set(_ok)]
+        _ok = [x for x in _pedidos
+               if (_trk.get(x, "") in _salieron or str(x) in _salieron)]
+        _falta = [x for x in _pedidos if x not in set(_ok)]
+        # si el apareo encontro menos de los que el PDF trae, el sobrante NO es faltante:
+        # son los que no se pudieron identificar. Se recortan los ultimos para que la cuenta
+        # cierre con lo que de verdad vino.
+        _hueco = int(stats.get("paquetes") or 0) - len(_ok)
+        if _hueco > 0 and _falta:
+            _ok = _ok + _falta[:_hueco]
+            _falta = _falta[_hueco:]
     _nom = {f["sid"]: (f.get("buyer") or f["sid"]) for f in filas}
     return pdf, orders, stats, {"envios": len(ids), "tandas": len(crudos),
                                 "crudo_bytes": total_bytes, "sids": _ok,
