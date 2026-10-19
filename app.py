@@ -22284,6 +22284,13 @@ function etqUnirBajar(u,btn){
 }
 var ETQTODAS=false;
 function etqVerTodas(v){ ETQTODAS=v; _ETQJ=null; etqCargar(); }
+function etqYaBajada(sid){
+ // Para la etiqueta que SI se imprimio pero quedo en la lista (paso con las FLEX cuyo
+ // tracking no es el numero de envio). Sin esto hay que volver a bajarla y se imprime dos veces.
+ fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({sids:[sid],marcar:true})})
+ .then(function(){ _ETQJ=null; etqCargar(1); }).catch(function(){});
+}
 function etqDesmarcar(sid){
  fetch('/meli/etiquetas-desmarcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sids:[sid]})})
  .then(function(){ etqCargar(); }).catch(function(){});
@@ -22326,7 +22333,8 @@ function etqPintar(j){
      +'<span style="flex:1;min-width:6px"></span>'
      +'<span style="font-size:12.5px;color:#eef3f9;font-weight:600">'+esc(o.nombre||'')+'</span>'
      +'<span style="font-size:11.5px;color:#7aa2c8">'+esc(o.buyer||'')+'</span>'
-     +(bj?(' <span style="color:#34d399;font-size:11px;font-weight:700">&#10003; ya bajada</span><button onclick="etqDesmarcar(\''+esc(o.sid)+'\')" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:7px;padding:2px 8px;font-size:10.5px;cursor:pointer;margin-left:6px">volver a habilitar</button>'):'')
+     +(bj?(' <span style="color:#34d399;font-size:11px;font-weight:700">&#10003; ya bajada</span><button onclick="etqDesmarcar(\''+esc(o.sid)+'\')" style="background:transparent;color:#9fb3cc;border:1px solid #2b3b52;border-radius:7px;padding:2px 8px;font-size:10.5px;cursor:pointer;margin-left:6px">volver a habilitar</button>')
+       :(' <button onclick="etqYaBajada(\''+esc(o.sid)+'\')" title="Sacala de la lista: la etiqueta ya la tenes impresa" style="background:transparent;color:#7aa2c8;border:1px solid #2b3b52;border-radius:7px;padding:2px 8px;font-size:10.5px;cursor:pointer;margin-left:6px">ya la baj&eacute;</button>'))
     +'</div>'
     +'<div style="display:flex;align-items:center;gap:12px;padding:12px 13px;flex-wrap:wrap">'
      +foto
