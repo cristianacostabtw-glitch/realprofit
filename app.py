@@ -11464,10 +11464,18 @@ def _meli_etiquetas_pendientes(email, sids=None):
     _fall = set(fallidos)
     _trk = {f["sid"]: (f.get("tracking") or "") for f in filas}
     _salieron = {(o.get("tracking") or "") for o in (orders or [])} - {""}
-    if stats.get("sin_cortar") or any(not _trk.get(x) for x in ids):
+    # SE APAREA POR TRACKING **O** POR NUMERO DE ENVIO.
+    # La etiqueta FLEX no imprime el tracking sino "Envio: 4829 0368581", asi que el apareo la
+    # deja identificada por el sid y en `orders` viaja ese numero, no el tracking. Comparando
+    # solo contra el tracking, las FLEX cuyo tracking NO es el numero de envio quedaban como
+    # "no se pudieron descargar" aunque la etiqueta estuviera en el PDF, y volvian a salir en
+    # la lista una y otra vez. Visto el 18-10-2026: sid 48290368581 con tracking
+    # XKOXTC5NZ5LH3I5EA745FODILE.
+    if stats.get("sin_cortar"):
         _ok, _falta = [x for x in ids if x not in _fall], []   # no se puede aparear: queda como antes
     else:
-        _ok = [x for x in ids if x not in _fall and _trk.get(x, "") in _salieron]
+        _ok = [x for x in ids
+               if x not in _fall and (_trk.get(x, "") in _salieron or str(x) in _salieron)]
         _falta = [x for x in ids if x not in _fall and x not in set(_ok)]
     _nom = {f["sid"]: (f.get("buyer") or f["sid"]) for f in filas}
     return pdf, orders, stats, {"envios": len(ids), "tandas": len(crudos),
