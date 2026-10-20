@@ -4304,14 +4304,32 @@ _SOLO_DASH = r"""
   }).catch(function(){b.textContent='Buscar videos';b.disabled=false;});};
  window.rpaFuente=function(f){ $('rpa-fdrive').classList.toggle('on',f=='drive');$('rpa-farch').classList.toggle('on',f=='arch');
   $('rpa-srcdrive').style.display=f=='drive'?'block':'none';$('rpa-srcarch').style.display=f=='arch'?'block':'none';rpaReset();};
+ // DE A UN ARCHIVO POR PEDIDO: el tope de 35 MB es del pedido entero, asi que mandar 10 fotos
+ // juntas fallaba aunque cada una pesara poco. Asi ademas se ve el avance y un archivo que falla
+ // no tira abajo a los demas.
  window.rpaSubir=function(){ var inp=$('rpa-file'); if(!inp.files||!inp.files.length)return;
-  var fd=new FormData(),allImg=true,allVid=true; for(var i=0;i<inp.files.length;i++){fd.append('videos',inp.files[i]); if(/\.(jpg|jpeg|png|webp)$/i.test(inp.files[i].name))allVid=false; else allImg=false;} var KIND=allImg?'fotos':(allVid?'videos':'creativos');
-  $('rpa-vc').textContent='subiendo…'; $('rpa-vids').innerHTML='<div style=\"color:#c4b5fd;font-size:12.5px;margin-top:10px\">\u23f3 Subiendo tus '+KIND+'… (no cierres esto)</div>';
-  fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-   if(!j||!j.ok){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">'+((j&&j.msg)||'no pude subir')+'</div>';VIDS=0;UPLOAD_ID='';rpaCalc();return;}
-   UPLOAD_ID=j.upload_id;VIDS=j.videos.length;$('rpa-vc').textContent=VIDS+' creativos';
-   VLIST=j.videos;RMAP=[];renderVids('subidos');rpaCalc();
-  }).catch(function(){$('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">error subiendo (probá de nuevo)</div>';VIDS=0;UPLOAD_ID='';rpaCalc();});};
+  var L=[].slice.call(inp.files), allImg=true, allVid=true;
+  L.forEach(function(f){ if(/\.(jpg|jpeg|png|webp)$/i.test(f.name))allVid=false; else allImg=false; });
+  var KIND=allImg?'fotos':(allVid?'videos':'creativos'), fallos=[];
+  UPLOAD_ID=''; VIDS=0;
+  function aviso(h){ $('rpa-vids').innerHTML='<div style=\"color:#c4b5fd;font-size:12.5px;margin-top:10px\">'+h+'</div>'; }
+  function uno(i){
+   if(i>=L.length){
+    $('rpa-vc').textContent=VIDS+' creativos';
+    if(fallos.length){ $('rpa-vids').innerHTML='<div style=\"color:#fb7185;font-size:12.5px;margin-top:10px\">No pude subir '+fallos.length+': '+fallos.join(', ')+'</div>'; }
+    if(VIDS){ renderVids('subidos'); } rpaCalc(); return;
+   }
+   aviso('\u23f3 Subiendo '+(i+1)+' de '+L.length+' '+KIND+'\u2026 ('+L[i].name+')');
+   $('rpa-vc').textContent='subiendo '+(i+1)+'/'+L.length+'\u2026';
+   var fd=new FormData(); fd.append('videos',L[i]); if(UPLOAD_ID) fd.append('upload_id',UPLOAD_ID);
+   fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(j&&j.ok){ UPLOAD_ID=j.upload_id; VIDS=j.videos.length; VLIST=j.videos; RMAP=[]; }
+    else { fallos.push(L[i].name+((j&&j.msg)?(' \u2014 '+j.msg):'')); }
+    uno(i+1);
+   }).catch(function(){ fallos.push(L[i].name); uno(i+1); });
+  }
+  uno(0);
+ };
  function schedTxt(){var f=$('rpa-fecha').value,h=$('rpa-hora').value||'05:00';if(!f)return h;var p=f.split('-');return p[2]+'/'+p[1]+' '+h;}
  function _fechaCamp(){var f=($('rpa-fecha')||{}).value;if(f){var q=f.split('-');return parseInt(q[2],10)+'-'+parseInt(q[1],10);}var d=new Date();d.setDate(d.getDate()+1);return d.getDate()+'-'+(d.getMonth()+1);}
  window.rpaCalc=function(){var p=$('rpa-presup').value||'35',ang=$('rpa-ang').value||'VARIOS';
@@ -17584,9 +17602,22 @@ def pf_ads_subir():
     files = request.files.getlist("videos")
     if not files:
         return jsonify({"ok": False, "msg": "elegí al menos un video"}), 400
-    up_id = uuid.uuid4().hex[:12]
-    _ads_up_purga()                                   # limpia las subidas vencidas antes de crear otra
-    d = str(_ADS_UPDIR / up_id)                       # DISCO persistente: sobrevive deploys y reinicios
+    # SE SUBE DE A UN ARCHIVO. Flask corta el pedido entero a los 35 MB (tope puesto para que un
+    # archivo gigante no se cargue en RAM y mate al worker), asi que mandar 10 fotos juntas
+    # reventaba con "El archivo es muy grande" aunque ninguna lo fuera. Ahora el front manda uno
+    # por vez y reusa la misma tanda con upload_id: el tope pasa a ser POR ARCHIVO, no por tanda.
+    up_id = (request.form.get("upload_id") or "").strip()
+    d = ""
+    if up_id:
+        _idx0 = _ads_up_idx_load().get(up_id) or {}
+        if _idx0.get("dir") and _idx0.get("email") == (_user_actual() or ""):
+            d = _idx0["dir"]
+        else:
+            up_id = ""                                # no es tuya o ya vencio: arranca una nueva
+    if not up_id:
+        up_id = uuid.uuid4().hex[:12]
+        _ads_up_purga()                               # limpia las subidas vencidas antes de crear otra
+        d = str(_ADS_UPDIR / up_id)                   # DISCO persistente: sobrevive deploys y reinicios
     _os.makedirs(d, exist_ok=True)
     EXT = (".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")
 
