@@ -2936,8 +2936,10 @@ _SOLO_DASH = r"""
       if(_grid && /grid/.test(_grid.className||'')){
         var _row=document.createElement('div'); _row.id='rp-iva3';
         _row.style.cssText='display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:16px';
-        var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA 10,5% contenido en la facturación','percent'],
-                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito al 21%: producto + envío + comisiones + ads · las retenciones NO cuentan','savings'],
+        var _pv=String(_raw.iva_vta_pct==null?21:_raw.iva_vta_pct).replace('.',',');
+        var _pc2=String(_raw.iva_cmp_pct==null?21:_raw.iva_cmp_pct).replace('.',',');
+        var _cards=[['IVA Total',_raw.iva_total,'#fbbf24','IVA '+_pv+'% contenido en la facturación','percent'],
+                    ['IVA a favor',_raw.iva_favor,'#34d399','Crédito al '+_pc2+'%: producto + envío + comisiones + ads · las retenciones NO cuentan','savings'],
                     ['IVA a pagar',_raw.iva_pagar,'#fb7185','Total menos el IVA a favor','account_balance_wallet']];
         for(var _i=0;_i<3;_i++){ var C=_cards[_i];
           var _cl=_pc.cloneNode(true); _cl.style.display=''; _cl.style.height=''; _cl.style.minHeight='';
@@ -4562,16 +4564,19 @@ TIENDA_PCT = 0.6        # comisión de tienda (Shopify): 0,6% por venta, no edit
 # ───────────────────────────── ALICUOTA DE IVA ─────────────────────────────
 # OJO: son DOS tasas distintas y no hay que mezclarlas.
 #
-#  VENTAS (debito)  -> lo que Cristian le cobra al cliente. Tiene el beneficio de la alicuota
-#                      REDUCIDA del 10,5%, no el 21% general. Es el "IVA a pagar" que sale de
-#                      la facturacion.
+#  VENTAS (debito)  -> lo que Cristian le cobra al cliente. Es el 21% GENERAL. Estuvo puesto
+#                      en 10,5% (alicuota reducida) y era un error: la contadora lo confirmo el
+#                      20-10-2026 — "nunca hubo IVA al 50%, siempre fue el 100". El 10,5%
+#                      declaraba la MITAD del debito, asi que el "IVA a pagar" salia muy abajo.
 #  COMPRAS (credito)-> el IVA que le cobran A EL (envio de Andreani, comision de MercadoPago y
-#                      MercadoLibre, pauta de la agencia). Ese sigue al 21%: la alicuota la pone
+#                      MercadoLibre, pauta de la agencia). Tambien 21%: la alicuota la pone
 #                      QUIEN FACTURA, no quien compra. La factura de la agencia del 07-10-2026
 #                      lo muestra explicito: 21% sobre media + fee.
 #
-# Se puede cambiar sin deploy con la env IVA_VENTAS_PCT (ej "21" si se pierde el beneficio).
-IVA_VENTAS_PCT = float(_os.getenv("IVA_VENTAS_PCT", "10.5") or 10.5)
+# El IVA se calcula DESPUES del cache de dias cerrados (_pf_canales no lo toca), asi que cambiar
+# la tasa recalcula todo el historico solo, sin tocar la clave del cache.
+# Se puede cambiar sin deploy con la env IVA_VENTAS_PCT.
+IVA_VENTAS_PCT = float(_os.getenv("IVA_VENTAS_PCT", "21") or 21)
 IVA_COMPRAS_PCT = float(_os.getenv("IVA_COMPRAS_PCT", "21") or 21)
 # factor para sacar el IVA CONTENIDO en un precio que ya lo trae adentro (precio/1,105*0,105)
 _IVA_F_VTA = (IVA_VENTAS_PCT / 100.0) / (1.0 + IVA_VENTAS_PCT / 100.0)
@@ -18843,7 +18848,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     r = blob["raw"]
     _F = _IVA_F_CMP    # COMPRAS: el IVA que le cobran a el (21%), contenido en el precio
     _fact = r.get("facturado", 0.0) or 0.0
-    _iva_deb = _fact * _IVA_F_VTA    # VENTAS: alicuota reducida del 10,5% (ver IVA_VENTAS_PCT)
+    _iva_deb = _fact * _IVA_F_VTA    # VENTAS: 21% contenido en la facturacion (ver IVA_VENTAS_PCT)
     # OJO con la comisión de MercadoLibre: _meli_resumen deja mp_costo_real en 0 y la pone en
     # meli_comision, así que si sólo se mira mp_costo_real el crédito de MELI se pierde. Esa
     # comisión (cargo por vender + costo de cuotas) trae el IVA adentro igual que la de MP.
@@ -18879,13 +18884,17 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     r["iva_total"] = round(_iva_deb, 2)
     r["iva_favor"] = round(_iva_cred, 2)
     r["iva_pagar"] = round(_iva_pag, 2)
+    # Las tasas viajan al front para que el cartel diga la que REALMENTE se uso. Estaba escrito
+    # "IVA 10,5%" a mano en el HTML: si se cambiaba la env, la tarjeta seguia mintiendo.
+    r["iva_vta_pct"] = IVA_VENTAS_PCT
+    r["iva_cmp_pct"] = IVA_COMPRAS_PCT
     # IVA POR CANAL, con el mismo método de arriba. Hace falta porque el corte por canal se
     # calcula ANTES de esta resta, así que sin esto ml_ganancia + web_ganancia NO daba la
     # ganancia total: sobraba justo el IVA a pagar (medido 26-09-2026: $ 737.675 contra
     # $ 453.380). Los dos canales tienen que cerrar contra el total, siempre.
     try:
         _ml_f2 = float(r.get("meli_facturado", 0) or 0)
-        _ml_deb = _ml_f2 * _IVA_F_VTA        # tambien son ventas suyas: 10,5%
+        _ml_deb = _ml_f2 * _IVA_F_VTA        # tambien son ventas suyas: 21%
         # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
         # El adelanto de ML viene con IVA adentro. Las retenciones y el cargo por envio NO.
         _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)
