@@ -1721,18 +1721,24 @@ _SOLO_DASH = r"""
     .catch(function(){ _dStat('Error de conexión.', '#fb7185'); }); };
  window.rpDExcel=function(){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá los pedidos para el Excel.', '#fb7185'); return; }
    _dStat('⏳ Generando Excel Andreani…','#a78bfa');
-   var _dFlexOut=[];
+   var _dFlexOut=[],_dSinSuc=[];
    fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,tienda:_dTienda})})
     .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';});
       // los que ya tienen etiqueta Flex quedan afuera del Excel: hay que DECIRLO, no callarlo
       _dFlexOut=(r.headers.get('X-Flex-Excluidos')||'').split(',').filter(function(x){return x;});
+      _dSinSuc=(r.headers.get('X-Sin-Sucursal')||'').split(',').filter(function(x){return x;});
       return r.blob(); })
     .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Andreani.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
       // al exportar, los pasa a "Exportadas"
-      fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,accion:'exportada'})}).then(function(){ _dLoaded=false; rpDLoad(); });
-      var _n=(_dFlexOut||[]).length;
-      _dStat('✅ Excel descargado ('+(sel.length-_n)+' pedidos) → Exportadas. Subílo a Andreani.'
-        +(_n?('  ⚠️ '+_n+' quedaron afuera porque ya van por Flex: '+_dFlexOut.map(function(x){return '#'+x;}).join(', ')):'')); })
+      // los que no entraron NO se marcan como exportados: hay que arreglarlos y volver a generar
+      var _fuera={}; (_dFlexOut||[]).concat(_dSinSuc||[]).forEach(function(x){_fuera[x]=1;});
+      var _ok=sel.filter(function(x){return !_fuera[String(x)];});
+      if(_ok.length){ fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:_ok,accion:'exportada'})}).then(function(){ _dLoaded=false; rpDLoad(); }); }
+      else { _dLoaded=false; rpDLoad(); }
+      var _n=(_dFlexOut||[]).length, _s=(_dSinSuc||[]).length;
+      _dStat('✅ Excel descargado ('+_ok.length+' pedidos) → Exportadas. Subílo a Andreani.'
+        +(_n?('  ⚠️ '+_n+' afuera porque ya van por Flex: '+_dFlexOut.map(function(x){return '#'+x;}).join(', ')):'')
+        +(_s?('  ⚠️ '+_s+' afuera: no pude resolver su SUCURSAL de Andreani (quedan sin exportar para que los revises): '+_dSinSuc.map(function(x){return '#'+x;}).join(', ')):'')); })
     .catch(function(e){ _dStat('No se pudo generar el Excel'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
  window.rpDEnvialo=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; inp.value='';
    _dStat('⏳ Leyendo el Excel de Envialo…','#38bdf8');
@@ -9329,11 +9335,16 @@ def pf_despachos_excel():
             r_dom += 1
     # Los domicilios sin número van con "0" (Andreani exige numérico) → NO bloquean el Excel.
     # Solo frenamos si una SUCURSAL no se pudo mapear al nombre oficial (mandaría a otra sucursal).
-    if revisar:
+    # Antes, UNA sucursal sin resolver frenaba el Excel ENTERO (400) y la pantalla quedaba en
+    # "Generando Excel Andreani..." sin decir por que. Paso el 18-10-2026. Esas filas ya estan
+    # excluidas del Excel mas arriba (continue), asi que ahora se entrega el Excel con el resto
+    # y las que faltan viajan en un header para avisarlas por nombre. Solo frena si no quedo
+    # NINGUNA fila: ahi el archivo seria un Excel vacio.
+    if revisar and r_dom == 3 and r_suc == 3:
         wb.close()
         return jsonify({"ok": False, "msg": "No pude resolver la SUCURSAL oficial de Andreani de: "
                         + ", ".join("#" + n for n in revisar) + " (no la invento para no mandarla a otra "
-                        "sucursal). Revisá esos pedidos o destildalos y generá el Excel con el resto."}), 400
+                        "sucursal), y no quedo ningun otro pedido para el Excel."}), 400
     import io
     buf = io.BytesIO()
     wb.save(buf)
@@ -9342,9 +9353,15 @@ def pf_despachos_excel():
 
     resp = send_file(buf, as_attachment=True, download_name="Andreani.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    _exp = []
     if por_flex:
         resp.headers["X-Flex-Excluidos"] = ",".join(por_flex)
-        resp.headers["Access-Control-Expose-Headers"] = "X-Flex-Excluidos"
+        _exp.append("X-Flex-Excluidos")
+    if revisar:
+        resp.headers["X-Sin-Sucursal"] = ",".join(revisar)
+        _exp.append("X-Sin-Sucursal")
+    if _exp:
+        resp.headers["Access-Control-Expose-Headers"] = ", ".join(_exp)
     return resp
 
 
