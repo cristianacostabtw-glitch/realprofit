@@ -20265,7 +20265,7 @@ def _meli_items_activos(email, tope=400):
         while len(ids) < tope:
             r = requests.get("%s/users/%s/items/search" % (MELI_API, uid),
                              headers={"Authorization": "Bearer " + tok},
-                             params={"limit": 100, "offset": offset, "status": "active"}, timeout=25)
+                             params={"limit": 100, "offset": offset}, timeout=25)
             lote = (r.json() if r.content else {}).get("results", []) or []
             ids.extend(lote)
             if len(lote) < 100:
@@ -20291,6 +20291,8 @@ def _meli_items_activos(email, tope=400):
                     if a.get("id") == "SELLER_SKU":
                         sku = a.get("value_name") or ""
                         break
+            if (b.get("status") or "") != "active":
+                continue                      # el filtro va aca: status= en /items/search devolvia vacio
             items.append({"id": b.get("id"), "titulo": b.get("title", ""),
                           "sku": (sku or "").strip(), "stock": b.get("available_quantity"),
                           "estado": b.get("status", "")})
@@ -20327,13 +20329,31 @@ def meli_stock_ver():
                       "factor": f, "objetivo": objetivo,
                       "dif": (objetivo - int(it["stock"] or 0))})
     filas.sort(key=lambda x: (0 if x["dif"] else 1, -abs(x["dif"])))
+    # La lista completa: es la que pinta la pantalla. El emparejado con la tienda es un extra
+    # por fila, no un requisito — hay cuentas donde Shopify no tiene los SKU cargados y antes
+    # la tabla quedaba vacia aunque hubiera publicaciones.
+    porsku = {}
+    for f in filas:
+        porsku[f["id"]] = f
+    todas = []
+    for it in items:
+        f = porsku.get(it["id"])
+        k = (it["sku"] or "").upper()
+        t = tienda.get(k) if k else None
+        todas.append({"id": it["id"], "titulo": it["titulo"], "sku": it["sku"],
+                      "stock_ml": it["stock"],
+                      "factor": int(factores.get(it["id"]) or 1) or 1,
+                      "stock_tienda": (t["stock"] if t else None),
+                      "objetivo": (f["objetivo"] if f else None),
+                      "dif": (f["dif"] if f else None)})
     usados = {(f["sku"] or "").upper() for f in filas} | {(x["sku"] or "").upper() for x in sin_match}
     sin_publicar = [{"sku": v["sku"], "titulo": v["titulo"], "stock": v["stock"]}
                     for k, v in tienda.items() if k not in usados]
     sin_publicar.sort(key=lambda x: x["sku"])
-    return jsonify({"ok": True, "filas": filas, "sin_sku": sin_sku, "sin_match": sin_match,
-                    "sin_publicar": sin_publicar,
-                    "hay_tienda": bool(tienda), "n_desfasadas": sum(1 for f in filas if f["dif"])})
+    return jsonify({"ok": True, "todas": todas, "filas": filas, "sin_sku": sin_sku,
+                    "sin_match": sin_match, "sin_publicar": sin_publicar,
+                    "hay_tienda": bool(tienda), "n_pubs": len(items),
+                    "n_desfasadas": sum(1 for f in filas if f["dif"])})
 
 
 @app.post("/meli/stock-factor")
@@ -20354,6 +20374,46 @@ def meli_stock_factor():
     mapa[item] = f
     _meli_sync_guardar(email, mapa)
     return jsonify({"ok": True, "factor": f})
+
+
+@app.post("/meli/sku-lote")
+def meli_sku_lote():
+    """Guarda el SKU de varias publicaciones de una. Solo toca el SKU, nada mas."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Sin sesion"})
+    tok, _uid = _meli_ctx(email)
+    if not tok:
+        return jsonify({"ok": False, "msg": "Mercado Libre no conectado"})
+    pares = (request.get_json(silent=True) or {}).get("pares") or []
+    if not pares:
+        return jsonify({"ok": False, "msg": "No llego ningun SKU para guardar"})
+    hdr = {"Authorization": "Bearer " + tok, "Content-Type": "application/json"}
+    out = []
+    for pa in pares[:120]:
+        iid = str(pa.get("id") or "").strip()
+        sku = str(pa.get("sku") or "").strip()
+        if not iid:
+            continue
+        try:
+            r = requests.put("%s/items/%s" % (MELI_API, iid), headers=hdr,
+                             json={"attributes": [{"id": "SELLER_SKU", "value_name": sku}]}, timeout=25)
+            if r.status_code >= 400:     # algunas categorias no aceptan el atributo: va el campo libre
+                r = requests.put("%s/items/%s" % (MELI_API, iid), headers=hdr,
+                                 json={"seller_custom_field": sku}, timeout=25)
+            if r.status_code < 400:
+                out.append({"id": iid, "ok": True, "sku": sku})
+            else:
+                try:
+                    m = (r.json() or {}).get("message") or r.text[:110]
+                except Exception:
+                    m = r.text[:110]
+                out.append({"id": iid, "ok": False, "msg": m})
+        except Exception as e:
+            out.append({"id": iid, "ok": False, "msg": str(e)[:110]})
+    return jsonify({"ok": True, "results": out,
+                    "n_ok": sum(1 for x in out if x.get("ok")),
+                    "n_error": sum(1 for x in out if not x.get("ok"))})
 
 
 @app.post("/meli/stock-sync")
@@ -22755,76 +22815,119 @@ function etqDown(t){
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(u);},1500);
  }).catch(function(){ alert('No se pudo descargar, procesá de nuevo.'); });
 }
-// ───── Stock y sincronizacion (generico: solo SKU y cantidad, sin nada del producto) ─────
-var SS={filas:[],sin_sku:[],sin_match:[],sin_publicar:[],hay_tienda:false};
+// ───── Stock y sincronizacion ─────────────────────────────────────────────────────────────
+// Lista TODAS las publicaciones activas con su SKU y su stock al lado, editables. Arriba un
+// stock general que se aplica a las tildadas de un saque. El emparejado con la tienda es un
+// dato mas de la fila, no un requisito: hay cuentas donde Shopify no tiene los SKU cargados
+// y la tabla quedaba vacia aunque hubiera publicaciones.
+var SS={todas:[],sin_publicar:[],hay_tienda:false,n_pubs:0};
+var SSsel={};
 function cargarStockSync(){
  var c=document.getElementById('mlc'); if(!c)return;
- c.innerHTML='Leyendo el stock de la tienda y el de Mercado Libre\u2026';
+ c.innerHTML='Leyendo tus publicaciones…';
  fetch('/meli/stock-ver').then(function(r){return r.json();}).then(function(j){
   if(!j||!j.ok){ c.innerHTML=err(j); return; }
-  SS=j; renderStockSync();
+  SS=j; (SS.todas||[]).forEach(function(x){ if(SSsel[x.id]===undefined) SSsel[x.id]=true; });
+  renderStockSync();
  }).catch(function(){ c.innerHTML=err(); });
 }
-function ssPill(n){ if(!n) return '<span style="color:#5b6b82">al d\u00eda</span>';
- var c=(n>0?'#34d399':'#e0637f'); return '<b style="color:'+c+'">'+(n>0?'+':'')+n+'</b>'; }
+function ssN(){ return (SS.todas||[]).filter(function(x){return SSsel[x.id];}).length; }
+function ssMarcar(v){ (SS.todas||[]).forEach(function(x){ SSsel[x.id]=v; }); renderStockSync(); }
+function ssTick(id,v){ SSsel[id]=v; var e=document.getElementById('sscount'); if(e)e.textContent=ssN(); }
+function ssAplicar(){
+ var g=document.getElementById('ssgen'); if(!g)return;
+ var v=parseInt(g.value,10); if(isNaN(v)||v<0){ ssMsg('Poné un número válido','#e0637f'); return; }
+ var n=0;
+ (SS.todas||[]).forEach(function(x){ if(!SSsel[x.id])return;
+  var inp=document.getElementById('pn_'+x.id); if(!inp)return;
+  inp.value=Math.floor(v/Math.max(1,x.factor||1)); n++; });
+ ssMsg(n+' fila(s) con '+v+(n?'':' — no hay ninguna tildada'), n?'#34d399':'#e0637f');
+}
+function ssMsg(t,c){ var m=document.getElementById('ssm'); if(m){ m.textContent=t; m.style.color=c||'#7aa2c8'; } }
 function renderStockSync(){
  var c=document.getElementById('mlc'); if(!c)return;
- var f=SS.filas||[], des=SS.n_desfasadas||0;
- if(!SS.hay_tienda){
-  c.innerHTML='<div style="color:#ffd479;font-size:13px">No hay ninguna tienda conectada, as\u00ed que no tengo contra qu\u00e9 comparar el stock. Conectala desde Integraciones.</div>'; return; }
- var top='<div style="background:#0a1322;border:1px solid #1b2635;border-radius:12px;padding:15px;margin-bottom:14px">'
-  +'<div style="font-weight:800;font-size:14px;margin-bottom:4px">El stock de la tienda manda</div>'
-  +'<div style="color:#93a3ba;font-size:12.5px">Se emparejan por <b style="color:#cfe0f5">SKU</b>. Al sincronizar, cada publicaci\u00f3n queda con el stock que tiene ese SKU en la tienda. Si una venta de la publicaci\u00f3n consume m\u00e1s de una unidad, pon\u00e9 el <b style="color:#cfe0f5">factor</b> y se divide por ese n\u00famero.</div></div>';
- if(!f.length){
-  c.innerHTML=top+vacio('Ninguna publicaci\u00f3n activa tiene un SKU que coincida con la tienda.')+ssExtras(); return; }
- var rows=f.map(function(x){
-  return '<tr>'
-   +'<td><div style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.titulo)+'</div>'
-   +'<div style="font-size:11px;color:#5b6b82">'+esc(x.sku)+'</div></td>'
-   +'<td style="text-align:right;color:#93a3ba">'+(x.stock_tienda)+'</td>'
-   +'<td style="text-align:center"><input type="number" min="1" value="'+x.factor+'" onchange="ssFactor(\''+x.id+'\',this.value)" style="width:52px;background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:5px;font-size:12px;text-align:center"></td>'
-   +'<td style="text-align:right;color:#93a3ba">'+(x.stock_ml!=null?x.stock_ml:'\u2014')+'</td>'
-   +'<td style="text-align:right;font-weight:800;color:#e8edf4">'+x.objetivo+'</td>'
-   +'<td style="text-align:right">'+ssPill(x.dif)+'</td></tr>';
+ var v=SS.todas||[];
+ if(!v.length){ c.innerHTML=vacio('No encontré publicaciones activas en esta cuenta.'); return; }
+ var btn='background:#0a1322;border:1px solid #2a3d59;color:#9fd0ff;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;font-size:12.5px';
+ var inp='background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px';
+ var top='<div style="background:#0a1322;border:1px solid #1b2635;border-radius:12px;padding:15px;margin-bottom:12px">'
+  +'<div style="font-weight:800;font-size:14px;margin-bottom:9px">Stock general</div>'
+  +'<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">'
+  +'<input id="ssgen" type="number" min="0" placeholder="ej: 120" style="width:120px;'+inp+';font-size:15px;font-weight:700;padding:9px">'
+  +'<button onclick="ssAplicar()" style="'+btn+'">Aplicar a las tildadas</button>'
+  +'<span style="color:#5b6b82;font-size:12px">Si una publicación consume más de una unidad, se divide por su <b style="color:#93a3ba">factor</b>.</span>'
+  +'</div></div>';
+ var acc='<div style="display:flex;gap:9px;margin-bottom:10px;flex-wrap:wrap;align-items:center">'
+  +'<button onclick="ssSyncSel()" style="background:#ffe600;color:#2d3277;border:0;border-radius:9px;padding:11px 18px;font-weight:800;cursor:pointer">🔄 Sincronizar stock de las tildadas</button>'
+  +'<button onclick="ssSkuSel()" style="'+btn+'">Guardar SKU de las tildadas</button>'
+  +'<button onclick="ssMarcar(true)" style="'+btn+'">Todas</button>'
+  +'<button onclick="ssMarcar(false)" style="'+btn+'">Ninguna</button>'
+  +'<button onclick="cargarStockSync()" style="'+btn+'">Actualizar</button>'
+  +'<span style="color:#5b6b82;font-size:12px"><b id="sscount" style="color:#cfe0f5">'+ssN()+'</b> de '+v.length+' tildadas</span>'
+  +'<span id="ssm" style="font-size:12.5px;font-weight:600"></span></div>';
+ var rows=v.map(function(x){
+  var poner=(x.objetivo!=null?x.objetivo:(x.stock_ml!=null?x.stock_ml:0));
+  var dif=(x.dif!=null&&x.dif!==0);
+  return '<tr'+(dif?' style="background:#16120a"':'')+'>'
+   +'<td style="width:28px"><input type="checkbox" '+(SSsel[x.id]?'checked':'')+' onchange="ssTick(\''+x.id+'\',this.checked)"></td>'
+   +'<td><div style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.titulo)+'</div>'
+   +'<div style="font-size:10px;color:#5b6b82">'+esc(x.id)+'</div></td>'
+   +'<td><input id="sk_'+x.id+'" value="'+esc(x.sku||'')+'" placeholder="sin SKU" style="width:120px;'+inp+'"></td>'
+   +'<td style="text-align:center"><input id="fc_'+x.id+'" type="number" min="1" value="'+(x.factor||1)+'" onchange="post(\'/meli/stock-factor\',{item:\''+x.id+'\',factor:this.value})" style="width:48px;text-align:center;'+inp+'"></td>'
+   +'<td style="text-align:right;color:#93a3ba">'+(x.stock_tienda!=null?x.stock_tienda:'—')+'</td>'
+   +'<td style="text-align:right;color:#93a3ba">'+(x.stock_ml!=null?x.stock_ml:'—')+'</td>'
+   +'<td style="text-align:right"><input id="pn_'+x.id+'" type="number" min="0" value="'+poner+'" style="width:72px;text-align:right;'+inp+';font-weight:700"></td>'
+   +'</tr>';
  }).join('');
- c.innerHTML=top
-  +'<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:center">'
-  +'<button onclick="ssSync()" style="background:#ffe600;color:#2d3277;border:0;border-radius:9px;padding:11px 20px;font-weight:800;cursor:pointer">\ud83d\udd04 Sincronizar '+(des?('las '+des+' desfasadas'):'')+'</button>'
-  +'<button onclick="cargarStockSync()" style="background:#0a1322;border:1px solid #2a3d59;color:#9fd0ff;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer">Actualizar</button>'
-  +'<span id="ssm" style="font-size:12.5px;font-weight:600"></span></div>'
-  +'<div style="overflow:auto"><table><thead><tr>'+TH+'Publicaci\u00f3n / SKU</th><th style="text-align:right">Tienda</th><th style="text-align:center">Factor</th><th style="text-align:right">ML ahora</th><th style="text-align:right">Queda en</th><th style="text-align:right">Dif.</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+ c.innerHTML=top+acc
+  +'<div style="overflow:auto"><table><thead><tr><th></th>'+TH+'Publicación</th>'+TH+'SKU</th>'
+  +'<th style="text-align:center">Factor</th><th style="text-align:right">Tienda</th>'
+  +'<th style="text-align:right">ML ahora</th><th style="text-align:right">Poner</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
   +'<div id="ssres" style="margin-top:12px"></div>'+ssExtras();
 }
 function ssExtras(){
- var h='';
- function bloque(t,sub,arr,fn){ if(!arr||!arr.length)return '';
-  return '<div style="margin-top:16px;border:1px solid #23304a;border-radius:12px;padding:13px;background:#0b1220">'
-   +'<div style="font-weight:700;font-size:13px;margin-bottom:3px">'+t+' <span style="color:#5b6b82;font-weight:600">('+arr.length+')</span></div>'
-   +'<div style="color:#5b6b82;font-size:11.5px;margin-bottom:9px">'+sub+'</div>'
-   +'<div style="font-size:12px;color:#93a3ba;line-height:1.7">'+arr.slice(0,40).map(fn).join('')+'</div></div>'; }
- h+=bloque('Publicaciones sin SKU','No las puedo emparejar. Cargales el SKU en Mercado Libre y aparecen solas.',SS.sin_sku,
-      function(x){return '\u00b7 '+esc(x.titulo)+' <span style="color:#5b6b82">(ML: '+x.stock_ml+')</span><br>';});
- h+=bloque('Con SKU que no existe en la tienda','El SKU est\u00e1 cargado en ML pero no hay ning\u00fan producto con ese SKU en la tienda.',SS.sin_match,
-      function(x){return '\u00b7 <b>'+esc(x.sku)+'</b> \u2014 '+esc(x.titulo)+'<br>';});
- h+=bloque('En la tienda y sin publicar','Ten\u00e9s stock de estos SKU pero ninguna publicaci\u00f3n activa los usa.',SS.sin_publicar,
-      function(x){return '\u00b7 <b>'+esc(x.sku)+'</b> \u2014 '+esc(x.titulo)+' <span style="color:#5b6b82">('+x.stock+')</span><br>';});
- return h;
+ var a=SS.sin_publicar||[]; if(!a.length) return '';
+ return '<div style="margin-top:16px;border:1px solid #23304a;border-radius:12px;padding:13px;background:#0b1220">'
+  +'<div style="font-weight:700;font-size:13px;margin-bottom:3px">En la tienda y sin publicar <span style="color:#5b6b82;font-weight:600">('+a.length+')</span></div>'
+  +'<div style="color:#5b6b82;font-size:11.5px;margin-bottom:9px">Tenés stock de estos SKU y ninguna publicación activa los usa.</div>'
+  +'<div style="font-size:12px;color:#93a3ba;line-height:1.7">'+a.slice(0,40).map(function(x){
+     return '· <b>'+esc(x.sku)+'</b> — '+esc(x.titulo)+' <span style="color:#5b6b82">('+x.stock+')</span><br>'; }).join('')+'</div></div>';
 }
-function ssFactor(id,v){ post('/meli/stock-factor',{item:id,factor:v}).then(function(){ cargarStockSync(); }); }
-function ssSync(){
- var f=(SS.filas||[]).filter(function(x){return x.dif;});
- if(!f.length){ var m0=document.getElementById('ssm'); if(m0){m0.textContent='Ya est\u00e1 todo al d\u00eda';m0.style.color='#34d399';} return; }
- if(!confirm('Voy a cambiar el stock de '+f.length+' publicaci\u00f3n(es) en Mercado Libre para que queden igual que la tienda. \u00bfSeguimos?')) return;
- var m=document.getElementById('ssm'); if(m){m.textContent='Sincronizando\u2026';m.style.color='#7aa2c8';}
- post('/meli/stock-sync',{items:f.map(function(x){return {id:x.id,cantidad:x.objetivo};})}).then(function(j){
-  if(!j||!j.ok){ if(m){m.textContent=(j&&j.msg)||'error';m.style.color='#e0637f';} return; }
-  if(m){ m.textContent='\u2713 '+j.n_ok+' actualizada(s)'+(j.n_error?(' \u00b7 '+j.n_error+' con error'):''); m.style.color=(j.n_error?'#ffd479':'#34d399'); }
-  var mal=(j.results||[]).filter(function(x){return !x.ok;});
-  var rb=document.getElementById('ssres');
-  if(rb) rb.innerHTML = mal.length
-    ? '<div style="color:#e0637f;font-size:12px">'+mal.map(function(x){return esc(x.id)+': '+esc(x.msg||'error');}).join('<br>')+'</div>' : '';
-  setTimeout(cargarStockSync,900);
+function ssSel(){ return (SS.todas||[]).filter(function(x){return SSsel[x.id];}); }
+function ssSyncSel(){
+ var sel=ssSel(); if(!sel.length){ ssMsg('No hay ninguna tildada','#e0637f'); return; }
+ var items=[];
+ sel.forEach(function(x){ var i=document.getElementById('pn_'+x.id); if(!i)return;
+  var n=parseInt(i.value,10); if(isNaN(n)||n<0)return;
+  if(x.stock_ml!=null && n===x.stock_ml) return;         // ya esta en ese numero
+  items.push({id:x.id,cantidad:n}); });
+ if(!items.length){ ssMsg('Las tildadas ya tienen ese stock','#34d399'); return; }
+ if(!confirm('Voy a cambiar el stock de '+items.length+' publicación(es) en Mercado Libre. ¿Seguimos?')) return;
+ ssMsg('Sincronizando…');
+ post('/meli/stock-sync',{items:items}).then(function(j){
+  if(!j||!j.ok){ ssMsg((j&&j.msg)||'error','#e0637f'); return; }
+  ssMsg('✓ '+j.n_ok+' actualizada(s)'+(j.n_error?(' · '+j.n_error+' con error'):''), j.n_error?'#ffd479':'#34d399');
+  ssErrores(j.results); setTimeout(cargarStockSync,900);
  });
+}
+function ssSkuSel(){
+ var sel=ssSel(); if(!sel.length){ ssMsg('No hay ninguna tildada','#e0637f'); return; }
+ var pares=[];
+ sel.forEach(function(x){ var i=document.getElementById('sk_'+x.id); if(!i)return;
+  var v=(i.value||'').trim(); if(v===(x.sku||''))return; pares.push({id:x.id,sku:v}); });
+ if(!pares.length){ ssMsg('No cambiaste ningún SKU','#34d399'); return; }
+ if(!confirm('Voy a guardar el SKU de '+pares.length+' publicación(es). ¿Seguimos?')) return;
+ ssMsg('Guardando SKU…');
+ post('/meli/sku-lote',{pares:pares}).then(function(j){
+  if(!j||!j.ok){ ssMsg((j&&j.msg)||'error','#e0637f'); return; }
+  ssMsg('✓ '+j.n_ok+' SKU guardado(s)'+(j.n_error?(' · '+j.n_error+' con error'):''), j.n_error?'#ffd479':'#34d399');
+  ssErrores(j.results); setTimeout(cargarStockSync,900);
+ });
+}
+function ssErrores(res){
+ var mal=(res||[]).filter(function(x){return !x.ok;}); var rb=document.getElementById('ssres'); if(!rb)return;
+ rb.innerHTML = mal.length ? '<div style="color:#e0637f;font-size:12px">'+mal.map(function(x){
+   return esc(x.id)+': '+esc(x.msg||'error'); }).join('<br>')+'</div>' : '';
 }
 function boot(){ renderSide(); renderMain();
  fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
