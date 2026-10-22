@@ -651,7 +651,7 @@ _SOLO_DASH = r"""
    <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#10233a;border:1px solid #1c3f63;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:22px">local_shipping</span></div>
    <div style="flex:1;min-width:0">
     <div style="font-weight:700;color:#f1f5f9;font-size:15px">Env&iacute;o</div>
-    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma <b style="color:#cbd5e1">$1.000/pedido</b> de fulfillment (armado $800 + insumos $200).</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma <b style="color:#cbd5e1">$877,60/pedido</b> de fulfillment (armado $800 + 9,7% de la cambiaria; los insumos se cargan aparte como gasto mensual).</div>
     <div style="margin-top:12px;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden;font-size:12px">
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;background:#0e1a2b;color:#7db3f5;font-weight:700;padding:8px 12px"><span>Zona</span><span style="text-align:right">Sucursal</span><span style="text-align:right">Domicilio</span></div>
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>AMBA (CABA+GBA+La Plata)</span><span style="text-align:right">$4.530</span><span style="text-align:right">$7.115</span></div>
@@ -2907,7 +2907,7 @@ _SOLO_DASH = r"""
     var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment $1000/pedido
     var slots=[
       [['Costo producto','Productos'],'Productos',_raw.costo_prod,'Costo de los productos vendidos'],
-      [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($1.000/pedido)'],
+      [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($877,60/pedido)'],
       [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Lo que se transfiere por mes (3%)'],
       [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
     ];
@@ -4647,7 +4647,19 @@ FULFILLMENT_ORDEN = 800  # costo de fulfillment por pedido (fijo)
 # (bloque GASTOS de la planilla, por el bot de WhatsApp). Si ademas se cobraran $200 por pedido
 # aca, se contarian dos veces. Queda $800/pedido = solo el armado, igual que en la planilla.
 INSUMOS_ORDEN = 0
-OPER_ORDEN = FULFILLMENT_ORDEN + INSUMOS_ORDEN  # 800/pedido (aparte del envío)
+# El fulfillment tambien se paga por la cambiaria: Cristian cambia pesos a USDT y de USDT a
+# pesos para que le hagan la factura, y en ese viaje se va el 8,5% de comision + 1,2% bancario.
+# O sea que los $800 de armado le cuestan $877,60. Dicho por el 22-10-2026.
+# Por env para poder cambiarlo sin deploy si renegocian las tasas.
+try:
+    FULFILLMENT_RECARGO_PCT = float(_os.getenv("FULFILLMENT_RECARGO_PCT", "9.7") or 9.7)
+except Exception:
+    FULFILLMENT_RECARGO_PCT = 9.7
+if not (0 <= FULFILLMENT_RECARGO_PCT <= 50):
+    FULFILLMENT_RECARGO_PCT = 9.7
+OPER_ORDEN = round((FULFILLMENT_ORDEN + INSUMOS_ORDEN) * (1 + FULFILLMENT_RECARGO_PCT / 100.0), 2)
+# 877,60/pedido (aparte del envio). Los dias ya CERRADOS no se recalculan: salen del cache de
+# dias, asi que esto rige de hoy en adelante y no reescribe el historico.
 
 # === Costo de envío REAL por zona (Andreani, cuenta VisionPure, origen Suc. Merlo, CON descuento) ===
 # Cotizado 2026-08-15 en pymes.andreani.com. 4 zonas de tarifa. sucursal / domicilio en $.
@@ -19024,7 +19036,10 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # porque esas facturas traen el IVA adentro.
     # El ADELANTO de MercadoLibre (2,5% por cobrar antes de los ~28 dias) tiene el IVA adentro,
     # igual que la comision: es un servicio que ML factura. Estaba quedando afuera del credito.
+    # El FULFILLMENT entra al credito: lo facturan con 21% adentro, igual que los USDT de la
+    # pauta (dicho por Cristian el 22-10-2026). Antes quedaba afuera y se perdia ese credito.
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
+                 + (r.get("oper_monto", 0) or 0) \
                  + (r.get("mp_costo_real", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0) \
                  + (r.get("meli_adelanto", 0) or 0) \
