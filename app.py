@@ -14722,6 +14722,7 @@ def _meta_spend(email, desde, hasta):
                 cuentas.append(ex)
     total = 0.0
     hubo = False
+    usd_ars = 0.0                 # lo que salio de cuentas en USD, ya en pesos (para el IVA)
     for acc in cuentas:
         try:
             r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
@@ -14736,7 +14737,8 @@ def _meta_spend(email, desde, hasta):
                 # Si la cuenta factura en USD y la tienda es en pesos, convierto con el dólar en vivo
                 # (mismo criterio que METAFY: USDC/ARS de criptoya). Se puede fijar con la env DOLAR_ARS.
                 if moneda == "USD" or es_owner:
-                    spend *= _dolar_ars_vivo()
+                    spend *= _dolar_ads(desde)      # cotizacion + lo que se lleva la cambiaria
+                    usd_ars += spend
                 # La cuenta de AGENCIA (CP3) no se paga directo a Meta: la agencia factura el
                 # gasto + su comisión, así que lo que sale del bolsillo es ese total. Sin esto el
                 # dashboard muestra la pauta más barata de lo que realmente cuesta.
@@ -14745,6 +14747,12 @@ def _meta_spend(email, desde, hasta):
                 total += spend
         except Exception:
             pass
+    try:
+        if len(_ADS_USD_ARS) > 400:
+            _ADS_USD_ARS.clear()
+        _ADS_USD_ARS[(email, desde, hasta)] = usd_ars if hubo else 0.0
+    except Exception:
+        pass
     return _meta_spend_estable(email, desde, hasta, total if hubo else 0.0)
 
 
@@ -14806,6 +14814,43 @@ def _meta_spend_estable(email, desde, hasta, spend) -> float:
                 pass
     return val
 
+
+# ───────────── EL DOLAR DE LA PAUTA NO ES LA COTIZACION ─────────────
+# Las cuentas en USD se pagan comprando USDT en una casa de cambio, y ahi se pierde plata:
+# sobre la transferencia va un 1,2% bancario, y sobre el NETO SIN IVA un 8,5% de comision.
+# Liquidacion real del 22-10-2026:
+#     Bruto 2.000.000 | bancario 1,2% -24.000 | comision 8,5% s/neto -140.495,87
+#     credito liquido 1.835.504,13  ->  1.112,43 USDT
+#     o sea 2.000.000 / 1.112,43 = 1.797,86 pesos por cada dolar de pauta, no 1.650.
+# Usar la cotizacion pelada subestimaba el gasto ~10% y la ganancia salia mejor de lo real.
+# Las dos tasas van por env para poder cambiarlas sin deploy si se renegocian.
+ADS_USD_DESDE = (_os.getenv("ADS_USD_DESDE", "2026-10-22") or "").strip()
+
+
+def _factor_ads_usd() -> float:
+    """Cuanto QUEDA de cada peso transferido, despues de lo que se lleva la casa de cambio."""
+    try:
+        com = float(_os.getenv("ADS_USD_COMIS_PCT", "8.5") or 8.5)
+        ban = float(_os.getenv("ADS_USD_BANCO_PCT", "1.2") or 1.2)
+    except Exception:
+        com, ban = 8.5, 1.2
+    f = 1.0 - ban / 100.0 - (com / 100.0) / (1.0 + IVA_COMPRAS_PCT / 100.0)
+    return f if 0.55 < f < 1.0 else 1.0          # cualquier cosa rara -> sin recargo
+
+
+def _dolar_ads(desde=None) -> float:
+    """Pesos que cuesta UN dolar de pauta. La puerta es por `desde`: un periodo que arranca
+    antes del cambio se deja con la cotizacion vieja, asi no se infla el gasto de dias en los
+    que esto no regia. Decision de Cristian: "de hoy en adelante"."""
+    base = _dolar_ars_vivo()
+    if ADS_USD_DESDE and desde and str(desde) < ADS_USD_DESDE:
+        return base
+    return base / _factor_ads_usd()
+
+
+# ARS que salieron de cuentas en USD, por periodo. Lo llena _meta_spend y lo lee el bloque de
+# IVA: asi el credito fiscal sale sin pedirle nada mas a Meta.
+_ADS_USD_ARS = {}
 
 _dolar_cache = {"ts": 0, "val": 0.0}
 
@@ -18993,6 +19038,17 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # verdad: se paga por encima del neto y se recupera al liquidar.
     # OJO: es x0,21 sobre el NETO (media + 10% de comision) y NO /1,21, porque la agencia lo
     # discrimina por encima. Sobre 1.000.000 de media son 231.000, no 210.000.
+    # PAUTA EN USD: la cambiaria factura por el BRUTO que se le transfiere, con IVA adentro.
+    # Sobre 2.000.000 son 347.107,44 de credito (2.000.000 x 0,21/1,21). Va /1,21 y no x0,21
+    # porque el IVA esta CONTENIDO en lo transferido, al reves que la comision de la agencia.
+    try:
+        _pub_usd = float(_ADS_USD_ARS.get((email, desde, hasta)) or 0.0)
+        if _pub_usd > 0:
+            _iva_cred += _pub_usd * _IVA_F_CMP
+            r["publi_usd_ars"] = round(_pub_usd, 2)
+            r["iva_ads_usd"] = round(_pub_usd * _IVA_F_CMP, 2)
+    except Exception:
+        pass
     try:
         _pub_ag = _meta_spend_agencia(email, desde, hasta)
         if _pub_ag:
