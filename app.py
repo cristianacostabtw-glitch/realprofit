@@ -4044,14 +4044,18 @@ _SOLO_DASH = r"""
    var cs=(j&&j.cuentas)||[]; window._ADSCTAS=cs;
    // Agrupadas por PORTFOLIO. Las que el token no puede usar se muestran igual, apagadas y
    // con el motivo: antes simplemente no aparecian y no habia forma de saber por que.
+   // OJO: en ESTE script `esc` no es una funcion, es una variable booleana (var esc=(m=='escala')).
+   // Llamarla rompia el armado y el <select> quedaba vacio. Por eso el helper propio.
+   var _e=function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){
+     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
    var grupos=[], vistos={};
    cs.forEach(function(c){ var g=c.portfolio||'Otras'; if(!vistos[g]){vistos[g]=[];grupos.push(g);} vistos[g].push(c); });
    var html='';
    grupos.forEach(function(g){
-    html+='<optgroup label="'+esc(g)+'">';
+    html+='<optgroup label="'+_e(g)+'">';
     vistos[g].forEach(function(c){
-     html+='<option value="'+esc(c.key)+'"'+(c.acceso?'':' disabled')+'>'
-        +esc(c.nombre)+(c.acceso?'':'  \u2014 sin acceso del token')+'</option>';
+     html+='<option value="'+_e(c.key)+'"'+(c.acceso?'':' disabled')+'>'
+        +_e(c.nombre)+(c.acceso?'':'  \u2014 sin acceso del token')+'</option>';
     });
     html+='</optgroup>';
    });
@@ -4061,7 +4065,7 @@ _SOLO_DASH = r"""
    var sin=cs.filter(function(c){return !c.acceso;});
    var av=document.getElementById('rpa-sinacceso');
    if(av) av.innerHTML = sin.length
-    ? '\u26a0 '+sin.length+' cuenta(s) no las puede usar el token: <b>'+sin.map(function(c){return esc(c.nombre);}).join(', ')
+    ? '\u26a0 '+sin.length+' cuenta(s) no las puede usar el token: <b>'+sin.map(function(c){return _e(c.nombre);}).join(', ')
       +'</b>. Asigná el usuario del sistema a esas cuentas en el Business Manager.'
     : '';
    if(window._MULTI) rpaMultiLista();
