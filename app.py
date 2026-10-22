@@ -3935,7 +3935,8 @@ _SOLO_DASH = r"""
     </div>
     <div class="row"><div><span class="lb">P&aacute;gina</span><select class="in" id="rpa-page"></select></div>
      <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
-    <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select></div>
+    <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select>
+     <div id="rpa-pixelav" style="color:#ffd479;font-size:11.5px;margin-top:5px;line-height:1.5"></div></div>
    </div>
    <div class="card" id="rpa-card-creativos">
     <div class="ch"><div class="cn">2</div><div class="ct">Creativos</div><div class="cs" id="rpa-vc">eleg&iacute; de d&oacute;nde</div></div>
@@ -4180,6 +4181,11 @@ _SOLO_DASH = r"""
    $('rpa-ig').innerHTML=opt(j.igs.map(function(i){return {v:i.id,t:i.name};}).concat([{v:'',t:'Sin IG (page-backed)'}]));
    $('rpa-pixel').innerHTML=opt(j.pixels.map(function(p){return {v:p.id,t:p.name};}));
    if(j.def){if(j.def.page)$('rpa-page').value=j.def.page;if(j.def.pixel)$('rpa-pixel').value=j.def.pixel;$('rpa-ig').value=j.def.ig||'';}
+   var _pxav=document.getElementById('rpa-pixelav');
+   if(_pxav) _pxav.innerHTML = (j.pixel_asignado===false)
+    ? '\u26a0 Este pixel NO est\u00e1 asignado a esta cuenta publicitaria. Asignalo en Business Manager '
+      +'(Or\u00edgenes de datos \u2192 Conjuntos de datos \u2192 el pixel \u2192 Agregar activos \u2192 Cuentas publicitarias) '
+      +'o Meta va a rechazar el anuncio.' : '';
    if(j.ultimo){var u=j.ultimo;if(u.copy)$('rpa-copy').value=u.copy;if(u.titulo)$('rpa-titulo').value=u.titulo;if(u.subtitulo)$('rpa-sub').value=u.subtitulo;if(u.url)$('rpa-url').value=u.url;if(u.presupuesto)$('rpa-presup').value=u.presupuesto;rpaCalc();}});
   fetch('/pf-ads-campanas?cuenta='+k).then(function(r){return r.json();}).then(function(j){CMPS=(j&&j.campanas)||[];
    $('rpa-cmp').innerHTML=opt(CMPS.map(function(c){return {v:c.id,t:c.name+' · '+(c.cbo?('CBO $'+c.presupuesto):'ABO')};}));});
@@ -17316,6 +17322,20 @@ def pf_ads_identidad():
         except Exception:
             pass
         igs.insert(0, {"id": cfg["ig"], "name": ("@" + nmig) if nmig else "Instagram conectado"})
+    # MISMO respaldo para el PIXEL. act_<cuenta>/adspixels devuelve solo los pixels ASIGNADOS a
+    # esa cuenta publicitaria: en una cuenta nueva vuelve vacio y el desplegable quedaba en
+    # blanco (paso el 21-10-2026 con CP PESOS). Se agrega el del config con su nombre real, pero
+    # marcado: si Meta no lo lista es porque todavia no esta asignado a la cuenta y va a
+    # rechazar el anuncio. Mejor verlo aca que descubrirlo cuando falla la subida.
+    pixel_ok = any(str(x.get("id")) == str(cfg.get("pixel")) for x in pixels)
+    if cfg.get("pixel") and not pixel_ok:
+        nmpx = ""
+        try:
+            nmpx = (_ads_call("GET", str(cfg["pixel"]), params={"fields": "name"}) or {}).get("name", "")
+        except Exception:
+            pass
+        pixels.insert(0, {"id": cfg["pixel"],
+                          "name": (nmpx or "Pixel del config") + "  \u26a0 no asignado a esta cuenta"})
     # MONEDA de la cuenta: el presupuesto se manda en centavos de ESTA moneda, así que poner "35"
     # en una cuenta en pesos son $35 ARS (Meta lo rechaza), no US$35. Se muestra al lado del campo.
     # MINIMO DIARIO: Meta lo devuelve en la unidad chica (centavos). Sin esto, en una cuenta en
@@ -17329,7 +17349,7 @@ def pf_ads_identidad():
     except Exception:
         pass
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages, "moneda": moneda,
-                    "min_diario": min_diario,
+                    "min_diario": min_diario, "pixel_asignado": bool(pixel_ok),
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
                     "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
 
