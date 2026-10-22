@@ -2560,12 +2560,21 @@ _SOLO_DASH = r"""
     var mlv=+(_raw.ml_ventas||0), mlf=+(_raw.ml_facturado||0), mlg=+(_raw.ml_ganancia||0);
     var wv=+(_raw.web_ventas||0), wg=+(_raw.web_ganancia||0);
     var ord=+(_raw.ordenes||0), fac=+(_raw.facturado||0);
-    // NO dibujar hasta que MELI este sumado al blob. En los primeros polls llega con MELI en
-    // cero y ahi web_facturado == facturado, o sea que Shopify mostraba la facturacion TOTAL
-    // (visto en produccion: $8.931.287 en vez de $7.046.557). Si MELI esta conectado pero
-    // todavia no aporta, se espera al proximo poll en vez de pintar un numero falso.
+    // NO dibujar hasta que MELI este sumado al blob: en los primeros polls Shopify mostraba la
+    // facturacion TOTAL ($8.931.287 en vez de $7.046.557).
+    // OJO: antes la condicion era mlf<=0, y eso confundia "todavia no cargo" con "hoy MELI no
+    // vendio nada". Un dia sin ventas de MELI cumplia la condicion SIEMPRE, canales() nunca
+    // repintaba y quedaban los bloques del periodo anterior pegados en pantalla: el 22-10-2026
+    // a la 1:04 se veian las 114 ventas del dia anterior al lado de las 4 de hoy.
+    // Ahora se usa meli_ok, que el backend pone en true cuando LEYO MELI aunque haya dado cero.
+    // undefined (blobs cacheados de antes de este cambio) se toma como leido, para no volver
+    // al bloqueo. `canales` lista los canales CONECTADOS, no los cargados: por eso no sirve.
     var _hayML = !!(_raw.canales && _raw.canales.indexOf && _raw.canales.indexOf('meli')>=0);
-    if(_hayML && mlf<=0) return false;
+    if(_hayML && _raw.meli_ok===false){
+      // y se BORRA lo que hubiera: mejor sin bloque que con los numeros de ayer.
+      try{ var _vj=document.getElementById('rp-canales'); if(_vj) _vj.remove(); }catch(e){}
+      return false;
+    }
     // y la facturacion de la tienda se deriva acá: total menos MELI, sin depender de que el
     // backend la haya calculado en ese blob.
     var wf=fac-mlf; if(wf<0) wf=0;
@@ -18740,12 +18749,20 @@ def _pf_canales(email, desde, hasta):
     if tn:
         tn_n = int((tn.get("raw") or {}).get("ordenes", 0) or 0)
         blob = _combinar_resumen(blob, tn)
+    # meli_ok marca que MELI se LEYO, aunque haya vendido cero. Sin esto la pantalla no podia
+    # distinguir "todavia no cargo" de "no vendio nada hoy", y en un dia sin ventas de MELI se
+    # quedaba mostrando el periodo anterior (22-10-2026: a las 01:04 mostraba las 114 ventas
+    # del dia anterior al lado de las 4 de hoy).
+    ml_ok = False
     try:   # MercadoLibre: un canal mas. NUNCA puede romper el dashboard.
         ml = _meli_resumen(email, desde, hasta)
         if ml:
             blob = _combinar_resumen(blob, ml)
+            ml_ok = True
     except Exception:
         pass
+    if blob and isinstance(blob.get("raw"), dict):
+        blob["raw"]["meli_ok"] = ml_ok
     return blob, sh_n, tn_n
 
 
@@ -18781,16 +18798,21 @@ def _pf_canales_periodo(email, desde, hasta):
     blob = None
     sh_n = tn_n = 0
     f = d1
+    ml_ok_todos = True        # _combinar_resumen solo copia la lista SUM: meli_ok se perderia
     while f <= d2:
         try:
             b, s1, t1 = _pf_canales_dia(email, f.isoformat())
             if b:
+                if (b.get("raw") or {}).get("meli_ok") is False:
+                    ml_ok_todos = False
                 blob = _combinar_resumen(blob, b)
                 sh_n += s1
                 tn_n += t1
         except Exception:
             pass
         f += _dt.timedelta(days=1)
+    if blob and isinstance(blob.get("raw"), dict):
+        blob["raw"]["meli_ok"] = ml_ok_todos
     if blob:
         blob["raw"]["desde"] = desde
         blob["raw"]["hasta"] = hasta
