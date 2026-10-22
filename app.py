@@ -19036,10 +19036,13 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # porque esas facturas traen el IVA adentro.
     # El ADELANTO de MercadoLibre (2,5% por cobrar antes de los ~28 dias) tiene el IVA adentro,
     # igual que la comision: es un servicio que ML factura. Estaba quedando afuera del credito.
-    # El FULFILLMENT entra al credito: lo facturan con 21% adentro, igual que los USDT de la
-    # pauta (dicho por Cristian el 22-10-2026). Antes quedaba afuera y se perdia ese credito.
+    # El FULFILLMENT entra al credito, pero SOLO por lo que esta facturado. Cristian lo aclaro
+    # el 22-10-2026: la factura es por los $800 del armado; el 9,7% de la cambiaria lo paga
+    # aparte y por eso no genera credito. Si algun dia facturan el total, alcanza con usar
+    # oper_monto entero aca.
+    _oper_cred = (r.get("oper_monto", 0) or 0) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
-                 + (r.get("oper_monto", 0) or 0) \
+                 + _oper_cred \
                  + (r.get("mp_costo_real", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0) \
                  + (r.get("meli_adelanto", 0) or 0) \
