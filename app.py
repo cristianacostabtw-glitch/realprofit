@@ -15369,6 +15369,10 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "va1": {
+        # Oculta del selector (pedido de Cristian, 21-10-2026): es de otra marca (Versa Store)
+        # y la cuenta esta UNSETTLED, no se puede usar. Antes no se veia porque el filtro por
+        # token la escondia sola; al mostrar todas aparecio. Se deja la config por si vuelve.
+        "oculta": True,
         "nombre": "VA1 — VisionPure", "ad_account": "964010428983612", "token_env": "META_TOKEN_VA1",
         "page": "1105184446002428", "pixel": "1237139148560920", "ig": "17841471399362397",  # IG @visionpure.argentina
         "landing": "https://tryvisionpure.shop/productos/visionpure-recupera-la-nitidez-que-perdiste-con-los-anos2/",
@@ -17148,7 +17152,7 @@ def pf_ads_cuentas():
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
            "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
            "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles)}
-          for k, v in _ADS_CUENTAS.items()]
+          for k, v in _ADS_CUENTAS.items() if not v.get("oculta")]
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok),
                     "n_sin_acceso": sum(1 for c in cs if not c["acceso"])})
 
