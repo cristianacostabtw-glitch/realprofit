@@ -3925,7 +3925,8 @@ _SOLO_DASH = r"""
   <div>
    <div class="card">
     <div class="ch"><div class="cn">1</div><div class="ct">Cuenta e identidad</div></div>
-    <select class="in" id="rpa-cuenta" onchange="rpaCuentaChange()" style="margin-bottom:10px;font-weight:700"></select>
+    <select class="in" id="rpa-cuenta" onchange="rpaCuentaChange()" style="margin-bottom:6px;font-weight:700"></select>
+    <div id="rpa-sinacceso" style="color:#ffd479;font-size:11.5px;margin-bottom:10px;line-height:1.5"></div>
     <label class="sw" id="rpa-multiwrap" onclick="rpaMulti()" style="margin-bottom:10px"><span class="tk" id="rpa-multitk"><i></i></span><span style="font-size:13.5px;font-weight:700">Subir la misma renovaci&oacute;n a m&aacute;s de una cuenta <span style="color:#5b6678;font-weight:500;text-transform:none;letter-spacing:0">(los mismos videos, una campa&ntilde;a en cada una)</span></span></label>
     <div id="rpa-multibox" style="display:none;margin-bottom:12px;background:#0a1322;border:1px solid #22324a;border-radius:10px;padding:10px 12px">
       <div style="color:#8fb3e0;font-size:12px;font-weight:700;margin-bottom:8px">EN QU&Eacute; CUENTAS</div>
@@ -4041,8 +4042,28 @@ _SOLO_DASH = r"""
   window.MONEDA='';
   fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){
    var cs=(j&&j.cuentas)||[]; window._ADSCTAS=cs;
-   $('rpa-cuenta').innerHTML=opt(cs.map(function(c){return {v:c.key,t:c.nombre};}));
-   if(cs.length){ $('rpa-cuenta').value=cs[0].key; rpaCuentaChange(); }
+   // Agrupadas por PORTFOLIO. Las que el token no puede usar se muestran igual, apagadas y
+   // con el motivo: antes simplemente no aparecian y no habia forma de saber por que.
+   var grupos=[], vistos={};
+   cs.forEach(function(c){ var g=c.portfolio||'Otras'; if(!vistos[g]){vistos[g]=[];grupos.push(g);} vistos[g].push(c); });
+   var html='';
+   grupos.forEach(function(g){
+    html+='<optgroup label="'+esc(g)+'">';
+    vistos[g].forEach(function(c){
+     html+='<option value="'+esc(c.key)+'"'+(c.acceso?'':' disabled')+'>'
+        +esc(c.nombre)+(c.acceso?'':'  \u2014 sin acceso del token')+'</option>';
+    });
+    html+='</optgroup>';
+   });
+   $('rpa-cuenta').innerHTML=html;
+   var prim=cs.filter(function(c){return c.acceso;})[0];
+   if(prim){ $('rpa-cuenta').value=prim.key; rpaCuentaChange(); }
+   var sin=cs.filter(function(c){return !c.acceso;});
+   var av=document.getElementById('rpa-sinacceso');
+   if(av) av.innerHTML = sin.length
+    ? '\u26a0 '+sin.length+' cuenta(s) no las puede usar el token: <b>'+sin.map(function(c){return esc(c.nombre);}).join(', ')
+      +'</b>. Asigná el usuario del sistema a esas cuentas en el Business Manager.'
+    : '';
    if(window._MULTI) rpaMultiLista();
   });
   rpaCalc();}
@@ -15257,6 +15278,7 @@ _ADS_BIGLOCK = threading.Lock()   # si hay que mandar un tramo grande, UNO por v
 # Cuentas configuradas (CP1/NoxaLab). Extensible a más cuentas.
 _ADS_CUENTAS = {
     "cp1": {
+        "portfolio": "CP1",
         "nombre": "CUENTA 1", "ad_account": "1913715339273327", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
@@ -15273,6 +15295,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "cp2": {
+        "portfolio": "CP1",
         "nombre": "SEGUNDA NOXALAB NX", "ad_account": "1779069840175413", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar (misma tienda que CP1)
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
@@ -15289,6 +15312,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "cp3": {
+        "portfolio": "CP1",
         "nombre": "Cuenta 3 - Noxalab LC", "ad_account": "2531179297401424", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar (misma tienda). OJO: esta cuenta es de otro dueño (Becca Adv) →
         # la página y el pixel tienen que estar COMPARTIDOS con ella en el Business Manager,
@@ -15307,6 +15331,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "cp4": {
+        "portfolio": "CP1",
         "nombre": "CP4", "ad_account": "1572962990768035", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar (misma tienda y mismo portfolio CP1)
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
@@ -15323,6 +15348,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "cp5": {
+        "portfolio": "CP1",
         "nombre": "CP5", "ad_account": "1109343208410896", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar (misma tienda y mismo portfolio CP1 que las otras)
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
@@ -15353,6 +15379,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y recuperá la nitidez."),
     },
     "cp6": {
+        "portfolio": "CP2",
         "nombre": "CP PESOS", "ad_account": "1308167488031196", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
         # Portfolio CP2 (1102438762524836). OJO con el nombre: se llama "CP PESOS" pero
@@ -15372,6 +15399,7 @@ _ADS_CUENTAS = {
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
     "cp7": {
+        "portfolio": "CP2",
         "nombre": "Noxalabs CP 2 - LC | Meta Partner", "ad_account": "909786728480815", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
         # Portfolio CP2, pero la cuenta es de OTRO dueno (Becca Adv), igual que cp3: la pagina y
@@ -17109,11 +17137,16 @@ def pf_ads_cuentas():
             accesibles = {str(a.get("account_id")) for a in ((r.json() or {}).get("data") or [])}
         except Exception:
             accesibles = set()
+    # Antes se filtraban y las que el token no veia DESAPARECIAN del selector sin explicacion
+    # (paso el 21-10-2026 con las dos cuentas nuevas del portfolio CP2). Ahora vienen todas con
+    # un flag: la pantalla las muestra deshabilitadas y diciendo por que.
     cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
-           "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""), "landing": v.get("landing", "")}
-          for k, v in _ADS_CUENTAS.items()
-          if (not accesibles) or str(v["ad_account"]) in accesibles]   # solo las que el token puede usar
-    return jsonify({"ok": True, "cuentas": cs, "token": bool(tok)})
+           "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
+           "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
+           "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles)}
+          for k, v in _ADS_CUENTAS.items()]
+    return jsonify({"ok": True, "cuentas": cs, "token": bool(tok),
+                    "n_sin_acceso": sum(1 for c in cs if not c["acceso"])})
 
 
 @app.get("/pf-ads-diag")
