@@ -15352,6 +15352,43 @@ _ADS_CUENTAS = {
                  "Miles de personas +65 ya lo suman a su rutina.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y recuperá la nitidez."),
     },
+    "cp6": {
+        "nombre": "CP PESOS", "ad_account": "1308167488031196", "token_env": "META_TOKEN",
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
+        # Portfolio CP2 (1102438762524836). Factura en PESOS: el subidor tiene que leer la
+        # moneda de ESTA cuenta, no dejar pegada la de la anterior.
+        "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
+        "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
+        "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
+                 "Si venís buscando:\n\n"
+                 "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
+                 "\U0001f4aa Sentirte más fuerte y seguro de vos mismo\n"
+                 "❤️ Apoyar una mejor circulación y vitalidad masculina\n\n"
+                 "...no sos el único.\n\n"
+                 "Miles de hombres ya están sumando NoxaLab a su rutina diaria.\n"
+                 "Solo 1 scoop al día, disuelto en agua.\n"
+                 "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
+    "cp7": {
+        "nombre": "Noxalabs CP 2 - LC | Meta Partner", "ad_account": "909786728480815", "token_env": "META_TOKEN",
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
+        # Portfolio CP2, pero la cuenta es de OTRO dueno (Becca Adv), igual que cp3: la pagina y
+        # el pixel tienen que estar COMPARTIDOS con esta cuenta en el Business Manager o Meta
+        # rechaza el anuncio por permisos, con un error que no dice cual es el problema.
+        "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
+        "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
+        "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
+                 "Si venís buscando:\n\n"
+                 "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
+                 "\U0001f4aa Sentirte más fuerte y seguro de vos mismo\n"
+                 "❤️ Apoyar una mejor circulación y vitalidad masculina\n\n"
+                 "...no sos el único.\n\n"
+                 "Miles de hombres ya están sumando NoxaLab a su rutina diaria.\n"
+                 "Solo 1 scoop al día, disuelto en agua.\n"
+                 "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
 }
 
 
