@@ -15355,8 +15355,9 @@ _ADS_CUENTAS = {
     "cp6": {
         "nombre": "CP PESOS", "ad_account": "1308167488031196", "token_env": "META_TOKEN",
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
-        # Portfolio CP2 (1102438762524836). Factura en PESOS: el subidor tiene que leer la
-        # moneda de ESTA cuenta, no dejar pegada la de la anterior.
+        # Portfolio CP2 (1102438762524836). OJO con el nombre: se llama "CP PESOS" pero
+        # factura en USD (confirmado por Cristian el 21-10-2026). El subidor tiene que leer
+        # la moneda de ESTA cuenta y no deducirla del nombre ni dejar pegada la anterior.
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
         "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
