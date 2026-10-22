@@ -32351,7 +32351,15 @@ def _mcp_ads_insights(email, d, h, nivel="account", campos=None, limite=500):
         return None, "No hay token de Meta conectado."
     cuentas = [(k.upper(), v["ad_account"]) for k, v in _ADS_CUENTAS.items()]
     vistas, out = set(), []
+    # DOS cotizaciones distintas, a proposito:
+    #  - el GASTO se pasa al costo REAL del dolar de pauta (cotizacion / 0,9177521), que es lo
+    #    que sale del bolsillo por cada dolar.
+    #  - la FACTURACION que informa Meta son pesos reales que Meta expreso en dolares, asi que
+    #    vuelve a pesos con la cotizacion de mercado.
+    # Usar la misma para los dos dejaba el ROAS igual al de Meta y escondia que el dolar
+    # encarecio la pauta un 10%. Esta tabla mostraba el gasto mas barato que el dashboard.
     dolar = _dolar_ars_vivo() or 1.0
+    dolar_gasto = _dolar_ads(d) or dolar
     f = campos or "spend,account_currency"
     for nom, acc in cuentas:
         if acc in vistas:
@@ -32370,7 +32378,12 @@ def _mcp_ads_insights(email, d, h, nivel="account", campos=None, limite=500):
         for row in (dd.get("data") or []):
             gasto = float(row.get("spend") or 0)
             mon = (row.get("account_currency") or "ARS").upper()
-            ars = gasto * dolar if mon == "USD" else gasto
+            ars = gasto * dolar_gasto if mon == "USD" else gasto
+            # La cuenta de AGENCIA no se paga directo a Meta: la agencia factura el gasto + su
+            # comision. Sin esto CP3 aparecia mas barata de lo que cuesta y su ROAS mas alto:
+            # un 5,00 en pantalla es 4,55 real.
+            if _FIN_ACT_AGENCIA and str(acc) == str(_FIN_ACT_AGENCIA):
+                ars *= (1.0 + _FIN_AGENCIA_PCT / 100.0)
             comp = val = 0.0
             for ac in (row.get("actions") or []):
                 if ac.get("action_type") in ("purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"):
