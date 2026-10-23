@@ -13795,6 +13795,9 @@ def _tn_orders_raw(email, desde, hasta):
     return out
 
 
+_MELI_ULT_ERROR = ""        # ultimo error de la API de MercadoLibre, para mostrarlo tal cual
+
+
 def _meli_resumen(email, desde, hasta):
     """Mismo 'raw'/prod/ords que Shopify/Tiendanube pero con las ordenes de MercadoLibre.
     COSTOS REALES POR ORDEN (medido el 12/09 sobre una venta real):
@@ -13805,9 +13808,12 @@ def _meli_resumen(email, desde, hasta):
       - IIBB 3,5%. El 1% de tienda NO aplica: ese es de la tienda propia.
       - costo de producto: por SKU (meli:X2-POTE). Si no esta cargado queda en 0 y se cuenta
         en meli_sin_costo, en vez de inventar un numero."""
+    global _MELI_ULT_ERROR
     tok, uid = _meli_ctx(email)
     if not tok or not uid:
+        _MELI_ULT_ERROR = "no hay token de MercadoLibre conectado"
         return None
+    _MELI_ULT_ERROR = ""
     h = {"Authorization": "Bearer " + tok}
     ordenes_ml = []
     # PAGINADO: el tope estaba en 8 paginas = 400 ordenes POR PERIODO. Para un dia sobra, pero al
@@ -13828,7 +13834,13 @@ def _meli_resumen(email, desde, hasta):
                 "order.date_created.from": desde + "T00:00:00.000-03:00",
                 "order.date_created.to": hasta + "T23:59:59.000-03:00"})
             if rr.status_code >= 400:
-                break
+                # OJO: un error de la API NO es "no vendio nada". Cortando aca el dia quedaba
+                # con MELI en CERO y, como la pauta de MELI se lee por otra via (la API de
+                # facturacion) y esa SI entra, el canal mostraba una perdida inventada: el
+                # 22-10-2026 daba -$189.753 con 0 ventas, y el dia anterior habia vendido 17.
+                # Devolver None marca el canal como "no cargo" en vez de mentir un cero.
+                _MELI_ULT_ERROR = "HTTP %s %s" % (rr.status_code, (rr.text or "")[:200])
+                return None
             jj = rr.json() or {}
             res = jj.get("results") or []
             ordenes_ml += res
@@ -18820,6 +18832,8 @@ def _pf_canales(email, desde, hasta):
         pass
     if blob and isinstance(blob.get("raw"), dict):
         blob["raw"]["meli_ok"] = ml_ok
+        if not ml_ok and _MELI_ULT_ERROR:
+            blob["raw"]["meli_error"] = _MELI_ULT_ERROR
     return blob, sh_n, tn_n
 
 
@@ -32353,8 +32367,17 @@ def _mcp_tool_negocio(email, a):
     L.append("POR CANAL")
     L.append("  Tienda         %s facturado · ganancia %s · margen %s%%" % (
         _mcp_pesos(r.get("facturado_web")), _mcp_pesos(r.get("web_ganancia")), r.get("web_margen", 0)))
-    L.append("  MercadoLibre   %s facturado · ganancia %s · margen %s%%" % (
-        _mcp_pesos(r.get("meli_facturado")), _mcp_pesos(r.get("ml_ganancia")), r.get("ml_margen", 0)))
+    if r.get("meli_ok") is False:
+        # Sin esto se leia "0 facturado" y una perdida, que es lo que pasa cuando la pauta de
+        # MELI entra pero las ventas no: parece un dia malo y en realidad es un dato que falta.
+        L.append("  MercadoLibre   NO SE PUDO LEER%s" % (
+            ("  (" + str(r.get("meli_error"))[:120] + ")") if r.get("meli_error") else ""))
+        L.append("                 la pauta de MELI (%s) si se leyo, asi que la ganancia la"
+                 % _mcp_pesos(r.get("publi_meli")))
+        L.append("                 descuenta sin las ventas que la justifican")
+    else:
+        L.append("  MercadoLibre   %s facturado · ganancia %s · margen %s%%" % (
+            _mcp_pesos(r.get("meli_facturado")), _mcp_pesos(r.get("ml_ganancia")), r.get("ml_margen", 0)))
     if r.get("ri"):
         L.append("")
         L.append("IVA  (ventas %s%% · compras %s%%)" % (IVA_VENTAS_PCT, IVA_COMPRAS_PCT))
