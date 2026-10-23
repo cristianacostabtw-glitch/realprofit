@@ -19159,7 +19159,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _iibb_w = _fact_w * (IIBB_PCT / 100.0)
         # Misma regla que arriba: el 0,6% de Shopify no da credito, asi que NO se resta de la base.
         # La retencion NO va en esta base: es impuesto, no factura, no da credito fiscal.
-        _iva_w = _fact_w * _IVA_F_VTA - (_prod_w + _com_w + _env_w) * _IVA_F_CMP
+        # El FULFILLMENT tambien da credito, por los $800 facturados del armado (el 9,7% de la
+        # cambiaria se paga aparte y no factura). Estaba contado en la ganancia pero NO aca, asi
+        # que el break even salia mas alto que el real (22-10-2026).
+        _oper_cred_w = (OPER_ORDEN * (_ord_w + int(r.get("ordenes_cero", 0) or 0))
+                        ) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+        _iva_w = _fact_w * _IVA_F_VTA - (_prod_w + _com_w + _env_w + _oper_cred_w) * _IVA_F_CMP
         # La comision de la agencia (10% de la pauta de CP3) NO entra en el break even.
         # Decision de Cristian (05-10-2026): "sin agregarlo al cpa breakeven, pero restalo como
         # algo a la ganancia si tiene su tarjetita y se sabe cuanto se resta".
@@ -19175,11 +19180,30 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _cero_w = int(r.get("ordenes_cero", 0) or 0)
         _pre_w = (_fact_w - _prod_w - _com_w - _ret_w - _env_w - OPER_ORDEN * (_ord_w + _cero_w)
                   - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w)
+        # LA PAUTA TAMBIEN DA CREDITO FISCAL. En las cuentas en dolares la cambiaria factura el
+        # bruto transferido con el IVA adentro, asi que cada peso de pauta cuesta de verdad
+        # (1 - credito). Eso NO es un costo fijo del periodo (crece junto con la pauta), por eso
+        # no va dentro de la contribucion sino como descuento sobre el costo de la pauta:
+        #     0 = contribucion - pauta_be * (1 - f)   ->   pauta_be = contribucion / (1 - f)
+        # Sin esto el break even salia ~0,25x de mas y no cerraba contra la ganancia: el 22-10
+        # el dia daba +3,6% de margen con el ROAS supuestamente POR DEBAJO del minimo.
+        _f_ads = 0.0
+        try:
+            _pub_usd_be = float(_ADS_USD_ARS.get((email, desde, hasta)) or 0.0)
+            _p_meta_be = float(r.get("publi_ars", 0) or 0)
+            if _p_meta_be > 0 and _pub_usd_be > 0:
+                _f_ads = (_pub_usd_be * _IVA_F_CMP) / _p_meta_be
+                if not (0.0 <= _f_ads < 0.25):
+                    _f_ads = 0.0
+        except Exception:
+            _f_ads = 0.0
+        _pauta_be = (_pre_w / (1.0 - _f_ads)) if _pre_w > 0 else 0.0
+        r["be_ads_iva_pct"] = round(_f_ads * 100, 2)
         # BREAK EVEN ROAS: sólo la tienda, contra la facturación que sí genera la pauta.
-        r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pre_w, 2) if _pre_w > 0 and _fact_w > 0 else 0.0
+        r["be_roas"] = r["breakeven_roas"] = round(_fact_w / _pauta_be, 2) if _pauta_be > 0 and _fact_w > 0 else 0.0
         # BREAK EVEN CPA: el de la TIENDA. Cada venta tiene el suyo segun su ticket; este es el
         # promedio del periodo. Tiene que quedar en linea con el desglose de una venta real.
-        r["be_cpa"] = r["breakeven_cpa"] = round(_pre_w / _ord_w, 2) if _ord_w > 0 else 0.0
+        r["be_cpa"] = r["breakeven_cpa"] = round(_pauta_be / _ord_w, 2) if _ord_w > 0 else 0.0
         # El mixto (sumando lo que aporta MELI) queda como REFERENCIA, no como numero principal:
         # marca donde el negocio entero da cero, pero pagando eso cada venta de la tienda pierde
         # plata y la tapa la ganancia de MELI. El limite sano es el de arriba.
