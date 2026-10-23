@@ -17445,9 +17445,18 @@ def pf_ads_posts():
     acct = (request.args.get("act") or "").replace("act_", "").strip()
     if not acct.isdigit():
         return jsonify({"ok": False, "msg": "falta act", "posts": {}}), 400
-    posts, por_id = {}, {}
-    params = {"fields": "id,name,creative{effective_object_story_id,object_story_id}",
-              "limit": 200}
+    # El gasto del MISMO rango que esta mirando en el Administrador. Sirve de huella
+    # para saber que fila es cual sin pedirle que agregue la columna del id: el id de
+    # anuncio no esta en el HTML (Meta lo ofusca) y los nombres son "8", "7", "3".
+    desde = (request.args.get("desde") or "").strip()
+    hasta = (request.args.get("hasta") or "").strip()
+    posts, por_id, por_gasto = {}, {}, {}
+    campos = "id,name,creative{effective_object_story_id,object_story_id}"
+    def _fecha_ok(x):
+        return len(x) == 10 and x[4] == "-" and x[7] == "-" and x.replace("-", "").isdigit()
+    if _fecha_ok(desde) and _fecha_ok(hasta):
+        campos += ",insights.time_range({'since':'%s','until':'%s'}){spend}" % (desde, hasta)
+    params = {"fields": campos, "limit": 200}
     try:
         for _ in range(25):                      # tope de seguridad: 5.000 anuncios
             r = _ads_call("GET", "act_%s/ads" % acct, params=params)
@@ -17461,13 +17470,26 @@ def pf_ads_posts():
                 if nom:
                     posts[nom] = sid
                 por_id[str(a.get("id"))] = sid
+                # Clave por gasto, con 2 decimales como lo muestra el Administrador.
+                # Si dos anuncios gastaron EXACTO lo mismo la huella no sirve: se marca
+                # en None para no mostrar un post id equivocado.
+                try:
+                    _ins = ((a.get("insights") or {}).get("data") or [])
+                    if _ins:
+                        _g = float(_ins[0].get("spend") or 0)
+                        if _g > 0:
+                            _k = "%.2f" % _g
+                            por_gasto[_k] = None if _k in por_gasto else sid
+                except Exception:
+                    pass
             sig = ((r.get("paging") or {}).get("cursors") or {}).get("after")
             if not sig or not datos:
                 break
             params = dict(params)
             params["after"] = sig
         return jsonify({"ok": True, "act": acct, "posts": posts, "por_id": por_id,
-                        "total": len(por_id)})
+                        "por_gasto": {k: v for k, v in por_gasto.items() if v},
+                        "desde": desde, "hasta": hasta, "total": len(por_id)})
     except Exception as e:
         # El error real, no un generico: si el token no ve la cuenta hay que saberlo.
         return jsonify({"ok": False, "msg": ("%s: %s" % (type(e).__name__, e))[:200],
