@@ -17432,6 +17432,48 @@ def pf_ads_identidad():
                     "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
 
 
+@app.get("/pf-ads-posts")
+def pf_ads_posts():
+    """{nombre del anuncio -> post id} de una cuenta. Lo usa la extension ROAS real.
+
+    El Administrador no muestra el post id en ninguna columna, y el HTML de la fila
+    tampoco trae el id del anuncio (Meta lo ofusca en js_xxx). Por eso el cruce va por
+    NOMBRE: los duplicados del mismo creativo comparten el object_story_id, que es
+    justo el que se usa para escalar una publicacion que ya corre."""
+    if not _user_actual():
+        return jsonify({"ok": False, "posts": {}}), 401
+    acct = (request.args.get("act") or "").replace("act_", "").strip()
+    if not acct.isdigit():
+        return jsonify({"ok": False, "msg": "falta act", "posts": {}}), 400
+    posts, por_id = {}, {}
+    params = {"fields": "id,name,creative{effective_object_story_id,object_story_id}",
+              "limit": 200}
+    try:
+        for _ in range(25):                      # tope de seguridad: 5.000 anuncios
+            r = _ads_call("GET", "act_%s/ads" % acct, params=params)
+            datos = r.get("data") or []
+            for a in datos:
+                cr = a.get("creative") or {}
+                sid = cr.get("effective_object_story_id") or cr.get("object_story_id") or ""
+                if not sid:
+                    continue
+                nom = (a.get("name") or "").strip()
+                if nom:
+                    posts[nom] = sid
+                por_id[str(a.get("id"))] = sid
+            sig = ((r.get("paging") or {}).get("cursors") or {}).get("after")
+            if not sig or not datos:
+                break
+            params = dict(params)
+            params["after"] = sig
+        return jsonify({"ok": True, "act": acct, "posts": posts, "por_id": por_id,
+                        "total": len(por_id)})
+    except Exception as e:
+        # El error real, no un generico: si el token no ve la cuenta hay que saberlo.
+        return jsonify({"ok": False, "msg": ("%s: %s" % (type(e).__name__, e))[:200],
+                        "posts": {}})
+
+
 @app.get("/pf-ads-campanas")
 def pf_ads_campanas():
     if not _user_actual():
