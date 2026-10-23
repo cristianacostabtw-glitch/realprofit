@@ -7243,6 +7243,17 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                 continue
             if hasta and _fch > hasta:
                 continue
+        # PEDIDOS QUE NO SE DESPACHAN. La "Guia Digital" es descargable: Shopify la marca
+        # requires_shipping=false y el pedido nunca pasa a enviado, asi que con el filtro
+        # "pagado + sin despachar" quedaba ACA PARA SIEMPRE. Aparecia en todas las tandas y
+        # se colaba en el Excel de Andreani sin direccion (23-10-2026, pedido #8954: la fila
+        # daba 3 errores y el envio se hubiera pagado al pepe).
+        # Si Shopify no manda el campo se asume que SI se despacha, para no esconder ventas.
+        _lis = o.get("line_items") or []
+        _lis_env = [li for li in _lis
+                    if li.get("requires_shipping") is None or li.get("requires_shipping")]
+        if _lis and not _lis_env:
+            continue
         tiene_trk = any(f.get("tracking_number") for f in (o.get("fulfillments") or []))
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         sa = _D(o.get("shipping_address"))
@@ -7250,7 +7261,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
         nombre = (sa.get("name") or (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip())
                   or o.get("contact_email") or "—")
         suc = _es_sucursal_ship(o)
-        unidades = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
+        # Solo las unidades que se despachan: en un pedido mixto la guia no va en la caja.
+        unidades = sum(int(li.get("quantity") or 0) for li in _lis_env)
         localidad = sa.get("city") or ""
         cp = sa.get("zip") or ""
         prov = sa.get("province") or ""
@@ -17450,7 +17462,7 @@ def pf_ads_posts():
     # anuncio no esta en el HTML (Meta lo ofusca) y los nombres son "8", "7", "3".
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
-    posts, por_id, por_gasto = {}, {}, {}
+    posts, por_id, por_gasto, gastos = {}, {}, {}, []
     campos = "id,name,creative{effective_object_story_id,object_story_id}"
     def _fecha_ok(x):
         return len(x) == 10 and x[4] == "-" and x[7] == "-" and x.replace("-", "").isdigit()
@@ -17480,6 +17492,7 @@ def pf_ads_posts():
                         if _g > 0:
                             _k = "%.2f" % _g
                             por_gasto[_k] = None if _k in por_gasto else sid
+                            gastos.append([round(_g, 2), sid])
                 except Exception:
                     pass
             sig = ((r.get("paging") or {}).get("cursors") or {}).get("after")
@@ -17489,6 +17502,10 @@ def pf_ads_posts():
             params["after"] = sig
         return jsonify({"ok": True, "act": acct, "posts": posts, "por_id": por_id,
                         "por_gasto": {k: v for k, v in por_gasto.items() if v},
+                        # La lista completa, porque el gasto se mueve en VIVO: cuando la
+                        # extension compara, el Administrador ya muestra unos centavos mas.
+                        # Con la lista puede buscar el mas cercano en vez de exacto.
+                        "gastos": gastos,
                         "desde": desde, "hasta": hasta, "total": len(por_id)})
     except Exception as e:
         # El error real, no un generico: si el token no ve la cuenta hay que saberlo.
