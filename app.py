@@ -6899,7 +6899,10 @@ def _despachos_orders(email, desde=None, hasta=None, refresh=False):
     DEADLINE compartido: el fetch total nunca supera ~30s → jamás lo mata el timeout de
     gunicorn (90s) → nunca 'Error de conexión' aunque una tienda esté lenta/colgada."""
     import time as _t
-    deadline = _t.time() + 30
+    # 55 y no 30: pasados los 250 pedidos sin despachar hacen falta VARIAS paginas, y con
+    # 30s la ultima no llegaba. Como el paginado va de viejos a nuevos, lo que se perdia
+    # eran los pedidos MAS NUEVOS (24-10-2026: faltaban 29 del dia).
+    deadline = _t.time() + 55
     out = []
     sh = _despachos_orders_shopify(email, desde, hasta, refresh=refresh, deadline=deadline)
     tn = _tiendanube_orders(email, desde, hasta, refresh=refresh, deadline=deadline)
@@ -7213,8 +7216,9 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
         try:
             # Sin created_at_min/max a proposito: se baja el set completo una sola vez y las
             # pestanias (Hoy / Ayer / 7 dias) se resuelven filtrando en Python, mas abajo.
+            _POR_PAG = 100          # paginas chicas: cada request entra holgado en el presupuesto
             params = {"status": "open", "financial_status": "paid",
-                      "fulfillment_status": "unshipped", "limit": 250,
+                      "fulfillment_status": "unshipped", "limit": _POR_PAG,
                       "fields": "id,order_number,name,total_price,current_total_price,"
                                 "financial_status,fulfillment_status,cancelled_at,line_items,"
                                 "note,created_at,shipping_lines,shipping_address,customer,contact_email,"
@@ -7230,7 +7234,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             # Ahora SOLO se cachea cuando la bajada termino completa.
             _completo = False
             try:
-                for _ in range(8):                                   # paginar (cap 8 págs = 2000 pedidos)
+                for _ in range(30):                                  # cap 30 págs = 3.000 pedidos
                     if deadline and _t.time() > deadline:            # se acabó el presupuesto → incompleto
                         break
                     params["since_id"] = since
@@ -7242,7 +7246,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                         raise RuntimeError("Shopify HTTP %s" % r.status_code)
                     lote = (r.json() or {}).get("orders") or []
                     orders.extend(lote)
-                    if len(lote) < 250:
+                    if len(lote) < _POR_PAG:
                         _completo = True                             # llegue al final de verdad
                         break
                     since = lote[-1]["id"]
