@@ -13023,8 +13023,8 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
         # /seguimientos y Despachos nunca se enteraba: los MISMOS pedidos volvian a salir en
         # la tanda siguiente y se despachaban dos veces (23-10-2026: quedaron 125 "por
         # empaquetar" despues de subir el PDF de 147 etiquetas).
-        # Se marca "exportada" y no "enviada": la etiqueta existe pero el paquete todavia no
-        # salio. Y nunca se pisa un "enviada" puesto a mano.
+        # Se marca "ENVIADA". El circuito es: generar el Excel -> "exportada"; cargar el PDF
+        # de seguimientos -> "enviada". Si llego el numero de seguimiento, el paquete salio.
         try:
             _st = _desp_state(email)
             _n_marc = 0
@@ -13032,11 +13032,9 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 _k = str(_p.get("num") or "").replace("#", "").strip()
                 if not _k or not _p.get("track"):
                     continue
-                if _st.get(_k) == "enviada":
-                    continue
-                if _st.get(_k) != "exportada":
+                if _st.get(_k) != "enviada":
                     _n_marc += 1
-                _st[_k] = "exportada"
+                _st[_k] = "enviada"
             if _n_marc:
                 _desp_save(email, _st)
             _SEG_JOBS[job]["marcados"] = _n_marc
