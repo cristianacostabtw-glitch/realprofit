@@ -12959,6 +12959,30 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
             _env_guardar_mapa(email, pedidos)
         except Exception:
             pass
+        # Y ADEMAS los saco de "por empaquetar". Si Andreani ya emitio la etiqueta con su
+        # numero de seguimiento, ese pedido esta despachado. Antes el PDF solo alimentaba
+        # /seguimientos y Despachos nunca se enteraba: los MISMOS pedidos volvian a salir en
+        # la tanda siguiente y se despachaban dos veces (23-10-2026: quedaron 125 "por
+        # empaquetar" despues de subir el PDF de 147 etiquetas).
+        # Se marca "exportada" y no "enviada": la etiqueta existe pero el paquete todavia no
+        # salio. Y nunca se pisa un "enviada" puesto a mano.
+        try:
+            _st = _desp_state(email)
+            _n_marc = 0
+            for _p in pedidos:
+                _k = str(_p.get("num") or "").replace("#", "").strip()
+                if not _k or not _p.get("track"):
+                    continue
+                if _st.get(_k) == "enviada":
+                    continue
+                if _st.get(_k) != "exportada":
+                    _n_marc += 1
+                _st[_k] = "exportada"
+            if _n_marc:
+                _desp_save(email, _st)
+            _SEG_JOBS[job]["marcados"] = _n_marc
+        except Exception:
+            pass
         _SEG_JOBS[job].update({"listo": True, "pedidos": pedidos, "wpp_on": wpp_on,
                                "resumen": {"total": len(pedidos), "ambos": n_ambos, "solo_tn": n_tn,
                                            "solo_wpp": n_wpp, "ninguno": n_falta}})
