@@ -7216,7 +7216,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
         try:
             # Sin created_at_min/max a proposito: se baja el set completo una sola vez y las
             # pestanias (Hoy / Ayer / 7 dias) se resuelven filtrando en Python, mas abajo.
-            _POR_PAG = 100          # paginas chicas: cada request entra holgado en el presupuesto
+            _POR_PAG = 250          # con el cursor las paginas vienen llenas: menos vueltas
             params = {"status": "open", "financial_status": "paid",
                       "fulfillment_status": "unshipped", "limit": _POR_PAG,
                       "fields": "id,order_number,name,total_price,current_total_price,"
@@ -7224,32 +7224,32 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                                 "note,created_at,shipping_lines,shipping_address,customer,contact_email,"
                                 "note_attributes,fulfillments"}
             orders = []
-            since = 0
-            # OJO: el paginado va de los pedidos VIEJOS a los NUEVOS (since_id ascendente).
-            # Si se corta a la mitad quedan los viejos y se PIERDEN los nuevos. Antes esa
-            # lista incompleta se guardaba igual en el cache y con la hora actualizada, asi
-            # que parecia fresca 10 minutos mas; si volvia a fallar, se volvia a congelar y
-            # la pantalla quedaba clavada en un pedido viejo (24-10-2026: se quedo en el
-            # #9123 con 29 pedidos del dia invisibles, que es no despacharlos).
-            # Ahora SOLO se cachea cuando la bajada termino completa.
+            # PAGINADO CON EL CURSOR DE SHOPIFY (cabecera Link rel="next").
+            # Antes se paginaba con since_id y se cortaba cuando una pagina traia menos
+            # items que el limite. Con el filtro fulfillment_status eso es FALSO: Shopify
+            # devuelve paginas incompletas aunque queden mas, asi que cortaba en la primera
+            # (con limit 250 daba 248, con 100 daba 99) y se perdian justo los pedidos mas
+            # nuevos. El cursor no tiene ese problema: se sigue hasta que no hay "next".
             _completo = False
+            _url = "https://%s/admin/api/2026-07/orders.json" % shop
+            _pars = params
             try:
-                for _ in range(30):                                  # cap 30 págs = 3.000 pedidos
-                    if deadline and _t.time() > deadline:            # se acabó el presupuesto → incompleto
+                for _ in range(40):
+                    if deadline and _t.time() > deadline:            # presupuesto agotado → incompleto
                         break
-                    params["since_id"] = since
-                    r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
-                                     headers={"X-Shopify-Access-Token": token},
-                                     params=params, timeout=20)
+                    r = requests.get(_url, headers={"X-Shopify-Access-Token": token},
+                                     params=_pars, timeout=20)
                     if r.status_code >= 400:
-                        # Un 429/5xx devolvia [] y se tomaba como "no hay mas paginas".
                         raise RuntimeError("Shopify HTTP %s" % r.status_code)
-                    lote = (r.json() or {}).get("orders") or []
-                    orders.extend(lote)
-                    if len(lote) < _POR_PAG:
-                        _completo = True                             # llegue al final de verdad
+                    orders.extend((r.json() or {}).get("orders") or [])
+                    _next = ""
+                    for _tr in (r.headers.get("Link") or "").split(","):
+                        if 'rel="next"' in _tr and "<" in _tr and ">" in _tr:
+                            _next = _tr[_tr.find("<") + 1:_tr.find(">")]
+                    if not _next:
+                        _completo = True                             # no hay mas paginas
                         break
-                    since = lote[-1]["id"]
+                    _url, _pars = _next, None    # la URL del cursor ya trae todos los filtros
             except Exception:
                 _completo = False
                 if _c and _c.get("orders") is not None:
