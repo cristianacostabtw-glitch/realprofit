@@ -9398,7 +9398,9 @@ def pf_despachos_excel():
             continue
         nom, ape = _split_nombre(r["nombre"])
         nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
-        valor = max(int(round(r.get("total") or 0)), 30000)   # piso: Andreani rechaza valor declarado 0/muy bajo
+        # Piso 40.000: por debajo Andreani rechaza la fila con "El valor declarado es menor
+        # al minimo permitido". Con 30.000 volvian 11 errores (planilla del 23-10-2026).
+        valor = max(int(round(r.get("total") or 0)), 40000)
         peso = PESO
         dni = str(r.get("dni") or "").strip() or "00000000"   # Andreani exige DNI
         tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
@@ -27429,7 +27431,10 @@ def pf_diag_excel():
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
-        valor = max(int(round(r.get("total") or 0)), 30000); dni = str(r.get("dni") or "").strip() or "00000000"
+        # MINIMO 40.000: Andreani rechaza la fila con "El valor declarado es menor al minimo
+        # permitido" por debajo de eso. Con 30.000 volvian 11 errores en la planilla del
+        # 23-10-2026 y habia que corregirlos a mano uno por uno.
+        valor = max(int(round(r.get("total") or 0)), 40000); dni = str(r.get("dni") or "").strip() or "00000000"
         tel_cod, tel_num = _and_split_tel(r.get("tel")); email = r.get("email") or ""
         if r["tipo"] == "sucursal":
             suc_raw = r.get("suc_nombre") or ""
