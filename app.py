@@ -9347,7 +9347,16 @@ def pf_despachos_excel():
         return jsonify({"ok": False, "msg": "sin pedidos"}), 400
     rows = _despachos_orders(email) or []
     sel = [r for r in rows if str(r["num"]) in nums and (tienda == "todas" or r.get("tienda") == tienda)]
+    # NUNCA meter un FLEX en el Excel de Andreani. La pantalla ya lo evita cuando estas en la
+    # solapa Andreani (redibuja la tabla y los Flex ni aparecen), pero exportando desde "Todas"
+    # con todo tildado se colaban: serian envios de Andreani pagados por pedidos que reparte el.
+    _flex = [r for r in sel if (r.get("logistica") or "") == "flex"]
+    if _flex:
+        sel = [r for r in sel if (r.get("logistica") or "") != "flex"]
     if not sel:
+        if _flex:
+            return jsonify({"ok": False,
+                            "msg": "todos los que tildaste son Flex: no van al Excel de Andreani"}), 400
         return jsonify({"ok": False, "msg": "no encontré esos pedidos"}), 404
     tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
     if not tpl.exists():
@@ -9467,6 +9476,10 @@ def pf_despachos_excel():
     if revisar:
         resp.headers["X-Sin-Sucursal"] = ",".join(revisar)
         _exp.append("X-Sin-Sucursal")
+    if _flex:
+        # Que se vea cuales quedaron afuera por ser Flex, no que desaparezcan en silencio.
+        resp.headers["X-Flex-Salteados"] = ",".join(str(r["num"]) for r in _flex)
+        _exp.append("X-Flex-Salteados")
     if _exp:
         resp.headers["Access-Control-Expose-Headers"] = ", ".join(_exp)
     return resp
