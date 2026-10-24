@@ -6783,8 +6783,25 @@ def _sku_calc(cfg, u: int) -> str:
         return "x%d" % u                           # sin unidades base → último recurso
     if t == "fijo":
         return b
-    # unitario: 'xN base' (ej 'x2 Pote')
-    return (("x%d %s" % (u, b)).strip()) if b else ("x%d" % u)
+    # unitario: 'xN base' (ej 'x2 Pote').
+    # Si la base trae un "+" es un COMBO ("POTE+ CAPS", o "2 POTE + 1 CAPS"): se multiplica
+    # CADA componente, nunca el texto entero. Mismo criterio que el armado de la etiqueta:
+    # 2 combos = "x2 POTE + x2 CAPS", jamas "x2 POTE+ CAPS".
+    if not b:
+        return "x%d" % u
+    if "+" in b:
+        _ps = []
+        for _tr in [t.strip() for t in b.split("+")]:
+            if not _tr:
+                continue
+            _q = _tr.split(None, 1)
+            if len(_q) == 2 and _q[0].isdigit():
+                _ps.append("x%d %s" % (int(_q[0]) * int(u), _q[1].strip()))
+            else:
+                _ps.append("x%d %s" % (int(u), _tr))
+        if _ps:
+            return " + ".join(_ps)
+    return ("x%d %s" % (u, b)).strip()
 
 
 @app.post("/pf-sku-set")
@@ -9486,10 +9503,26 @@ def _sku_de_items(items, skus):
                 # como la guía no se empaqueta.
                 sin_sku += int(qty)
                 continue
-            k = base.lower()
-            if k not in uni:
-                uni[k] = [base, 0]
-            uni[k][1] += int(qty)      # MISMA base = se SUMAN (2 productos "POTE" → 'x3 POTE')
+            # COMBOS. Un pack se carga con un "+" adentro ("POTE+ CAPS", o "2 POTE + 1 CAPS"
+            # si lleva dos de uno). Es UN producto que adentro trae varias cosas, asi que se
+            # parte y cada componente se suma con el resto del pedido.
+            # Sin esto salia "x2 POTE+ CAPS": el que arma la caja no sabe que son 2 potes y
+            # 2 caps, y ademas el combo no se sumaba con un pote suelto del mismo pedido
+            # (quedaba "x2 POTE+ CAPS + x1 POTE" en vez de "x3 POTE + x2 CAPS").
+            for _tr in [t.strip() for t in base.split("+")]:
+                if not _tr:
+                    continue
+                _p = _tr.split(None, 1)
+                if len(_p) == 2 and _p[0].isdigit():
+                    _mult, _nom = int(_p[0]), _p[1].strip()
+                else:
+                    _mult, _nom = 1, _tr
+                if not _nom:
+                    continue
+                k = _nom.lower()
+                if k not in uni:
+                    uni[k] = [_nom, 0]
+                uni[k][1] += int(qty) * _mult   # MISMA base = se SUMAN
         else:
             # MISMO producto en VARIOS renglones = se SUMAN las unidades ANTES de calcular el SKU.
             # Antes se calculaba renglon por renglon y salia '1 60ML + 1 60ML' (pedido #1106) en
@@ -9505,8 +9538,13 @@ def _sku_de_items(items, skus):
     _rank = {}
     for _i, _k in enumerate(skus or {}):
         _b = (_sku_cfg((skus or {}).get(_k)).get("base") or "").strip().lower()
-        if _b and _b not in _rank:
-            _rank[_b] = _i
+        # Un combo aporta el orden de CADA uno de sus componentes, no el del texto entero.
+        for _bb in [x.strip() for x in _b.split("+")]:
+            _pp = _bb.split(None, 1)
+            if len(_pp) == 2 and _pp[0].isdigit():
+                _bb = _pp[1].strip()
+            if _bb and _bb not in _rank:
+                _rank[_bb] = _i
     partes = ["x%d %s" % (tot, base) for base, tot in
               sorted(uni.values(), key=lambda v: (_rank.get(v[0].lower(), 9999), v[0].lower()))]
     otras = []
