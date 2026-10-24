@@ -4748,6 +4748,140 @@ ENVIO_AND2_SUC = {
 }
 
 
+# === TARIFA REDCHAT (ANDREANI SIN CUPON), MEDIDA EL 24-10-2026 ===============================
+# ANDREANI LE SACO EL CUPON a Cristian: desde el 23-10 TODOS los envios se pagan por REDCHAT,
+# tambien los de Andreani. Ya no hay descuento COSTABTW ni seguro del 1% sumado aparte: RedChat
+# cobra un precio CERRADO por zona, igual para un pedido de 2 unidades que para uno de 7
+# (verificado: Cordoba con 7u pago $10.467,60, lo mismo que Guamini con 2u).
+#
+# COMO SE MIDIO: se bajaron los 2.142 envios de app.redchat.com.ar (las 43 paginas completas) y
+# se tomaron SOLO los del 13-10 en adelante. Esa fecha no es arbitraria: todos los precios
+# anteriores mueren ahi (el 4-10 moria $5.684, el 8-10 $5.653, el 11-10 $5.870) y del 13-10 al
+# 24-10 no aparecio NI UN precio fuera de esta tabla. 174 envios de Andreani, 123 CP distintos.
+#
+# RIGE DESDE HOY, NO HACIA ATRAS: aunque la lista empezo el 13-10, el corte se pone el 24-10 a
+# las 00:00 porque es lo que pidio Cristian y porque los dias ya cerrados salen del cache y no
+# se recalculan. El historico queda intacto.
+#
+# SUCURSAL Y DOMICILIO NO AGRUPAN IGUAL (como ya pasaba con la tabla vieja de RedChat):
+#   - A sucursal, Bahia Blanca (8000) paga la banda cara y General Acha (8200) la del medio.
+#   - A domicilio casi no hay AMBA: todo el conurbano va por Flex.
+ENVIO_RC2_DESDE = "2026-10-24T00:00"
+
+# Bandas por CP (desde, hasta, precio). Se recorren en orden y gana la primera que entra.
+ENVIO_RC2_SUC_BANDAS = (
+    (1000, 1999, 6701.22),   # CABA + GBA + La Plata
+    (2000, 3299, 8217.44),   # Bs As interior, Santa Fe sur, Entre Rios
+    (3300, 4299, 8999.27),   # NEA, Tucuman, Santiago del Estero
+    (4400, 4599, 8999.27),   # Salta
+    (4600, 4699, 9022.63),   # Jujuy
+    (4700, 4999, 8999.27),   # Catamarca
+    (5000, 5299, 8217.44),   # Cordoba capital y alrededores
+    (5300, 5799, 8999.27),   # La Rioja, San Juan, Mendoza, San Luis
+    (5800, 5999, 8217.44),   # Cordoba interior (5972 Pilar, 5984)
+    (6000, 6999, 8217.44),   # Bs As oeste y noroeste
+    (7000, 7999, 8217.44),   # Bs As interior y costa (7600 Mar del Plata)
+    (8000, 8199, 8999.27),   # Bahia Blanca (8000/8001): paga la banda cara
+    (8200, 8299, 8217.44),   # La Pampa (8200 General Acha)
+    (8300, 8999, 8999.27),   # Neuquen, Rio Negro
+    (9000, 9419, 8999.27),   # Chubut, Santa Cruz
+    (9420, 9999, 9022.63),   # Tierra del Fuego (9420 Rio Grande)
+)
+ENVIO_RC2_DOM_BANDAS = (
+    (1000, 1999, 9158.15),   # AMBA (casi no se usa: el conurbano va por Flex)
+    (2000, 3299, 10467.60),
+    (3300, 4299, 11396.07),
+    (4400, 4999, 11940.18),  # Salta (4500/4530), Jujuy (4600)
+    (5000, 5299, 10467.60),  # Cordoba
+    (5300, 5799, 11396.07),  # San Juan (5443), Mendoza (5519), San Luis (5700)
+    (5800, 5999, 10467.60),  # Cordoba interior
+    (6000, 6999, 10467.60),
+    (7000, 7999, 10467.60),
+    (8000, 8199, 10467.60),  # Bahia Blanca
+    (8200, 8999, 11396.07),  # La Pampa, Neuquen (8322 Cutral Co), Rio Negro (8324 Cipolletti)
+    (9000, 9999, 11940.18),  # Chubut, Santa Cruz, Tierra del Fuego
+)
+# CP sueltos que NO siguen la banda de su provincia. Medidos, no deducidos: igual que
+# ENVIO_CP_RECARGO, un pueblo caro no cambia la zona de toda la provincia.
+ENVIO_RC2_SUC_CP = {
+    "2812": 6701.22,   # Zarate         -> paga como AMBA
+    "2942": 6701.22,   # Baradero       -> paga como AMBA
+    "6700": 6701.22,   # Lujan          -> paga como AMBA
+    "7260": 6701.22,   # Chivilcoy      -> paga como AMBA
+    "6430": 8999.27,   # Pehuajo        -> paga la banda de Cuyo, no la de Bs As
+    "7540": 8999.27,   # Coronel Suarez -> idem
+    # Norte de Santa Fe: paga como el resto de Santa Fe, no como el NEA. Van por CP suelto y no
+    # como banda 3500-3599 a proposito: RESISTENCIA (Chaco) es 3500 y esta pegado, no se midio.
+    "3550": 8217.44,   # Vera
+    "3560": 8217.44,   # Reconquista
+}
+ENVIO_RC2_DOM_CP = {
+    "7240": 9158.15,    # Lobos         -> paga como AMBA
+    "2740": 11940.18,   # ARRECIFES     -> cobrado como Patagonia. Esta MAL, reclamar a RedChat.
+    "7620": 11940.18,   # BALCARCE      -> idem. Se deja el precio real, no el que corresponderia.
+    "8520": 11974.22,   # Viedma        -> precio propio, un solo envio medido
+}
+
+
+def _rc2_cp4(o) -> str:
+    """Los 4 digitos del CP, sin la letra de provincia ni el sufijo (B1665HOD -> 1665)."""
+    import re as _re_rc
+    cp = str((_prov_cp(o) or ("", ""))[1] or "").strip().upper()
+    m = _re_rc.search(r"(\d{4})", cp)
+    return m.group(1) if m else ""
+
+
+def _envio_rc2(o, suc) -> float:
+    """Precio cerrado de RedChat por zona. Si el CP no se puede leer cae en la banda del medio,
+    que es la mas frecuente: nunca devuelve 0 ni None, porque eso inflaria la ganancia."""
+    cp = _rc2_cp4(o)
+    puntual = (ENVIO_RC2_SUC_CP if suc else ENVIO_RC2_DOM_CP).get(cp)
+    if puntual:
+        return puntual
+    bandas = ENVIO_RC2_SUC_BANDAS if suc else ENVIO_RC2_DOM_BANDAS
+    if cp:
+        n = int(cp)
+        for desde, hasta, precio in bandas:
+            if desde <= n <= hasta:
+                return precio
+    return 8217.44 if suc else 10467.60
+
+
+# TARIFA DE ENVIALO FLEX POR REDCHAT, medida el 24-10-2026 sobre los mismos 2.142 envios.
+# Aumento el 14-10 ($5.600/$6.200/$6.300/$8.200 -> $5.900/$6.500/$6.600/$8.500). Son 4 anillos y
+# NO coinciden con las zonas caba/norte/oeste/sur de _flex_zona: San Isidro (1642) y Martinez
+# (1640) pagan $6.500 mientras que Pacheco (1617) y San Miguel (1663) pagan $6.600, y los dos son
+# "norte". Por eso va por CP y no por zona. 107 CP medidos.
+FLEX_RC2_DESDE = "2026-10-24"
+FLEX_RC2_CABA = 5900.0      # CP 1000-1499
+FLEX_RC2_1ER = 6500.0
+FLEX_RC2_2DO = 6600.0
+FLEX_RC2_LEJOS = 8500.0
+FLEX_RC2_CP = {}
+for _cp in ("1602 1606 1607 1638 1640 1641 1650 1651 1657 1683 1702 1706 1752 1753 1754 "
+            "1824 1826 1832 1834 1870 1875").split():
+    FLEX_RC2_CP[_cp] = FLEX_RC2_1ER
+for _cp in ("1614 1617 1648 1661 1663 1665 1667 1670 1713 1714 1718 1765 1842 1845 1846 1847 "
+            "1849 1876 1878 1879 1881 1884 1888").split():
+    FLEX_RC2_CP[_cp] = FLEX_RC2_2DO
+for _cp in ("1620 1623 1629 1723 1744 1748 1757 1759 1763 1804 1862 1865 1891 1896 1900 1925 "
+            "2800 2804 2806 2814 6700").split():
+    FLEX_RC2_CP[_cp] = FLEX_RC2_LEJOS
+del _cp
+
+
+def _flex_rc2(o) -> float:
+    """Lo que cobra Envialo Flex por este CP. Un CP del conurbano que todavia no aparecio se
+    cobra como 2do cordon ($6.600), que es la banda mas frecuente."""
+    cp = _rc2_cp4(o)
+    if not cp:
+        return FLEX_RC2_2DO
+    hit = FLEX_RC2_CP.get(cp)
+    if hit:
+        return hit
+    return FLEX_RC2_CABA if int(cp) <= 1499 else FLEX_RC2_2DO
+
+
 # Envios UNIFICADOS: varios pedidos del mismo cliente que se despachan en UN SOLO paquete.
 # No es una regla general ni se deduce sola: es una decision puntual de Cristian, cargada a mano.
 # Paga el envio el pedido de numero MAS BAJO del grupo; los demas suman 0, porque el flete se
@@ -4931,6 +5065,10 @@ def _envio_costo(o) -> int:
     z = _envio_zona(o)
     fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
     _hora = _envio_hora_ar(o)
+    if _hora and _hora >= ENVIO_RC2_DESDE:
+        # Andreani le saco el cupon: ahora se paga por RedChat, precio cerrado por zona.
+        # Ya no se suma seguro ni se aplica el 0,75 del cupon: ese precio es el final.
+        return _envio_rc2(o, suc)
     if _hora and _hora >= ENVIO_AND2_DESDE:
         # Tarifa medida el 30-09-2026. El seguro es 1% del VALOR DECLARADO, asi que el costo sube
         # con el ticket y no puede salir de un numero fijo por zona.
@@ -9347,7 +9485,16 @@ def pf_despachos_excel():
         return jsonify({"ok": False, "msg": "sin pedidos"}), 400
     rows = _despachos_orders(email) or []
     sel = [r for r in rows if str(r["num"]) in nums and (tienda == "todas" or r.get("tienda") == tienda)]
+    # NUNCA meter un FLEX en el Excel de Andreani. La pantalla ya lo evita cuando estas en la
+    # solapa Andreani (redibuja la tabla y los Flex ni aparecen), pero exportando desde "Todas"
+    # con todo tildado se colaban: serian envios de Andreani pagados por pedidos que reparte el.
+    _flex = [r for r in sel if (r.get("logistica") or "") == "flex"]
+    if _flex:
+        sel = [r for r in sel if (r.get("logistica") or "") != "flex"]
     if not sel:
+        if _flex:
+            return jsonify({"ok": False,
+                            "msg": "todos los que tildaste son Flex: no van al Excel de Andreani"}), 400
         return jsonify({"ok": False, "msg": "no encontré esos pedidos"}), 404
     tpl = ANDREANI_TPL if ANDREANI_TPL.exists() else Path(_os.path.expanduser("~/Downloads/EnvioMasivoExcelPaquetes.xlsx"))
     if not tpl.exists():
@@ -9467,6 +9614,10 @@ def pf_despachos_excel():
     if revisar:
         resp.headers["X-Sin-Sucursal"] = ",".join(revisar)
         _exp.append("X-Sin-Sucursal")
+    if _flex:
+        # Que se vea cuales quedaron afuera por ser Flex, no que desaparezcan en silencio.
+        resp.headers["X-Flex-Salteados"] = ",".join(str(r["num"]) for r in _flex)
+        _exp.append("X-Flex-Salteados")
     if _exp:
         resp.headers["Access-Control-Expose-Headers"] = ", ".join(_exp)
     return resp
@@ -32950,8 +33101,11 @@ def _flex_costo_envio(o) -> float:
     _real = _flex_costos_all().get(_num)
     if _real:
         return float(_real)                      # lo que Envialo cobro de verdad, gana siempre
-    z = _flex_zona(_prov_cp(o)[1], _prov_cp(o)[0]) or ""
     dia = _flex_fecha_de(o)
+    if dia >= FLEX_RC2_DESDE:
+        # Tarifa de Envialo por RedChat medida el 24-10: 4 anillos por CP (ver FLEX_RC2_CP).
+        return _flex_rc2(o)
+    z = _flex_zona(_prov_cp(o)[1], _prov_cp(o)[0]) or ""
     v = ""
     for t in _FLEX_TARIFAS:                      # ordenadas: gana la ultima que ya empezo
         if (t.get("desde") or "") <= dia:
