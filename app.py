@@ -6899,7 +6899,10 @@ def _despachos_orders(email, desde=None, hasta=None, refresh=False):
     DEADLINE compartido: el fetch total nunca supera ~30s → jamás lo mata el timeout de
     gunicorn (90s) → nunca 'Error de conexión' aunque una tienda esté lenta/colgada."""
     import time as _t
-    deadline = _t.time() + 30
+    # 55 y no 30: pasados los 250 pedidos sin despachar hacen falta VARIAS paginas, y con
+    # 30s la ultima no llegaba. Como el paginado va de viejos a nuevos, lo que se perdia
+    # eran los pedidos MAS NUEVOS (24-10-2026: faltaban 29 del dia).
+    deadline = _t.time() + 55
     out = []
     sh = _despachos_orders_shopify(email, desde, hasta, refresh=refresh, deadline=deadline)
     tn = _tiendanube_orders(email, desde, hasta, refresh=refresh, deadline=deadline)
@@ -7213,8 +7216,9 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
         try:
             # Sin created_at_min/max a proposito: se baja el set completo una sola vez y las
             # pestanias (Hoy / Ayer / 7 dias) se resuelven filtrando en Python, mas abajo.
+            _POR_PAG = 100          # paginas chicas: cada request entra holgado en el presupuesto
             params = {"status": "open", "financial_status": "paid",
-                      "fulfillment_status": "unshipped", "limit": 250,
+                      "fulfillment_status": "unshipped", "limit": _POR_PAG,
                       "fields": "id,order_number,name,total_price,current_total_price,"
                                 "financial_status,fulfillment_status,cancelled_at,line_items,"
                                 "note,created_at,shipping_lines,shipping_address,customer,contact_email,"
@@ -7230,7 +7234,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             # Ahora SOLO se cachea cuando la bajada termino completa.
             _completo = False
             try:
-                for _ in range(8):                                   # paginar (cap 8 págs = 2000 pedidos)
+                for _ in range(30):                                  # cap 30 págs = 3.000 pedidos
                     if deadline and _t.time() > deadline:            # se acabó el presupuesto → incompleto
                         break
                     params["since_id"] = since
@@ -7242,7 +7246,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                         raise RuntimeError("Shopify HTTP %s" % r.status_code)
                     lote = (r.json() or {}).get("orders") or []
                     orders.extend(lote)
-                    if len(lote) < 250:
+                    if len(lote) < _POR_PAG:
                         _completo = True                             # llegue al final de verdad
                         break
                     since = lote[-1]["id"]
@@ -9394,7 +9398,9 @@ def pf_despachos_excel():
             continue
         nom, ape = _split_nombre(r["nombre"])
         nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
-        valor = max(int(round(r.get("total") or 0)), 30000)   # piso: Andreani rechaza valor declarado 0/muy bajo
+        # Piso 40.000: por debajo Andreani rechaza la fila con "El valor declarado es menor
+        # al minimo permitido". Con 30.000 volvian 11 errores (planilla del 23-10-2026).
+        valor = max(int(round(r.get("total") or 0)), 40000)
         peso = PESO
         dni = str(r.get("dni") or "").strip() or "00000000"   # Andreani exige DNI
         tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
@@ -13017,8 +13023,8 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
         # /seguimientos y Despachos nunca se enteraba: los MISMOS pedidos volvian a salir en
         # la tanda siguiente y se despachaban dos veces (23-10-2026: quedaron 125 "por
         # empaquetar" despues de subir el PDF de 147 etiquetas).
-        # Se marca "exportada" y no "enviada": la etiqueta existe pero el paquete todavia no
-        # salio. Y nunca se pisa un "enviada" puesto a mano.
+        # Se marca "ENVIADA". El circuito es: generar el Excel -> "exportada"; cargar el PDF
+        # de seguimientos -> "enviada". Si llego el numero de seguimiento, el paquete salio.
         try:
             _st = _desp_state(email)
             _n_marc = 0
@@ -13026,11 +13032,9 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 _k = str(_p.get("num") or "").replace("#", "").strip()
                 if not _k or not _p.get("track"):
                     continue
-                if _st.get(_k) == "enviada":
-                    continue
-                if _st.get(_k) != "exportada":
+                if _st.get(_k) != "enviada":
                     _n_marc += 1
-                _st[_k] = "exportada"
+                _st[_k] = "enviada"
             if _n_marc:
                 _desp_save(email, _st)
             _SEG_JOBS[job]["marcados"] = _n_marc
@@ -27425,7 +27429,10 @@ def pf_diag_excel():
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
         nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
-        valor = max(int(round(r.get("total") or 0)), 30000); dni = str(r.get("dni") or "").strip() or "00000000"
+        # MINIMO 40.000: Andreani rechaza la fila con "El valor declarado es menor al minimo
+        # permitido" por debajo de eso. Con 30.000 volvian 11 errores en la planilla del
+        # 23-10-2026 y habia que corregirlos a mano uno por uno.
+        valor = max(int(round(r.get("total") or 0)), 40000); dni = str(r.get("dni") or "").strip() or "00000000"
         tel_cod, tel_num = _and_split_tel(r.get("tel")); email = r.get("email") or ""
         if r["tipo"] == "sucursal":
             suc_raw = r.get("suc_nombre") or ""
