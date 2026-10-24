@@ -7221,30 +7221,45 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                                 "note_attributes,fulfillments"}
             orders = []
             since = 0
+            # OJO: el paginado va de los pedidos VIEJOS a los NUEVOS (since_id ascendente).
+            # Si se corta a la mitad quedan los viejos y se PIERDEN los nuevos. Antes esa
+            # lista incompleta se guardaba igual en el cache y con la hora actualizada, asi
+            # que parecia fresca 10 minutos mas; si volvia a fallar, se volvia a congelar y
+            # la pantalla quedaba clavada en un pedido viejo (24-10-2026: se quedo en el
+            # #9123 con 29 pedidos del dia invisibles, que es no despacharlos).
+            # Ahora SOLO se cachea cuando la bajada termino completa.
+            _completo = False
             try:
                 for _ in range(8):                                   # paginar (cap 8 págs = 2000 pedidos)
-                    if deadline and _t.time() > deadline:            # se acabó el presupuesto de tiempo → corto
+                    if deadline and _t.time() > deadline:            # se acabó el presupuesto → incompleto
                         break
                     params["since_id"] = since
                     r = requests.get("https://%s/admin/api/2026-07/orders.json" % shop,
                                      headers={"X-Shopify-Access-Token": token},
-                                     params=params, timeout=10)   # timeout corto: no colgar el hilo del server
+                                     params=params, timeout=20)
+                    if r.status_code >= 400:
+                        # Un 429/5xx devolvia [] y se tomaba como "no hay mas paginas".
+                        raise RuntimeError("Shopify HTTP %s" % r.status_code)
                     lote = (r.json() or {}).get("orders") or []
-                    if not lote:
-                        break
                     orders.extend(lote)
-                    since = lote[-1]["id"]
                     if len(lote) < 250:
+                        _completo = True                             # llegue al final de verdad
                         break
+                    since = lote[-1]["id"]
             except Exception:
+                _completo = False
                 if _c and _c.get("orders") is not None:
                     orders = _c["orders"]                        # si Shopify falla, uso el último caché
                 else:
                     return []
         finally:
             _SHOP_SEM.release()
-        _DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "orders": orders}
-        _desp_cache_save()                # persisto a disco → el próximo deploy no arranca frío
+        # Nunca pisar un cache bueno con uno incompleto ni con uno vacio: si no se completo,
+        # se muestra lo ultimo conocido pero NO se renueva la hora, asi el proximo pedido
+        # reintenta en vez de esperar otros 10 minutos.
+        if _completo and (orders or not (_c and _c.get("orders"))):
+            _DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "orders": orders}
+            _desp_cache_save()            # persisto a disco → el próximo deploy no arranca frío
     st = _desp_state(email)
     out = []
     for o in orders:
