@@ -2663,7 +2663,7 @@ _SOLO_DASH = r"""
          var ratio = _rawpub>0 ? (pub/_rawpub) : 1;
          // La tarjeta muestra la pauta TOTAL (Meta + MELI). El resto de los overlays sigue
          // derivando de 'pub' (Meta estabilizado) porque el CPA y el ROAS miden solo Meta.
-         window._rpOvVals.rpinv   = money(pub + (+(_ov.publi_meli||0)));
+         window._rpOvVals.rpinv   = (window.__CUR==='USD' && _ov.publi_usd!=null) ? ('$'+Number(+(_ov.publi_usd)||0).toLocaleString('es-AR',{maximumFractionDigits:2})) : money(pub + (+(_ov.publi_meli||0)));
          window._rpOvVals.rpcpa   = money(Math.round((+(_ov.cpa||0))*ratio));             // CPA ∝ gasto
          window._rpOvVals.rproas  = num(ratio>0 ? (+(_ov.roas||0))/ratio : 0)+'x';        // ROAS ∝ 1/gasto
          window._rpOvVals.rpgan   = money(Math.round((+(_ov.ganancia||_ov.tot_ganancia||0)) + _rawpub - pub)); // ganancia baja lo que subió el gasto
@@ -2812,7 +2812,7 @@ _SOLO_DASH = r"""
     return out; }
   function metricas(){ if(!_raw)return false;
     var cards=_pubCards(); if(cards.length<4) return false;   // <4 = grilla todavía no montada → no destapar
-    var seq=[['Inversión Ads',money((_raw.publi_total!=null?_raw.publi_total:_raw.publi_ars)||0),(+(_raw.publi_meli||0))?'Meta + MercadoLibre':'Inversión en anuncios'],
+    var seq=[['Inversión Ads',(window.__CUR==='USD'&&_raw.publi_usd!=null)?('$'+Number(+(_raw.publi_usd)||0).toLocaleString('es-AR',{maximumFractionDigits:2})):money((_raw.publi_total!=null?_raw.publi_total:_raw.publi_ars)||0),(+(_raw.publi_meli||0))?'Meta + MercadoLibre':'Inversión en anuncios'],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
              ['ROAS',num(_raw.roas)+'x','Facturación TOTAL (tienda + MELI) ÷ ads'],
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · SOLO tienda (sin MELI)'],
@@ -19392,6 +19392,21 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
             _iva_cred += _pub_usd * _IVA_F_CMP
             r["publi_usd_ars"] = round(_pub_usd, 2)
             r["iva_ads_usd"] = round(_pub_usd * _IVA_F_CMP, 2)
+    except Exception:
+        pass
+    # INVERSION en USD "real" (la que facturo Meta): las cuentas USD van a su dolar de PAUTA,
+    # no al de mercado, asi el gasto en dolares no se infla con la comision de la cambiaria.
+    # CP3 y MELI son pesos: van al dolar de mercado. SOLO cambia la vista USD de la tarjeta;
+    # los pesos, la ganancia y el IVA quedan exactamente igual.
+    try:
+        _pu_usd = float(_ADS_USD_ARS.get((email, desde, hasta)) or 0.0)
+        _pa_usd = float(r.get("publi_ars", 0) or 0)
+        _pm_usd = float(r.get("publi_meli", 0) or 0)
+        _da_usd = _dolar_ads(desde) or 0.0
+        _dm_usd = _dolar_ars_vivo() or 0.0
+        _meta_usd = (_pu_usd / _da_usd) if (_da_usd and _pu_usd) else 0.0
+        _nat_usd = (_pa_usd - _pu_usd) + _pm_usd          # CP3 media + MELI, en pesos
+        r["publi_usd"] = round(_meta_usd + (_nat_usd / _dm_usd if _dm_usd else 0.0), 2)
     except Exception:
         pass
     try:
