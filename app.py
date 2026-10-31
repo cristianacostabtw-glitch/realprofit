@@ -59,6 +59,7 @@ def _watchdog():
     url = "http://127.0.0.1:%s/pf-version" % port
     armed = False
     fails = 0
+    tregua0 = 0.0                                  # desde cuándo estoy perdonando por un envío en curso
     _t.sleep(60)                                   # gracia de arranque
     while True:
         try:
@@ -70,6 +71,16 @@ def _watchdog():
         if ok:
             armed = True
             fails = 0
+            tregua0 = 0.0
+        elif armed and _watchdog_envio_latiendo() and (tregua0 == 0.0 or _t.time() - tregua0 < 600):
+            # Hay un ENVÍO DE SEGUIMIENTOS latiendo (escribe jobs/_envio_latido cada 1 s): el server
+            # está trabajando, no colgado. Antes este vigilante vive en el proceso MAESTRO (gunicorn.conf.py
+            # trae preload_app=True) y su os._exit reiniciaba TODO el servicio a mitad del envío (24/25/26/29-10).
+            # Tregua máxima 10 min seguidos: si sigue sin contestar después de eso, cuenta como siempre.
+            if tregua0 == 0.0:
+                tregua0 = _t.time()
+                _sys.stderr.write("[watchdog] /pf-version lento pero hay un envío de seguimientos latiendo → no reinicio\n")
+                _sys.stderr.flush()
         elif armed:                                # solo cuenta fallos DESPUÉS de haber servido bien
             fails += 1
             # 8 fallos (~3 min) en vez de 4 (~80s). Con 80s el watchdog mataba la app entera por
@@ -80,6 +91,13 @@ def _watchdog():
                 _sys.stderr.flush()
                 _os._exit(1)
         _t.sleep(20)
+
+
+def _watchdog_envio_latiendo() -> bool:
+    try:
+        return (_time.time() - (DATA_DIR / "jobs" / "_envio_latido").stat().st_mtime) < 30
+    except Exception:
+        return False
 
 
 def _start_watchdog():
@@ -1974,7 +1992,9 @@ _SOLO_DASH = r"""
    }).catch(function(e){ _skuLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo procesar'+(typeof e==='string'?': '+e:'')+'.</div>'; }); inp.value=''; };
  // ---- Modal Enviar seguimiento ----
  window.rpDOpenSeg=function(){ var m=document.getElementById('rp-d-segov'); if(m){ m.style.display='flex'; var r=document.getElementById('rp-d-segres'); if(r)r.innerHTML=''; }
-   _dSegTienda=(_dTienda&&_dTienda!=='todas')?_dTienda:(_dTiendas[0]||'tn'); _dSeg=[]; rpDSegTiendaRender(); };
+   _dSegTienda=(_dTienda&&_dTienda!=='todas')?_dTienda:(_dTiendas[0]||'tn'); _dSeg=[]; rpDSegTiendaRender();
+   // si quedó un envío en marcha (se cerró el modal o se recargó la página), me reengancho a verlo
+   try{ var _jj=localStorage.getItem('rpSegJob'); if(_jj && !window._rpSegEnv){ rpDSegVer(_jj,true,''); } }catch(e){} };
  window.rpDSegTiendaRender=function(){ var c=document.getElementById('rp-dseg-tienda'); if(!c)return;
    if(!_dTiendas||_dTiendas.length<2){ c.style.display='none'; c.innerHTML=''; return; }
    var lab={shopify:'🛍️ Shopify', tn:'🟦 TiendaNube'};
@@ -2050,66 +2070,105 @@ _SOLO_DASH = r"""
      }, 1500);
    }).catch(function(){ res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Error subiendo el PDF.</div>'; }); inp.value=''; };
  window.rpDSeg=function(canal,solo1,force){ if(!_dSeg.length)return;
-   // TRABA. Cada clic largaba OTRA tanda en paralelo, cada una con su propio cartel de 1s: se
-   // peleaban por el mismo cuadro (el titileo) y ademas mandaban los MISMOS pedidos de nuevo,
-   // ocupando todos los hilos del server hasta que el watchdog lo reiniciaba.
+   // TRABA: un solo envío a la vez desde esta pestaña (el server además rechaza un segundo envío
+   // de la misma cuenta mientras el primero late: devuelve el que ya corre).
    if(window._rpSegEnv){ return; }
-   window._rpSegEnv=true;
-   var _segLibre=function(){ window._rpSegEnv=false; };
    var res=document.getElementById('rp-d-segres');
-   var ep=canal=='wpp'?'/pf-despachos-seg-wpp':(canal=='tn'?'/pf-despachos-seg-enviar':'/pf-despachos-seg-todos');
    var lbl=canal=='wpp'?'WhatsApp':(canal=='tn'?(_dSegTienda==='shopify'?'Shopify':'TiendaNube'):'los dos canales');
-   if(force && canal=='wpp' && !confirm('Reenviar el WhatsApp a TODOS ('+_dSeg.filter(function(o){return o.wa_id;}).length+') con el tracking del PDF, incluso a los que ya lo recibieron. ¿Seguro?')){ _segLibre(); return; }
+   if(force && canal=='wpp' && !confirm('Reenviar el WhatsApp a TODOS ('+_dSeg.filter(function(o){return o.wa_id;}).length+') con el tracking del PDF, incluso a los que ya lo recibieron. ¿Seguro?')){ return; }
    // Mandar SOLO los pendientes del canal (no re-intentar los ya hechos), salvo force (WPP) = TODOS:
-   var _pendStore=_dSeg.filter(function(o){return !o.tn;});       // faltan en la tienda
-   var _pendWpp=_dSeg.filter(function(o){return !o.wpp;});        // faltan en WhatsApp
+   var _pendStore=_dSeg.filter(function(o){return !o.tn;});
+   var _pendWpp=_dSeg.filter(function(o){return !o.wpp;});
    var lote;
    if(solo1){ lote=[((canal=='wpp'?_pendWpp:_pendStore)[0]||_dSeg[0])]; }
    else if(canal=='wpp'){ lote= force ? _dSeg.filter(function(o){return o.wa_id;}) : _pendWpp; }
    else if(canal=='tn'){ lote=_pendStore; }
    else { lote=_dSeg.filter(function(o){return !o.tn||!o.wpp;}); }
-   if(!lote.length){ _segLibre(); res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
-   // TANDAS de 25: cada request termina rápido y NO se corta por timeout aunque sean 150+ pedidos.
-   // TANDA DE 15. Lo que hacia que se cortara NO era el tamanio de la tanda: era que un pedido
-   // por la via lenta podia colgarse 70s (timeouts de Shopify en 40s/30s). Bajados a 15s/10s,
-   // 15 por tanda entra comodo, que es como venia andando bien.
-   var CH=15, i=0, acc={env:0,salt:0,fail:0,tn_e:0,tn_s:0,wpp_e:0,wpp_s:0}, errs=[];
-   function markChunk(chunk,ch){ chunk.forEach(function(o){ if(ch=='wpp'&&o.wa_id)o.wpp=true; if(ch=='tn'&&o.order_id)o.tn=true; }); }
-   function fin(){
-     var errBox = errs.length ? ('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ '+errs.length+' fallaron. Ej #'+(errs[0].num||'')+':</b><br>'+String(errs[0].msg||'').replace(/</g,'&lt;')+'</div>') : '';
-     var msg = (canal=='todos')
-       ? ('🔵 TN '+acc.tn_e+' cargados'+(acc.tn_s?(' ('+acc.tn_s+' ya estaban)'):'')+' · 🟢 WPP '+acc.wpp_e+' enviados'+(acc.wpp_s?(' ('+acc.wpp_s+' ya estaban)'):''))
-       : ((canal=='wpp'?'🟢 WhatsApp ':(_dSegTienda==='shopify'?'🛍️ Shopify ':'🔵 TiendaNube '))+acc.env+' enviados'+(acc.salt?(' · '+acc.salt+' ya estaban'):'')+(acc.fail?(' · '+acc.fail+' fallaron'):''));
-     _dSegRender(); res.innerHTML='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+msg+'</div>'+errBox+res.innerHTML;
-     _dLoaded=false; rpDLoad();
-     _segLibre();
+   if(!lote.length){ res.innerHTML='<div style="color:#93a3ba;font-size:12.5px">No hay pendientes para enviar por '+lbl+'.</div>'; return; }
+   // UN SOLO JOB en el server para todo el lote (antes: tandas de 15 en serie, cada una un request
+   // de hasta 200 s que se cortaba a los 150 s). El server late a disco cada 1 s y marca pedido por
+   // pedido: si se cae, se retoma sin volver a mandarle a nadie.
+   window._rpSegEnv=true;
+   res.innerHTML=rpDBarra(1,'⏳ Arrancando el envío de '+lote.length+' pedidos por '+lbl+'…');
+   fetch('/pf-despachos-seg-lanzar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({canal:canal,pedidos:lote,force:!!force})})
+   .then(function(r){ return r.json().catch(function(){ return {ok:false,msg:'el server respondió HTTP '+r.status+' sin JSON'}; }); })
+   .then(function(j){
+     if(!j||!j.ok||!j.job){ window._rpSegEnv=false; res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No se pudo arrancar el envío: '+_dEsc((j&&j.msg)||'sin detalle')+'</div>'; return; }
+     try{ localStorage.setItem('rpSegJob', j.job); }catch(e){}
+     rpDSegVer(j.job, false, j.ya?(j.msg||''):'');
+   }).catch(function(e){ window._rpSegEnv=false; res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No pude arrancar el envío: '+_dEsc((e&&e.message)||e)+'</div>'; });
+ };
+ function _dSegNum(x){ return String(x==null?'':x).replace('#','').trim(); }
+ window.rpDSegReanudar=function(job){ var res=document.getElementById('rp-d-segres');
+   if(res) res.innerHTML=rpDBarra(2,'⏳ Retomando el envío desde donde quedó…');
+   fetch('/pf-despachos-seg-reanudar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:job})})
+   .then(function(r){ return r.json().catch(function(){ return {ok:false,msg:'HTTP '+r.status}; }); })
+   .then(function(j){ if(!j||!j.ok){ if(res) res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No pude retomarlo: '+_dEsc((j&&j.msg)||'sin detalle')+'</div>'; return; } rpDSegVer(job, false, ''); })
+   .catch(function(e){ if(res) res.innerHTML='<div style="color:#fb7185;font-size:12.5px">No pude retomarlo: '+_dEsc((e&&e.message)||e)+'</div>'; });
+ };
+ // Mira el progreso de un envío (job). silencioso=true: es la reconexión al abrir el modal.
+ window.rpDSegVer=function(job,silencioso,aviso){
+   var res=document.getElementById('rp-d-segres'); if(!res||!job)return;
+   if(window._rpSegPoll){ clearInterval(window._rpSegPoll); window._rpSegPoll=null; }
+   window._rpSegEnv=true;
+   var fallos=0, reanudas=0, pidiendo=false, reanudando=false, ultHech=-1;
+   function libre(){ if(window._rpSegPoll){ clearInterval(window._rpSegPoll); } window._rpSegPoll=null; window._rpSegEnv=false; }
+   function olvidar(){ try{ localStorage.removeItem('rpSegJob'); }catch(e){} }
+   function marcar(p){ var ok=p.ok_nums||{}, idx={};
+     _dSeg.forEach(function(o){ idx[_dSegNum(o.num)]=o; });
+     (ok.tienda||[]).forEach(function(n){ var o=idx[_dSegNum(n)]; if(o)o.tn=true; });
+     (ok.wpp||[]).forEach(function(n){ var o=idx[_dSegNum(n)]; if(o)o.wpp=true; }); }
+   function lineas(p){ var c=p.c||{}, t=c.tienda, w=c.wpp, out=[], ST=(p.tienda==='shopify'?'🛍️ Shopify':'🔵 TiendaNube');
+     if(t) out.push(ST+' '+t.env+' cargados'+(t.salt?(' · '+t.salt+' ya estaban'):'')+(t.fail?(' · '+t.fail+' fallaron'):'')+(t.unc?(' · '+t.unc+' en duda'):''));
+     if(w) out.push('🟢 WhatsApp '+w.env+' enviados'+(w.salt?(' · '+w.salt+' ya estaban'):'')+(w.fail?(' · '+w.fail+' fallaron'):'')+(w.unc?(' · '+w.unc+' en duda'):''));
+     return out; }
+   function errBox(p){ var e=p.errores||[]; if(!e.length)return '';
+     var fl=e.slice(0,8).map(function(x){ return '<div style="margin-top:4px">'+(x.canal==='wpp'?'🟢':'🛍️')+' #'+_dEsc(x.num)+': '+_dEsc(x.msg)+'</div>'; }).join('');
+     var mas=(p.n_errores||e.length)>8?('<div style="margin-top:6px;color:#f9a8b4">…y '+((p.n_errores||e.length)-8)+' más.</div>'):'';
+     return '<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>⚠️ '+(p.n_errores||e.length)+' con problema</b> (los «en duda» se cortaron justo mientras se mandaban: pueden haber salido, por eso NO se repiten solos)'+fl+mas+'</div>'; }
+   function progreso(p){ var c=p.c||{}, tot=0, hech=0;
+     ['tienda','wpp'].forEach(function(k){ if(c[k]){ tot+=c[k].total||0; hech+=c[k].done||0; } });
+     var pct=tot?Math.round(hech/tot*100):1; if(pct<1)pct=1; if(pct>99)pct=99;
+     var ln=lineas(p).join(' &nbsp;·&nbsp; ');
+     res.innerHTML=(aviso?('<div style="color:#fde68a;font-size:12px;margin-bottom:6px">'+_dEsc(aviso)+'</div>'):'')
+       +rpDBarra(pct,'⏳ Enviando seguimientos · '+hech+' de '+tot+' · '+(p.seg||0)+'s'+(p.intentos>1?(' · retomado '+(p.intentos-1)+'×'):'')+' — podés cerrar esto, sigue en el servidor')
+       +'<div style="color:#93a3ba;font-size:12px;margin-top:6px">'+ln+'</div>'
+       +(fallos?('<div style="color:#fde68a;font-size:12px;margin-top:6px">⚠️ El server no contesta la consulta ('+fallos+' seguidas) — el envío sigue del lado del server, sigo mirando…</div>'):''); }
+   function terminar(p){ libre(); olvidar();
+     marcar(p); if(_dSeg.length) _dSegRender(); else res.innerHTML='';
+     var head='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+lineas(p).join(' · ')+' <span style="color:#7fbf9f;font-weight:600">('+(p.seg||0)+'s)</span></div>';
+     var eg=p.error?('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>Error del envío:</b> '+_dEsc(p.error)+'</div>'):'';
+     res.innerHTML=head+eg+errBox(p)+res.innerHTML;
+     _dLoaded=false; try{ rpDLoad(); }catch(e){} }
+   function tick(){ if(pidiendo||reanudando)return; pidiendo=true;
+     fetch('/pf-despachos-seg-envio-prog?job='+encodeURIComponent(job)).then(function(r){ return r.json().catch(function(){ return {ok:false,msg:'HTTP '+r.status+' sin JSON',_http:1}; }); }).then(function(p){
+       pidiendo=false;
+       if(p&&p._http){ fallos++; return; }
+       fallos=0;
+       if(!p||!p.ok){ libre(); olvidar(); res.innerHTML=silencioso?'':('<div style="color:#fb7185;font-size:12.5px">'+_dEsc((p&&p.msg)||'No pude leer el progreso')+'</div>'); return; }
+       if(p.listo){ terminar(p); return; }
+       if(p.muerto){
+         if(reanudas<3){ reanudas++; reanudando=true; aviso='⚠️ Se cayó: '+(p.motivo||'sin latido')+' → lo retomo desde donde quedó (vez '+reanudas+' de 3). No se repite nada ya enviado.';
+           progreso(p);
+           fetch('/pf-despachos-seg-reanudar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job:job})})
+             .then(function(r){ return r.json().catch(function(){ return {ok:false,msg:'HTTP '+r.status}; }); })
+             .then(function(j){ reanudando=false; if(!j||!j.ok){ aviso='⚠️ No pude retomarlo: '+((j&&j.msg)||'sin detalle'); } })
+             .catch(function(e){ reanudando=false; aviso='⚠️ No pude retomarlo: '+((e&&e.message)||e); });
+           return; }
+         libre();
+         res.innerHTML='<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12.5px;margin-bottom:10px"><b>El envío se cayó 3 veces.</b><br>'+_dEsc(p.motivo||'')+'<br><span style="color:#93a3ba">'+lineas(p).join(' · ')+'</span><br><button onclick="rpDSegReanudar(\''+job+'\')" style="margin-top:9px;background:#3a2d0e;color:#fde68a;border:1px solid #6b551c;border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer">🔁 Retomar desde donde quedó</button></div>'+errBox(p);
+         return; }
+       var _h=0, _c=p.c||{}; ['tienda','wpp'].forEach(function(k){ if(_c[k]) _h+=_c[k].done||0; });
+       if(_h>ultHech){ if(ultHech>=0 && reanudas){ reanudas=0; } ultHech=_h; }   // avanza → se renueva el cupo de 3 retomas
+       progreso(p);
+     }).catch(function(){ pidiendo=false; fallos++;
+       if(fallos>=120){ libre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">El server no contesta hace '+Math.round(fallos*1.5)+'s. El envío sigue (o se retoma) del lado del server. <button onclick="rpDSegVer(\''+job+'\')" style="background:#16233a;border:1px solid #2f4a6b;color:#8fbdf5;border-radius:9px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer">Seguir mirando</button></div>'; return; }
+       res.innerHTML=rpDBarra(5,'⚠️ El server no contesta la consulta ('+fallos+' seguidas) — el envío sigue del lado del server, sigo mirando…'); });
    }
-   function paso(){
-     if(i>=lote.length){ fin(); return; }
-     var chunk=lote.slice(i,i+CH); var hasta=Math.min(i+chunk.length,lote.length);
-     var _t1=Date.now();
-     // Decia "89/89" cuando en realidad era "mandando la tanda que TERMINA en 89": parecia terminado
-     // y el reloj seguia corriendo. Ahora muestra lo que YA esta listo.
-     function _cartel(){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ '+i+' de '+lote.length
-       +' listos · enviando '+chunk.length+' más por '+lbl+'… ('+Math.round((Date.now()-_t1)/1000)+'s, no cierres esto)</div>'; }
-     _cartel();
-     var _pin=setInterval(_cartel,1000);
-     // LIMITE DE TIEMPO: si el navegador queda con la conexion muerta (worker reciclado del lado del
-     // server), el fetch se quedaba colgado para siempre y la pantalla decia "Enviando" sin avanzar.
-     // Ahora a los 150s se corta solo y cae en el catch, que dice desde donde retomar.
-     var _ac=(window.AbortController?new AbortController():null);
-     var _to=setTimeout(function(){ try{ _ac&&_ac.abort(); }catch(e){} }, 150000);
-     function _fincorte(){ clearInterval(_pin); clearTimeout(_to); }
-     fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},signal:(_ac?_ac.signal:undefined),body:JSON.stringify({pedidos:chunk,force:!!force})}).then(function(r){return r.json();}).then(function(j){
-       _fincorte();
-       if(j&&j.busy){ res.innerHTML='<div style="color:#c4b5fd;font-size:12.5px">⏳ Servidor ocupado, reintentando '+hasta+'/'+lote.length+'…</div>'; setTimeout(paso,3000); return; }   // ocupado → reintenta la MISMA tanda
-       if(!j||!j.ok){ _segLibre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">'+((j&&j.msg)||'No se pudo enviar')+'.</div>'; return; }
-       if(canal=='todos'){ var t=j.tn||{},w=j.wpp||{}; acc.tn_e+=t.enviados||0; acc.tn_s+=t.saltados||0; acc.wpp_e+=w.enviados||0; acc.wpp_s+=w.saltados||0; (t.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,'tn'); markChunk(chunk,'wpp'); }
-       else { acc.env+=j.enviados||0; acc.salt+=j.saltados||0; acc.fail+=j.fallaron||0; (j.errores||[]).forEach(function(e){errs.push(e);}); markChunk(chunk,canal); }
-       i=hasta; paso();
-     }).catch(function(){ _fincorte(); _segLibre(); _dSegRender(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">Se cortó con '+i+' de '+lote.length+' listos (a los '+Math.round((Date.now()-_t1)/1000)+'s). Volvé a tocar Enviar: sigue desde donde quedó, los ya cargados se saltan.</div>'; });
-   }
-   paso(); };
+   if(!silencioso) res.innerHTML=rpDBarra(1,'⏳ Envío en marcha…');
+   tick();
+   window._rpSegPoll=setInterval(tick,1500);   // 1,5 s: no quema el cupo --max-requests del worker
+ };
  // ===================== FACTURACIÓN =====================
  var _fRows=[], _fFilter='todas', _fPage=1, _fSel={}, _fPer=50, _fAutoOn=false;
  function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
@@ -6305,7 +6364,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-09-07-sku"})
+    return jsonify({"ok": True, "v": "2026-10-31-seg-job"})
 
 
 _KPI_DBG = {}
@@ -12493,12 +12552,7 @@ def _wa_seg_marcar_varios(email, pedidos) -> None:
     mandar 183 seguimientos hacía 183 lecturas + 183 escrituras."""
     if not pedidos:
         return
-    d = _wa_seg_all()
-    m = d.setdefault(email, {})
-    ahora = _wa_now()
-    for x in pedidos:
-        m[str(x)] = ahora
-    _WA_SEG_ENV.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    _wa_seg_marcar_varios_seguro(email, pedidos)     # con candado entre workers + escritura atómica
 
 
 def _tel_ar(tel):
@@ -12883,123 +12937,37 @@ def _seg_shop_tel(o):
 
 
 def _seg_enviar_shopify(email, pedidos) -> dict:
-    """Carga el tracking (Andreani o Envialo Flex, ver _seg_track_info) en Shopify + avisa al
-    cliente por mail. Doble vía:
-    (1) si hay fulfillment order ABIERTO → fulfillmentCreate (crea el fulfillment con tracking);
-    (2) si la orden YA está preparada (fulfillment creado a mano/app, sin tracking) →
-        fulfillmentTrackingInfoUpdate al fulfillment existente. Salta los que ya tienen ese tracking."""
-    shop, atok = _seg_shop_conn(email)
-    if not shop:
+    """Carga el tracking en Shopify + avisa al cliente (doble vía fulfillmentCreate /
+    fulfillmentTrackingInfoUpdate). Versión SINCRÓNICA para lotes chicos (endpoint viejo): usa los
+    mismos helpers que el job (/pf-despachos-seg-lanzar), con reintento ante 429/THROTTLED y la vía 2
+    resuelta por GraphQL en lote (antes un GET REST por pedido: un 429 salía como falso fallo)."""
+    ctx = _sege_shop_ctx(email)
+    if not ctx:
         return {"ok": False, "msg": "Shopify no conectado", "enviados": 0}
-    H = {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"}
-    base = "https://%s/admin/api/2026-07" % shop
-    gql = "%s/graphql.json" % base
-    # fulfillmentCreate (fulfillmentCreateV2 quedó DEPRECADO). Mismo input, nombre nuevo.
-    mut = ("mutation($f:FulfillmentInput!){fulfillmentCreate(fulfillment:$f){"
-           "fulfillment{id status trackingInfo{company number url}} userErrors{field message}}}")
-    mut2 = ("mutation($fid:ID!,$t:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate("
-            "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
-            "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
-
-    # PASO PREVIO: los fulfillment orders de TODOS los pedidos en pocas consultas, en vez de una
-    # llamada REST por pedido. Con 89 pedidos eran 89 requests contra el limite de ~2/seg de
-    # Shopify: solo eso ya se comia minutos. Asi son 4 consultas.
-    def _fos_en_lote(pedidos):
-        mapa = {}
-        ids = [str(p.get("order_id")) for p in pedidos if p.get("order_id") and not p.get("tn")]
-        for i in range(0, len(ids), 25):
-            trozo = ids[i:i + 25]
-            q = "query{" + " ".join(
-                'o%d: order(id:"gid://shopify/Order/%s"){fulfillmentOrders(first:5){nodes{id status}}}'
-                % (k, oid) for k, oid in enumerate(trozo)) + "}"
-            try:
-                # 15s (era 40). Shopify contesta en <2s cuando esta sano; 40s solo servia para
-                # que un hilo quedara clavado 40 segundos cuando NO lo esta.
-                gr = requests.post(gql, headers=H, data=_json.dumps({"query": q}), timeout=15)
-                dat = (gr.json() or {}).get("data") or {}
-            except Exception:
-                continue                      # si falla, cada pedido cae al camino viejo (REST)
-            for k, oid in enumerate(trozo):
-                o = dat.get("o%d" % k) or {}
-                nodos = ((o.get("fulfillmentOrders") or {}).get("nodes") or [])
-                mapa[oid] = [{"id": str(x.get("id", "")).rsplit("/", 1)[-1],
-                              "status": str(x.get("status", "")).lower()} for x in nodos]
-        return mapa
-
-    FOS = _fos_en_lote(pedidos)
-
-    def _one(p):
-        """Procesa UN pedido → ('env'|'salt'|'fail', error|None). Thread-safe (sin estado compartido)."""
-        num = str(p.get("num"))
-        if p.get("tn"):                     # ya tiene el tracking cargado
-            return ("salt", None)
-        oid = p.get("order_id")
-        if not oid:
-            return ("fail", {"num": num, "msg": "no está en Shopify"})
-        fos = FOS.get(str(oid))
-        if fos is None:                     # no vino en el lote → camino viejo, uno por uno
-            try:
-                rr = requests.get("%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=10)
-                if rr.status_code != 200:
-                    return ("fail", {"num": num, "msg": "FO %s: %s" % (rr.status_code, rr.text[:160])})
-                fos = rr.json().get("fulfillment_orders", [])
-            except Exception as e:
-                return ("fail", {"num": num, "msg": str(e)[:160]})
-        fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
-        if fo:
-            # VÍA 1: fulfillment order ABIERTO → crear el fulfillment con el tracking + avisar.
-            variables = {"f": {
-                "lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
-                "notifyCustomer": True,
-                "trackingInfo": _seg_track_info(p)}}
-            try:
-                gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut, "variables": variables}), timeout=15)
-                j = gr.json() if gr.content else {}
-                res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
-                ue = res.get("userErrors") or []
-                if res.get("fulfillment") and not ue:
-                    return ("env", None)
-                return ("fail", {"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
-            except Exception as e:
-                return ("fail", {"num": num, "msg": str(e)[:120]})
-        # VÍA 2: sin FO abierto → la orden YA está preparada → actualizar tracking del fulfillment existente + avisar.
-        try:
-            fr = requests.get("%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=10)
-            fus = fr.json().get("fulfillments", []) if fr.status_code == 200 else []
-        except Exception as e:
-            return ("fail", {"num": num, "msg": "fulfillments: " + str(e)[:120]})
-        cand = [f for f in fus if str(f.get("status") or "").lower() in ("success", "pending", "open", "")]
-        ff = next((f for f in cand if not f.get("tracking_number")), None) or (cand[-1] if cand else None)
-        if not ff:
-            estados = ",".join(str(f.get("status")) for f in fos) or "ninguno"
-            return ("fail", {"num": num, "msg": "sin fulfillment ni FO abierto (FO: %s)" % estados})
-        if str(ff.get("tracking_number") or "") == str(p.get("track") or ""):
-            return ("salt", None)
-        v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": _seg_track_info(p)}
-        try:
-            gr = requests.post(gql, headers=H, data=_json.dumps({"query": mut2, "variables": v2}), timeout=15)
-            j = gr.json() if gr.content else {}
-            res = ((j.get("data") or {}).get("fulfillmentTrackingInfoUpdate") or {})
-            ue = res.get("userErrors") or []
-            if res.get("fulfillment") and not ue:
-                return ("env", None)
-            return ("fail", {"num": num, "msg": (ue[0]["message"] if ue else str(j.get("errors") or j))[:200]})
-        except Exception as e:
-            return ("fail", {"num": num, "msg": str(e)[:120]})
-
+    ps = [_sege_pedido_lite(p) for p in (pedidos or []) if isinstance(p, dict)]
+    env = salt = fail = 0
+    errores = []
+    resto = []
+    for p in ps:
+        if p.get("tn"):
+            salt += 1
+        else:
+            resto.append(p)
     from concurrent.futures import ThreadPoolExecutor
-    env = salt = fail = 0; errores = []
-    with ThreadPoolExecutor(max_workers=8) as ex:   # en paralelo → ~8x más rápido
-        for k, err in ex.map(_one, pedidos):
-            if k == "env": env += 1
-            elif k == "salt": salt += 1
+    for i in range(0, len(resto), 25):
+        trozo = resto[i:i + 25]
+        info = _sege_shop_lote(ctx, trozo)
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            res = list(ex.map(lambda q: _sege_shop_uno(ctx, q, info.get(str(q.get("order_id")))), trozo))
+        for p, r in zip(trozo, res):
+            if r[0] == "env":
+                env += 1
+            elif r[0] == "salt":
+                salt += 1
             else:
                 fail += 1
-                if err: errores.append(err)
+                errores.append({"num": p["num"], "msg": r[1] or "error"})
     if env:
-        # Estos pedidos ACABAN de quedar despachados en Shopify. La lista de Despachos se arma
-        # desde un cache: si no lo tiro, siguen apareciendo en "por empaquetar" hasta que el
-        # usuario toque Sincronizar a mano (paso el 8-sep-2026 con 6 pedidos).
         try:
             _DESP_CACHE.pop(email, None)
             _desp_cache_save()
@@ -13100,7 +13068,12 @@ def _job_put(job, d):
         import time as _tj
         dd = {k: v for k, v in d.items() if k != "pdf"}     # los bytes del PDF NO van al JSON
         dd["ts"] = _tj.time()                               # latido: ultima señal de vida
-        (_JOBS_DIR / (job + ".json")).write_text(_json.dumps(dd, ensure_ascii=False, default=str), encoding="utf-8")
+        # ATÓMICO (tmp + replace): el otro worker leía el archivo a medio escribir → _job_get None →
+        # "el proceso venció" falso. El tmp lleva pid+hilo: dos hilos no se pisan el temporal.
+        _dst = _JOBS_DIR / (job + ".json")
+        _tmp = _JOBS_DIR / ("%s.json.%d.%d.tmp" % (job, _os.getpid(), threading.get_ident()))
+        _tmp.write_text(_json.dumps(dd, ensure_ascii=False, default=str), encoding="utf-8")
+        _os.replace(str(_tmp), str(_dst))
     except Exception:
         pass
 
@@ -13337,133 +13310,73 @@ def _wa_tpl_render(body, params):
 
 
 def _seg_enviar_wpp(email, pedidos, force=False) -> dict:
-    """Manda el seguimiento por WhatsApp (template por unidades). Salta los ya enviados por WPP,
-    salvo force=True (reenvío forzado: p.ej. tracking NUEVO por paquete reenviado)."""
+    """Manda el seguimiento por WhatsApp (plantilla por unidades). Versión SINCRÓNICA (endpoint viejo).
+    Cada pedido se marca en wa_seg_enviado APENAS Meta lo acepta (antes recién al final de la tanda:
+    si el server moría en el medio, al reintentar se le volvía a mandar al cliente). Los mensajes se
+    anotan en wa_chats en UNA escritura liviana al final (_wa_anotar_plantillas)."""
     c = _wa_conf(email)
     if not c:
         return {"ok": False, "msg": "WhatsApp no conectado", "enviados": 0}
-    wpp_env = _wa_seg_all().get(email, {})
-    # OJO: acá NO se lee wa_chats. Antes se leía una foto de los chats en este punto, se mandaban
-    # las plantillas (8 hilos, minutos) y recién al final se guardaba ESA foto vieja: todo lo que
-    # entraba mientras tanto quedaba pisado. El 16/09/2026 un envío de 172 seguimientos borró
-    # 1.751 chats así. Ahora se lee AL FINAL, justo antes de escribir (ver más abajo).
+    wpp_env = {} if force else (_wa_seg_all().get(email) or {})
+    ps = [_sege_pedido_lite(p) for p in (pedidos or []) if isinstance(p, dict)]
     env = salt = fail = 0
     errores = []
-    marcar = []
     tareas = []
-    for p in pedidos:
-        num = str(p.get("num"))
-        if (not force) and wpp_env.get(num):
+    for p in ps:
+        if wpp_env.get(p["num"]):
             salt += 1
-            continue
-        wa = (p.get("wa_id") or "").strip()
-        if not wa:
-            fail += 1
-            errores.append({"num": num, "msg": "sin teléfono"})
-            continue
-        n = (p.get("nombre") or "cliente").split()[0]
-        link = p.get("url") or ""
-        u = int(p.get("unidades") or 0)
-        # El template combo es OPCIONAL por cuenta (bot_tpl_combo). Si la cuenta no lo tiene
-        # (ej NoxaLab, que solo tiene 'seguimiento_despacho'), se usa SIEMPRE el base.
-        combo_tpl = (c.get("bot_tpl_combo") or "").strip()
-        if (p.get("carrier") or "") in ("envialo", "rpflex"):
-            # Flex (de Envialo o propio): plantilla propia, que SI avisa 24/48 hs.
-            # No se mezcla nunca con la de Andreani, que no promete plazo.
-            name = "seguimiento_flex"
-            params = [n, num, link]
-        elif u >= 2 and combo_tpl:
-            name = combo_tpl
-            params = [n, num, link, _seg_presentacion(u)]
         else:
-            name = "seguimiento_despacho"
-            params = [n, num, link]
-        def _snd(_name, _params):
-            _tpl = {"name": _name, "language": {"code": "es_AR"},
-                    "components": [{"type": "body", "parameters": [{"type": "text", "text": str(x)} for x in _params]}]}
-            _r = requests.post("%s/%s/messages" % (WA_GRAPH, c["phone_id"]),
-                               headers={"Authorization": "Bearer " + c["token"]},
-                               json={"messaging_product": "whatsapp", "to": wa, "type": "template", "template": _tpl},
-                               timeout=12)
-            return _r, (_r.json() if _r.content else {})
-        tareas.append((num, wa, n, link, name, params, combo_tpl, p, _snd))
-    # Los envios a Meta van EN PARALELO: eran de a uno y 89 plantillas tardaban minutos.
-    # El HTTP se hace en hilos; la contabilidad (chats, marcados) se arma despues, en serie.
+            tareas.append(p)
+
+    def _m(p):
+        r = _sege_wpp_uno(c, p)
+        if r[0] == "env":
+            try:
+                _wa_seg_marcar_varios_seguro(email, [p["num"]])
+            except Exception:
+                pass
+        return r
     from concurrent.futures import ThreadPoolExecutor as _TPE
-
-    def _mandar(t):
-        num, wa, n, link, name, params, combo_tpl, p, _snd = t
-        try:
-            r, j = _snd(name, params)
-            # 132001 = la plantilla no existe o todavia no esta APPROVED. Cae a la base, que
-            # siempre esta aprobada, con el MISMO link (se pierde la linea de 24/48 hs, nada mas).
-            if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and name != "seguimiento_despacho":
-                name = "seguimiento_despacho"; params = [n, num, link]
-                r, j = _snd(name, params)
-            return (t, r, j, None)
-        except Exception as e:
-            return (t, None, None, str(e)[:80])
-
     with _TPE(max_workers=8) as _ex:
-        resultados = list(_ex.map(_mandar, tareas))
-
-    # Primero se resuelve QUÉ salió bien, sin tocar el archivo de chats todavía.
+        res = list(_ex.map(_m, tareas))
     anotar = []
-    for t, r, j, err in resultados:
-        num, wa, n, link, name, params, combo_tpl, p, _snd = t
-        if err:
-            fail += 1; errores.append({"num": num, "msg": err}); continue
-        if r.status_code >= 400:
-            fail += 1; errores.append({"num": num, "msg": (j.get("error") or {}).get("message", "error")[:80]}); continue
-        mid = (j.get("messages") or [{}])[0].get("id", "")
-        disp = _wa_tpl_render(_wa_tpl_body(c, name), params) or ("📦 Seguimiento de tu pedido #%s: %s" % (num, link))
-        anotar.append((wa, p.get("nombre") or wa, disp, mid))
-        marcar.append(num)
-        env += 1
-    _wa_seg_marcar_varios(email, marcar)
-    # RECIÉN ACÁ se lee el archivo, ya con los envíos hechos, y se le AGREGAN los mensajes nuevos.
-    # Leerlo al final (y no al principio) es lo que evita pisar todo lo que entró mientras se
-    # mandaban las plantillas. Si no hay nada que anotar, no se escribe: un envío que no mandó
-    # nada no tiene por qué tocar el archivo.
+    for p, r in zip(tareas, res):
+        if r[0] == "env":
+            env += 1
+            if r[2]:
+                anotar.append(r[2])
+        else:
+            fail += 1
+            errores.append({"num": p["num"], "msg": r[1] or "error"})
     if anotar:
-        chats = _wa_chats_all()
-        for wa, nombre, disp, mid in anotar:
-            conv = chats.setdefault(email, {}).setdefault(wa, {"name": nombre, "messages": []})
-            conv["messages"].append({"dir": "out", "text": disp, "ts": _wa_now(),
-                                     "type": "template", "id": mid, "status": "sent"})
-            conv["updated"] = _wa_now()
-        _wa_save_chats(chats)
+        _wa_anotar_plantillas(email, anotar)
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
 def _seg_enviar_tn(email, pedidos) -> dict:
-    """Carga el tracking en TiendaNube (PATCH fulfillment-order + notify). Salta los ya cargados."""
-    store, hdr0 = _seg_tn_store(email)
-    if not store:
+    """Carga el tracking en TiendaNube (PATCH fulfillment-order + notify). Salta los ya cargados.
+    En paralelo de a 3 (antes de a uno con timeout 30) y con reintento ante 429."""
+    ctx = _sege_tn_ctx(email)
+    if not ctx:
         return {"ok": False, "msg": "TiendaNube no conectado", "enviados": 0}
-    H = {**hdr0, "Content-Type": "application/json"}
-    base = "%s/%s/orders" % (TN_API, store)
+    ps = [_sege_pedido_lite(p) for p in (pedidos or []) if isinstance(p, dict)]
     env = salt = fail = 0
     errores = []
-    for p in pedidos:
-        num = str(p.get("num"))
+    resto = []
+    for p in ps:
         if p.get("tn"):
             salt += 1
-            continue
-        if not (p.get("order_id") and p.get("fo_id")):
-            fail += 1; errores.append({"num": num, "msg": "no está en TiendaNube"}); continue
-        estado = "READY_FOR_PICKUP" if p.get("es_sucursal") else "DISPATCHED"
-        body = {"status": estado, "tracking_info": {
-            "code": p.get("track"), "url": p.get("url"), "notify_customer": True}}
-        url = "%s/%s/fulfillment-orders/%s" % (base, p["order_id"], p["fo_id"])
-        try:
-            rr = requests.patch(url, headers=H, data=_json.dumps(body), timeout=30)
-            if rr.status_code in (200, 201, 204):
-                env += 1
-            else:
-                fail += 1; errores.append({"num": num, "msg": "%s: %s" % (rr.status_code, str(rr.text)[:80])})
-        except Exception as e:
-            fail += 1; errores.append({"num": num, "msg": str(e)[:80]})
+        else:
+            resto.append(p)
+    from concurrent.futures import ThreadPoolExecutor as _TPE
+    with _TPE(max_workers=3) as _ex:
+        res = list(_ex.map(lambda q: _sege_tn_uno(ctx, q), resto))
+    for p, r in zip(resto, res):
+        if r[0] == "env":
+            env += 1
+        else:
+            fail += 1
+            errores.append({"num": p["num"], "msg": r[1] or "error"})
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
 
 
@@ -13501,6 +13414,1078 @@ def pf_despachos_seg_todos():
     rtn = _seg_enviar_shopify(email, pedidos) if es_shop else _seg_enviar_tn(email, pedidos)
     rwpp = _seg_enviar_wpp(email, pedidos)
     return jsonify({"ok": True, "tn": rtn, "wpp": rwpp})
+
+
+# ═══════════════════════════════════════════════════════════════════════════════════════════════
+# ENVÍO DE SEGUIMIENTOS COMO JOB (31-10-2026)
+#
+# Antes: el navegador mandaba tandas de 15 pedidos, una atrás de la otra, cada una dentro de UN
+# request sincrónico que terminaba reescribiendo wa_chats.json (12+ MB). Los estados de WhatsApp
+# (sent/delivered/read) de cada plantilla llegaban al webhook y CADA UNO releía y reescribía ese
+# archivo con un candado entre los 2 workers → CPU 100%, /pf-version sin contestar, watchdog que
+# reiniciaba el server entero y tandas de 15 que pasaban de 15 s a 200 s ("15 cada 2 minutos").
+#
+# Ahora:
+#  - el envío es UN job en un hilo, con latido a disco cada 1 s (lo lee cualquier worker);
+#  - cada pedido se RECLAMA en un log por job (jobs/<job>.log, append) ANTES de mandarlo y se
+#    anota OK/F/U apenas vuelve → si el worker muere, al reanudar NO se re-manda nada que ya
+#    salió (y lo que quedó "en vuelo" queda EN DUDA, no se reintenta solo);
+#  - el WhatsApp se marca en wa_seg_enviado.json pedido por pedido (no al final de la tanda);
+#  - los mensajes de las plantillas se anotan en wa_chats en pocas escrituras (cada ~30 o 15 s);
+#  - los estados del webhook van a una cola en memoria que se vuelca cada 10 s en UNA escritura.
+# ═══════════════════════════════════════════════════════════════════════════════════════════════
+_SEGE_JOBS = {}                 # job → estado (solo en el worker que lo corre; el resto lee disco)
+_SEGE_LOCK = threading.Lock()   # protege los dicts de estado mientras los hilos del pool escriben
+_SEGE_MUERTO = 60               # s sin latido = job caído
+_SEGE_LATIDO_FILE = DATA_DIR / "jobs" / "_envio_latido"    # lo mira el watchdog
+_SEGE_CANALES = ("tn", "wpp", "todos")
+_SEG_MARK_LOCK = threading.Lock()
+_SEGE_PARAR = set()             # jobs que este proceso tiene que soltar (se está apagando)
+
+
+def _sege_err(e) -> str:
+    """TipoDeError: mensaje @ función:línea (regla errores-reales-en-ui)."""
+    import traceback as _tb
+    tbl = _tb.extract_tb(e.__traceback__) if getattr(e, "__traceback__", None) else []
+    ln = (" @ %s:%d" % (tbl[-1].name, tbl[-1].lineno)) if tbl else ""
+    return "%s: %s%s" % (type(e).__name__, str(e)[:200], ln)
+
+
+class _sege_flock:
+    """Candado de archivo ENTRE procesos (los 2 workers) + no rompe si el SO no tiene flock."""
+
+    def __init__(self, path):
+        self.path = str(path)
+        self.f = None
+
+    def __enter__(self):
+        try:
+            import fcntl
+            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+            self.f = open(self.path, "a+")
+            fcntl.flock(self.f.fileno(), fcntl.LOCK_EX)
+        except Exception:
+            self.f = None
+        return self
+
+    def __exit__(self, *a):
+        if self.f is not None:
+            try:
+                import fcntl
+                fcntl.flock(self.f.fileno(), fcntl.LOCK_UN)
+                self.f.close()
+            except Exception:
+                pass
+        return False
+
+
+def _sege_jid_ok(job) -> bool:
+    return bool(re.fullmatch(r"se[0-9a-f]{12}", job or ""))
+
+
+def _sege_p(job, ext):
+    return _JOBS_DIR / ("%s.%s" % (job, ext))
+
+
+def _sege_lease(job) -> str:
+    try:
+        return _sege_p(job, "lease").read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def _sege_tomar(job) -> str:
+    """Toma el job (lease nuevo). Desde acá, un hilo viejo que siga vivo ya no puede reclamar."""
+    import uuid as _u
+    tok = _u.uuid4().hex
+    with _sege_flock(_sege_p(job, "lock")):
+        _sege_p(job, "lease").write_text(tok, encoding="utf-8")
+    return tok
+
+
+def _sege_append(job, d) -> None:
+    d = dict(d)
+    d["ts"] = round(_time.time(), 1)
+    with open(str(_sege_p(job, "log")), "a", encoding="utf-8") as f:
+        f.write(_json.dumps(d, ensure_ascii=False) + "\n")
+        f.flush()
+        try:
+            _os.fsync(f.fileno())
+        except Exception:
+            pass
+
+
+def _sege_reclamar(job, token, canal, num) -> bool:
+    """Anota 'P' (lo estoy mandando) ANTES de pegarle a la API. False = perdí el job → parar."""
+    with _sege_flock(_sege_p(job, "lock")):
+        if _sege_lease(job) != token:
+            return False
+        _sege_append(job, {"c": canal, "t": "P", "n": str(num)})
+    return True
+
+
+def _sege_anotar(job, canal, num, t, msg="", x=None) -> None:
+    with _sege_flock(_sege_p(job, "lock")):
+        d = {"c": canal, "t": t, "n": str(num)}
+        if msg:
+            d["m"] = str(msg)[:300]
+        if x:
+            d["x"] = x
+        _sege_append(job, d)
+
+
+def _sege_log_leer(job) -> dict:
+    """{canal: {num: (ultimo_estado, msg)}} + extras de los OK de WhatsApp (para anotar chats)."""
+    est = {"tienda": {}, "wpp": {}}
+    extras = {}
+    try:
+        lineas = _sege_p(job, "log").read_text(encoding="utf-8").splitlines()
+    except Exception:
+        lineas = []
+    for ln in lineas:
+        try:
+            d = _json.loads(ln)
+        except Exception:
+            continue                       # una línea cortada por un SIGKILL no rompe nada
+        c, t, n = d.get("c"), d.get("t"), str(d.get("n") or "")
+        if c not in est or not n:
+            continue
+        prev = est[c].get(n)
+        # un terminal (OK/SALT/U) no lo pisa un P posterior de un hilo viejo
+        if prev and prev[0] in ("OK", "SALT") and t == "P":
+            continue
+        est[c][n] = (t, d.get("m") or "")
+        if c == "wpp" and t == "OK" and d.get("x"):
+            extras[n] = d["x"]
+    return {"est": est, "extras": extras}
+
+
+def _sege_proc_start(pid) -> str:
+    try:
+        return open("/proc/%d/stat" % int(pid)).read().rsplit(")", 1)[1].split()[19]
+    except Exception:
+        return ""
+
+
+def _sege_pid_vivo(pid, start) -> bool:
+    """¿Sigue vivo EL MISMO proceso? (tras un reinicio los pids se repiten: comparo el arranque)."""
+    try:
+        pid = int(pid)
+    except Exception:
+        return False
+    s = _sege_proc_start(pid)
+    if s:
+        return (not start) or s == start
+    try:
+        _os.kill(pid, 0)
+        return not start                   # sin /proc no puedo distinguir un pid reciclado
+    except PermissionError:
+        return not start
+    except Exception:
+        return False
+
+
+def _sege_pedido_lite(p) -> dict:
+    p = p or {}
+    try:
+        u = int(float(p.get("unidades") or 0))
+    except Exception:
+        u = 0
+    return {"num": str(p.get("num") or "").replace("#", "").strip(),
+            "nombre": (p.get("nombre") or ""), "track": str(p.get("track") or ""),
+            "url": (p.get("url") or ""), "carrier": (p.get("carrier") or "andreani"),
+            "wa_id": str(p.get("wa_id") or "").strip(), "unidades": u,
+            "order_id": p.get("order_id") or "", "fo_id": p.get("fo_id") or "",
+            "es_sucursal": bool(p.get("es_sucursal")), "tn": bool(p.get("tn")),
+            "wpp": bool(p.get("wpp")), "tienda": (p.get("tienda") or "")}
+
+
+# ---------------------------- reintentos ante límites de las APIs ----------------------------
+def _sege_espera_hdr(r, intento) -> float:
+    """Cuánto esperar ante un 429: Retry-After (s) o x-rate-limit-reset de TN (ms); si no, 1,2,4,8 s."""
+    try:
+        ra = r.headers.get("Retry-After")
+        if ra:
+            return min(20.0, max(0.5, float(ra)))
+        rs = r.headers.get("x-rate-limit-reset")
+        if rs:
+            return min(20.0, max(0.5, float(rs) / 1000.0))
+    except Exception:
+        pass
+    return min(16.0, 2.0 ** intento)
+
+
+class _SegeDuda(Exception):
+    """El pedido pudo haber llegado a la API (se cortó DESPUÉS de mandarlo): no se reintenta solo."""
+
+
+def _sege_http(metodo, url, intentos=5, reintentar_5xx=False, **kw):
+    """requests con reintento ante 429 y ante errores de conexión que NO llegaron a mandar nada.
+    Un ReadTimeout o una conexión cortada a mitad de un POST/PATCH NO se reintentan: el pedido pudo
+    haberse procesado del otro lado (sería un WhatsApp o un mail duplicado) → _SegeDuda."""
+    ult = None
+    for i in range(intentos):
+        try:
+            r = requests.request(metodo, url, **kw)
+        except requests.exceptions.ReadTimeout:
+            if metodo.upper() == "GET":
+                ult = None
+                _time.sleep(min(8.0, 1.0 + i * 2))
+                if i < intentos - 1:
+                    continue
+            raise
+        except requests.exceptions.ConnectionError as e:
+            txt = str(e)
+            pre = isinstance(e, requests.exceptions.ConnectTimeout) or any(
+                k in txt for k in ("NewConnectionError", "NameResolution", "Name or service", "Connection refused"))
+            if metodo.upper() != "GET" and not pre:
+                raise _SegeDuda("%s: %s" % (type(e).__name__, txt[:160]))
+            ult = e
+            _time.sleep(min(8.0, 1.0 + i * 2))
+            continue
+        if r.status_code == 429 or (reintentar_5xx and r.status_code >= 500):
+            ult = r
+            if i < intentos - 1:
+                _time.sleep(_sege_espera_hdr(r, i))
+                continue
+        return r
+    if isinstance(ult, Exception):
+        raise ult
+    return ult
+
+
+def _sege_gql(gql, H, query, variables=None, intentos=6):
+    """POST GraphQL a Shopify con reintento ante 429 y ante THROTTLED (respeta el balde de costo)."""
+    body = {"query": query}
+    if variables is not None:
+        body["variables"] = variables
+    j = {}
+    for i in range(intentos):
+        r = _sege_http("POST", gql, headers=H, data=_json.dumps(body), timeout=20)
+        if r.status_code >= 400:
+            return None, "Shopify HTTP %s: %s" % (r.status_code, (r.text or "")[:200])
+        try:
+            j = r.json() if r.content else {}
+        except Exception:
+            return None, "Shopify devolvió algo que no es JSON: %s" % (r.text or "")[:160]
+        errs = j.get("errors") or []
+        thr = any(((e or {}).get("extensions") or {}).get("code") == "THROTTLED" for e in errs) \
+            if isinstance(errs, list) else False
+        if thr and i < intentos - 1:
+            espera = 2.0
+            try:
+                cost = (j.get("extensions") or {}).get("cost") or {}
+                ts = cost.get("throttleStatus") or {}
+                falta = float(cost.get("requestedQueryCost") or 50) - float(ts.get("currentlyAvailable") or 0)
+                espera = max(1.0, min(15.0, falta / max(1.0, float(ts.get("restoreRate") or 50))))
+            except Exception:
+                pass
+            _time.sleep(espera)
+            continue
+        return j, None
+    return j, "Shopify THROTTLED después de %d intentos" % intentos
+
+
+# ---------------------------------- canal TIENDA: Shopify ----------------------------------
+_SEGE_MUT_CREATE = ("mutation($f:FulfillmentInput!){fulfillmentCreate(fulfillment:$f){"
+                    "fulfillment{id status trackingInfo{company number url}} userErrors{field message}}}")
+_SEGE_MUT_TRACK = ("mutation($fid:ID!,$t:FulfillmentTrackingInput!){fulfillmentTrackingInfoUpdate("
+                   "fulfillmentId:$fid,trackingInfoInput:$t,notifyCustomer:true){"
+                   "fulfillment{id trackingInfo{number url}} userErrors{field message}}}")
+
+
+def _sege_shop_ctx(email):
+    shop, atok = _seg_shop_conn(email)
+    if not shop:
+        return None
+    base = "https://%s/admin/api/2026-07" % shop
+    return {"H": {"X-Shopify-Access-Token": atok, "Content-Type": "application/json"},
+            "base": base, "gql": "%s/graphql.json" % base}
+
+
+def _sege_shop_lote(ctx, pedidos) -> dict:
+    """fulfillment orders + fulfillments de hasta 25 pedidos en UNA consulta GraphQL (antes la vía 2
+    hacía un GET REST por pedido contra el límite de ~2/s y un 429 salía como 'sin fulfillment')."""
+    mapa = {}
+    ids = [str(p.get("order_id")) for p in pedidos if p.get("order_id")]
+    for i in range(0, len(ids), 25):
+        trozo = ids[i:i + 25]
+        q = "query{" + " ".join(
+            'o%d: order(id:"gid://shopify/Order/%s"){fulfillmentOrders(first:5){nodes{id status}} '
+            'fulfillments(first:5){id status trackingInfo(first:3){number}}}' % (k, oid)
+            for k, oid in enumerate(trozo)) + "}"
+        try:
+            j, err = _sege_gql(ctx["gql"], ctx["H"], q)
+        except Exception:
+            j, err = None, "x"
+        if err or not j:
+            continue                       # esos pedidos caen al camino uno por uno (con reintento)
+        dat = j.get("data") or {}
+        for k, oid in enumerate(trozo):
+            o = dat.get("o%d" % k)
+            if not isinstance(o, dict):
+                continue
+            fos = [{"id": str(x.get("id") or "").rsplit("/", 1)[-1],
+                    "status": str(x.get("status") or "").lower()}
+                   for x in ((o.get("fulfillmentOrders") or {}).get("nodes") or [])]
+            fus = []
+            for f in (o.get("fulfillments") or []):
+                trk = [str((t or {}).get("number") or "") for t in (f.get("trackingInfo") or [])]
+                fus.append({"id": str(f.get("id") or "").rsplit("/", 1)[-1],
+                            "status": str(f.get("status") or "").lower(),
+                            "tracking_number": next((t for t in trk if t), "")})
+            mapa[oid] = {"fos": fos, "fus": fus}
+    return mapa
+
+
+def _sege_shop_uno(ctx, p, info):
+    """UN pedido → ('env'|'salt'|'fail', msg). Doble vía, igual que siempre:
+    (1) fulfillment order ABIERTO → fulfillmentCreate con tracking + aviso;
+    (2) ya preparado → fulfillmentTrackingInfoUpdate al fulfillment existente (salta si ya tiene ese tracking).
+    Es idempotente: si se repite, el (1) ya no encuentra FO abierto y el (2) ve el mismo tracking → 'salt'."""
+    oid = p.get("order_id")
+    if not oid:
+        return ("fail", "no está en Shopify")
+    H, base = ctx["H"], ctx["base"]
+    if info is None:                       # no vino en el lote → uno por uno, con reintento ante 429
+        try:
+            rr = _sege_http("GET", "%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=15)
+            if rr.status_code != 200:
+                return ("fail", "fulfillment_orders HTTP %s: %s" % (rr.status_code, (rr.text or "")[:160]))
+            fos = [{"id": str(f.get("id")), "status": str(f.get("status") or "").lower()}
+                   for f in (rr.json().get("fulfillment_orders") or [])]
+            fr = _sege_http("GET", "%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=15)
+            if fr.status_code != 200:
+                return ("fail", "fulfillments HTTP %s: %s" % (fr.status_code, (fr.text or "")[:160]))
+            fus = [{"id": str(f.get("id")), "status": str(f.get("status") or "").lower(),
+                    "tracking_number": str(f.get("tracking_number") or "")}
+                   for f in (fr.json().get("fulfillments") or [])]
+        except Exception as e:
+            return ("fail", _sege_err(e))
+        info = {"fos": fos, "fus": fus}
+    fos, fus = info.get("fos") or [], info.get("fus") or []
+    trk = str(p.get("track") or "")
+    if any((f.get("tracking_number") or "") == trk and trk for f in fus):
+        return ("salt", None)
+    fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
+    try:
+        if fo:
+            v = {"f": {"lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
+                       "notifyCustomer": True, "trackingInfo": _seg_track_info(p)}}
+            j, err = _sege_gql(ctx["gql"], H, _SEGE_MUT_CREATE, v)
+            if err:
+                return ("fail", err)
+            res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
+            ue = res.get("userErrors") or []
+            if res.get("fulfillment") and not ue:
+                return ("env", None)
+            return ("fail", "fulfillmentCreate: " + ((ue[0].get("message") or "") if ue else str(j.get("errors") or j))[:200])
+        cand = [f for f in fus if (f.get("status") or "") in ("success", "pending", "open", "")]
+        ff = next((f for f in cand if not f.get("tracking_number")), None) or (cand[-1] if cand else None)
+        if not ff:
+            est = ",".join(str(f.get("status")) for f in fos) or "ninguno"
+            return ("fail", "sin fulfillment ni FO abierto (FO: %s)" % est)
+        v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": _seg_track_info(p)}
+        j, err = _sege_gql(ctx["gql"], H, _SEGE_MUT_TRACK, v2)
+        if err:
+            return ("fail", err)
+        res = ((j.get("data") or {}).get("fulfillmentTrackingInfoUpdate") or {})
+        ue = res.get("userErrors") or []
+        if res.get("fulfillment") and not ue:
+            return ("env", None)
+        return ("fail", "trackingInfoUpdate: " + ((ue[0].get("message") or "") if ue else str(j.get("errors") or j))[:200])
+    except (requests.exceptions.ReadTimeout, _SegeDuda) as e:
+        # Shopify pudo haberlo procesado. Igual es idempotente: al reanudar se verifica el tracking.
+        return ("unc", "Shopify no contestó (%s); se verifica al reanudar" % _sege_err(e))
+    except Exception as e:
+        return ("fail", _sege_err(e))
+
+
+# ---------------------------------- canal TIENDA: TiendaNube ----------------------------------
+def _sege_tn_ctx(email):
+    store, hdr0 = _seg_tn_store(email)
+    if not store:
+        return None
+    return {"H": {**hdr0, "Content-Type": "application/json"}, "base": "%s/%s/orders" % (TN_API, store)}
+
+
+def _sege_tn_uno(ctx, p):
+    num = str(p.get("num"))
+    if not (p.get("order_id") and p.get("fo_id")):
+        return ("fail", "no está en TiendaNube")
+    estado = "READY_FOR_PICKUP" if p.get("es_sucursal") else "DISPATCHED"
+    body = {"status": estado, "tracking_info": {"code": p.get("track"), "url": p.get("url"), "notify_customer": True}}
+    url = "%s/%s/fulfillment-orders/%s" % (ctx["base"], p["order_id"], p["fo_id"])
+    try:
+        rr = _sege_http("PATCH", url, headers=ctx["H"], data=_json.dumps(body), timeout=25)
+        if rr.status_code in (200, 201, 204):
+            return ("env", None)
+        return ("fail", "TiendaNube HTTP %s: %s" % (rr.status_code, str(rr.text or "")[:160]))
+    except (requests.exceptions.ReadTimeout, _SegeDuda) as e:
+        return ("unc", "TiendaNube no contestó (%s): no sé si avisó al cliente, no lo repito" % _sege_err(e))
+    except Exception as e:
+        return ("fail", "#%s %s" % (num, _sege_err(e)))
+
+
+# ---------------------------------- canal WHATSAPP ----------------------------------
+_SEGE_WA_LIMITE = (4, 80007, 130429)        # límites de Meta → esperar y reintentar
+
+
+def _sege_wpp_plantilla(c, p):
+    num = str(p.get("num"))
+    n = ((p.get("nombre") or "cliente").split() or ["cliente"])[0]
+    link = p.get("url") or ""
+    u = int(p.get("unidades") or 0)
+    combo_tpl = (c.get("bot_tpl_combo") or "").strip()
+    if (p.get("carrier") or "") in ("envialo", "rpflex"):
+        return "seguimiento_flex", [n, num, link]
+    if u >= 2 and combo_tpl:
+        return combo_tpl, [n, num, link, _seg_presentacion(u)]
+    return "seguimiento_despacho", [n, num, link]
+
+
+def _sege_wpp_uno(c, p):
+    """UN WhatsApp → ('env'|'fail'|'unc', msg, extra{wa,nombre,disp,mid,ts})."""
+    num = str(p.get("num"))
+    wa = (p.get("wa_id") or "").strip()
+    if not wa:
+        return ("fail", "sin teléfono", None)
+    name, params = _sege_wpp_plantilla(c, p)
+
+    def _snd(_name, _params):
+        tpl = {"name": _name, "language": {"code": "es_AR"},
+               "components": [{"type": "body", "parameters": [{"type": "text", "text": str(x)} for x in _params]}]}
+        for i in range(4):
+            r = _sege_http("POST", "%s/%s/messages" % (WA_GRAPH, c["phone_id"]), intentos=4,
+                           headers={"Authorization": "Bearer " + c["token"]},
+                           json={"messaging_product": "whatsapp", "to": wa, "type": "template", "template": tpl},
+                           timeout=15)
+            try:
+                j = r.json() if r.content else {}
+            except Exception:
+                j = {}
+            code = (j.get("error") or {}).get("code")
+            if r.status_code >= 400 and code in _SEGE_WA_LIMITE and i < 3:
+                _time.sleep(2.0 * (2 ** i))          # límite de Meta: NO se mandó, se puede reintentar
+                continue
+            return r, j
+        return r, j
+    try:
+        r, j = _snd(name, params)
+        if r.status_code >= 400 and (j.get("error") or {}).get("code") == 132001 and name != "seguimiento_despacho":
+            name, params = "seguimiento_despacho", params[:3]
+            r, j = _snd(name, params)
+    except (requests.exceptions.ReadTimeout, _SegeDuda) as e:
+        return ("unc", "Meta no contestó (%s): puede haber salido, no lo repito para no duplicar" % _sege_err(e), None)
+    except Exception as e:
+        return ("fail", _sege_err(e), None)
+    if r.status_code >= 400:
+        er = j.get("error") or {}
+        det = ((er.get("error_data") or {}).get("details") or "")
+        return ("fail", "Meta HTTP %s · código %s: %s%s" % (r.status_code, er.get("code"), er.get("message") or "error",
+                                                            (" (" + det + ")") if det else ""), None)
+    mid = ((j.get("messages") or [{}])[0] or {}).get("id", "")
+    disp = _wa_tpl_render(_wa_tpl_body(c, name), params) or ("📦 Seguimiento de tu pedido #%s: %s" % (num, params[2] if len(params) > 2 else ""))
+    return ("env", None, {"wa": wa, "nombre": p.get("nombre") or wa, "disp": disp, "mid": mid, "ts": _wa_now()})
+
+
+# ---------------------------------- wa_chats: escrituras livianas ----------------------------------
+def _wa_cuenta_msgs(x) -> int:
+    n = 0
+    for v in (x or {}).values():
+        for cv in (v or {}).values():
+            if isinstance(cv, dict):
+                n += len(cv.get("messages") or [])
+    return n
+
+
+def _wa_mutar_disco(fn) -> bool:
+    """Lee wa_chats UNA vez bajo los dos candados (proceso + archivo), aplica fn(disco) EN EL LUGAR y
+    escribe atómico. Para cambios que solo AGREGAN o actualizan campos (estados, plantillas): no
+    necesita la fusión completa ni el .bak, y nunca pisa lo que otro escribió. Si no puede leer el
+    archivo, NO escribe nada (jamás tratar una lectura fallida como "no hay chats")."""
+    with _WA_SAVE_LOCK:
+        with _sege_flock(str(WA_CHATS) + ".lock"):
+            try:
+                disco = _json.loads(WA_CHATS.read_text(encoding="utf-8"))
+            except Exception:
+                return False
+            antes = _wa_cuenta_msgs(disco)
+            if not fn(disco):
+                return False
+            if _wa_cuenta_msgs(disco) < antes:
+                return False
+            tmp = WA_CHATS.with_suffix(".tmp.%d" % _os.getpid())
+            tmp.write_text(_json.dumps(disco, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(WA_CHATS)
+            return True
+
+
+_WA_ST_RANK = {"": 0, "sent": 1, "delivered": 2, "read": 3, "failed": 4}
+_WA_ST_PEND = {}                 # {email: {mid: [status, ts_primera_vez]}}
+_WA_ST_LOCK = threading.Lock()
+_WA_ST_HILO = {"latido": 0.0, "nuevos": 0, "ult_lectura": 0.0, "vueltas": 0, "aplicados": 0, "error": ""}
+_WA_ST_CADA = 10                 # s entre volcados
+_WA_ST_VENCE = 900               # un estado cuyo mensaje no aparece en 15 min se descarta
+
+
+def _wa_st_encolar(email, sid, st) -> None:
+    """El webhook ya NO reescribe wa_chats por cada sent/delivered/read: los encola acá."""
+    if not (email and sid and st):
+        return
+    with _WA_ST_LOCK:
+        d = _WA_ST_PEND.setdefault(email, {})
+        prev = d.get(sid)
+        if not prev or _WA_ST_RANK.get(st, 0) >= _WA_ST_RANK.get(prev[0], 0):
+            d[sid] = [st, prev[1] if prev else _time.time()]
+        _WA_ST_HILO["nuevos"] += 1
+    _wa_st_asegurar_hilo()
+
+
+def _wa_st_asegurar_hilo() -> None:
+    """Arranca el volcador desde un REQUEST (nunca al importar: ver realprofit-2-workers-estado).
+    El latido se marca ANTES de lanzar, así dos webhooks simultáneos no crean dos hilos."""
+    ahora = _time.time()
+    if ahora - _WA_ST_HILO["latido"] < 45:
+        return
+    with _WA_ST_LOCK:
+        if ahora - _WA_ST_HILO["latido"] < 45:
+            return
+        _WA_ST_HILO["latido"] = ahora
+    threading.Thread(target=_wa_st_loop, daemon=True, name="wa-estados").start()
+
+
+def _wa_st_loop() -> None:
+    while True:
+        _WA_ST_HILO["latido"] = _time.time()
+        _time.sleep(_WA_ST_CADA)
+        _WA_ST_HILO["latido"] = _time.time()
+        try:
+            _wa_st_flush()
+            _WA_ST_HILO["error"] = ""
+        except Exception as e:
+            _WA_ST_HILO["error"] = _sege_err(e)
+        _WA_ST_HILO["vueltas"] += 1
+
+
+def _wa_st_flush(forzar=False) -> None:
+    ahora = _time.time()
+    with _WA_ST_LOCK:
+        if not any(_WA_ST_PEND.values()):
+            return
+        # si no entró nada nuevo, los que no encontraron su mensaje se reintentan cada 60 s, no cada 10
+        if not forzar and not _WA_ST_HILO["nuevos"] and ahora - _WA_ST_HILO["ult_lectura"] < 60:
+            return
+        snap = {em: {k: list(v) for k, v in d.items()} for em, d in _WA_ST_PEND.items() if d}
+        _WA_ST_HILO["nuevos"] = 0
+        _WA_ST_HILO["ult_lectura"] = ahora
+    hechos = set()
+
+    def _fn(disco):
+        ch = False
+        for em, d in snap.items():
+            for conv in (disco.get(em) or {}).values():
+                if not isinstance(conv, dict):
+                    continue
+                for mm in (conv.get("messages") or []):
+                    sid = mm.get("id") if isinstance(mm, dict) else None
+                    if sid and sid in d:
+                        hechos.add((em, sid))
+                        st = d[sid][0]
+                        if _WA_ST_RANK.get(st, 0) > _WA_ST_RANK.get(mm.get("status") or "", 0):
+                            mm["status"] = st
+                            ch = True
+        return ch
+    _wa_mutar_disco(_fn)
+    with _WA_ST_LOCK:
+        for em, d in list(_WA_ST_PEND.items()):
+            for sid in list(d.keys()):
+                v = d[sid]
+                if (em, sid) in hechos and v[0] == (snap.get(em, {}).get(sid) or [None])[0]:
+                    d.pop(sid, None)
+                    _WA_ST_HILO["aplicados"] += 1
+                elif ahora - v[1] > _WA_ST_VENCE:
+                    d.pop(sid, None)
+                    try:
+                        _WA_WH_DIAG["status_nomatch"] += 1
+                    except Exception:
+                        pass
+            if not d:
+                _WA_ST_PEND.pop(em, None)
+
+
+def _wa_anotar_plantillas(email, items) -> bool:
+    """Agrega al chat los mensajes de plantilla que se mandaron (dedup por id de Meta: repetir es
+    inofensivo). Si el estado ya llegó por el webhook y está en la cola, se usa ese."""
+    items = [it for it in (items or []) if it and it.get("wa")]
+    if not items:
+        return False
+    with _WA_ST_LOCK:
+        cola = dict(_WA_ST_PEND.get(email) or {})
+
+    def _fn(disco):
+        convs = disco.setdefault(email, {})
+        ch = False
+        for it in items:
+            conv = convs.get(it["wa"])
+            if not isinstance(conv, dict):
+                conv = {"name": it.get("nombre") or it["wa"], "messages": []}
+                convs[it["wa"]] = conv
+            msgs = conv.setdefault("messages", [])
+            mid = it.get("mid") or ""
+            if mid and any(isinstance(m, dict) and m.get("id") == mid for m in msgs):
+                continue
+            msgs.append({"dir": "out", "text": it.get("disp") or "", "ts": it.get("ts") or _wa_now(),
+                         "type": "template", "id": mid, "status": (cola.get(mid) or ["sent"])[0]})
+            conv["updated"] = _wa_now()
+            ch = True
+        return ch
+    return _wa_mutar_disco(_fn)
+
+
+def _wa_seg_marcar_varios_seguro(email, nums) -> None:
+    """Marca pedidos como avisados por WhatsApp sin perder marcas de otro worker (lock + atómico)."""
+    if not nums:
+        return
+    with _SEG_MARK_LOCK:
+        with _sege_flock(str(_WA_SEG_ENV) + ".lock"):
+            d = _wa_seg_all()
+            m = d.setdefault(email, {})
+            ahora = _wa_now()
+            for x in nums:
+                m[str(x)] = ahora
+            tmp = _WA_SEG_ENV.with_suffix(".tmp.%d" % _os.getpid())
+            tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(_WA_SEG_ENV)
+
+
+# ---------------------------------- el job ----------------------------------
+def _sege_estado_nuevo(job, email, canal, force, tienda, pedidos) -> dict:
+    return {"tipo": "seg-envio", "job": job, "email": email, "canal": canal, "force": bool(force),
+            "tienda": tienda, "pedidos": pedidos, "total": len(pedidos), "t0": _time.time(),
+            "listo": False, "error": None, "msg": "arrancando…", "intentos": 0, "motivos": [],
+            "c": {}, "ok": {"tienda": [], "wpp": []}, "fail": {"tienda": [], "wpp": []},
+            "unc": {"tienda": [], "wpp": []}, "errores": [], "anot_pend": []}
+
+
+def _sege_latir(job, token, stop) -> None:
+    """Latido a disco cada 1 s + vuelca las plantillas a wa_chats de a tandas (un solo escritor)."""
+    ult_anot = _time.time()
+    while not stop.wait(1.0):
+        st = _SEGE_JOBS.get(job)
+        if not st or st.get("token") != token:
+            return
+        try:
+            with _SEGE_LOCK:
+                st["pid"] = _os.getpid()
+                st["ts_lat"] = _time.time()
+                n_anot = len(st.get("anot_pend") or [])
+                snap = _json.loads(_json.dumps(st, default=str))
+            _job_put(job, snap)
+            _SEGE_LATIDO_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _SEGE_LATIDO_FILE.write_text(str(_time.time()), encoding="utf-8")
+            if n_anot and (n_anot >= 30 or _time.time() - ult_anot > 15):
+                _sege_volcar_anot(job, st)
+                ult_anot = _time.time()
+        except Exception:
+            pass
+
+
+def _sege_volcar_anot(job, st) -> None:
+    with _SEGE_LOCK:
+        items = list(st.get("anot_pend") or [])
+        st["anot_pend"] = []
+    if items and not _wa_anotar_plantillas(st["email"], items):
+        with _SEGE_LOCK:                       # no se pudo escribir: vuelven a la cola
+            st["anot_pend"] = items + list(st.get("anot_pend") or [])
+
+
+def _sege_run(job, token) -> None:
+    st = _SEGE_JOBS[job]
+    stop = threading.Event()
+    threading.Thread(target=_sege_latir, args=(job, token, stop), daemon=True, name="seg-latido").start()
+    try:
+        email, canal, tienda = st["email"], st["canal"], st["tienda"]
+        pedidos = st.get("pedidos") or []
+        es_shop = tienda == "shopify"
+        log = _sege_log_leer(job)
+        canales = (["tienda"] if canal in ("tn", "todos") else []) + (["wpp"] if canal in ("wpp", "todos") else [])
+        perdido = {"v": False}
+        trabajos = {}
+        with _SEGE_LOCK:
+            st["ok"] = {"tienda": [], "wpp": []}
+            st["fail"] = {"tienda": [], "wpp": []}
+            st["unc"] = {"tienda": [], "wpp": []}
+            st["errores"] = []
+            st["c"] = {}
+            for cn in canales:
+                est = log["est"][cn]
+                cc = {"total": len(pedidos), "env": 0, "salt": 0, "fail": 0, "unc": 0, "done": 0}
+                pend = []
+                for p in pedidos:
+                    n = p["num"]
+                    t, m = est.get(n, (None, ""))
+                    if t == "OK":
+                        cc["env"] += 1; cc["done"] += 1; st["ok"][cn].append(n)
+                    elif t == "SALT":
+                        cc["salt"] += 1; cc["done"] += 1; st["ok"][cn].append(n)
+                    elif t in ("U", "P") and not (cn == "tienda" and es_shop):
+                        # quedó EN VUELO cuando se cortó: pudo haber salido → no se repite solo.
+                        # (Shopify sí se reintenta: el chequeo de tracking lo hace idempotente.)
+                        cc["unc"] += 1; cc["done"] += 1; st["unc"][cn].append(n)
+                        st["errores"].append({"canal": cn, "num": n, "msg": m or "se cortó justo mientras se mandaba: puede haber salido, no lo repito"})
+                    else:
+                        pend.append(p)       # nunca intentado, falló (F) o Shopify en vuelo → se (re)intenta
+                st["c"][cn] = cc
+                trabajos[cn] = pend
+            # los WhatsApp que ya salieron en corridas anteriores de ESTE job y no llegaron al chat
+            st["anot_pend"] = list(log["extras"].values())
+            st["msg"] = "mandando…"
+
+        def _res(cn, n, kind, msg, x=None):
+            t = {"env": "OK", "salt": "SALT", "fail": "F", "unc": "U"}[kind]
+            try:
+                _sege_anotar(job, cn, n, t, msg or "", x)
+            except Exception:
+                pass
+            if cn == "wpp" and kind == "env":
+                try:
+                    _wa_seg_marcar_varios_seguro(email, [n])      # YA, pedido por pedido
+                except Exception:
+                    pass
+            with _SEGE_LOCK:
+                cc = st["c"][cn]
+                cc["done"] += 1
+                if kind in ("env", "salt"):
+                    cc[kind] += 1; st["ok"][cn].append(n)
+                elif kind == "fail":
+                    cc["fail"] += 1; st["fail"][cn].append(n)
+                    st["errores"].append({"canal": cn, "num": n, "msg": msg or "error"})
+                else:
+                    cc["unc"] += 1; st["unc"][cn].append(n)
+                    st["errores"].append({"canal": cn, "num": n, "msg": msg or "en duda"})
+                if x:
+                    st["anot_pend"].append(x)
+
+        def _correr(cn, items, fn_uno, hilos):
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+
+            def _uno(p):
+                if perdido["v"] or job in _SEGE_PARAR:
+                    return
+                n = p["num"]
+                if not _sege_reclamar(job, token, cn, n):
+                    perdido["v"] = True          # otro proceso tomó el job (reanudación)
+                    return
+                try:
+                    r = fn_uno(p)
+                except Exception as e:
+                    r = ("fail", _sege_err(e), None)
+                kind, msg = r[0], r[1]
+                _res(cn, n, kind, msg, r[2] if len(r) > 2 else None)
+            with _TPE(max_workers=hilos) as ex:
+                list(ex.map(_uno, items))
+
+        def _canal_tienda():
+            items = trabajos.get("tienda") or []
+            ya = [p for p in items if p.get("tn")]
+            for p in ya:                        # el lector ya vio el tracking cargado
+                _res("tienda", p["num"], "salt", None)
+            items = [p for p in items if not p.get("tn")]
+            if not items:
+                return
+            if es_shop:
+                ctx = _sege_shop_ctx(email)
+                if not ctx:
+                    for p in items:
+                        _res("tienda", p["num"], "fail", "Shopify no conectado")
+                    return
+                for i in range(0, len(items), 25):          # de a 25: 1 consulta + 25 envíos en paralelo
+                    if perdido["v"]:
+                        return
+                    trozo = items[i:i + 25]
+                    info = _sege_shop_lote(ctx, trozo)
+                    _correr("tienda", trozo, lambda p: _sege_shop_uno(ctx, p, info.get(str(p.get("order_id")))), 6)
+            else:
+                ctx = _sege_tn_ctx(email)
+                if not ctx:
+                    for p in items:
+                        _res("tienda", p["num"], "fail", "TiendaNube no conectado")
+                    return
+                _correr("tienda", items, lambda p: _sege_tn_uno(ctx, p), 3)   # TN: ~2 req/s, con reintento ante 429
+
+        def _canal_wpp():
+            items = trabajos.get("wpp") or []
+            if not items:
+                return
+            c = _wa_conf(email) or {}
+            if not (c.get("token") and c.get("phone_id")):
+                for p in items:
+                    _res("wpp", p["num"], "fail", "WhatsApp no conectado")
+                return
+            ya = {} if st.get("force") else (_wa_seg_all().get(email) or {})
+            resto = []
+            for p in items:
+                if ya.get(p["num"]):
+                    _res("wpp", p["num"], "salt", None)
+                else:
+                    resto.append(p)
+            _correr("wpp", resto, lambda p: _sege_wpp_uno(c, p), 8)
+
+        hilos = []
+        errs_canal = {}
+        for cn, fn in (("tienda", _canal_tienda), ("wpp", _canal_wpp)):
+            if cn in canales:
+                def _envolver(cn=cn, fn=fn):
+                    try:
+                        fn()
+                    except Exception as e:
+                        errs_canal[cn] = _sege_err(e)
+                h = threading.Thread(target=_envolver, daemon=True, name="seg-" + cn)
+                h.start()
+                hilos.append(h)
+        for h in hilos:                         # tienda y WhatsApp corren A LA VEZ (APIs distintas)
+            h.join()
+        _sege_volcar_anot(job, st)
+        if (st["c"].get("tienda") or {}).get("env"):
+            try:
+                _DESP_CACHE.pop(email, None)
+                _desp_cache_save()
+            except Exception:
+                pass
+        with _SEGE_LOCK:
+            if perdido["v"]:
+                st["msg"] = "otro proceso retomó este envío"
+            if errs_canal:
+                st["error"] = " · ".join("%s: %s" % kv for kv in errs_canal.items())
+            st["listo"] = True
+            st["t_fin"] = _time.time()
+            if not st["msg"].startswith("otro"):
+                st["msg"] = "terminado"
+    except Exception as e:
+        with _SEGE_LOCK:
+            st["error"] = _sege_err(e)
+            st["listo"] = True
+    finally:
+        stop.set()
+        try:
+            if st.get("token") == token and _sege_lease(job) == token:
+                with _SEGE_LOCK:
+                    snap = _json.loads(_json.dumps(st, default=str))
+                _job_put(job, snap)
+        except Exception:
+            pass
+
+
+def _sege_arrancar(job, st) -> None:
+    tok = _sege_tomar(job)
+    with _SEGE_LOCK:
+        st["token"] = tok
+        st["pid"] = _os.getpid()
+        st["pid_start"] = _sege_proc_start(_os.getpid())
+        st["intentos"] = int(st.get("intentos") or 0) + 1
+        st["listo"] = False
+        st["error"] = None
+        st["ts_lat"] = _time.time()          # vivo desde YA (si no, un poll lo vería "caído" 1 s)
+        st.pop("interrumpido", None)
+    _SEGE_JOBS[job] = st
+    _job_put(job, _json.loads(_json.dumps(st, default=str)))
+    threading.Thread(target=_sege_run, args=(job, tok), daemon=True, name="seg-envio").start()
+
+
+def _sege_edad(st) -> int:
+    try:
+        return int(_time.time() - float(st.get("ts_lat") or st.get("ts") or 0))
+    except Exception:
+        return 10 ** 6
+
+
+def _sege_motivo_muerte(st, edad) -> str:
+    if st.get("interrumpido"):
+        return st["interrumpido"]
+    pid = st.get("pid")
+    donde = st.get("msg") or "?"
+    if not _sege_pid_vivo(pid, st.get("pid_start")):
+        return ("el proceso que lo mandaba (pid %s) ya no existe: se reinició el server o se recicló el "
+                "worker sin avisar (watchdog / SIGKILL / memoria). Último latido hace %ds, iba en «%s»."
+                % (pid, edad, donde))
+    return ("el proceso (pid %s) sigue vivo pero el envío no late hace %ds: quedó trabado en «%s»."
+            % (pid, edad, donde))
+
+
+def _sege_limpiar_viejos() -> None:
+    try:
+        lim = _time.time() - 7 * 86400
+        for f in _JOBS_DIR.glob("se*.*"):
+            try:
+                if f.stat().st_mtime < lim:
+                    f.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _sege_activo_de(email):
+    """Un envío VIVO de esta cuenta (latiendo), si hay. Evita dos envíos a la vez (doble clic, 2 pestañas)."""
+    ahora = _time.time()
+    for job, st in list(_SEGE_JOBS.items()):
+        if st.get("email") == email and not st.get("listo") and st.get("token") == _sege_lease(job) \
+                and job not in _SEGE_PARAR:
+            return job
+    try:
+        for f in _JOBS_DIR.glob("se*.json"):
+            try:
+                if ahora - f.stat().st_mtime > _SEGE_MUERTO:
+                    continue
+                d = _json.loads(f.read_text(encoding="utf-8"))
+                if d.get("tipo") == "seg-envio" and d.get("email") == email and not d.get("listo") \
+                        and _sege_edad(d) <= _SEGE_MUERTO:
+                    return f.stem
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+@app.post("/pf-despachos-seg-lanzar")
+def pf_despachos_seg_lanzar():
+    """Arranca el envío de seguimientos como JOB y vuelve al toque con {job}."""
+    if not (email := _user_actual()):
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    try:
+        d = request.get_json(silent=True) or {}
+        canal = (d.get("canal") or "").strip()
+        if canal not in _SEGE_CANALES:
+            return jsonify({"ok": False, "msg": "canal inválido: %r" % canal}), 400
+        pedidos = [_sege_pedido_lite(p) for p in (d.get("pedidos") or []) if isinstance(p, dict)]
+        vistos, lote = set(), []
+        for p in pedidos:                        # sin número o repetido en el PDF → afuera
+            if p["num"] and p["num"] not in vistos:
+                vistos.add(p["num"]); lote.append(p)
+        if not lote:
+            return jsonify({"ok": False, "msg": "no hay pedidos para enviar"})
+        tienda = "shopify" if any(p.get("tienda") == "shopify" for p in lote) else "tn"
+        if canal in ("tn", "todos"):
+            if tienda == "shopify" and not _seg_shop_conn(email)[0]:
+                return jsonify({"ok": False, "msg": "Shopify no está conectado (Integraciones)"})
+            if tienda == "tn" and not (_seg_tn_store(email) or (None, None))[0]:
+                return jsonify({"ok": False, "msg": "TiendaNube no está conectada (Integraciones)"})
+        if canal in ("wpp", "todos"):
+            c = _wa_conf(email) or {}
+            if not (c.get("token") and c.get("phone_id")):
+                return jsonify({"ok": False, "msg": "WhatsApp no está conectado (Config bot)"})
+        otro = _sege_activo_de(email)
+        if otro:
+            return jsonify({"ok": True, "job": otro, "ya": True,
+                            "msg": "ya había un envío en curso: te muestro ese (no se manda dos veces)"})
+        _sege_limpiar_viejos()
+        import uuid as _u
+        job = "se" + _u.uuid4().hex[:12]
+        st = _sege_estado_nuevo(job, email, canal, d.get("force"), tienda, lote)
+        _sege_arrancar(job, st)
+        return jsonify({"ok": True, "job": job, "total": len(lote)})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude arrancar el envío (%s)" % _sege_err(e)}), 500
+
+
+@app.get("/pf-despachos-seg-envio-prog")
+def pf_despachos_seg_envio_prog():
+    """Progreso del envío. Sirve desde cualquier worker (lee el latido a disco) y si el job murió
+    dice POR QUÉ (proceso inexistente / trabado / interrumpido por reciclado)."""
+    if not (email := _user_actual()):
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    job = (request.args.get("job") or "").strip()
+    if not _sege_jid_ok(job):
+        return jsonify({"ok": False, "msg": "job inválido"}), 400
+    try:
+        st = None
+        mem = _SEGE_JOBS.get(job)
+        if mem and mem.get("token") and mem.get("token") == _sege_lease(job):
+            with _SEGE_LOCK:                 # lo corre ESTE proceso: el dato más fresco
+                st = _json.loads(_json.dumps(mem, default=str))
+        else:
+            st = _job_get(job)
+        if not st:
+            return jsonify({"ok": False, "msg": "no encuentro el envío %s en el servidor" % job})
+        if st.get("email") != email:
+            return jsonify({"ok": False, "msg": "ese envío es de otra cuenta"}), 403
+        edad = _sege_edad(st)
+        muerto = (not st.get("listo")) and edad > _SEGE_MUERTO
+        return jsonify({"ok": True, "job": job, "listo": bool(st.get("listo")), "muerto": muerto,
+                        "motivo": _sege_motivo_muerte(st, edad) if muerto else "",
+                        "error": st.get("error") or "", "msg": st.get("msg") or "",
+                        "canal": st.get("canal"), "tienda": st.get("tienda"), "total": st.get("total", 0),
+                        "c": st.get("c") or {}, "ok_nums": st.get("ok") or {}, "fail_nums": st.get("fail") or {},
+                        "unc_nums": st.get("unc") or {}, "errores": (st.get("errores") or [])[:60],
+                        "n_errores": len(st.get("errores") or []), "intentos": st.get("intentos", 1),
+                        "motivos": st.get("motivos") or [], "latido": edad,
+                        "seg": int((st.get("t_fin") or _time.time()) - float(st.get("t0") or _time.time()))})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "error leyendo el progreso (%s)" % _sege_err(e)}), 500
+
+
+@app.post("/pf-despachos-seg-reanudar")
+def pf_despachos_seg_reanudar():
+    """Retoma un envío caído desde donde quedó. NO re-manda lo que ya salió (log por pedido) y lo
+    que quedó en vuelo lo deja EN DUDA en vez de repetirlo."""
+    if not (email := _user_actual()):
+        return jsonify({"ok": False, "msg": "sin sesión"}), 401
+    job = ((request.get_json(silent=True) or {}).get("job") or request.args.get("job") or "").strip()
+    if not _sege_jid_ok(job):
+        return jsonify({"ok": False, "msg": "job inválido"}), 400
+    try:
+        # candado: dos pestañas (o los 2 workers) tocando "reanudar" a la vez arrancan UNO solo
+        with _sege_flock(_sege_p(job, "rlock")):
+            st = _job_get(job)
+            if not st or st.get("email") != email:
+                return jsonify({"ok": False, "msg": "no encuentro ese envío"})
+            if st.get("listo"):
+                return jsonify({"ok": True, "job": job, "listo": True})
+            edad = _sege_edad(st)
+            if edad <= _SEGE_MUERTO:
+                return jsonify({"ok": True, "job": job, "vivo": True})
+            motivo = _sege_motivo_muerte(st, int(edad))
+            st["motivos"] = (list(st.get("motivos") or []) + [motivo])[-5:]
+            _SEGE_PARAR.discard(job)
+            _sege_arrancar(job, st)
+        return jsonify({"ok": True, "job": job, "reanudado": True, "motivo": motivo})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude reanudar (%s)" % _sege_err(e)}), 500
+
+
+def _sege_al_salir() -> None:
+    """Salida PROLIJA del worker (reciclado por --max-requests, deploy, SIGTERM): deja escrito el
+    motivo real en los jobs que corría y vuelca los estados de WhatsApp en cola."""
+    try:
+        for job, st in list(_SEGE_JOBS.items()):
+            if st.get("listo") or _sege_lease(job) != st.get("token"):
+                continue
+            _SEGE_PARAR.add(job)               # no reclama ni un pedido más
+            with _SEGE_LOCK:
+                st["interrumpido"] = ("el worker pid %d se apagó a mitad del envío (reciclado por gunicorn "
+                                      "--max-requests, deploy o reinicio). Se retoma desde donde quedó."
+                                      % _os.getpid())
+                st["msg"] = "interrumpido"
+                st["token"] = "salida"         # el latido de este proceso deja de escribir
+                snap = _json.loads(_json.dumps(st, default=str))
+            # latido VIEJO a propósito: que el front lo vea caído YA y lo retome en otro worker
+            snap["ts_lat"] = _time.time() - _SEGE_MUERTO - 1
+            try:
+                _job_put(job, snap)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        _wa_st_flush(forzar=True)
+    except Exception:
+        pass
+
+
+import atexit as _atexit_sege
+_atexit_sege.register(_sege_al_salir)
 
 
 _MP_LISTA_CACHE = {}   # {(email,desde,hasta): (ts, out)} — pagos de MP, cache 60s: se pide en varias secciones
@@ -28127,7 +29112,33 @@ def wa_webhook():
     except Exception:
         pass
     try:
-        chats = _wa_chats_all(); changed = False; fwd = set(); bot_jobs = {}
+        # 1) ESTADOS (sent/delivered/read/failed) → a una COLA en memoria que se vuelca cada 10 s en UNA
+        #    escritura (_wa_st_flush). Antes CADA estado leía wa_chats.json entero (12+ MB), recorría todos
+        #    los mensajes y lo reescribía dos veces con candado entre workers: ~0,8 s de CPU por estado. Un
+        #    envío de seguimientos dispara 2-3 estados por plantilla → CPU 100%, el server sin contestar y
+        #    el watchdog reiniciándolo (logs 24, 25, 26 y 29-10-2026).
+        hay_msgs = False
+        for entry in (data.get("entry") or []):
+            for ch in (entry.get("changes") or []):
+                val = ch.get("value") or {}
+                if val.get("messages"):
+                    hay_msgs = True
+                _sts = val.get("statuses") or []
+                if not _sts:
+                    continue
+                em = _wa_email_by_phone_id(str((val.get("metadata") or {}).get("phone_number_id") or ""))
+                try:
+                    _WA_WH_DIAG["statuses"] += len(_sts)
+                    _WA_WH_DIAG["last_status"] = "%s:%s" % (_sts[-1].get("status"), (_sts[-1].get("id") or "")[-8:])
+                except Exception:
+                    pass
+                if not em:
+                    continue
+                for s in _sts:
+                    _wa_st_encolar(em, s.get("id"), s.get("status"))
+        # 2) MENSAJES ENTRANTES: igual que siempre. wa_chats se lee SOLO si llegó un mensaje.
+        chats = _wa_chats_all() if hay_msgs else {}
+        changed = False; fwd = set(); bot_jobs = {}
         for entry in data.get("entry", []):
             for ch in entry.get("changes", []):
                 val = ch.get("value") or {}
@@ -28169,23 +29180,6 @@ def wa_webhook():
                     conv["updated"] = _wa_now(); changed = True
                     if cf.get("bot"):                            # cuenta con auto-respondedor prendido
                         bot_jobs[(em, wid)] = cf
-                _sts = val.get("statuses") or []
-                if _sts:
-                    try:
-                        _WA_WH_DIAG["statuses"] += len(_sts)
-                        _WA_WH_DIAG["last_status"] = "%s:%s" % (_sts[-1].get("status"), (_sts[-1].get("id") or "")[-8:])
-                    except Exception:
-                        pass
-                for s in _sts:
-                    sid = s.get("id"); st = s.get("status")
-                    _mm_hit = False
-                    for conv in emap.values():
-                        for mm in conv.get("messages", []):
-                            if mm.get("id") == sid:
-                                mm["status"] = st; changed = True; _mm_hit = True
-                    if not _mm_hit:
-                        try: _WA_WH_DIAG["status_nomatch"] += 1
-                        except Exception: pass
         if changed:
             _wa_save_chats(chats)
         for u in fwd:
@@ -28209,6 +29203,22 @@ def wa_chats():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False})
+    # ETag por versión del archivo: la pantalla /wa pide esto cada 4 s y cada respuesta pesaba 12,7 MB
+    # aunque no hubiera cambiado nada. Si el archivo no cambió → 304 sin leerlo ni armar nada
+    # (el navegador reusa la respuesta que ya tiene).
+    def _wa_chats_etag():
+        try:
+            _stt = WA_CHATS.stat()
+            import hashlib as _hl
+            return '"%s"' % _hl.sha1(("%s|%d|%d|v1" % (email, _stt.st_mtime_ns, _stt.st_size)).encode()).hexdigest()[:20]
+        except Exception:
+            return ""
+    _etag = _wa_chats_etag()
+    if _etag and _etag in (request.headers.get("If-None-Match") or ""):
+        _r304 = Response(status=304)
+        _r304.headers["ETag"] = _etag
+        _r304.headers["Cache-Control"] = "private, no-cache"
+        return _r304
     emap = _wa_chats_all().get(email, {})
     # ETIQUETA DE CAMPAÑA: el chat entra al filtro "Reseña" apenas la plantilla esta en el
     # chat, sin esperar a que el cliente conteste. Asi se ve a quien se le mando y quien
@@ -28303,7 +29313,12 @@ def wa_chats():
     # Orden NORMAL por fecha: el chat con actividad más reciente arriba. Los derivados NO se
     # fijan arriba — si no llega nada nuevo bajan solos; el chip rojo alcanza para ubicarlos.
     out.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    return jsonify({"ok": True, "chats": out})
+    _resp = jsonify({"ok": True, "chats": out})
+    _etag = _wa_chats_etag()                 # después del posible guardado de etiquetas
+    if _etag:
+        _resp.headers["ETag"] = _etag
+        _resp.headers["Cache-Control"] = "private, no-cache"
+    return _resp
 
 
 @app.post("/wa-leido")
