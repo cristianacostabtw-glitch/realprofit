@@ -510,3 +510,705 @@ html.rp-glass body #botify-bar, html.rp-glass body #botify-cfg{ background: rgba
 @media (prefers-reduced-motion: reduce){
   html.rp-glass body #botify-fab .pulse{ animation: none !important; }
 }
+
+/* ===========================================================================
+   6. Interiores de secciones  (botones, tablas, casillas, filtros, inputs,
+      chips y contenido de los modales)                         — 31-10-2026
+   ---------------------------------------------------------------------------
+   Reglas de este bloque (no romperlas al tocarlo):
+   - Todo cuelga de html.rp-glass y de un id de overlay/modal. Nada global y
+     nada en el Dashboard.
+   - El markup es inline (style="..."), por eso casi todo va con !important y
+     se elige por atributo. Cuando el JS de la app toca .style de un nodo, el
+     navegador reescribe el atributo entero ("background:#0b111c" pasa a
+     "background: rgb(11, 17, 28)"): en los nodos que el JS toca se cubren las
+     dos formas. Los nodos que nacen de innerHTML conservan el texto tal cual.
+   - ESTADOS ACTIVOS (los pinta el JS inline, se respetan):
+       · Despachos, período (rpDPer): activo = background #2563eb  → azul #3b82f6.
+       · Despachos, Tienda/Logística y Tienda del modal seguimiento
+         (rpDTiendasRender / rpDLogiRender / rpDSegTiendaRender, innerHTML):
+         activo = background #16233a                              → azul #3b82f6.
+       · Separar/unir (rpDPartElegir): elegido = background #0d1f1b → verde.
+       · Tarjetas .rp-dc (rpDFilt): no se tocan acá (ver bloque 3).
+       · Facturación/Movimientos/ADS/Stock: el activo es la CLASE .on.
+       · Comisiones, interruptor RI: se lee del :checked del input, no del color.
+     Nunca se toca opacity/disabled/pointer-events (los usa el JS para "cargando").
+   - Tablas que se re-renderizan (buscador de Despachos): sin animación de
+     entrada en filas; solo hover. Blur solo en paneles (bloque 3), nunca acá.
+   - Las transiciones van al final, dentro de prefers-reduced-motion.
+   ========================================================================= */
+
+html.rp-glass{
+  --rpg-ctl: rgba(11,17,30,.6);            /* fondo de botón secundario / input */
+  --rpg-ctl-hi: rgba(22,31,50,.82);        /* hover del secundario */
+  --rpg-ctl-line: #18212f;
+  --rpg-ctl-line-hi: #2a3850;
+  --rpg-acc: #3b82f6;                      /* azul de lo activo */
+  --rpg-row-hover: rgba(255,255,255,.035);
+  --rpg-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E");
+}
+
+/* ---------------------------------------------------------------------------
+   6.0 Tipografía: los controles de formulario no heredan la fuente solos,
+       y los 4 modales de Despachos traen system-ui inline.
+       Sin !important a propósito: los campos con font-family inline (tokens,
+       la tabla de Envíalo, los post ID de ADS: monoespaciada) la conservan.
+   ------------------------------------------------------------------------- */
+html.rp-glass body :is(#rp-desp-ov,#rp-prod-ov,#rp-comis-ov,#rp-integ-ov,#rp-fact-ov,#rp-mov-ov,#rp-ads-ov,#rp-stock-ov) :is(button,input,select,textarea,label){
+  font-family: inherit;
+}
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov){
+  font-family: Inter, system-ui, -apple-system, sans-serif !important;
+}
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) :is(button,input,select,textarea,label){
+  font-family: inherit;
+}
+
+/* ---------------------------------------------------------------------------
+   6.1 DESPACHOS (#rp-desp-ov)
+   ------------------------------------------------------------------------- */
+
+/* --- botones de la barra: base común (alto, radio, tipografía) --- */
+html.rp-glass body #rp-desp-ov :is(label[style*="background:#0b111c"], #rp-d-sync,
+  button[onclick="rpDActSku()"], button[onclick="window.open('/flex','_blank')"],
+  button[onclick="rpDExcel()"], button[onclick="rpDOpenSku()"], button[onclick="rpDOpenPart()"],
+  button[onclick="rpDOpenXls()"], button[onclick="rpDOpenSeg()"]){
+  height: 40px !important; box-sizing: border-box !important;
+  padding: 0 14px !important; border-radius: 10px !important;
+  font-size: 13px !important; font-weight: 700 !important; line-height: 1 !important;
+}
+/* secundarios: vidrio oscuro (Todas · Actualizar pedidos · Subir Excel de Envialo · Actualizar SKUs) */
+html.rp-glass body #rp-desp-ov :is(label[style*="background:#0b111c"], #rp-d-sync, button[onclick="rpDActSku()"]){
+  background: var(--rpg-ctl) !important;
+  border: 1px solid var(--rpg-ctl-line) !important;
+  color: #cbd5e1 !important;
+}
+html.rp-glass body #rp-desp-ov :is(label[style*="background:#0b111c"], #rp-d-sync, button[onclick="rpDActSku()"]):hover{
+  background: var(--rpg-ctl-hi) !important; border-color: var(--rpg-ctl-line-hi) !important; color: #fff !important;
+}
+/* con identidad: tinte translúcido de su color */
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenSku()"]{            /* Insertar SKU · índigo */
+  background: rgba(99,102,241,.16) !important; border: 1px solid rgba(129,140,248,.35) !important; color: #c7d2fe !important;
+}
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenSku()"]:hover{ background: rgba(99,102,241,.27) !important; border-color: rgba(129,140,248,.6) !important; }
+html.rp-glass body #rp-desp-ov button[onclick="rpDExcel()"]{               /* Generar Excel Andreani · violeta */
+  background: rgba(139,92,246,.16) !important; border: 1px solid rgba(167,139,250,.35) !important; color: #ddd6fe !important;
+}
+html.rp-glass body #rp-desp-ov button[onclick="rpDExcel()"]:hover{ background: rgba(139,92,246,.27) !important; border-color: rgba(167,139,250,.6) !important; }
+html.rp-glass body #rp-desp-ov button[onclick="window.open('/flex','_blank')"]{   /* Flex · violeta (púrpura) */
+  background: rgba(168,85,247,.16) !important; border: 1px solid rgba(192,132,252,.35) !important; color: #e9d5ff !important;
+}
+html.rp-glass body #rp-desp-ov button[onclick="window.open('/flex','_blank')"]:hover{ background: rgba(168,85,247,.27) !important; border-color: rgba(192,132,252,.6) !important; }
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenPart()"]{           /* Separar / unir · verde */
+  background: rgba(16,185,129,.16) !important; border: 1px solid rgba(52,211,153,.35) !important; color: #a7f3d0 !important;
+}
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenPart()"]:hover{ background: rgba(16,185,129,.27) !important; border-color: rgba(52,211,153,.6) !important; }
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenXls()"]{            /* Partir Excel Andreani · ámbar */
+  background: rgba(245,158,11,.16) !important; border: 1px solid rgba(251,191,36,.35) !important; color: #fde68a !important;
+}
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenXls()"]:hover{ background: rgba(245,158,11,.27) !important; border-color: rgba(251,191,36,.6) !important; }
+/* principal: Enviar seguimiento · rosa sólido con brillo (el brillo, en 6.9) */
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenSeg()"]{
+  background: #e11d48 !important; border: 1px solid #e11d48 !important; color: #fff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 10px 26px -10px rgba(225,29,72,.75), inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+html.rp-glass body #rp-desp-ov button[onclick="rpDOpenSeg()"]:hover{ box-shadow: 0 14px 32px -10px rgba(225,29,72,.95), inset 0 1px 0 rgba(255,255,255,.24) !important; }
+
+/* --- casillas: cuadradas 20px, radio 6px, tildadas azul con ✓ blanco --- */
+html.rp-glass body #rp-desp-ov input[type="checkbox"]{
+  -webkit-appearance: none !important; appearance: none !important;
+  width: 20px !important; height: 20px !important; min-width: 20px; margin: 0 !important;
+  flex: none; display: inline-block; vertical-align: middle;
+  border-radius: 6px !important; border: 1.5px solid rgba(148,163,184,.45) !important;
+  background: transparent no-repeat center / 12px 12px !important;
+  cursor: pointer;
+}
+html.rp-glass body #rp-desp-ov input[type="checkbox"]:hover:not(:checked){ border-color: rgba(148,163,184,.8) !important; }
+html.rp-glass body #rp-desp-ov input[type="checkbox"]:checked{
+  background-color: var(--rpg-acc) !important; border-color: var(--rpg-acc) !important;
+  background-image: var(--rpg-check) !important;
+}
+html.rp-glass body #rp-desp-ov input[type="checkbox"]:focus-visible{ outline: 2px solid rgba(59,130,246,.6); outline-offset: 2px; }
+
+/* --- período (Todas/Hoy/Ayer/7 días): segmento, activo azul ---
+   rpDPer() pinta inline background #2563eb (activo) / transparent (resto). */
+html.rp-glass body #rp-d-segs{
+  background: rgba(11,17,30,.5) !important; border: 1px solid var(--rpg-ctl-line) !important;
+  border-radius: 10px !important; padding: 3px !important; gap: 2px;
+}
+html.rp-glass body #rp-d-segs > .rp-seg{
+  height: 32px; padding: 0 13px !important; border-radius: 8px !important;
+  font-size: 12.5px !important; font-weight: 700 !important;
+  color: #94a3b8 !important;
+}
+html.rp-glass body #rp-d-segs > .rp-seg:not(:is([style*="background:#2563eb"],[style*="background: rgb(37, 99, 235)"],[style*="background-color: rgb(37, 99, 235)"])):hover{
+  background: rgba(255,255,255,.05) !important; color: #e2e8f0 !important;
+}
+html.rp-glass body #rp-d-segs > .rp-seg:is([style*="background:#2563eb"],[style*="background: rgb(37, 99, 235)"],[style*="background-color: rgb(37, 99, 235)"]){
+  background: var(--rpg-acc) !important; color: #fff !important;
+  box-shadow: 0 6px 16px -6px rgba(59,130,246,.7);
+}
+
+/* --- rango de fechas y buscador: vidrio, foco azul --- */
+html.rp-glass body #rp-desp-ov div[style*="background:#0b111c"]:not(#rp-d-segs){
+  background: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important;
+  border-radius: 10px !important;
+}
+html.rp-glass body #rp-desp-ov div[style*="background:#0b111c"]:not(#rp-d-segs):focus-within{
+  border-color: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+html.rp-glass body #rp-desp-ov :is(#rp-d-desde,#rp-d-hasta,#rp-d-q){ color: #e2e8f0 !important; }
+html.rp-glass body #rp-desp-ov #rp-d-q::placeholder{ color: #64748b; }
+
+/* --- Tienda / Logística (innerHTML; activo = background #16233a) --- */
+html.rp-glass body #rp-desp-ov :is(#rp-d-tiendas,#rp-d-logi) > button,
+html.rp-glass body #rp-dseg-tienda > button{
+  height: 32px; padding: 0 12px !important; border-radius: 8px !important;
+  font-size: 12px !important; font-weight: 700 !important;
+  background: rgba(11,17,30,.5) !important; border: 1px solid var(--rpg-ctl-line) !important; color: #94a3b8 !important;
+}
+html.rp-glass body #rp-desp-ov :is(#rp-d-tiendas,#rp-d-logi) > button:hover,
+html.rp-glass body #rp-dseg-tienda > button:hover{
+  color: #e2e8f0 !important; border-color: var(--rpg-ctl-line-hi) !important;
+}
+html.rp-glass body #rp-desp-ov :is(#rp-d-tiendas,#rp-d-logi) > button:is([style*="background:#16233a"],[style*="background: rgb(22, 35, 58)"],[style*="background-color: rgb(22, 35, 58)"]),
+html.rp-glass body #rp-dseg-tienda > button:is([style*="background:#16233a"],[style*="background: rgb(22, 35, 58)"],[style*="background-color: rgb(22, 35, 58)"]){
+  background: var(--rpg-acc) !important; border-color: var(--rpg-acc) !important; color: #fff !important;
+  box-shadow: 0 6px 16px -6px rgba(59,130,246,.7);
+}
+
+/* --- tabla de pedidos: panel de vidrio (bloque 3) con radio 20 y aire interno --- */
+html.rp-glass body #rp-desp-ov div[style*="background:#0e1521"][style*="overflow:hidden"]{
+  border-radius: 20px !important;
+}
+html.rp-glass body #rp-desp-ov div[style*="background:#0e1521"][style*="overflow:hidden"] > div[style*="overflow-x:auto"]{
+  padding: 4px 8px;
+}
+/* separate + spacing 0: deja redondear la fila al pasar el mouse (collapse lo impide) */
+html.rp-glass body #rp-desp-ov table{ border-collapse: separate !important; border-spacing: 0 !important; }
+html.rp-glass body #rp-desp-ov thead th{
+  color: #64748b !important; font-size: 11px !important; font-weight: 800 !important;
+  letter-spacing: .06em !important; border-bottom-color: var(--rpg-ctl-line) !important;
+  padding-top: 13px !important; padding-bottom: 13px !important;
+}
+/* la fila trae onmouseover que le pone background inline: se anula y el hover lo pinta la celda */
+html.rp-glass body #rp-d-body > tr{ background: transparent !important; }
+html.rp-glass body #rp-d-body > tr > td{ border-bottom-color: var(--rpg-ctl-line) !important; }
+html.rp-glass body #rp-d-body > tr:last-child > td{ border-bottom-color: transparent !important; }
+html.rp-glass body #rp-d-body > tr:hover > td{
+  background-color: var(--rpg-row-hover); border-bottom-color: transparent !important;
+}
+html.rp-glass body #rp-d-body > tr:hover > td:first-child{ border-radius: 12px 0 0 12px; }
+html.rp-glass body #rp-d-body > tr:hover > td:last-child{ border-radius: 0 12px 12px 0; }
+/* fila tildada: un velo azul muy suave (solo lectura del :checked, no cambia nada) */
+html.rp-glass body #rp-d-body > tr:has(.rp-d-chk:checked) > td{ background-color: rgba(59,130,246,.07); }
+/* pie de la tabla */
+html.rp-glass body #rp-desp-ov div[style*="border-top:1px solid #1a2333"]{ border-top-color: var(--rpg-ctl-line) !important; }
+
+/* --- chips de la tabla (innerHTML, el texto/emoji no se toca) --- */
+html.rp-glass body #rp-d-body span:is([style*="background:#0e1d33"],[style*="background:#0e2a1c"],[style*="background:#0a2434"],[style*="background:#1c1636"]){
+  border-radius: 6px !important; border-color: transparent !important;
+  font-size: 12px !important; font-weight: 700 !important; padding: 3px 9px !important;
+}
+html.rp-glass body #rp-d-body span[style*="background:#0e1d33"]{ background: rgba(34,211,238,.12) !important; color: #67e8f9 !important; }   /* 🏤 Sucursal */
+html.rp-glass body #rp-d-body span[style*="background:#0e2a1c"]{ background: rgba(251,191,36,.12) !important; color: #fcd34d !important; }   /* 🏠 Domicilio */
+html.rp-glass body #rp-d-body span[style*="background:#0a2434"]{ background: rgba(56,189,248,.12) !important; color: #7dd3fc !important; font-size: 11px !important; }  /* exportada */
+html.rp-glass body #rp-d-body span[style*="background:#1c1636"][style*="color:#a78bfa"]{ background: rgba(167,139,250,.14) !important; color: #c4b5fd !important; font-size: 11px !important; } /* enviada */
+html.rp-glass body #rp-d-body span[style*="background:#1c1636"][style*="color:#c4b5fd"]{ background: rgba(192,132,252,.14) !important; color: #e9d5ff !important; font-size: 11px !important; } /* ⚡ Flex */
+
+/* --- "Costos reales de Envíalo" (details) --- */
+html.rp-glass body #rp-flexc-t{
+  background: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important;
+  border-radius: 10px !important; color: #e2e8f0 !important;
+}
+html.rp-glass body #rp-flexc-t:focus{ border-color: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18); }
+html.rp-glass body #rp-desp-ov button[onclick="rpFlexCostos()"]{
+  background: var(--rpg-blue) !important; border-radius: 10px !important; height: 38px; padding: 0 16px !important;
+  box-shadow: 0 8px 20px -10px rgba(59,130,246,.8);
+}
+html.rp-glass body #rp-desp-ov button[onclick="rpFlexCostos()"]:hover{ background: #1d4ed8 !important; }
+
+/* --- botón X de cerrar (todas las secciones con X inline) --- */
+html.rp-glass body :is(#rp-integ-ov,#rp-prod-ov,#rp-comis-ov,#rp-desp-ov) button[title="Cerrar"],
+html.rp-glass body #rp-ads-ov button[onclick="rpAds(false)"]{
+  background: rgba(255,255,255,.04) !important; border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 10px !important; color: #cbd5e1 !important;
+}
+html.rp-glass body :is(#rp-integ-ov,#rp-prod-ov,#rp-comis-ov,#rp-desp-ov) button[title="Cerrar"]:hover,
+html.rp-glass body #rp-ads-ov button[onclick="rpAds(false)"]:hover{
+  background: rgba(255,255,255,.09) !important; color: #fff !important;
+}
+
+/* ---------------------------------------------------------------------------
+   6.2 MODALES DE DESPACHOS (#rp-d-skuov · #rp-d-partov · #rp-d-xlsov · #rp-d-segov)
+   ------------------------------------------------------------------------- */
+/* X de cerrar */
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) button[style*="background:#111c2b"]{
+  width: 34px !important; height: 34px !important;
+  background: rgba(255,255,255,.04) !important; border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 10px !important; color: #cbd5e1 !important;
+}
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) button[style*="background:#111c2b"]:hover{ background: rgba(255,255,255,.09) !important; color: #fff !important; }
+/* ícono del encabezado: tinte del color de cada modal */
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) div[style*="width:40px;height:40px"]{
+  width: 44px !important; height: 44px !important; border-radius: 13px !important;
+}
+html.rp-glass body #rp-d-skuov div[style*="width:40px;height:40px"]{ background: rgba(99,102,241,.15) !important; border-color: rgba(129,140,248,.33) !important; }
+html.rp-glass body #rp-d-partov div[style*="width:40px;height:40px"]{ background: rgba(16,185,129,.15) !important; border-color: rgba(52,211,153,.33) !important; }
+html.rp-glass body #rp-d-xlsov div[style*="width:40px;height:40px"]{ background: rgba(245,158,11,.15) !important; border-color: rgba(251,191,36,.33) !important; }
+html.rp-glass body #rp-d-segov div[style*="width:40px;height:40px"]{ background: rgba(225,29,72,.15) !important; border-color: rgba(251,113,133,.33) !important; }
+/* zona de "arrastrá el PDF" (el hover ya está en el bloque 4) */
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) label[style*="dashed"]{
+  border: 1.5px dashed rgba(148,163,184,.35) !important;
+  background: rgba(255,255,255,.025) !important;
+  border-radius: 18px !important;
+}
+
+/* --- cajas de resultado/avisos (innerHTML) --- */
+/* neutras (mensajes, tabla de pedidos leídos, bitácora) — no la pista de la barra */
+html.rp-glass body :is(#rp-d-skures,#rp-d-partres,#rp-d-xlsres,#rp-d-segres) div:is([style*="background:#0b1220"],[style*="background:#0b111c"]):not([style^="height:"]){
+  background: rgba(255,255,255,.035) !important; border-color: rgba(255,255,255,.08) !important;
+  border-radius: 14px !important;
+}
+/* éxito / error / info */
+html.rp-glass body :is(#rp-d-skures,#rp-d-partres,#rp-d-xlsres,#rp-d-segres) div:is([style*="background:#0e2a1c"],[style*="background:#0d2018"]){
+  background: rgba(16,185,129,.10) !important; border-color: rgba(52,211,153,.28) !important; border-radius: 14px !important;
+}
+html.rp-glass body :is(#rp-d-skures,#rp-d-partres,#rp-d-xlsres,#rp-d-segres) div:is([style*="background:#2a0f14"],[style*="background:#2a0e12"]){
+  background: rgba(244,63,94,.10) !important; border-color: rgba(251,113,133,.30) !important; border-radius: 14px !important;
+}
+html.rp-glass body #rp-d-segres div[style*="background:#14213a"]{
+  background: rgba(59,130,246,.10) !important; border-color: rgba(96,165,250,.28) !important; border-radius: 14px !important;
+}
+/* barra de progreso (rpDBarra): pista fina, sin borde */
+html.rp-glass body :is(#rp-d-skures,#rp-d-segres) div[style^="height:12px;background:#0b1220"]{
+  height: 8px !important; background: rgba(255,255,255,.07) !important;
+  border-color: transparent !important; border-radius: 99px !important;
+}
+html.rp-glass body :is(#rp-d-skures,#rp-d-segres) div[style*="linear-gradient(90deg,#7c3aed,#a78bfa)"]{ border-radius: 99px !important; }
+/* separadores internos */
+html.rp-glass body #rp-d-segres div[style*="border-bottom:1px solid #1a2333"]{ border-bottom-color: rgba(255,255,255,.07) !important; }
+html.rp-glass body #rp-d-segres div[style*="border-top:1px solid #1a2333"]{ border-top-color: rgba(255,255,255,.07) !important; }
+html.rp-glass body #rp-d-partres div[style*="border-top:1px solid #1b2537"]{ border-top-color: rgba(255,255,255,.07) !important; }
+
+/* --- tabla de pedidos leídos (seguimiento) --- */
+html.rp-glass body #rp-d-segres th{
+  font-size: 11px !important; font-weight: 800 !important; letter-spacing: .06em !important;
+}
+html.rp-glass body #rp-d-segres th[style*="color:#5b6b82"]{ color: #64748b !important; }
+html.rp-glass body #rp-d-segres td{ border-top-color: var(--rpg-ctl-line) !important; }
+html.rp-glass body #rp-d-segres tbody tr:hover > td{ background-color: var(--rpg-row-hover); }
+
+/* --- botones del seguimiento (innerHTML) --- */
+html.rp-glass body #rp-d-segres button:is([style*="linear-gradient(160deg,#1f8f4e"],[style*="linear-gradient(160deg,#2563a8"],[style*="background:#3a2d0e"],[style*="background:#232d3d"],[style*="background:#2a0f2e"],[style*="background:#16233a"]){
+  min-height: 38px; padding: 0 14px !important; border-radius: 10px !important;
+  font-size: 12.5px !important; font-weight: 700 !important;
+}
+html.rp-glass body #rp-d-segres button[style*="linear-gradient(160deg,#1f8f4e"]{      /* 🟢 Enviar por WPP */
+  background: rgba(34,197,94,.16) !important; border: 1px solid rgba(74,222,128,.35) !important; color: #bbf7d0 !important;
+}
+html.rp-glass body #rp-d-segres button[style*="linear-gradient(160deg,#1f8f4e"]:hover{ background: rgba(34,197,94,.27) !important; }
+html.rp-glass body #rp-d-segres button[style*="linear-gradient(160deg,#2563a8"]{      /* Enviar por Shopify/TN */
+  background: rgba(59,130,246,.16) !important; border: 1px solid rgba(96,165,250,.35) !important; color: #bfdbfe !important;
+}
+html.rp-glass body #rp-d-segres button[style*="linear-gradient(160deg,#2563a8"]:hover{ background: rgba(59,130,246,.27) !important; }
+html.rp-glass body #rp-d-segres button[style*="background:#3a2d0e"]{                  /* 🧪 Probar 1 · 🔁 Retomar */
+  background: rgba(245,158,11,.14) !important; border: 1px solid rgba(251,191,36,.33) !important; color: #fde68a !important;
+}
+html.rp-glass body #rp-d-segres button[style*="background:#3a2d0e"]:hover{ background: rgba(245,158,11,.25) !important; }
+html.rp-glass body #rp-d-segres button[style*="background:#232d3d"]{                  /* ⚪ Enviar en Todos = principal */
+  background: #e11d48 !important; border: 1px solid #e11d48 !important; color: #fff !important; font-weight: 800 !important;
+  box-shadow: 0 10px 26px -10px rgba(225,29,72,.75), inset 0 1px 0 rgba(255,255,255,.18);
+}
+html.rp-glass body #rp-d-segres button[style*="background:#232d3d"]:hover{ box-shadow: 0 14px 32px -10px rgba(225,29,72,.95), inset 0 1px 0 rgba(255,255,255,.24); }
+html.rp-glass body #rp-d-segres button[style*="background:#2a0f2e"]{                  /* 🔁 Reenviar TODOS por WPP */
+  background: rgba(217,70,239,.13) !important; border: 1px solid rgba(232,121,249,.32) !important; color: #f5d0fe !important;
+}
+html.rp-glass body #rp-d-segres button[style*="background:#2a0f2e"]:hover{ background: rgba(217,70,239,.24) !important; }
+html.rp-glass body #rp-d-segres button[style*="background:#16233a"]{                  /* Seguir mirando */
+  background: rgba(59,130,246,.16) !important; border: 1px solid rgba(96,165,250,.35) !important; color: #bfdbfe !important;
+}
+
+/* --- Separar / unir: opciones (elegida = background #0d1f1b que pone rpDPartElegir) --- */
+html.rp-glass body #rp-d-partmodo > button{ border-radius: 16px !important; }
+html.rp-glass body #rp-d-partmodo > button:is([style*="background:#0b1220"],[style*="background: rgb(11, 18, 32)"],[style*="background-color: rgb(11, 18, 32)"]){
+  border-color: rgba(255,255,255,.09) !important;
+}
+html.rp-glass body #rp-d-partmodo > button:is([style*="background:#0b1220"],[style*="background: rgb(11, 18, 32)"],[style*="background-color: rgb(11, 18, 32)"]):hover{
+  background-color: rgba(255,255,255,.05) !important; border-color: rgba(255,255,255,.16) !important;
+}
+html.rp-glass body #rp-d-partmodo > button:is([style*="background:#0d1f1b"],[style*="background: rgb(13, 31, 27)"],[style*="background-color: rgb(13, 31, 27)"]){
+  background: rgba(16,185,129,.12) !important; border-color: rgba(52,211,153,.55) !important;
+  box-shadow: 0 0 0 3px rgba(52,211,153,.12);
+}
+/* inputs numéricos del resultado */
+html.rp-glass body #rp-d-partres input{
+  background: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important;
+  border-radius: 10px !important; color: #e2e8f0 !important;
+}
+html.rp-glass body #rp-d-partres input:focus{ outline: none; border-color: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18); }
+/* botones del resultado (rpDPartBajar les toca pointer-events => cubrir rgb) */
+html.rp-glass body #rp-d-partres button{ border-radius: 10px !important; }
+html.rp-glass body #rp-d-partres button[style*="linear-gradient(160deg,#1d5f52"]{     /* Separar por tipo */
+  background: rgba(16,185,129,.16) !important; border: 1px solid rgba(52,211,153,.35) !important; color: #a7f3d0 !important;
+}
+html.rp-glass body #rp-d-partres button:is([style*="background:#14532d"],[style*="background: rgb(20, 83, 45)"],[style*="background-color: rgb(20, 83, 45)"]){   /* ⬇ Bajar */
+  background: rgba(16,185,129,.22) !important; border: 1px solid rgba(52,211,153,.45) !important; color: #d1fae5 !important;
+}
+html.rp-glass body #rp-d-partres button:is([style*="background:#1f2937"],[style*="background: rgb(31, 41, 55)"],[style*="background-color: rgb(31, 41, 55)"]){   /* secundarios */
+  background: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important; color: #cbd5e1 !important;
+}
+html.rp-glass body #rp-d-partres button:hover{ filter: brightness(1.15); }
+/* Partir Excel: links de las partes */
+html.rp-glass body #rp-d-xlsres a[style*="background:#111c2b"]{
+  background: rgba(255,255,255,.04) !important; border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 10px !important;
+}
+html.rp-glass body #rp-d-xlsres a[style*="background:#111c2b"]:hover{
+  background: rgba(59,130,246,.10) !important; border-color: rgba(96,165,250,.35) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   6.3 PRODUCTOS / COSTOS DE PRODUCTOS (#rp-prod-ov)
+   ------------------------------------------------------------------------- */
+html.rp-glass body #rp-prod-ov div[style*="border-bottom:1px solid #1a2636"]{ border-bottom-color: var(--rpg-ctl-line) !important; }
+html.rp-glass body #rp-prod-ref{
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border-radius: 10px; background: var(--rpg-ctl); border: 1px solid var(--rpg-ctl-line);
+  color: #cbd5e1 !important; font-weight: 700; font-size: 12.5px !important;
+}
+html.rp-glass body #rp-prod-ref:hover{ background: var(--rpg-ctl-hi); border-color: var(--rpg-ctl-line-hi); color: #fff !important; }
+/* chip de la tienda */
+html.rp-glass body #rp-prod-chip > span{
+  background: var(--rpg-ctl) !important; border-color: var(--rpg-ctl-line) !important; border-radius: 10px !important;
+}
+html.rp-glass body #rp-prod-chip span[style*="background:#152238"]{
+  background: rgba(59,130,246,.16) !important; border-color: transparent !important; color: #bfdbfe !important; border-radius: 6px !important;
+}
+/* aviso "productos sin costo" */
+html.rp-glass body #rp-prod-warn > div{
+  background: rgba(251,191,36,.08) !important; border-color: rgba(251,191,36,.28) !important; border-radius: 14px !important;
+}
+/* tabla */
+html.rp-glass body #rp-prod-body table{ border-collapse: separate !important; border-spacing: 0 !important; }
+html.rp-glass body #rp-prod-body thead th{
+  color: #64748b !important; font-size: 11px !important; font-weight: 800 !important;
+  text-transform: uppercase; letter-spacing: .06em !important; border-bottom-color: var(--rpg-ctl-line) !important;
+}
+html.rp-glass body #rp-prod-body tbody td{ border-bottom-color: var(--rpg-ctl-line) !important; }
+html.rp-glass body #rp-prod-body tbody tr:last-child > td{ border-bottom-color: transparent !important; }
+html.rp-glass body #rp-prod-body tbody tr:hover > td{ background-color: var(--rpg-row-hover); border-bottom-color: transparent !important; }
+html.rp-glass body #rp-prod-body tbody tr:hover > td:first-child{ border-radius: 12px 0 0 12px; }
+html.rp-glass body #rp-prod-body tbody tr:hover > td:last-child{ border-radius: 0 12px 12px 0; }
+/* miniatura (el bloque 3 la teñía de azul por compartir color con el ícono del encabezado) */
+html.rp-glass body #rp-prod-body div[style*="background:#101c2e"]{
+  background: rgba(255,255,255,.04) !important; border-color: rgba(255,255,255,.07) !important; border-radius: 10px !important;
+}
+/* badges Cargado / Sin costo (clase la pone el JS en cada cambio) */
+html.rp-glass body #rp-prod-body .rp-badge{
+  border-radius: 6px !important; border-color: transparent !important;
+  font-size: 11.5px !important; font-weight: 700 !important; padding: 3px 9px !important;
+}
+html.rp-glass body #rp-prod-body .rp-badge.rp-concosto{ background: rgba(52,211,153,.12) !important; color: #6ee7b7 !important; }
+html.rp-glass body #rp-prod-body .rp-badge.rp-sincosto{ background: rgba(251,191,36,.12) !important; color: #fcd34d !important; }
+/* inputs y selects de costo / SKU (opacity/disabled los maneja el JS: no se tocan) */
+html.rp-glass body #rp-prod-body :is(input,select){
+  background-color: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important;
+  border-radius: 10px !important; color: #e2e8f0 !important;
+}
+html.rp-glass body #rp-prod-body :is(input,select):hover{ border-color: var(--rpg-ctl-line-hi) !important; }
+html.rp-glass body #rp-prod-body :is(input,select):focus{
+  outline: none; border-color: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+
+/* ---------------------------------------------------------------------------
+   6.4 COMISIONES / COSTOS (#rp-comis-ov) — tarjetas como el prototipo:
+       ícono con tinte (color 13% / borde 27%), etiqueta con tinte, inputs de vidrio
+   ------------------------------------------------------------------------- */
+html.rp-glass body #rp-comis-ov div[style*="width:44px;height:44px"]{ border-radius: 12px !important; }
+html.rp-glass body #rp-comis-ov div[style*="width:44px;height:44px"]:is([style*="background:#0d1b30"],[style*="background:#10233a"]){
+  background: rgba(59,130,246,.13) !important; border-color: rgba(96,165,250,.27) !important;
+}
+html.rp-glass body #rp-comis-ov div[style*="width:44px;height:44px"][style*="background:#0e2a1c"]{
+  background: rgba(52,211,153,.13) !important; border-color: rgba(52,211,153,.27) !important;
+}
+html.rp-glass body #rp-comis-ov div[style*="width:44px;height:44px"][style*="background:#1a1533"]{
+  background: rgba(167,139,250,.13) !important; border-color: rgba(167,139,250,.27) !important;
+}
+html.rp-glass body #rp-comis-ov div[style*="width:44px;height:44px"][style*="background:#2a2208"]{
+  background: rgba(251,191,36,.13) !important; border-color: rgba(251,191,36,.27) !important;
+}
+/* etiqueta COBROS */
+html.rp-glass body #rp-comis-ov span[style*="background:#0d1b30"]{
+  background: rgba(96,165,250,.12) !important; border-color: transparent !important; color: #93c5fd !important;
+  border-radius: 8px !important; padding: 3px 10px !important;
+}
+/* campos con "%" (los fijos traen opacity .65 del JS: se respeta) */
+html.rp-glass body #rp-comis-ov div[style*="background:#0b1220"][style*="inline-flex"]{
+  background: var(--rpg-ctl) !important; border-color: var(--rpg-ctl-line) !important; border-radius: 10px !important;
+}
+html.rp-glass body #rp-comis-ov div[style*="background:#0b1220"][style*="inline-flex"]:focus-within{
+  border-color: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+html.rp-glass body #rp-comis-ov span[style*="border-right:1px solid #1e2b3d"]{ border-right-color: var(--rpg-ctl-line) !important; }
+/* tabla de zonas (grid de divs) */
+html.rp-glass body #rp-comis-ov div[style*="background:#0b1220"][style*="overflow:hidden"]:not([style*="inline-flex"]){
+  background: rgba(255,255,255,.02) !important; border-color: var(--rpg-ctl-line) !important;
+  border-radius: 12px !important; padding: 4px;
+}
+html.rp-glass body #rp-comis-ov div[style*="background:#0e1a2b"]{
+  background: rgba(59,130,246,.08) !important; color: #93c5fd !important; border-radius: 8px;
+  font-size: 11px; font-weight: 800 !important; letter-spacing: .06em; text-transform: uppercase;
+}
+html.rp-glass body #rp-comis-ov div[style*="border-top:1px solid #16202e"]{ border-top-color: var(--rpg-ctl-line) !important; border-radius: 0; }
+html.rp-glass body #rp-comis-ov div[style*="border-top:1px solid #16202e"]:hover{ background: var(--rpg-row-hover); border-radius: 8px; }
+/* interruptor Responsable Inscripto: el estado sale del :checked, no del color inline */
+html.rp-glass body #rp-c-ri:checked + #rp-c-ri-s{
+  background: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+html.rp-glass body #rp-c-ri:not(:checked) + #rp-c-ri-s{ background: rgba(148,163,184,.28) !important; }
+html.rp-glass body #rp-c-ri:focus-visible + #rp-c-ri-s{ outline: 2px solid rgba(59,130,246,.6); outline-offset: 2px; }
+/* Guardar */
+html.rp-glass body #rp-c-go{
+  border-radius: 10px !important; height: 40px; padding: 0 24px !important;
+  box-shadow: 0 10px 24px -10px rgba(37,99,235,.8);
+}
+html.rp-glass body #rp-c-go:hover{ background: #1d4ed8 !important; }
+
+/* ---------------------------------------------------------------------------
+   6.5 INTEGRACIONES (#rp-integ-ov) — tarjetas y paneles (innerHTML de cards())
+   ------------------------------------------------------------------------- */
+html.rp-glass body #rp-integ-cards div[style*="background:#131c2b"]{          /* logo */
+  background: rgba(255,255,255,.05) !important; border: 1px solid rgba(255,255,255,.07); border-radius: 12px !important;
+}
+html.rp-glass body #rp-integ-cards span[style*="background:#111c2b"]{         /* etiqueta Pagos/Ventas/... */
+  background: rgba(255,255,255,.05) !important; border-color: var(--rpg-ctl-line) !important; border-radius: 6px !important;
+}
+/* estados */
+html.rp-glass body #rp-integ-cards span:is([style*="background:#0e2a1c"],[style*="background:#141d2c"],[style*="background:#241a10"]){ border-radius: 8px !important; }
+html.rp-glass body #rp-integ-cards span[style*="background:#0e2a1c"]{ background: rgba(52,211,153,.12) !important; border-color: rgba(52,211,153,.28) !important; color: #6ee7b7 !important; }
+html.rp-glass body #rp-integ-cards span[style*="background:#141d2c"]{ background: rgba(148,163,184,.10) !important; border-color: rgba(148,163,184,.20) !important; }
+html.rp-glass body #rp-integ-cards span[style*="background:#241a10"]{ background: rgba(251,191,36,.12) !important; border-color: rgba(251,191,36,.28) !important; color: #fcd34d !important; }
+/* botones/links */
+html.rp-glass body #rp-integ-cards :is(a,button)[style*="background:#137fec"]{
+  background: var(--rpg-blue) !important;
+  box-shadow: 0 8px 20px -10px rgba(59,130,246,.85);
+}
+html.rp-glass body #rp-integ-cards :is(a,button)[style*="background:#137fec"]:not([style*="position:absolute"]){ border-radius: 10px !important; }
+html.rp-glass body #rp-integ-cards :is(a,button)[style*="background:#137fec"]:hover{ background: #1d4ed8 !important; }
+html.rp-glass body #rp-integ-cards :is(a,button)[style*="background:#111c2b"]{
+  background: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important;
+  border-radius: 10px !important; color: #cbd5e1 !important;
+}
+html.rp-glass body #rp-integ-cards :is(a,button)[style*="background:#111c2b"]:hover{
+  background: var(--rpg-ctl-hi) !important; border-color: var(--rpg-ctl-line-hi) !important; color: #fff !important;
+}
+html.rp-glass body #rp-integ-cards a[style*="background:#0d1b30"]{
+  background: rgba(59,130,246,.14) !important; border-color: rgba(96,165,250,.33) !important;
+  color: #bfdbfe !important; border-radius: 10px !important;
+}
+/* paneles desplegables (Shopify/Meta/TN/Envialo/TikTok) */
+html.rp-glass body #rp-integ-cards div[style*="background:#0c1521"]{
+  background: rgba(255,255,255,.02) !important; border-top-color: var(--rpg-ctl-line) !important;
+}
+html.rp-glass body #rp-integ-cards :is(input,select,textarea)[style*="background:#0b1220"]{
+  background: var(--rpg-ctl) !important; border: 1px solid var(--rpg-ctl-line) !important; border-radius: 10px !important;
+}
+html.rp-glass body #rp-integ-cards :is(input,select,textarea)[style*="background:#0b1220"]:focus{
+  outline: none; border-color: var(--rpg-acc) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+
+/* ---------------------------------------------------------------------------
+   6.6 FACTURACIÓN (#rp-fact-ov) y MOVIMIENTOS (#rp-mov-ov) — clases propias;
+       el activo es la clase .on (rpFFilt / rpMovF / rpMovT / rpMovS / pager)
+   ------------------------------------------------------------------------- */
+/* pills de filtro: tipo segmento, activo azul */
+html.rp-glass body #rp-fact-ov .pill,
+html.rp-glass body #rp-mov-ov .mpill{
+  height: 34px; padding: 0 13px; border-radius: 9px;
+  background: rgba(11,17,30,.5); border: 1px solid var(--rpg-ctl-line); color: #94a3b8;
+  font-size: 12.5px; font-weight: 700;
+}
+html.rp-glass body #rp-fact-ov .pill:not(.on):hover,
+html.rp-glass body #rp-mov-ov .mpill:not(.on):hover{ color: #e2e8f0; border-color: var(--rpg-ctl-line-hi); }
+html.rp-glass body #rp-fact-ov .pill.on,
+html.rp-glass body #rp-mov-ov .mpill.on{
+  background: var(--rpg-acc); border-color: var(--rpg-acc); color: #fff;
+  box-shadow: 0 6px 16px -6px rgba(59,130,246,.7);
+}
+html.rp-glass body #rp-fact-ov .pill.on .d{ box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
+/* opciones del modal (Tipo de movimiento / Socio) */
+html.rp-glass body #rp-mov-ov .seg .s{
+  background: var(--rpg-ctl); border-color: var(--rpg-ctl-line); color: #aeb8c6; border-radius: 10px;
+}
+html.rp-glass body #rp-mov-ov .seg .s:not(.on):hover{ border-color: var(--rpg-ctl-line-hi); color: #e2e8f0; }
+html.rp-glass body #rp-mov-ov .seg .s.on{ background: var(--rpg-acc); border-color: var(--rpg-acc); color: #fff; }
+/* botones */
+html.rp-glass body #rp-fact-ov .btn{ border-radius: 10px; }
+html.rp-glass body #rp-fact-ov .btn-ghost{ background: var(--rpg-ctl); border-color: var(--rpg-ctl-line); color: #cbd5e1; }
+html.rp-glass body #rp-fact-ov .btn-ghost:hover{ background: var(--rpg-ctl-hi); border-color: var(--rpg-ctl-line-hi); color: #fff; }
+html.rp-glass body #rp-fact-ov .btn-green{ background: rgba(16,185,129,.16); border-color: rgba(52,211,153,.35); color: #a7f3d0; }
+html.rp-glass body #rp-fact-ov .btn-green:hover{ background: rgba(16,185,129,.27); }
+html.rp-glass body #rp-mov-ov .mbtn{ border-radius: 10px; box-shadow: 0 10px 24px -10px rgba(37,99,235,.8); }
+html.rp-glass body :is(#rp-fact-ov .x, #rp-mov-ov .mv-x){
+  background-color: rgba(255,255,255,.04) !important; border-color: rgba(255,255,255,.08); border-radius: 10px;
+}
+html.rp-glass body :is(#rp-fact-ov .x, #rp-mov-ov .mv-x):hover{ background-color: rgba(255,255,255,.09) !important; color: #fff; }
+html.rp-glass body :is(#rp-fact-ov .rangebox, #rp-fact-ov .emitbox, #rp-fact-ov .chip, #rp-mov-ov .mv-chip){
+  border-color: var(--rpg-ctl-line); border-radius: 10px;
+}
+html.rp-glass body #rp-mov-ov .mv-chip[style*="border-color"]{ border-color: rgba(52,211,153,.35) !important; } /* "Editar total de caja" conserva su verde */
+html.rp-glass body :is(#rp-fact-ov .rangebox, #rp-fact-ov .emitbox):focus-within{
+  border-color: var(--rpg-acc); box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+/* inputs */
+html.rp-glass body :is(#rp-fact-ov .lk-in, #rp-fact-ov .ac-sel, #rp-mov-ov .lk-in){
+  background: var(--rpg-ctl); border: 1px solid var(--rpg-ctl-line); border-radius: 10px; color: #e2e8f0;
+}
+html.rp-glass body :is(#rp-fact-ov .lk-in, #rp-fact-ov .ac-sel, #rp-mov-ov .lk-in):focus{
+  border-color: var(--rpg-acc); box-shadow: 0 0 0 3px rgba(59,130,246,.18); outline: none;
+}
+html.rp-glass body #rp-fact-ov .switch input:checked + .slider{ background: var(--rpg-acc); }
+/* tablas */
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) table{ border-collapse: separate; border-spacing: 0; }
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) thead th{
+  color: #64748b; font-size: 11px; letter-spacing: .06em; border-bottom-color: var(--rpg-ctl-line);
+}
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) tbody td{ border-bottom-color: var(--rpg-ctl-line); }
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) tbody tr:hover{ background: transparent; }
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) tbody tr:hover > td{ background-color: var(--rpg-row-hover); }
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) .tcard{ border-radius: 20px; }
+html.rp-glass body :is(#rp-fact-ov, #rp-mov-ov) :is(.foot){ border-color: var(--rpg-ctl-line); }
+/* casilla de Facturación (span .chk / .chk.on): 20px, radio 6, ✓ blanco */
+html.rp-glass body #rp-fact-ov .chk{
+  width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid rgba(148,163,184,.45);
+  background: transparent no-repeat center / 12px 12px; position: relative;
+}
+html.rp-glass body #rp-fact-ov .chk:hover:not(.on){ border-color: rgba(148,163,184,.8); }
+html.rp-glass body #rp-fact-ov .chk.on{
+  background-color: var(--rpg-acc) !important; border-color: var(--rpg-acc) !important;
+  background-image: var(--rpg-check);
+}
+html.rp-glass body #rp-fact-ov .chk.on::after{ content: none; }
+/* chips de estado */
+html.rp-glass body :is(#rp-fact-ov .est, #rp-mov-ov .tag){ border-radius: 6px; border-color: transparent; }
+html.rp-glass body #rp-fact-ov .e-ok, html.rp-glass body #rp-mov-ov .t-in{ background: rgba(52,211,153,.12); color: #6ee7b7; }
+html.rp-glass body #rp-fact-ov .e-pd{ background: rgba(251,191,36,.12); color: #fcd34d; }
+html.rp-glass body #rp-mov-ov .t-eg{ background: rgba(248,113,113,.12); color: #fca5a5; }
+/* paginador */
+html.rp-glass body #rp-fact-ov .pbtn{ border-radius: 9px; background: var(--rpg-ctl); border-color: var(--rpg-ctl-line); }
+html.rp-glass body #rp-fact-ov .pbtn.on{ background-color: var(--rpg-acc) !important; border-color: var(--rpg-acc) !important; }
+/* cajitas internas de los socios */
+html.rp-glass body #rp-mov-ov .socio .box{ background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.07); }
+
+/* ---------------------------------------------------------------------------
+   6.7 SUBIR ADS (#rp-ads-ov) — clases propias (.seg .s.on, .in, .tk.on)
+   ------------------------------------------------------------------------- */
+html.rp-glass body #rp-ads-ov .in{
+  background: var(--rpg-ctl); border-color: var(--rpg-ctl-line); border-radius: 10px;
+}
+html.rp-glass body #rp-ads-ov .in:hover{ border-color: var(--rpg-ctl-line-hi); }
+html.rp-glass body #rp-ads-ov .in:focus{ border-color: var(--rpg-acc); box-shadow: 0 0 0 3px rgba(59,130,246,.18); }
+html.rp-glass body #rp-ads-ov .seg .s{ background: var(--rpg-ctl); border-color: var(--rpg-ctl-line); border-radius: 10px; }
+html.rp-glass body #rp-ads-ov .seg .s:not(.on):hover{ border-color: var(--rpg-ctl-line-hi); color: #e2e8f0; }
+html.rp-glass body #rp-ads-ov .seg .s.on{ background: var(--rpg-acc); border-color: var(--rpg-acc); color: #fff; }
+html.rp-glass body #rp-ads-ov .seg .s.on small{ color: rgba(255,255,255,.78); }
+html.rp-glass body #rp-ads-ov .cn{ background: rgba(59,130,246,.14); border-color: rgba(96,165,250,.33); color: #bfdbfe; border-radius: 8px; }
+html.rp-glass body #rp-ads-ov .step{ background: var(--rpg-ctl); border-color: var(--rpg-ctl-line); }
+html.rp-glass body #rp-ads-ov .step .b:hover{ color: #fff; background: rgba(255,255,255,.05); }
+html.rp-glass body #rp-ads-ov .vitem{ background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.07); }
+html.rp-glass body #rp-ads-ov div[style*="background:#0a1322"]{ background: rgba(255,255,255,.03) !important; border-color: var(--rpg-ctl-line) !important; }
+html.rp-glass body #rp-ads-ov #rpa-btnb{ background: var(--rpg-blue) !important; box-shadow: 0 8px 20px -10px rgba(59,130,246,.85); }
+html.rp-glass body #rp-ads-ov #rpa-btnb:hover{ background: #1d4ed8 !important; }
+html.rp-glass body #rp-ads-ov button[style*="background:#241a10"]{          /* Copiar mail */
+  background: rgba(245,158,11,.14) !important; border-color: rgba(251,191,36,.33) !important; color: #fde68a !important; border-radius: 10px !important;
+}
+html.rp-glass body #rp-ads-ov button[style*="background:#16233a"]{          /* + Agregar puja */
+  background: rgba(59,130,246,.14) !important; border-color: rgba(96,165,250,.33) !important; color: #bfdbfe !important; border-radius: 10px !important;
+}
+
+/* ---------------------------------------------------------------------------
+   6.8 STOCK (#rp-stock-ov) — clases propias (.chips button.on)
+   ------------------------------------------------------------------------- */
+html.rp-glass body #rp-stock-ov .chips{ background: rgba(11,17,30,.5); border-color: var(--rpg-ctl-line); border-radius: 10px; }
+html.rp-glass body #rp-stock-ov .chips button{ border-radius: 8px; color: #94a3b8; }
+html.rp-glass body #rp-stock-ov .chips button:not(.on):hover{ color: #e2e8f0; background: rgba(255,255,255,.05); }
+html.rp-glass body #rp-stock-ov .chips button.on{
+  background: var(--rpg-acc); color: #fff; box-shadow: 0 6px 16px -6px rgba(59,130,246,.7);
+}
+html.rp-glass body #rp-stock-ov .sku{ border-radius: 6px; background: rgba(255,255,255,.05); }
+html.rp-glass body #rp-stock-ov input.f:focus{ border-color: var(--rpg-acc); box-shadow: 0 0 0 3px rgba(59,130,246,.18); }
+html.rp-glass body #rp-stock-ov .btn-dep{ background: rgba(16,185,129,.14); border-color: rgba(52,211,153,.33); }
+html.rp-glass body #rp-stock-ov .btn-dep:hover{ background: rgba(16,185,129,.25); }
+html.rp-glass body #rp-stock-ov table tbody tr:hover > td{ background-color: var(--rpg-row-hover); }
+
+/* ---------------------------------------------------------------------------
+   6.9 Movimiento de los interiores (solo hover/transición; nada de entrada en filas)
+   ------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference){
+  html.rp-glass body #rp-desp-ov :is(label[style*="background:#0b111c"], #rp-d-sync,
+    button[onclick="rpDActSku()"], button[onclick="window.open('/flex','_blank')"],
+    button[onclick="rpDExcel()"], button[onclick="rpDOpenSku()"], button[onclick="rpDOpenPart()"],
+    button[onclick="rpDOpenXls()"], button[onclick="rpDOpenSeg()"], button[onclick="rpFlexCostos()"]),
+  html.rp-glass body #rp-d-segres button,
+  html.rp-glass body #rp-d-partres button,
+  html.rp-glass body #rp-integ-cards :is(a,button),
+  html.rp-glass body #rp-c-go,
+  html.rp-glass body #rp-prod-ref,
+  html.rp-glass body #rp-fact-ov :is(.btn,.pbtn),
+  html.rp-glass body #rp-mov-ov .mbtn,
+  html.rp-glass body #rp-ads-ov #rpa-btnb{
+    transition: background-color .2s ease, border-color .2s ease, color .2s ease, box-shadow .25s ease, transform .2s var(--rpg-ease), filter .2s ease;
+  }
+  html.rp-glass body #rp-desp-ov :is(label[style*="background:#0b111c"], #rp-d-sync,
+    button[onclick="rpDActSku()"], button[onclick="window.open('/flex','_blank')"],
+    button[onclick="rpDExcel()"], button[onclick="rpDOpenSku()"], button[onclick="rpDOpenPart()"],
+    button[onclick="rpDOpenXls()"], button[onclick="rpDOpenSeg()"]):hover{ transform: translateY(-1px); }
+  html.rp-glass body #rp-desp-ov :is(label[style*="background:#0b111c"], #rp-d-sync,
+    button[onclick="rpDActSku()"], button[onclick="window.open('/flex','_blank')"],
+    button[onclick="rpDExcel()"], button[onclick="rpDOpenSku()"], button[onclick="rpDOpenPart()"],
+    button[onclick="rpDOpenXls()"], button[onclick="rpDOpenSeg()"]):active{ transform: translateY(0) scale(.98); }
+
+  /* filtros / segmentos */
+  html.rp-glass body #rp-d-segs > .rp-seg,
+  html.rp-glass body #rp-desp-ov :is(#rp-d-tiendas,#rp-d-logi) > button,
+  html.rp-glass body #rp-dseg-tienda > button,
+  html.rp-glass body #rp-d-partmodo > button,
+  html.rp-glass body #rp-fact-ov .pill, html.rp-glass body #rp-mov-ov .mpill,
+  html.rp-glass body :is(#rp-mov-ov, #rp-ads-ov) .seg .s,
+  html.rp-glass body #rp-stock-ov .chips button{
+    transition: background-color .25s ease, color .25s ease, border-color .25s ease, box-shadow .25s ease;
+  }
+  /* casillas, inputs */
+  html.rp-glass body #rp-desp-ov input[type="checkbox"],
+  html.rp-glass body #rp-fact-ov .chk{ transition: background-color .15s ease, border-color .15s ease; }
+  html.rp-glass body #rp-desp-ov div[style*="background:#0b111c"]:not(#rp-d-segs),
+  html.rp-glass body :is(#rp-prod-body, #rp-d-partres) :is(input,select),
+  html.rp-glass body #rp-comis-ov div[style*="background:#0b1220"][style*="inline-flex"],
+  html.rp-glass body #rp-integ-cards :is(input,select,textarea),
+  html.rp-glass body #rp-flexc-t,
+  html.rp-glass body :is(#rp-fact-ov .lk-in, #rp-fact-ov .ac-sel, #rp-mov-ov .lk-in, #rp-ads-ov .in){
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  /* filas: solo el color del hover (las de Despachos se rehacen en cada tecla: sin entrada) */
+  html.rp-glass body :is(#rp-d-body, #rp-prod-body tbody, #rp-fact-ov tbody, #rp-mov-ov tbody, #rp-d-segres tbody) > tr > td,
+  html.rp-glass body #rp-comis-ov div[style*="border-top:1px solid #16202e"]{
+    transition: background-color .18s ease;
+  }
+  /* interruptor RI */
+  html.rp-glass body #rp-c-ri-s{ transition: background-color .2s ease, box-shadow .2s ease !important; }
+
+  /* brillo: pasa al botón principal del prototipo (Enviar seguimiento y, en el modal,
+     "Enviar en Todos"); el de Generar Excel (bloque 5) se apaga porque ahora es un tinte */
+  html.rp-glass body #rp-desp-ov button[onclick="rpDExcel()"]::after{ content: none !important; animation: none !important; }
+  html.rp-glass body :is(#rp-desp-ov button[onclick="rpDOpenSeg()"], #rp-d-segres button[style*="background:#232d3d"]){
+    position: relative; overflow: hidden; isolation: isolate;
+  }
+  html.rp-glass body :is(#rp-desp-ov button[onclick="rpDOpenSeg()"], #rp-d-segres button[style*="background:#232d3d"])::after{
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.32) 50%, rgba(255,255,255,0) 70%);
+    transform: translateX(-130%);
+    animation: rpg-shine 3.4s 1.2s ease-in-out infinite;
+  }
+}
