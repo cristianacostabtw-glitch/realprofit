@@ -1,0 +1,512 @@
+/* ============================================================================
+   RealProfit · tema "glass"  (rp_glass.css)
+   ----------------------------------------------------------------------------
+   - TODO va bajo html.rp-glass (la clase la pone rp_glass.js). Sin la clase,
+     esta hoja no hace nada => ?tema=clasico vuelve al de siempre al instante.
+   - Dashboard (pf.html): SOLO fondo / borde / radio / sombra / blur. Nada de
+     font-size, text-transform, color de valores, display, order ni clases:
+     cardByLabel / valueSlot / fillPanel / _rpFindVal eligen nodos por eso.
+   - Variables propias con prefijo --rpg- (las --rpbe/--rpcpa/--rpgan... son
+     de los overlays ::after del dashboard, no se tocan).
+   - Toda animación/transición vive dentro de
+     @media (prefers-reduced-motion: no-preference).
+   ========================================================================== */
+
+html.rp-glass{
+  --rpg-side: 216px;                                   /* ancho de la barra abierta */
+  --rpg-gap: 12px;                                     /* aire alrededor de la barra */
+  --rpg-ovl: calc(var(--rpg-side) + var(--rpg-gap) * 2);   /* donde arrancan las secciones */
+  --rpg-bg: #090b14;
+  --rpg-glass: rgba(11,17,30,.55);
+  --rpg-glass-hi: rgba(20,28,46,.72);
+  --rpg-glass-modal: rgba(13,20,36,.82);
+  --rpg-line: #18212f;
+  --rpg-line-soft: rgba(255,255,255,.07);
+  --rpg-blue: #2563eb;
+  --rpg-blue-2: #3b82f6;
+  --rpg-violet: #6d5dfc;
+  --rpg-ease: cubic-bezier(.2,.75,.2,1);
+  --rpg-bounce: cubic-bezier(.3,1.3,.4,1);
+  background: var(--rpg-bg) !important;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+   0. Fondo con manchas de luz (nodo #rpg-bg, lo crea el JS UNA sola vez)
+   ------------------------------------------------------------------------- */
+#rpg-bg{ display:none; }
+html.rp-glass body{ background: transparent !important; }
+html.rp-glass #rpg-bg{
+  display:block; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  overflow:hidden; contain:strict;
+}
+html.rp-glass #rpg-bg > i{
+  position:absolute; display:block; border-radius:50%;
+}
+html.rp-glass #rpg-bg > i:nth-child(1){
+  width:820px; height:820px; left:4%; top:-120px;
+  background: radial-gradient(closest-side, rgba(37,70,170,.50), rgba(37,70,170,0));
+}
+html.rp-glass #rpg-bg > i:nth-child(2){
+  width:680px; height:680px; right:-120px; top:32%;
+  background: radial-gradient(closest-side, rgba(88,48,170,.46), rgba(88,48,170,0));
+}
+html.rp-glass #rpg-bg > i:nth-child(3){
+  width:640px; height:640px; left:34%; bottom:-200px;
+  background: radial-gradient(closest-side, rgba(16,110,86,.38), rgba(16,110,86,0));
+}
+
+/* El contenedor del dashboard deja de ser opaco para que se vean las manchas */
+html.rp-glass body #root > div.flex{ background-color: transparent !important; }
+
+/* ---------------------------------------------------------------------------
+   1. Dashboard (pf.html) — solo vidrio. Paneles grandes + fila de arriba.
+      .rounded-2xl con border-white/[0.07] = 4 KPI de arriba + secciones.
+      Las tarjetas de la grilla (border-white/[0.08]) solo reciben borde/sombra.
+   ------------------------------------------------------------------------- */
+html.rp-glass body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"]{
+  background-image: linear-gradient(rgba(11,17,30,.46), rgba(11,17,30,.46)) !important;
+  border-color: rgba(148,163,184,.13) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 24px 60px -34px rgba(0,0,0,.65) !important;
+}
+/* el !important de arriba tapaba el hover:border-white/[0.12] de las 4 KPI: se devuelve */
+html.rp-glass body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"][class*="hover:border-white"]:hover{
+  border-color: rgba(148,163,184,.24) !important;
+}
+html.rp-glass body [data-view="dashboard"] section.rounded-2xl[class*="border-white/[0.07]"]{
+  border-radius: 20px !important;
+}
+html.rp-glass body [data-view="dashboard"] div.h-full.min-w-0 > div.rounded-2xl{
+  border-color: rgba(148,163,184,.12) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035) !important;
+}
+/* Tabla "Últimas ventas" propia de RealProfit (inline #0b111b) */
+html.rp-glass body #rp-ventas-panel{
+  background-color: var(--rpg-glass) !important;
+  border-color: var(--rpg-line) !important;
+  border-radius: 20px !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+/* Selector de fechas del dashboard (div sin id que crea metafy-datos-reales) */
+html.rp-glass body > div[style*="z-index: 2000000"]{
+  background-color: var(--rpg-glass-modal) !important;
+  border-color: rgba(255,255,255,.09) !important;
+  border-radius: 18px !important;
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  backdrop-filter: blur(26px) saturate(140%);
+}
+
+/* ---------------------------------------------------------------------------
+   2. Barra lateral
+      >= 768 px: vidrio.  >= 821 px: SIEMPRE ABIERTA (ícono + nombre) y
+      flotante. Entre 768 y 820 queda como estaba (colapsada + hover), porque
+      ahí la regla responsive de app.py pone left:0 a las secciones.
+   ------------------------------------------------------------------------- */
+@media (min-width: 768px){
+  html.rp-glass body aside[class*="group/sidebar"]{
+    background-color: rgba(11,17,30,.62) !important;
+    border-color: var(--rpg-line-soft) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
+    backdrop-filter: blur(24px) saturate(140%) !important;
+  }
+}
+
+@media (min-width: 821px){
+  /* espaciador que reserva el lugar de la barra: mismo ancho => el dashboard se corre solo */
+  html.rp-glass body #root > div > div[aria-hidden="true"][class*="flex-shrink-0"]{
+    width: var(--rpg-ovl) !important; min-width: var(--rpg-ovl) !important; flex: none !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"],
+  html.rp-glass body aside[class*="group/sidebar"]:hover{
+    width: var(--rpg-side) !important;
+    top: var(--rpg-gap) !important; left: var(--rpg-gap) !important; bottom: var(--rpg-gap) !important;
+    height: auto !important;
+    padding: 14px 10px 128px !important;           /* abajo: lugar para Integraciones + cuenta */
+    align-items: stretch !important;
+    border: 1px solid var(--rpg-line-soft) !important;
+    border-radius: 22px !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35) !important;
+  }
+  /* marca arriba (pseudo-elemento: strip() no lo ve ni lo oculta) */
+  html.rp-glass body aside[class*="group/sidebar"]::before{
+    content: "RealProfit";
+    display: flex; align-items: center; flex: none;
+    height: 34px; margin: 0 0 8px; padding: 0 8px 12px 50px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    font: 800 16px/1 Inter, system-ui, sans-serif; color: #e8edf4; letter-spacing: -.01em;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%232563eb'/%3E%3Cpath d='M9 21l5-6 4 4 6-8' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat 8px 1px / 32px 32px;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav{
+    position: relative; isolation: isolate;
+    gap: 4px !important; align-items: stretch !important;
+    padding: 2px 0 !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav > div{
+    width: 100% !important; justify-content: stretch !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav > div > a{
+    width: 100% !important; height: 40px !important;
+    justify-content: flex-start !important;
+    padding: 0 8px !important; gap: 10px !important;
+    border-radius: 12px !important;
+    color: #cbd5e1 !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav > div > a:hover{
+    background-color: rgba(255,255,255,.05) !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav > div > a.text-primary{
+    color: #fff !important;
+  }
+  /* con la marca deslizante activa, el ítem activo no pinta su fondo (lo pinta la marca) */
+  html.rp-glass body aside[class*="group/sidebar"] nav.rpg-ind-on > div > a.text-primary{
+    background-color: transparent !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav > div > a > .material-symbols-outlined{
+    width: 28px; height: 28px; flex: none;
+    display: inline-flex !important; align-items: center; justify-content: center;
+    border-radius: 8px;
+  }
+  /* nombre SIEMPRE visible (antes: max-width 0 + opacity 0 hasta el hover).
+     Sigue renderizado igual que antes (offsetParent no cambia). */
+  html.rp-glass body aside[class*="group/sidebar"] nav > div > a > span:not(.material-symbols-outlined){
+    max-width: 170px !important; opacity: 1 !important; overflow: hidden !important;
+    text-overflow: ellipsis; margin-left: 0 !important;
+    font-family: Inter, system-ui, sans-serif !important;
+    font-size: 13.5px !important; font-weight: 600 !important;
+    color: inherit !important;
+  }
+  /* marca azul del ítem activo: ::before del nav, movida con variables que pone el JS */
+  html.rp-glass body aside[class*="group/sidebar"] nav.rpg-ind-on::before{
+    content: ""; position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;
+    width: var(--rpg-ind-w, 100%); height: var(--rpg-ind-h, 40px);
+    transform: translate(var(--rpg-ind-x, 0px), var(--rpg-ind-y, 0px));
+    border-radius: 12px; background: var(--rpg-blue);
+    box-shadow: 0 8px 26px rgba(37,99,235,.45);
+    opacity: 1;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav.rpg-ind-on.rpg-ind-hide::before{ opacity: 0; }
+
+  /* pills de abajo (Integraciones + cuenta): dentro de la barra flotante */
+  html.rp-glass body aside[class*="group/sidebar"] .rp-pill{
+    left: 10px !important; right: 10px !important; width: auto !important;
+    height: 44px !important; border-radius: 12px;
+    font-family: Inter, system-ui, sans-serif !important;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] .rp-pill.rp-open{ padding-left: 4px !important; }
+  html.rp-glass body aside[class*="group/sidebar"] #rp-integ-btn{
+    box-shadow: 0 -10px 0 -9px rgba(255,255,255,.06);
+  }
+
+  /* las 10 secciones + el candado de Facturación arrancan donde termina la barra
+     (rpWa/rpMeli fuerzan left:72px inline al abrir: el !important de hoja le gana) */
+  html.rp-glass body #rp-integ-ov, html.rp-glass body #rp-prod-ov, html.rp-glass body #rp-comis-ov,
+  html.rp-glass body #rp-desp-ov, html.rp-glass body #rp-fact-ov, html.rp-glass body #rp-mov-ov,
+  html.rp-glass body #rp-stock-ov, html.rp-glass body #rp-ads-ov, html.rp-glass body #rp-wa-ov,
+  html.rp-glass body #rp-meli-ov, html.rp-glass body #rpf-lock{
+    left: var(--rpg-ovl) !important;
+  }
+}
+
+html.rp-glass body .rp-pill:hover{ background: rgba(255,255,255,.05); }
+html.rp-glass body .rp-pill .rp-ic{ border-radius: 10px; background: rgba(255,255,255,.06); }
+html.rp-glass body .rp-pill.rp-active .rp-ic{
+  background: var(--rpg-blue) !important; color: #fff;
+  box-shadow: 0 6px 20px rgba(37,99,235,.45);
+}
+
+/* ---------------------------------------------------------------------------
+   3. Secciones (overlays de app.py): fondo propio con manchas + vidrio
+      El fondo del overlay queda OPACO (#090b14) para no dejar ver el dashboard
+      de atrás; las manchas son ::before/::after fijos dentro del overlay.
+   ------------------------------------------------------------------------- */
+html.rp-glass body #rp-integ-ov, html.rp-glass body #rp-prod-ov, html.rp-glass body #rp-comis-ov,
+html.rp-glass body #rp-desp-ov, html.rp-glass body #rp-fact-ov, html.rp-glass body #rp-mov-ov,
+html.rp-glass body #rp-stock-ov, html.rp-glass body #rp-ads-ov{
+  background: var(--rpg-bg) !important;
+  font-family: Inter, system-ui, -apple-system, sans-serif !important;
+}
+html.rp-glass body #rp-integ-ov :is(button,input,select,textarea),
+html.rp-glass body #rp-prod-ov :is(button,input,select,textarea),
+html.rp-glass body #rp-comis-ov :is(button,input,select,textarea),
+html.rp-glass body #rp-desp-ov :is(button,select),
+html.rp-glass body #rp-fact-ov :is(button,select),
+html.rp-glass body #rp-mov-ov :is(button,select),
+html.rp-glass body #rp-ads-ov :is(button,select){
+  font-family: inherit;
+}
+html.rp-glass body #rp-integ-ov::before, html.rp-glass body #rp-prod-ov::before, html.rp-glass body #rp-comis-ov::before,
+html.rp-glass body #rp-desp-ov::before, html.rp-glass body #rp-fact-ov::before, html.rp-glass body #rp-mov-ov::before,
+html.rp-glass body #rp-stock-ov::before, html.rp-glass body #rp-ads-ov::before{
+  content: ""; position: fixed; inset: -12%; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(closest-side, rgba(37,70,170,.46), rgba(37,70,170,0)) 12% 8% / 820px 820px no-repeat,
+    radial-gradient(closest-side, rgba(16,110,86,.34), rgba(16,110,86,0)) 48% 100% / 660px 660px no-repeat;
+}
+html.rp-glass body #rp-integ-ov::after, html.rp-glass body #rp-prod-ov::after, html.rp-glass body #rp-comis-ov::after,
+html.rp-glass body #rp-desp-ov::after, html.rp-glass body #rp-fact-ov::after, html.rp-glass body #rp-mov-ov::after,
+html.rp-glass body #rp-stock-ov::after, html.rp-glass body #rp-ads-ov::after{
+  content: ""; position: fixed; inset: -12%; z-index: -1; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(88,48,170,.42), rgba(88,48,170,0)) 96% 52% / 700px 700px no-repeat;
+}
+
+/* --- paneles grandes (inline) de Productos / Comisiones / Integraciones / Despachos --- */
+html.rp-glass body #rp-prod-ov div[style*="background:#0f1826"],
+html.rp-glass body #rp-comis-ov div[style*="background:#0f1826"],
+html.rp-glass body #rp-comis-ov div[style*="background:#0c1521"],
+html.rp-glass body #rp-integ-ov div[style*="background:#0f1826"],
+html.rp-glass body #rp-desp-ov div[style*="background:#0e1521"],
+html.rp-glass body #rp-desp-ov details[style*="background:#0e1521"]{
+  background-color: var(--rpg-glass) !important;
+  border-color: var(--rpg-line) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 20px 50px -34px rgba(0,0,0,.6);
+}
+html.rp-glass body #rp-prod-ov div[style*="background:#0f1826"],
+html.rp-glass body #rp-comis-ov div[style*="background:#0f1826"],
+html.rp-glass body #rp-comis-ov div[style*="background:#0c1521"],
+html.rp-glass body #rp-integ-ov div[style*="background:#0f1826"]{ border-radius: 16px !important; }
+/* controles chicos: solo translúcidos, sin blur (rendimiento) */
+html.rp-glass body #rp-desp-ov :is(div,label,button):is([style*="background:#0b111c"],[style*="background: rgb(11, 17, 28)"]),
+html.rp-glass body #rp-comis-ov div[style*="background:#0b1220"],
+html.rp-glass body #rp-integ-ov div[style*="background:#0b1220"]{
+  background-color: rgba(11,17,28,.55) !important;
+}
+/* botón X de cerrar (#111c2b inline) */
+html.rp-glass body :is(#rp-integ-ov,#rp-prod-ov,#rp-comis-ov,#rp-desp-ov) button[style*="background:#111c2b"]{
+  background-color: rgba(17,28,43,.6) !important;
+}
+/* ícono del encabezado (#101c2e) */
+html.rp-glass body :is(#rp-prod-ov,#rp-comis-ov) div[style*="background:#101c2e"]{
+  background-color: rgba(59,130,246,.12) !important; border-color: rgba(59,130,246,.25) !important;
+}
+
+/* Despachos: 4 tarjetas-filtro. rpDFilt() pinta inline el `background` (color o degradé
+   ámbar de la activa): acá SOLO se pisa background-color, así el degradé de la activa
+   (que es background-image) se sigue viendo => no se pierde el estado activo. */
+html.rp-glass body #rp-d-cards > .rp-dc{
+  background-color: var(--rpg-glass) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+/* Facturación / Movimientos / Subir ADS (clases propias de sus <style>) */
+html.rp-glass body #rp-fact-ov :is(.kcard,.tcard,.sld,.autocard),
+html.rp-glass body #rp-mov-ov :is(.kcard,.tcard,.panel,.socio),
+html.rp-glass body #rp-ads-ov .card{
+  background: linear-gradient(165deg, rgba(16,26,44,.62), rgba(11,18,32,.48)) !important;
+  border-color: var(--rpg-line) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 20px 50px -34px rgba(0,0,0,.6);
+}
+html.rp-glass body #rp-fact-ov .cont,
+html.rp-glass body #rp-mov-ov .resumen{
+  background: var(--rpg-glass) !important;
+  border-color: var(--rpg-line) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+html.rp-glass body #rp-fact-ov .arca{ background: rgba(12,22,38,.6) !important; }
+html.rp-glass body :is(#rp-fact-ov .rangebox, #rp-fact-ov .chip, #rp-fact-ov .x, #rp-mov-ov .mv-chip, #rp-mov-ov .mv-x){
+  background-color: rgba(14,22,38,.55) !important;
+}
+html.rp-glass body #rp-ads-ov .res{
+  background: linear-gradient(165deg, rgba(28,20,72,.72), rgba(16,12,40,.6)) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+/* Candado de Facturación (sin ARCA): vidrio en vez de opaco */
+html.rp-glass body #rpf-lock{
+  background: rgba(9,11,20,.82) !important;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+/* Stock: tiene variables propias => se retoca por variables (las .card se re-renderizan, sin blur) */
+html.rp-glass body #rp-stock-ov{
+  --card: rgba(15,23,35,.66);
+  --card2: rgba(11,17,27,.52);
+  --inset: rgba(10,17,25,.6);
+}
+html.rp-glass body #rp-stock-ov .card.hero{
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+/* Azul de RealProfit para lo activo (#137fec -> #2563eb) donde es CSS de clase, no JS */
+html.rp-glass body #rp-fact-ov .btn-primary,
+html.rp-glass body #rp-fact-ov .pbtn.on,
+html.rp-glass body #rp-fact-ov .chk.on,
+html.rp-glass body #rp-mov-ov .mbtn{
+  background-color: var(--rpg-blue) !important; border-color: var(--rpg-blue) !important;
+}
+html.rp-glass body #rp-c-go{ background: var(--rpg-blue) !important; }
+
+/* ---------------------------------------------------------------------------
+   4. Ventanas modales: fondo oscurecido + blur, caja de vidrio
+   ------------------------------------------------------------------------- */
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov,#rp-mp-switch,#rpf-linkmodal,#rp-orden-ov),
+html.rp-glass body #rp-mov-ov .mv-modal{
+  background: rgba(4,6,12,.55) !important;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov,#rpf-linkmodal) > div,
+html.rp-glass body #rp-mp-switch-box,
+html.rp-glass body #rp-mov-ov .mv-modal .box{
+  background: var(--rpg-glass-modal) !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  border-radius: 24px !important;
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+  backdrop-filter: blur(30px) saturate(140%);
+  box-shadow: 0 40px 120px rgba(0,0,0,.6) !important;
+}
+/* detalle de orden: su contenido se rehace con innerHTML => solo vidrio, sin animación */
+html.rp-glass body #rp-orden-ov > div{
+  background-color: var(--rpg-glass-modal) !important;
+  border-color: rgba(255,255,255,.09) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+  backdrop-filter: blur(30px) saturate(140%);
+}
+/* zonas de "arrastrá el PDF" */
+html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) label[style*="dashed"]:hover{
+  border-color: rgba(96,165,250,.7) !important;
+  background: rgba(59,130,246,.07) !important;
+}
+/* opciones de Separar/unir */
+/* el elegido lo pinta rpDPartElegir() con background #0d1f1b: solo se pisa el que sigue en
+   #0b1220 (escrito o re-serializado), así la opción elegida conserva su verde */
+html.rp-glass body #rp-d-partmodo > button:is([style*="background:#0b1220"],[style*="background: rgb(11, 18, 32)"]){ background-color: rgba(11,18,32,.6) !important; }
+
+/* Asistente (Botify): violeta #6d5dfc + panel de vidrio */
+html.rp-glass body #botify-fab{
+  background: linear-gradient(135deg, var(--rpg-violet), #4f46e5) !important;
+  box-shadow: 0 14px 34px -8px rgba(109,93,252,.7) !important;
+}
+html.rp-glass body #botify-fab:hover{ box-shadow: 0 20px 40px -8px rgba(109,93,252,.85) !important; }
+html.rp-glass body #botify-panel{
+  background: var(--rpg-glass-modal) !important;
+  border-color: rgba(255,255,255,.09) !important;
+  border-radius: 22px !important;
+  -webkit-backdrop-filter: blur(30px) saturate(140%);
+  backdrop-filter: blur(30px) saturate(140%);
+}
+html.rp-glass body #botify-head{ background: linear-gradient(135deg, #4f46e5, var(--rpg-violet)) !important; }
+html.rp-glass body #botify-bar, html.rp-glass body #botify-cfg{ background: rgba(11,16,29,.6) !important; }
+
+/* ---------------------------------------------------------------------------
+   5. Movimiento (solo si el usuario NO pidió reducir animaciones)
+   ------------------------------------------------------------------------- */
+@keyframes rpg-in   { from{opacity:0;filter:blur(14px);transform:translateY(16px) scale(.985)} to{opacity:1;filter:blur(0);transform:none} }
+@keyframes rpg-pop  { from{opacity:0;transform:translateY(22px) scale(.95);filter:blur(10px)} to{opacity:1;transform:none;filter:blur(0)} }
+@keyframes rpg-fade { from{opacity:0} to{opacity:1} }
+@keyframes rpg-float-a { 0%,100%{transform:translate(0,0)} 50%{transform:translate(36px,-28px)} }
+@keyframes rpg-float-b { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-40px,30px)} }
+@keyframes rpg-float-c { 0%,100%{transform:translate(0,0)} 50%{transform:translate(30px,34px)} }
+@keyframes rpg-shine { 0%{transform:translateX(-130%)} 55%,100%{transform:translateX(130%)} }
+@keyframes rpg-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(109,93,252,.55)} 50%{box-shadow:0 0 0 12px rgba(109,93,252,0)} }
+
+@media (prefers-reduced-motion: no-preference){
+
+  /* manchas que flotan lento */
+  html.rp-glass #rpg-bg > i{ will-change: transform; }
+  html.rp-glass #rpg-bg > i:nth-child(1){ animation: rpg-float-a 18s ease-in-out infinite; }
+  html.rp-glass #rpg-bg > i:nth-child(2){ animation: rpg-float-b 22s ease-in-out -6s infinite; }
+  html.rp-glass #rpg-bg > i:nth-child(3){ animation: rpg-float-c 26s ease-in-out -11s infinite; }
+  html.rp-glass body :is(#rp-integ-ov,#rp-prod-ov,#rp-comis-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov,#rp-stock-ov,#rp-ads-ov)::before{
+    animation: rpg-float-a 20s ease-in-out infinite;
+  }
+  html.rp-glass body :is(#rp-integ-ov,#rp-prod-ov,#rp-comis-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov,#rp-stock-ov,#rp-ads-ov)::after{
+    animation: rpg-float-b 24s ease-in-out -8s infinite;
+  }
+
+  /* entrada del dashboard: UNA sola vez. El JS pone html.rpg-dash-in cuando aparece
+     html.mfy-ready y la saca a los 1,6 s. Así, si después React re-monta un panel, o
+     ocultarVacios()/kpiArriba() lo esconden y lo vuelven a mostrar o lo mueven con
+     insertBefore, la animación NO se repite (sería un parpadeo con blur en cada re-render).
+     fill-mode "backwards": al terminar NO queda filter/transform puesto. */
+  html.rp-glass.rpg-dash-in body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"]{
+    animation: rpg-in .7s var(--rpg-ease) backwards;
+  }
+  html.rp-glass.rpg-dash-in body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"]:nth-child(2){ animation-delay: .08s; }
+  html.rp-glass.rpg-dash-in body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"]:nth-child(3){ animation-delay: .16s; }
+  html.rp-glass.rpg-dash-in body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"]:nth-child(4){ animation-delay: .24s; }
+  html.rp-glass.rpg-dash-in body [data-view="dashboard"] .rounded-2xl[class*="border-white/[0.07]"]:nth-child(n+5){ animation-delay: .32s; }
+
+  /* marca activa de la barra: se desliza con rebote (la clase -ready evita que vuele desde 0 al cargar) */
+  html.rp-glass body aside[class*="group/sidebar"] nav.rpg-ind-ready::before{
+    transition: transform .55s var(--rpg-bounce), width .55s var(--rpg-bounce), height .3s ease, opacity .25s ease;
+  }
+  html.rp-glass body aside[class*="group/sidebar"] nav > div > a{
+    transition: color .25s ease, background-color .25s ease !important;
+  }
+
+  /* entrada de cada sección: se anima el WRAPPER de contenido (nunca el overlay:
+     un filter/transform en el overlay re-anclaría #rpf-linkmodal, #mv-modal y el toast) */
+  html.rp-glass body :is(#rp-integ-ov,#rp-prod-ov,#rp-comis-ov,#rp-desp-ov) > div,
+  html.rp-glass body #rp-fact-ov > .wrap,
+  html.rp-glass body #rp-mov-ov > .mv-wrap,
+  html.rp-glass body #rp-stock-ov > .wrap,
+  html.rp-glass body #rp-ads-ov > .aw{
+    animation: rpg-in .7s var(--rpg-ease) backwards;
+  }
+  /* tarjetas en cascada (solo tarjetas fijas; NO filas de tablas que se re-renderizan) */
+  html.rp-glass body #rp-d-cards > .rp-dc,
+  html.rp-glass body #rp-fact-ov .kpis > .kcard,
+  html.rp-glass body #rp-mov-ov .mv-kpis > .kcard{
+    animation: rpg-in .7s var(--rpg-ease) .12s backwards;
+  }
+  html.rp-glass body :is(#rp-d-cards > .rp-dc, #rp-fact-ov .kpis > .kcard, #rp-mov-ov .mv-kpis > .kcard):nth-child(2){ animation-delay: .19s; }
+  html.rp-glass body :is(#rp-d-cards > .rp-dc, #rp-fact-ov .kpis > .kcard, #rp-mov-ov .mv-kpis > .kcard):nth-child(3){ animation-delay: .26s; }
+  html.rp-glass body :is(#rp-d-cards > .rp-dc, #rp-fact-ov .kpis > .kcard, #rp-mov-ov .mv-kpis > .kcard):nth-child(4){ animation-delay: .33s; }
+  html.rp-glass body :is(#rp-d-cards > .rp-dc, #rp-fact-ov .kpis > .kcard, #rp-mov-ov .mv-kpis > .kcard):nth-child(n+5){ animation-delay: .40s; }
+
+  /* tarjetas que se levantan al pasar el mouse */
+  html.rp-glass body :is(#rp-d-cards > .rp-dc, #rp-fact-ov .kcard, #rp-mov-ov .kcard, #rp-mov-ov .socio){
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), border-color .35s ease, background-color .35s ease, box-shadow .35s ease;
+  }
+  html.rp-glass body :is(#rp-d-cards > .rp-dc, #rp-fact-ov .kcard, #rp-mov-ov .kcard, #rp-mov-ov .socio):hover{
+    transform: translateY(-3px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 18px 40px -22px rgba(0,0,0,.7);
+  }
+  html.rp-glass body #rp-d-cards > .rp-dc:hover{ background-color: var(--rpg-glass-hi) !important; }
+
+  /* modales: fondo que aparece + caja con rebote. Se muestran con display:flex
+     desde JS, así que la animación vuelve a correr sola en cada apertura. */
+  html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov,#rp-mp-switch,#rpf-linkmodal,#rp-orden-ov),
+  html.rp-glass body #rp-mov-ov .mv-modal{
+    animation: rpg-fade .3s ease backwards;
+  }
+  html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov,#rpf-linkmodal) > div,
+  html.rp-glass body #rp-mp-switch-box,
+  html.rp-glass body #rp-mov-ov .mv-modal .box{
+    animation: rpg-pop .5s cubic-bezier(.2,.9,.25,1.15) backwards;
+  }
+  html.rp-glass body #botify-panel.on{ animation: rpg-pop .45s cubic-bezier(.2,.9,.25,1.15) backwards !important; }
+  html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) label[style*="dashed"]{
+    transition: border-color .3s ease, background .3s ease, transform .3s ease;
+  }
+  html.rp-glass body :is(#rp-d-skuov,#rp-d-partov,#rp-d-xlsov,#rp-d-segov) label[style*="dashed"]:hover{ transform: scale(1.01); }
+
+  /* brillo que pasa por el botón principal de cada sección */
+  html.rp-glass body :is(#rp-desp-ov button[onclick="rpDExcel()"], #rp-c-go, #rp-fact-ov .btn-primary:not(#rpf-m-serv):not(#rpf-m-cert), #rp-mov-ov .mbtn, #rp-ads-ov .go, #rp-stock-ov .btn-b){
+    position: relative; overflow: hidden; isolation: isolate;
+  }
+  html.rp-glass body :is(#rp-desp-ov button[onclick="rpDExcel()"], #rp-c-go, #rp-fact-ov .btn-primary:not(#rpf-m-serv):not(#rpf-m-cert), #rp-mov-ov .mbtn, #rp-ads-ov .go, #rp-stock-ov .btn-b)::after{
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.30) 50%, rgba(255,255,255,0) 70%);
+    transform: translateX(-130%);
+    animation: rpg-shine 3.4s 1.2s ease-in-out infinite;
+  }
+
+  /* botón del asistente que late (violeta) */
+  html.rp-glass body #botify-fab .pulse{ animation: rpg-pulse 2.6s ease-in-out infinite !important; }
+}
+
+@media (prefers-reduced-motion: reduce){
+  html.rp-glass body #botify-fab .pulse{ animation: none !important; }
+}

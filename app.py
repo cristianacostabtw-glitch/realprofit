@@ -6931,6 +6931,23 @@ _BOTIFY_WIDGET = r"""
 </script>
 """
 
+# >>> rp-glass inicio ── tema visual "vidrio" del dashboard. Para sacarlo: borrar este bloque
+#     y el "+ _RP_GLASS" de home(). Interruptor sin deploy: ?tema=clasico / ?tema=glass
+def _rp_glass_bloque():
+    try:
+        css = (RAIZ / "rp_glass.css").read_text(encoding="utf-8")
+        js = (RAIZ / "rp_glass.js").read_text(encoding="utf-8")
+    except Exception:
+        return ""          # si faltan los archivos, la app queda exactamente como antes
+    return ("\n<!-- rp-glass inicio -->\n<style id=\"rp-glass-css\">\n" + css +
+            "\n</style>\n<script id=\"rp-glass-js\">\n" + js +
+            "\n</script>\n<!-- rp-glass fin -->\n")
+
+
+_RP_GLASS = _rp_glass_bloque()
+# <<< rp-glass fin
+
+
 
 def _skus_map(email) -> dict:
     try:
@@ -19875,7 +19892,7 @@ def home():
                '</span><span class="rp-lbl"><span class="em">WhatsApp</span></span></a>')
     # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
     # (El link de WhatsApp ahora es un ítem del menú, se agrega en el JS de _SOLO_DASH.)
-    extra = _SOLO_DASH + userbox + _BOTIFY_WIDGET
+    extra = _SOLO_DASH + userbox + _BOTIFY_WIDGET + _RP_GLASS   # rp-glass
     if "</body>" in html:
         html = html.replace("</body>", extra + "</body>", 1)
     else:
