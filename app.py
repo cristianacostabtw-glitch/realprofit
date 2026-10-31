@@ -3746,9 +3746,24 @@ _SOLO_DASH = r"""
 #rp-stock-ov .btn-dep{background:#0e2a20;border:1px solid rgba(55,201,141,.3);color:var(--green);padding:9px 13px;font-size:12px;border-radius:10px;white-space:nowrap;font-weight:800;cursor:pointer;font-family:inherit}
 #rp-stock-ov .corr{margin-top:12px}
 #rp-stock-ov .corr a{color:var(--ink2);cursor:pointer;font-size:11.5px}
+#rp-stock-ov #rp-stock-sync{font-size:12px;color:var(--ink2);margin:6px 0 4px;min-height:16px;line-height:1.5}
+#rp-stock-ov #rp-stock-sync a,#rp-stock-ov .stk-err a{color:var(--blue);cursor:pointer;font-weight:700}
+#rp-stock-ov .stk-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);margin-right:7px;vertical-align:1px;animation:rpstkp 1s ease-in-out infinite alternate}
+@keyframes rpstkp{from{opacity:.35}to{opacity:1}}
+#rp-stock-ov .stk-err{color:var(--crit);font-size:12.5px;line-height:1.5}
+#rp-stock-ov .card.stk-err{margin-top:20px;padding:20px 22px}
+#rp-stock-ov .stk-det{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--ink2);word-break:break-word}
+#rp-stock-ov .stk-warn{margin-top:18px;padding:16px 18px;font-size:12.5px;color:var(--ink2);line-height:1.5}
+#rp-stock-ov .stk-map{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+#rp-stock-ov .stk-map .nm{flex:1;min-width:180px;color:var(--ink);font-weight:700}
+#rp-stock-ov .stk-map .nm small{color:var(--ink3);font-weight:600;margin-left:8px}
+#rp-stock-ov select.f{background:var(--inset);border:1px solid var(--line2);border-radius:11px;color:var(--ink);padding:8px 10px;font-family:inherit;font-size:13px}
+#rp-stock-ov .stk-sub{font-size:12px;color:var(--ink2);margin-top:8px}
+#rp-stock-ov .stk-sub b{color:var(--ink)}
 </style>
 <div class="wrap">
   <div class="hdr"><span class="ic"><span class="material-symbols-outlined">warehouse</span></span><div><h1>Stock</h1><p class="lead">El <b>nombre, SKU y unidad</b> de cada producto salen de tu secci&oacute;n <b>Productos</b>. Ac&aacute; ves cu&aacute;nto ten&eacute;s, proyect&aacute;s la venta y ped&iacute;s reposici&oacute;n.</p></div></div>
+  <div id="rp-stock-sync"></div>
   <div id="rp-stock-body"></div>
 </div>
 <div id="rp-stk-toast" style="position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(18px);opacity:0;background:#0e2a20;border:1px solid rgba(55,201,141,.35);color:#cdf3e2;padding:11px 17px;border-radius:11px;font-size:13px;font-weight:700;transition:.28s;pointer-events:none;z-index:100010"></div>
@@ -3764,14 +3779,52 @@ _SOLO_DASH = r"""
  function tstk(m){var t=$('rp-stk-toast');if(!t)return;t.textContent=m;t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';clearTimeout(t._t);t._t=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(18px)';},2500);}
  window.rpStock=function(open){ var o=$('rp-stock-ov'); if(!o)return;
   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){var x=$(id);if(x)x.style.display='none';}); var lk=$('rpf-lock'); if(lk)lk.style.display='none'; }
-  o.style.display=open?'block':'none'; try{window._rpNavActive(open?'rp-stock-nav':null);}catch(e){} if(open) rpStkLoad(); };
- window.rpStkLoad=function(){ var b=$('rp-stock-body'); if(b)b.innerHTML='<div class="note" style="margin-top:22px">Cargando&hellip;</div>';
-  fetch('/pf-stock').then(function(r){return r.json();}).then(function(j){ var P=(j&&j.productos)||[]; window._STK=P; if(!b)return;
+  o.style.display=open?'block':'none'; try{window._rpNavActive(open?'rp-stock-nav':null);}catch(e){} if(open) rpStkLoad(); else clearTimeout(_poll); };
+ // Pedidos con TIEMPO MAXIMO y error REAL: antes un fetch sin timeout dejaba "Cargando…" para siempre
+ function req(url,opts,ms){ ms=ms||20000; var o=opts||{}, ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl)ctl.abort(); },ms); if(ctl)o.signal=ctl.signal;
+  return fetch(url,o).then(function(r){ clearTimeout(to); return r.text().then(function(t){ var j=null; try{j=JSON.parse(t);}catch(e){}
+     if(!r.ok||!j||j.ok===false){ var m=(j&&(j.err_detalle||j.msg))||('HTTP '+r.status+(t?(': '+t.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,160)):'')); var er=new Error(m); er.st=r.status; throw er; }
+     return j; }); },
+   function(e){ clearTimeout(to); throw new Error((e&&e.name==='AbortError')?('El servidor no respondió en '+Math.round(ms/1000)+' s'):('No hay conexión con el servidor ('+((e&&e.message)||e)+')')); }); }
+ function post(url,body){ return req(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})},25000); }
+ function errBox(msg){ return '<div class="card stk-err"><div><b>No se pudo cargar el stock.</b></div><div class="stk-det" style="margin-top:6px">'+esc(msg)+'</div><button class="btn btn-b" style="margin-top:12px;padding:9px 16px;font-size:13px" onclick="rpStkLoad(true)">Reintentar</button></div>'; }
+ function hace(x){ x=Math.max(0,Math.round(x)); if(x<60)return 'hace '+x+' s'; if(x<3600)return 'hace '+Math.round(x/60)+' min'; return 'hace '+Math.round(x/3600)+' h'; }
+ function pintaSync(j){ var el=$('rp-stock-sync'); if(!el)return; var s=(j&&j.sync)||{}, h='';
+   if(s.corriendo){ h='<span class="stk-dot"></span>Actualizando ventas'+(s.fase?' &middot; '+esc(s.fase):'')+'&hellip;'+(j.listo?'':' <span style="color:var(--ink3)">(la primera vez trae 16 días de pedidos, puede tardar un minuto)</span>'); }
+   else if(s.fin){ h='Ventas actualizadas '+hace((s.ahora||0)-(s.fin||0))+(s.dur!=null?' &middot; tardó '+s.dur+' s':'')+' &middot; <a onclick="rpStkLoad(true)">actualizar ahora</a>'; }
+   if(s.error){ h+='<div class="stk-err" style="margin-top:8px"><b>&#9888; '+(s.corriendo?'Aviso':'Falló la actualización (los números de abajo son los últimos guardados)')+':</b> <span class="stk-det">'+esc(String(s.error))+'</span>'+(s.corriendo?'':' <a onclick="rpStkLoad(true)">Reintentar</a>')+'</div>'; }
+   el.innerHTML=h; }
+ var _poll=null, _pollT0=0, _cargando=false;
+ function avisos(j){ var h='', sm=(j.sin_mapear||[]), T=(j.tarjetas||[]);
+   if(sm.length&&T.length){
+     var sel=function(pk){ return T.length>1?('<select id="smt-'+sid(pk)+'" class="f">'+T.map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.nombre)+'</option>';}).join('')+'</select>'):''; };
+     h+='<div class="card stk-warn"><div><b style="color:var(--warn)">Productos vendidos que NO descuentan de ninguna tarjeta</b> (últimos 14 días). Si traen potes, poné cuántos trae cada unidad; si no traen (ej. cápsulas), poné 0 y no aparece más. Cuenta para las ventas de ahora en adelante.</div>'+
+       sm.map(function(x){ return '<div class="stk-map"><span class="nm">'+esc(x.titulo)+'<small>'+x.unidades+' u vendidas</small></span><input id="smn-'+sid(x.pid)+'" class="f sm" type="number" min="0" placeholder="potes" style="width:90px">'+sel(x.pid)+'<button class="btn-dep" onclick="rpStkPack(\''+esc(x.pid)+'\')">Guardar</button></div>'; }).join('')+'</div>'; }
+   if(j.ml_dudosos){ h+='<div class="note" style="margin-top:14px">&#9888; '+j.ml_dudosos+' unidades vendidas en MercadoLibre (14 días) tienen un SKU que no dice cuántos potes traen: se contaron como 1 pote cada una.</div>'; }
+   return h; }
+ function pinta(j){ var b=$('rp-stock-body'); var P=(j&&j.productos)||[]; window._STK=P; window._STKJ=j; if(!b)return;
    var add='<div style="text-align:center;margin-top:16px"><a class="addlink" onclick="rpStkAgregar()">+ Agregar producto</a></div>';
    if(!P.length){ b.innerHTML='<div class="card" style="margin-top:20px;padding:24px;text-align:center;color:var(--ink2)">Todav&iacute;a no cargaste productos al stock.</div>'+add; return; }
-   b.innerHTML=P.map(bloque).join('')+add;
-   P.forEach(function(p){ renderProj(p.id); proj(p.id); });
-  }).catch(function(){ if(b)b.innerHTML='<div class="card" style="margin-top:20px;padding:22px">No se pudo cargar el stock.</div>'; }); };
+   b.innerHTML=avisos(j)+P.map(bloque).join('')+add;
+   P.forEach(function(p){ renderProj(p.id); proj(p.id); }); }
+ function editando(){ var a=document.activeElement, b=$('rp-stock-body'); return !!(a&&b&&b.contains(a)&&/INPUT|SELECT|TEXTAREA/.test(a.tagName)); }
+ function seguir(){ clearTimeout(_poll); var o=$('rp-stock-ov'); if(!o||o.style.display==='none')return;
+   if(Date.now()-_pollT0>150000){ var el=$('rp-stock-sync'); if(el)el.innerHTML+='<div class="stk-err" style="margin-top:8px">La actualización tarda más de lo normal. <a onclick="rpStkLoad(true)">Reintentar</a></div>'; return; }
+   _poll=setTimeout(function(){ req('/pf-stock',null,20000).then(function(j){ pintaSync(j);
+       if(j.sync&&j.sync.corriendo){ seguir(); return; }
+       if(editando()){ window._STKJ=j; var el=$('rp-stock-sync'); if(el)el.innerHTML+=' &middot; <a onclick="rpStkLoad()"><b>ver los números nuevos</b></a>'; return; }
+       pinta(j); })
+     .catch(function(e){ var el=$('rp-stock-sync'); if(el)el.innerHTML='<div class="stk-err"><b>&#9888; No pude consultar el avance:</b> <span class="stk-det">'+esc(e.message)+'</span> <a onclick="rpStkLoad()">Reintentar</a></div>'; }); },2000); }
+ window.rpStkLoad=function(forzar){ var b=$('rp-stock-body'); if(_cargando)return; _cargando=true; clearTimeout(_poll);
+  if(b&&!b.innerHTML.trim()) b.innerHTML='<div class="note" style="margin-top:22px">Cargando&hellip;</div>';
+  req('/pf-stock'+(forzar?'?forzar=1':''),null,20000).then(function(j){ _cargando=false; pintaSync(j); pinta(j); if(j.sync&&j.sync.corriendo){ _pollT0=Date.now(); seguir(); } })
+   .catch(function(e){ _cargando=false; var el=$('rp-stock-sync');
+     if((window._STK||[]).length && b && b.querySelector('.hero')){ if(el)el.innerHTML='<div class="stk-err"><b>&#9888; No se pudo actualizar (lo de abajo es lo último que se cargó):</b> <span class="stk-det">'+esc(e.message)+'</span> <a onclick="rpStkLoad(true)">Reintentar</a></div>'; return; }
+     if(el)el.innerHTML=''; if(b)b.innerHTML=errBox(e.message); }); };
+ window.rpStkPack=function(pk,tp,borrar){ var v=null; if(!borrar){ var n=$('smn-'+sid(pk)); if(!n||n.value===''){ tstk('Poné cuántos potes trae (0 si no trae)'); return; } v=Math.max(0,Math.round(+n.value||0)); var s=$('smt-'+sid(pk)), T=((window._STKJ||{}).tarjetas||[]); tp=s?s.value:(T[0]&&T[0].id); }
+   if(!tp)return; var pk2={}; pk2[pk]=v;
+   post('/pf-stock-set',{pid:tp,packs:pk2}).then(function(){ tstk(borrar?'Quitado':'Guardado'); rpStkLoad(); }).catch(function(e){ tstk('No se pudo guardar: '+e.message); }); };
+ window.rpStkMeli=function(pid){ post('/pf-stock-set',{pid:pid,meli:true}).then(function(){ tstk('MercadoLibre descuenta de esta tarjeta'); rpStkLoad(); }).catch(function(e){ tstk('No se pudo guardar: '+e.message); }); };
  function histTabla(p){
    var v=p.ventas14||[], t=p.v14_tienda||[], m=p.v14_meli||[];
    var MS=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -3808,15 +3861,15 @@ _SOLO_DASH = r"""
    var pend=(p.pendientes||[]);
    var plist = pend.length? pend.map(function(o){return '<div class="card prow"><span class="tx"><div class="q">'+o.qty.toLocaleString('es-AR')+' '+u+'<span class="badge">en proceso</span></div><div class="d">Pedido '+esc(o.fecha)+' &middot; '+ars(o.qty*(p.costo||0))+'</div></span><button class="btn-dep" onclick="rpStkDep(\''+o.id+'\')">Poner en depósito</button></div>';}).join('') : '<div class="empty">No hay pedidos en proceso.</div>';
    return '<div class="card hero" style="--hc:'+s.c+';--hpb:'+s.pb+'">'+
-       '<div class="htop"><span class="hnm">'+esc(p.nombre)+'</span>'+(p.sku?'<span class="sku">'+esc(p.sku)+'</span>':'')+'<span class="pill"><span class="dot"></span>'+s.lb+'</span><a onclick="rpStkBorrar(\''+p.id+'\')" title="Eliminar producto del stock" style="margin-left:10px;color:var(--crit);cursor:pointer;font-size:20px;font-weight:800;line-height:1;text-decoration:none;flex:none">&times;</a></div>'+
-       '<div class="hmid"><div class="num">'+p.stock.toLocaleString('es-AR')+'<span class="u">'+u+' en depósito</span></div>'+
+       '<div class="htop"><span class="hnm">'+esc(p.nombre)+'</span>'+(p.sku?'<span class="sku">'+esc(p.sku)+'</span>':'')+(p.meli?'<span class="sku" title="Los potes vendidos en MercadoLibre descuentan de esta tarjeta">MELI</span>':'')+'<span class="pill"><span class="dot"></span>'+s.lb+'</span><a onclick="rpStkBorrar(\''+p.id+'\')" title="Eliminar producto del stock" style="margin-left:10px;color:var(--crit);cursor:pointer;font-size:20px;font-weight:800;line-height:1;text-decoration:none;flex:none">&times;</a></div>'+
+       '<div class="hmid"><div class="num">'+p.stock.toLocaleString('es-AR')+'<span class="u">'+u+' disponibles</span></div>'+
          '<div class="days"><div class="n"><b>'+d+'</b> días</div><div class="l">te alcanza a este ritmo</div></div></div>'+
-       '<div class="cov"><div class="covbar"><b style="width:'+cov+'%"></b><s style="left:50%"></s></div><div class="covlb"><span>0</span><span>10 días &middot; sano</span><span>20+</span></div></div>'+
+       (p.pend_despacho>0?'<div class="stk-sub">En el estante &asymp; <b>'+(p.stock+p.pend_despacho).toLocaleString('es-AR')+' '+u+'</b> &middot; incluye '+p.pend_despacho.toLocaleString('es-AR')+' '+u+' vendidos y pagados en la tienda que todavía no salieron</div>':'')+'<div class="cov"><div class="covbar"><b style="width:'+cov+'%"></b><s style="left:50%"></s></div><div class="covlb"><span>0</span><span>10 días &middot; sano</span><span>20+</span></div></div>'+
      '</div>'+
      '<div class="tiles">'+tile('En stock',p.stock.toLocaleString('es-AR')+' <small>'+u+'</small>','')+tile('Valor en stock',ars(p.stock*(p.costo||0)),'accent')+tile('Venta por día',rate+' <small>'+u+'/día</small>','')+tile('Valor por '+usg,ars(p.costo||0),'')+'</div>'+
-     '<div class="sec"><span class="bb"></span><h2>Proyección de ventas</h2><span class="x">ritmo actual '+rate+' '+u+'/día</span></div>'+
+     '<div class="sec"><span class="bb"></span><h2>Proyección de ventas</h2><span class="x">ritmo actual '+rate+' '+u+'/día &middot; hoy van '+(p.hoy||0)+'</span></div>'+
      '<div class="card proj">'+
-       '<div class="pstats"><div class="ps"><div class="k">Últimos 7 días</div><div class="v">'+p.d7+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Últimos 3 días</div><div class="v">'+(p.d3!=null?p.d3:0)+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Promedio por día</div><div class="v">'+rate+' <small>'+u+'</small></div></div></div>'+
+       '<div class="pstats"><div class="ps"><div class="k">Últimos 7 días (sin hoy)</div><div class="v">'+p.d7+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Últimos 3 días (sin hoy)</div><div class="v">'+(p.d3!=null?p.d3:0)+' <small>'+u+'</small></div></div><div class="ps"><div class="k">Promedio por día</div><div class="v">'+rate+' <small>'+u+'</small></div></div></div>'+
        '<div class="chart"><svg id="spark-'+id+'" viewBox="0 0 700 74" preserveAspectRatio="none"></svg><div class="lb"><span>hace 14 días</span><span>hoy</span></div></div>'+
        '<div class="proj-sel"><span class="lab">Proyectar a</span><span class="chips" id="chips-'+id+'"></span><input id="ndias-'+id+'" class="f sm cinput" type="number" value="30" oninput="proj(\''+p.id+'\')"><span class="lab">días</span></div>'+
        '<div class="proj-out" id="pout-'+id+'"></div>'+
@@ -3828,11 +3881,16 @@ _SOLO_DASH = r"""
      '<div class="card pedir"><div class="pedir-row"><div class="field"><div class="l">Unidades a pedir ('+u+')</div><input id="ped-'+id+'" class="f big" type="number" placeholder="0" oninput="rpStkHint(\''+p.id+'\')"></div><button class="btn btn-b" onclick="rpStkPedir(\''+p.id+'\')">Pedir</button></div>'+
        '<div class="hint" id="hint-'+id+'">Usá la proyección de arriba para saber cuánto pedir.</div>'+
        '<div class="corr"><a onclick="rpStkEditToggle(\''+id+'\')">&#9998; Corregir stock (si te confundiste o hubo rotura/ajuste)</a><a onclick="rpStkBorrar(\''+p.id+'\')" style="color:var(--crit);cursor:pointer;font-size:12.5px;margin-left:16px;font-weight:600">&#128465;&#65039; Quitar producto</a>'+
-       '<div id="corr-'+id+'" style="display:none;margin-top:10px;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12px;color:var(--ink2)">Stock real:</span><input id="corrin-'+id+'" class="f sm" type="number" value="'+p.stock+'" style="width:110px"><button class="btn btn-b" style="padding:9px 15px;font-size:13px" onclick="rpStkGuardar(\''+p.id+'\')">Guardar</button><a onclick="rpStkEditToggle(\''+id+'\')" style="color:var(--ink3);cursor:pointer;font-size:12px;margin-left:2px">cancelar</a></div></div>'+
+       packsTxt(p)+'<div id="corr-'+id+'" style="display:none;margin-top:10px;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:12px;color:var(--ink2)">Stock real:</span><input id="corrin-'+id+'" class="f sm" type="number" value="'+p.stock+'" style="width:110px"><button class="btn btn-b" style="padding:9px 15px;font-size:13px" onclick="rpStkGuardar(\''+p.id+'\')">Guardar</button><a onclick="rpStkEditToggle(\''+id+'\')" style="color:var(--ink3);cursor:pointer;font-size:12px;margin-left:2px">cancelar</a></div></div>'+
      '</div>'+
      '<div class="sec"><span class="bb"></span><h2>En proceso</h2><span class="x">'+(pend.length?(pend.length+' pedido'+(pend.length>1?'s':'')):'')+'</span></div>'+
      '<div class="plist">'+plist+'</div>';
  }
+ function packsTxt(p){ var h='', pd=(p.packs_det||[]);
+   if(pd.length){ h+='<div style="margin-top:10px;font-size:11.5px;color:var(--ink2)">También descuentan de acá: '+pd.map(function(x){ return '<b style="color:var(--ink)">'+esc(x.titulo)+'</b> ('+x.n+' c/u) <a onclick="rpStkPack(\''+esc(x.pid)+'\',\''+esc(p.id)+'\',1)" style="color:var(--ink3)">quitar</a>'; }).join(' &middot; ')+'</div>'; }
+   var T=(window._STK||[]), algunaML=T.some(function(x){return x.meli;});
+   if(algunaML && !p.meli && !p.split){ h+='<div style="margin-top:8px"><a onclick="rpStkMeli(\''+esc(p.id)+'\')">Que las ventas de MercadoLibre descuenten de esta tarjeta</a></div>'; }
+   return h; }
  function renderProj(pid){ var p=prod(pid); if(!p)return; var id=sid(pid), v=p.ventas14||[];
    // Barras con el NÚMERO de ventas de cada día arriba. TP = espacio superior para el número.
    var W=700,H=74,TP=16,BASE=H-2,n=v.length,gap=7,bw=(W-gap*(n-1))/n,mx=Math.max.apply(null,v),mn=Math.min.apply(null,v),svg='';
@@ -3852,22 +3910,22 @@ _SOLO_DASH = r"""
  window.rpStkHint=function(pid){ var p=prod(pid); if(!p)return; var id=sid(pid), q=Math.max(0,Math.round(+($('ped-'+id)||{}).value||0)), h=$('hint-'+id), rate=p.rate||0;
    if(!h)return; if(q>0){var dias=rate?Math.round((p.stock+q)/rate):0; h.innerHTML='Al llegar quedarías con <b style="color:var(--ink)">'+(p.stock+q).toLocaleString('es-AR')+' '+esc(p.unidad)+'</b> (~'+dias+' días) &middot; cuesta '+ars(q*(p.costo||0));} else h.innerHTML='Usá la proyección de arriba para saber cuánto pedir.'; };
  window.rpStkPedir=function(pid){ var q=Math.max(0,Math.round(+($('ped-'+sid(pid))||{}).value||0)); if(q<=0)return;
-   fetch('/pf-stock-pedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,qty:q})}).then(function(r){return r.json();}).then(function(){ tstk('Pedido registrado en proceso'); rpStkLoad(); }); };
- window.rpStkDep=function(id){ fetch('/pf-stock-depositar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(){ tstk('Sumado al stock'); rpStkLoad(); }); };
- window.rpStkBorrar=function(pid){ if(!confirm('¿Quitar este producto del stock? No se puede deshacer.'))return; fetch('/pf-stock-del',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:String(pid)})}).then(function(r){return r.json();}).then(function(){ tstk('Producto eliminado'); rpStkLoad(); }).catch(function(){ tstk('No se pudo eliminar'); }); };
+   post('/pf-stock-pedir',{pid:pid,qty:q}).then(function(){ tstk('Pedido registrado en proceso'); rpStkLoad(); }).catch(function(e){ tstk('No se pudo registrar: '+e.message); }); };
+ window.rpStkDep=function(id){ post('/pf-stock-depositar',{id:id}).then(function(){ tstk('Sumado al stock'); rpStkLoad(); }).catch(function(e){ tstk('No se pudo sumar: '+e.message); }); };
+ window.rpStkBorrar=function(pid){ if(!confirm('¿Quitar este producto del stock? No se puede deshacer.'))return; post('/pf-stock-del',{pid:String(pid)}).then(function(){ tstk('Producto eliminado'); rpStkLoad(); }).catch(function(e){ tstk('No se pudo eliminar: '+e.message); }); };
  window.rpStkEditToggle=function(id){ var e=$('corr-'+id); if(!e)return; var vis=(e.style.display==='flex'); e.style.display=vis?'none':'flex'; if(!vis){var inp=$('corrin-'+id); if(inp){inp.focus();inp.select();}} };
- window.rpStkGuardar=function(pid){ var el=$('corrin-'+sid(pid)); if(!el)return; var n=Math.max(0,Math.round(+el.value||0)); fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stock:n})}).then(function(r){return r.json();}).then(function(){ tstk('Stock corregido a '+n); rpStkLoad(); }); };
- window.rpStkAgregar=function(){ fetch('/pf-stock-catalogo').then(function(r){return r.json();}).then(function(j){ var cat=(j&&j.productos)||[];
+ window.rpStkGuardar=function(pid){ var el=$('corrin-'+sid(pid)); if(!el)return; var n=Math.max(0,Math.round(+el.value||0)); post('/pf-stock-set',{pid:pid,stock:n}).then(function(){ tstk('Stock corregido a '+n); rpStkLoad(); }).catch(function(e){ tstk('No se pudo corregir: '+e.message); }); };
+ window.rpStkAgregar=function(){ req('/pf-stock-catalogo',null,30000).then(function(j){ var cat=(j&&j.productos)||[];
    var nombre=prompt('Nombre del producto (ej: VisionPure):'); if(!nombre)return; nombre=nombre.trim(); if(!nombre)return;
    var m=cat.filter(function(x){return (x.nombre||'').toLowerCase().indexOf(nombre.toLowerCase())>-1;})[0];
    if(m && confirm('¿Este producto se DIVIDE en 30ml y 60ml (par/impar)?\n\nSí = crea 2 tarjetas (30ml y 60ml) que toman las VENTAS REALES de la tienda y las reparten:\n2u = 1x60ml · 1u = 1x30ml · 3u = 1x60 + 1x30.')){
      var un=prompt('Unidad (frascos / sprays):','frascos')||'frascos';
      var s30=parseInt((prompt('Stock de 30ml que tenés hoy:','0')||'0').replace(/\D/g,''),10)||0;
      var s60=parseInt((prompt('Stock de 60ml que tenés hoy:','0')||'0').replace(/\D/g,''),10)||0;
-     var post=function(b){return fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});};
-     post({pid:String(m.id)+':30',nombre:nombre+' 30ml',sku:(m.sku||'')+'-30',unidad:un,stock:s30,costo:m.costo||0,link_pid:String(m.id),split:'30'})
-       .then(function(){ return post({pid:String(m.id)+':60',nombre:nombre+' 60ml',sku:(m.sku||'')+'-60',unidad:un,stock:s60,costo:m.costo||0,link_pid:String(m.id),split:'60'}); })
-       .then(function(){ tstk('Dividido en 30ml y 60ml'); rpStkLoad(); });
+     var post2=function(b){return post('/pf-stock-set',b);};
+     post2({pid:String(m.id)+':30',nombre:nombre+' 30ml',sku:(m.sku||'')+'-30',unidad:un,stock:s30,costo:m.costo||0,link_pid:String(m.id),split:'30'})
+       .then(function(){ return post2({pid:String(m.id)+':60',nombre:nombre+' 60ml',sku:(m.sku||'')+'-60',unidad:un,stock:s60,costo:m.costo||0,link_pid:String(m.id),split:'60'}); })
+       .then(function(){ tstk('Dividido en 30ml y 60ml'); rpStkLoad(); }).catch(function(e){ tstk('No se pudo crear: '+e.message); });
      return;
    }
    var unidad=prompt('Unidad (potes / sprays / u):','u')||'u';
@@ -3875,7 +3933,7 @@ _SOLO_DASH = r"""
    var pid,nom,sku,costo;
    if(m){ pid=String(m.id); nom=m.nombre; sku=m.sku||''; costo=m.costo||0; }
    else { pid='manual-'+Date.now(); nom=nombre; sku=''; costo=parseFloat((prompt('Costo por unidad (opcional):','0')||'0').replace(',','.'))||0; }
-   fetch('/pf-stock-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,nombre:nom,sku:sku,unidad:unidad,stock:stock,costo:costo})}).then(function(r){return r.json();}).then(function(){ rpStkLoad(); }); }); };
+   post('/pf-stock-set',{pid:pid,nombre:nom,sku:sku,unidad:unidad,stock:stock,costo:costo}).then(function(){ rpStkLoad(); }).catch(function(e){ tstk('No se pudo agregar: '+e.message); }); }).catch(function(e){ tstk('No pude traer los productos de la tienda: '+e.message); }); };
 })();
 </script>
 </div>
@@ -5869,9 +5927,28 @@ def _shop_img(shop, token, product_id):
 
 
 # ==================== STOCK (inventario) ====================
-STOCK_FILE = DATA_DIR / "stock.json"           # {email: {pid: {nombre,unidad,stock,costo,sku}}}
+# Como funciona (rehecho el 31-10-2026, ver rp_stock/fix.md):
+#  - El numero de cada tarjeta = lo que cargaste a mano en stock.json MENOS las ventas pagadas
+#    que pasaron por el LEDGER (cada pedido se descuenta una sola vez).
+#  - Abrir Stock NO trae pedidos: devuelve lo guardado al toque. La actualizacion corre APARTE
+#    (un hilo lanzado desde el request, nunca al importar) y trae SOLO lo que cambio desde la
+#    ultima vez (updated_at_min), no 90 dias enteros. Su avance va a disco (stock_sync.json) porque
+#    son 2 workers; si el worker se recicla, el latido se corta y el proximo GET la relanza.
+#  - Todas las escrituras van bajo un candado de ARCHIVO (los 2 workers) y releen stock.json justo
+#    antes de aplicar: un deposito o una correccion ya no los pisa una actualizacion en vuelo.
+STOCK_FILE = DATA_DIR / "stock.json"           # {email: {pid: {nombre,unidad,stock,costo,sku,...}}}
 STOCK_LEDGER = DATA_DIR / "stock_ledger.json"  # {email: {order_key: {delta:{pid:qty}, estado}}}
 STOCK_PEDIDOS = DATA_DIR / "stock_pedidos.json"  # {email: [{id,pid,qty,fecha,estado}]}
+STOCK_ORDENES = DATA_DIR / "stock_ordenes.json"  # {email: {ord:{key:{q,p,e,f,t,c,d}}, tit, cur, boot}}
+STOCK_SYNC_EST = DATA_DIR / "stock_sync.json"    # {email: {corriendo, latido, fase, fin, ok, error, errores, dur}}
+_STK_LOCK_FILE = DATA_DIR / "stock.lock"         # candado de los datos de stock (entre los 2 workers)
+_STK_EST_LOCK = DATA_DIR / "stock_est.lock"      # candado del archivo de estado (aparte: nunca se anidan)
+_STK_TTL = 45          # s: reabrir Stock dentro de esto no relanza la actualizacion
+_STK_MUERTO = 60       # s sin latido = la actualizacion se corto (worker reciclado / deploy)
+_STK_DEADLINE = 150    # s: tope de una actualizacion completa
+_STK_RET_DIAS = 16     # dias de pedidos que se guardan (el ritmo usa 14)
+_STK_VENTANA = 90      # un pedido creado hace mas de esto ya no mueve el stock (igual que antes)
+_STK_DEVUELVE = ("cancel", "return", "legacy_restock")   # restock_type de Shopify que SI vuelve al estante
 
 
 def _stk_read(path, default):
@@ -5890,11 +5967,11 @@ def _stk_read(path, default):
 
 def _stk_write(path, data):
     """Escritura ATOMICA: escribe un .tmp y recien ahi reemplaza (os.replace es atomico).
-    Deja la version anterior en .bak. Si el proceso muere a mitad, el archivo bueno sigue
-    intacto: nunca queda un JSON truncado."""
+    Deja la version anterior en .bak. El .tmp lleva pid+hilo: con uno fijo, dos escrituras a la
+    vez se pisaban el temporal y el segundo os.replace podia reventar."""
     path.parent.mkdir(parents=True, exist_ok=True)
     txt = _json.dumps(data, ensure_ascii=False, indent=1)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_suffix(path.suffix + ".%d-%d.tmp" % (_os.getpid(), threading.get_ident()))
     tmp.write_text(txt, encoding="utf-8")
     try:
         if path.exists():
@@ -5908,8 +5985,8 @@ STOCK_SNAP = DATA_DIR / "stock_snap.json"   # {email: {pid: {"YYYY-MM-DD": stock
 
 
 def _stock_snap_set(email, prods):
-    """Con cuanto stock quedo cada dia. Se registra en CADA lectura, asi el ultimo valor
-    anotado de un dia queda como su cierre (a las 00 rota el dia y el de ayer queda fijo)."""
+    """Con cuanto stock quedo cada dia. Se registra en cada actualizacion/cambio, asi el ultimo
+    valor anotado de un dia queda como su cierre. Llamar CON el candado de stock tomado."""
     try:
         hoy = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date().isoformat()
         sn = _stk_read(STOCK_SNAP, {})
@@ -5925,220 +6002,528 @@ def _stock_snap_set(email, prods):
         pass
 
 
-def _stock_orders(email, dias=90):
-    """Pedidos recientes (TN + Shopify) -> [{key, pid_qty, estado, fecha}].
-    estado: paid | pending | refunded | cancelled."""
-    desde = (_dt.datetime.utcnow() - _dt.timedelta(days=dias)).date().isoformat()
-    out = []
-    tk = _tn_tokens().get(email)
-    if tk and tk.get("access_token") and tk.get("store_id"):
-        store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
-        page = 1
-        while page <= 14:
-            try:
-                r = requests.get("%s/%s/orders" % (TN_API, store), headers=hdr,
-                                 params={"per_page": 50, "page": page,
-                                         "created_at_min": desde + "T00:00:00-03:00",
-                                         "fields": "id,payment_status,cancelled_at,created_at,products"},
-                                 timeout=30)
-                lote = r.json() if r.content else []
-            except Exception:
-                lote = []
-            if not isinstance(lote, list) or not lote:
-                break
-            for o in lote:
-                pq = {}
-                for li in (o.get("products") or []):
-                    pid = "tn:%s" % li.get("product_id")
-                    pq[pid] = pq.get(pid, 0) + int(li.get("quantity") or 0)
-                ps = (o.get("payment_status") or "").lower()
-                est = ("cancelled" if o.get("cancelled_at")
-                       else "refunded" if ps in ("refunded", "voided", "partially_refunded")
-                       else "paid" if ps == "paid" else "pending")
-                out.append({"key": "tn:%s" % o.get("id"), "pid_qty": pq, "estado": est,
-                            "fecha": str(o.get("created_at") or "")[:10]})
-            if len(lote) < 50:
-                break
-            page += 1
-    stk = _shop_tokens().get(email)
-    if stk and stk.get("access_token") and stk.get("shop"):
-        try:
-            # PAGINADO (via _shopify_orders, que sigue el header Link). Antes se pedia
-            # limit=250 SIN paginar: Shopify devolvia solo las 250 mas nuevas, que con este
-            # volumen son ~3 dias, y todo lo anterior quedaba en cero. Ademas el corte caia
-            # en un punto distinto cada vez que entraba un pedido, asi que el stock "saltaba"
-            # solo sin que nadie lo tocara.
-            import time as _tdl
-            for o in _shopify_orders(stk["shop"], stk["access_token"], desde, _hoy(),
-                                     deadline=_tdl.time() + 45):
-                pq = {}
-                for li in (o.get("line_items") or []):
-                    pid = str(li.get("product_id") or "")
-                    if pid:
-                        pq[pid] = pq.get(pid, 0) + int(li.get("quantity") or 0)
-                fs = (o.get("financial_status") or "").lower()
-                est = ("cancelled" if o.get("cancelled_at")
-                       else "refunded" if fs in ("refunded", "partially_refunded", "voided")
-                       else "paid" if fs in ("paid", "partially_paid") else "pending")
-                out.append({"key": "sh:%s" % o.get("id"), "pid_qty": pq, "estado": est,
-                            "fecha": str(o.get("created_at") or "")[:10], "canal": "tienda"})
-        except Exception:
-            pass
-    # MercadoLibre: hasta el 13/09 NO descontaba stock (solo se leia TN y Shopify), asi que los
-    # potes vendidos por ML nunca se restaban del deposito. Se cuentan en POTES via el SKU.
+def _stk_ahora_utc():
+    return _dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _stk_hoy():
+    return (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date()
+
+
+def _stk_cuando(s):
+    """ISO con zona (Shopify -03:00, ML -04:00, TN +0000) -> (dia ARGENTINA, instante UTC).
+    Antes se cortaba [:10] y las ventas de ML de 00 a 01 hs caian en el dia anterior."""
+    s = str(s or "").strip()
     try:
-        _tok, _uid = _meli_ctx(email)
+        d = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=_dt.timezone(_dt.timedelta(hours=-3)))
+        u = d.astimezone(_dt.timezone.utc)
+        a = d.astimezone(_dt.timezone(_dt.timedelta(hours=-3)))
+        return a.date().isoformat(), u.strftime("%Y-%m-%dT%H:%M:%S")
     except Exception:
-        _tok = _uid = None
-    if _tok and _uid:
-        _pid_ml = None
+        return s[:10], ""
+
+
+def _stk_est(email):
+    return dict(_stk_read(STOCK_SYNC_EST, {}).get(email) or {})
+
+
+def _stk_est_put(email, **kw):
+    with _sege_flock(_STK_EST_LOCK):
+        allx = _stk_read(STOCK_SYNC_EST, {})
+        e = allx.get(email) or {}
+        e.update(kw)
+        allx[email] = e
+        _stk_write(STOCK_SYNC_EST, allx)
+    return dict(e)
+
+
+def _stk_trylock(email, esperar=0):
+    """Candado NO bloqueante (o con espera acotada) entre procesos: UNA actualizacion por cuenta
+    a la vez. Devuelve el archivo abierto (soltarlo con _stk_unlock) o None si esta ocupado."""
+    import hashlib
+    p = DATA_DIR / ("stock_sync_%s.lock" % hashlib.md5(email.encode("utf-8")).hexdigest()[:10])
+    p.parent.mkdir(parents=True, exist_ok=True)
+    f = open(p, "a+")
+    try:
+        import fcntl
+    except Exception:
+        return f                                   # SO sin flock: sigue sin candado
+    fin = _time.time() + max(0, esperar)
+    while True:
         try:
-            _pr = (_stk_read(STOCK_FILE, {}).get(email) or {})
-            if _pr:
-                _pid_ml = sorted(_pr.items(), key=lambda kv: -int(kv[1].get("stock") or 0))[0][0]
-        except Exception:
-            _pid_ml = None
-        if _pid_ml:
-            _off = 0
-            while _off < 400:
-                try:
-                    _r = requests.get("%s/orders/search" % MELI_API, timeout=30,
-                                      headers={"Authorization": "Bearer " + _tok},
-                                      params={"seller": _uid, "sort": "date_desc",
-                                              "limit": 50, "offset": _off,
-                                              "order.date_created.from": desde + "T00:00:00.000-03:00"})
-                    _res = ((_r.json() if _r.content else {}) or {}).get("results") or []
-                except Exception:
-                    break
-                for _o in _res:
-                    _q = 0
-                    for _it in (_o.get("order_items") or []):
-                        _im = _it.get("item") or {}
-                        _sk = str(_im.get("seller_sku") or _im.get("seller_custom_field") or "")
-                        _q += _meli_units_sku(_sk)[0] * int(_it.get("quantity") or 1)
-                    if not _q:
-                        continue
-                    _st = (_o.get("status") or "").lower()
-                    _e = ("cancelled" if _st == "cancelled"
-                          else "refunded" if _st in ("refunded", "partially_refunded")
-                          else "paid" if _st in ("paid", "confirmed", "partially_paid") else "pending")
-                    out.append({"key": "ml:%s" % _o.get("id"), "pid_qty": {_pid_ml: _q},
-                                "estado": _e, "fecha": str(_o.get("date_created") or "")[:10],
-                                "canal": "meli"})
-                if len(_res) < 50:
-                    break
-                _off += 50
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return f
+        except OSError:
+            if _time.time() >= fin:
+                f.close()
+                return None
+            _time.sleep(0.5)
+
+
+def _stk_unlock(f):
+    if f is None:
+        return
+    try:
+        import fcntl
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        f.close()
+    except Exception:
+        pass
+
+
+def _stk_get(url, headers, params, deadline=None, timeout=20, intentos=6):
+    """GET con reintento en 429/5xx. Si falla, LEVANTA con el error real (antes un except: pass
+    tiraba en silencio todas las ventas de esa fuente y el ritmo se desplomaba)."""
+    r = None
+    for i in range(intentos):
+        if deadline and _time.time() > deadline:
+            raise TimeoutError("se agoto el tiempo de la actualizacion (%d s)" % _STK_DEADLINE)
+        r = requests.get(url, headers=headers, params=params, timeout=timeout)
+        if r.status_code == 429 or r.status_code >= 500:
+            try:
+                ra = float(r.headers.get("Retry-After") or 1)
+            except Exception:
+                ra = 1.0
+            _time.sleep(min(8.0, ra + 0.5 * i))
+            continue
+        if r.status_code != 200:
+            raise RuntimeError("HTTP %d: %s" % (r.status_code, (r.text or "")[:160]))
+        return r
+    raise RuntimeError("HTTP %s despues de %d intentos" % (getattr(r, "status_code", "?"), intentos))
+
+
+def _stk_ord_shopify(o):
+    """Pedido REST de Shopify -> entrada compacta.
+    q = unidades que SALIERON (o van a salir) del estante, por producto:
+      - solo renglones con envio (la Guia Digital, requires_shipping=false, no es stock fisico);
+      - menos lo reembolsado CON reposicion (restock cancel/return): un reembolso sin reposicion
+        de un pedido ya despachado NO devuelve potes (antes partially_refunded devolvia todo);
+      - cancelado o reembolsado sin haber despachado nada = 0 (los potes nunca salieron).
+    p = unidades pagadas que todavia NO se despacharon (fulfillable_quantity = unfulfilledQuantity)."""
+    fs = (o.get("financial_status") or "").lower()
+    ful = (o.get("fulfillment_status") or "").lower()
+    cancel = bool(o.get("cancelled_at"))
+    pago = fs in ("paid", "partially_paid", "partially_refunded", "refunded")
+    vuelto = {}
+    for rf in (o.get("refunds") or []):
+        for rl in (rf.get("refund_line_items") or []):
+            if (rl.get("restock_type") or "").lower() in _STK_DEVUELVE:
+                lid = str(rl.get("line_item_id") or "")
+                vuelto[lid] = vuelto.get(lid, 0) + int(rl.get("quantity") or 0)
+    nunca_salio = ful in ("", "unfulfilled", "restocked")
+    q, p, tit = {}, {}, {}
+    for li in (o.get("line_items") or []):
+        pid = str(li.get("product_id") or "")
+        if not pid:
+            continue
+        if li.get("requires_shipping") is False:
+            continue
+        tit[pid] = (li.get("title") or "")[:80]
+        cant = int(li.get("quantity") or 0)
+        neto = max(0, cant - vuelto.get(str(li.get("id") or ""), 0))
+        if (cancel or fs in ("refunded", "voided")) and nunca_salio:
+            neto = 0
+        if neto:
+            q[pid] = q.get(pid, 0) + neto
+        pend = min(int(li.get("fulfillable_quantity") or 0), neto)
+        if pend > 0 and pago and not cancel:
+            p[pid] = p.get(pid, 0) + pend
+    f, t = _stk_cuando(o.get("created_at"))
+    ent = {"q": q, "e": "paid" if pago else "pending", "f": f, "t": t, "c": "tienda"}
+    if p:
+        ent["p"] = p
+    return ent, tit
+
+
+def _stk_ord_tn(o):
+    ps = (o.get("payment_status") or "").lower()
+    ss = (o.get("shipping_status") or "").lower()
+    cancel = bool(o.get("cancelled_at"))
+    pago = ps in ("paid", "partially_refunded", "refunded")
+    salio = ss in ("shipped", "delivered", "fulfilled")
+    q, tit = {}, {}
+    for li in (o.get("products") or []):
+        pid = "tn:%s" % li.get("product_id")
+        q[pid] = q.get(pid, 0) + int(li.get("quantity") or 0)
+        nm = li.get("name")
+        if isinstance(nm, dict):
+            nm = nm.get("es") or next(iter(nm.values()), "")
+        tit[pid] = str(nm or "")[:80]
+    if (cancel or ps in ("refunded", "voided")) and not salio:
+        q = {}
+    f, t = _stk_cuando(o.get("created_at"))
+    ent = {"q": {k: v for k, v in q.items() if v}, "e": "paid" if pago else "pending",
+           "f": f, "t": t, "c": "tienda"}
+    if pago and not cancel and not salio and ent["q"]:
+        ent["p"] = dict(ent["q"])
+    return ent, tit
+
+
+def _stk_ord_ml(o):
+    """Venta de ML -> potes segun el SKU. d = unidades cuyo SKU NO dice cuantos potes trae
+    (se cuentan como 1 y se avisa en pantalla)."""
+    st = (o.get("status") or "").lower()
+    n = dud = 0
+    for it in (o.get("order_items") or []):
+        im = it.get("item") or {}
+        sk = str(im.get("seller_sku") or im.get("seller_custom_field") or "")
+        u, seguro = _meli_units_sku(sk)
+        c = int(it.get("quantity") or 1)
+        n += u * c
+        if not seguro:
+            dud += c
+    pago = st in ("paid", "confirmed", "partially_paid", "partially_refunded", "cancelled", "refunded")
+    q = {"__ml__": n} if (n and st not in ("cancelled", "refunded", "invalid")) else {}
+    f, t = _stk_cuando(o.get("date_created"))
+    ent = {"q": q, "e": "paid" if pago else "pending", "f": f, "t": t, "c": "meli"}
+    if dud and q:
+        ent["d"] = dud
+    return ent
+
+
+def _stk_fetch_shopify(stk, base, deadline, latir, etiqueta):
+    url = "https://%s/admin/api/2026-07/orders.json" % stk["shop"]
+    params = dict(base, limit=250,
+                  fields="id,financial_status,fulfillment_status,cancelled_at,created_at,"
+                         "updated_at,line_items,refunds")
+    hdr = {"X-Shopify-Access-Token": stk["access_token"]}
+    out, pag = [], 0
+    while True:
+        pag += 1
+        latir("%s, pagina %d" % (etiqueta, pag))
+        r = _stk_get(url, hdr, params, deadline=deadline)
+        out.extend(((r.json() if r.content else {}) or {}).get("orders") or [])
+        nxt = None
+        for part in (r.headers.get("Link") or "").split(","):
+            if 'rel="next"' in part and "<" in part and ">" in part:
+                nxt = part[part.find("<") + 1:part.find(">")]
+        if not nxt:
+            break
+        if pag >= 200:      # 50.000 pedidos: nunca deberia pasar; cortar en silencio dejaria ventas afuera
+            raise RuntimeError("Shopify devolvio mas de %d paginas; no se actualizo para no contar de menos" % pag)
+        url, params = nxt, None
     return out
 
 
-def _stock_sync(email):
-    """Aplica ventas pagadas (descuenta) y devoluciones/cancelaciones (repone). Idempotente."""
-    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
-    if not prods:
-        return prods, []
-    led = _stk_read(STOCK_LEDGER, {}); ledE = led.get(email) or {}
-    orders = _stock_orders(email, 90)
-    changed = False
-    for o in orders:
-        deltas = {}
-        for _pid, _p in prods.items():
-            _lp, _sp = _p.get("link_pid"), _p.get("split")
-            if _lp and _sp:                                   # producto dividido 30/60 (par/impar)
-                _base = o["pid_qty"].get(_lp, 0)
-                _q = (_base // 2) if _sp == "60" else (_base % 2)
-            else:
-                _q = o["pid_qty"].get(_pid, 0)
-            if _q > 0:
-                deltas[_pid] = _q
-        if not deltas:
-            continue
-        entry = ledE.get(o["key"])
-        if o["estado"] == "paid" and not entry:
-            for pid, q in deltas.items():
-                prods[pid]["stock"] = int(prods[pid].get("stock", 0)) - q
-            ledE[o["key"]] = {"delta": deltas, "estado": "paid", "fecha": o["fecha"]}
-            changed = True
-        elif o["estado"] in ("refunded", "cancelled") and entry and entry.get("estado") == "paid":
-            for pid, q in (entry.get("delta") or {}).items():
-                if pid in prods:
-                    prods[pid]["stock"] = int(prods[pid].get("stock", 0)) + q
-            entry["estado"] = "reverted"
-            changed = True
-    if changed:
-        # El LEDGER primero: si el proceso muere entre las dos escrituras, la venta queda
-        # marcada como aplicada y NO se vuelve a descontar. Al reves (stock primero) el
-        # descuento se repetia en cada corrida y el stock se hundia solo.
-        led[email] = ledE; _stk_write(STOCK_LEDGER, led)
-        st[email] = prods; _stk_write(STOCK_FILE, st)
-    _stock_snap_set(email, prods)
-    return prods, orders
-
-
-def _stock_seed(email, pid, link_pid=None):
-    """Al empezar a trackear un producto, marca los pedidos ACTUALES como ya procesados
-    (no retro-descuenta el histórico; solo cuentan las ventas NUEVAS). Para productos divididos
-    30/60 se seedea por el producto REAL (link_pid)."""
-    match = link_pid or pid
-    led = _stk_read(STOCK_LEDGER, {}); ledE = led.get(email) or {}
-    for o in _stock_orders(email, 120):
-        if match in o["pid_qty"] and o["key"] not in ledE:
-            ledE[o["key"]] = {"delta": {}, "estado": "seed"}
-    led[email] = ledE; _stk_write(STOCK_LEDGER, led)
-
-
-def _stock_metrics(email, pid, orders, split=None, link_pid=None):
-    hoy = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).date()   # hora ARGENTINA (UTC-3): si no, las ventas de la noche caen en "ayer" y la barra de hoy sale vacía
-    dias = {}
-    for o in orders:
-        if o["estado"] != "paid":
-            continue
-        if split and link_pid:
-            base = o["pid_qty"].get(link_pid, 0)          # cantidad del producto REAL en ese pedido
-            q = (base // 2) if split == "60" else (base % 2)   # par/impar: 60ml=÷2, 30ml=resto impar
-        else:
-            q = o["pid_qty"].get(pid, 0)
-        if not q:
-            continue
+def _stk_fetch_tn(tk, base, deadline, latir):
+    store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
+    out, page = [], 1
+    while page <= 60:
+        latir("TiendaNube, pagina %d" % page)
+        params = dict(base, per_page=50, page=page,
+                      fields="id,payment_status,shipping_status,cancelled_at,created_at,updated_at,products")
         try:
-            f = _dt.date.fromisoformat(o["fecha"])
-        except Exception:
+            r = _stk_get("%s/%s/orders" % (TN_API, store), hdr, params, deadline=deadline)
+        except RuntimeError as e:
+            if str(e).startswith("HTTP 404"):    # TN contesta 404 pasada la ultima pagina
+                break
+            raise
+        lote = r.json() if r.content else []
+        if not isinstance(lote, list) or not lote:
+            break
+        out.extend(lote)
+        if len(lote) < 50:
+            break
+        page += 1
+    return out
+
+
+def _stk_fetch_ml(tok, uid, filtro, deadline, latir):
+    out, off = [], 0
+    while off < 2500:
+        latir("MercadoLibre, %d ventas" % off)
+        r = _stk_get("%s/orders/search" % MELI_API, {"Authorization": "Bearer " + tok},
+                     dict(filtro, seller=uid, sort="date_desc", limit=50, offset=off),
+                     deadline=deadline)
+        res = ((r.json() if r.content else {}) or {}).get("results") or []
+        out.extend(res)
+        if len(res) < 50:
+            break
+        off += 50
+    return out
+
+
+def _stk_deltas(prods, q, ml_pid, t=None):
+    """Unidades de CADA tarjeta que consume un pedido (q = {product_id: unidades}).
+    t = instante UTC del pedido: si viene, respeta desde cuando cuenta cada cosa (tarjeta nueva,
+    pack agregado, ML asignado) para no descontar para atras. t=None = venta real (para el ritmo)."""
+    out = {}
+    for tp, p in (prods or {}).items():
+        if t is not None and (p.get("desde") or "") > t:
             continue
-        off = (hoy - f).days
-        if 0 <= off < 14:
-            dias[off] = dias.get(off, 0) + q
-    # mismo calculo, partido por canal (para el historial de abajo)
+        lp, sp = p.get("link_pid"), p.get("split")
+        if lp and sp:                                   # producto dividido 30/60 (par/impar)
+            base = int(q.get(lp) or 0)
+            n = (base // 2) if sp == "60" else (base % 2)
+        else:
+            n = int(q.get(tp) or 0)
+            pkd = p.get("packs_desde") or {}
+            for pk, k in (p.get("packs") or {}).items():
+                if t is not None and (pkd.get(pk) or "") > t:
+                    continue
+                try:
+                    n += int(q.get(pk) or 0) * int(k or 0)
+                except Exception:
+                    pass
+        if tp == ml_pid and not (t is not None and (p.get("ml_desde") or "") > t):
+            n += int(q.get("__ml__") or 0)
+        if n > 0:
+            out[tp] = n
+    return out
+
+
+def _stk_ml_destino(prods, ml_ok, ahora):
+    """A que tarjeta van los potes de ML. Antes: 'la de MAS stock' en cada corrida (podia cambiar
+    de tarjeta sola). Ahora se elige UNA vez y queda guardada (flag meli): la que el usuario marco;
+    si no marco ninguna, la de 30ml (ML solo vende 30ml), o la unica tarjeta, o la de mas stock."""
+    for k, p in prods.items():
+        if p.get("meli"):
+            return k
+    if not ml_ok or not prods:
+        return None
+    s30 = [k for k, p in prods.items() if p.get("split") == "30"]
+    if s30:
+        k = s30[0]
+    else:
+        k = sorted(prods.items(), key=lambda kv: -int(kv[1].get("stock") or 0))[0][0]
+    prods[k]["meli"] = True
+    if prods[k].get("split"):
+        prods[k]["ml_desde"] = ahora   # las tarjetas 30/60 nunca descontaban ML: solo de aca en adelante
+    return k
+
+
+def _stk_aplicar(prods, ledE, ords, ml_pid, hoy):
+    """Descuenta las ventas pagadas nuevas y devuelve lo cancelado/repuesto. Idempotente.
+    Un pedido ya descontado SOLO puede devolver (nunca descontar mas para atras)."""
+    lim = (hoy - _dt.timedelta(days=_STK_VENTANA)).isoformat()
+    cambios = 0
+    for key, o in ords.items():
+        if (o.get("f") or "") < lim:
+            continue
+        entry = ledE.get(key)
+        if entry and entry.get("estado") in ("seed", "reverted"):
+            continue
+        q = (o.get("q") or {}) if o.get("e") == "paid" else {}
+        if not entry:
+            target = _stk_deltas(prods, q, ml_pid, o.get("t") or "")
+            if not target:
+                continue
+            for pid, n in target.items():
+                prods[pid]["stock"] = int(prods[pid].get("stock") or 0) - n
+            ledE[key] = {"delta": target, "estado": "paid", "fecha": o.get("f")}
+            cambios += 1
+            continue
+        ap = {}
+        for k, v in (entry.get("delta") or {}).items():
+            try:
+                ap[k] = int(v or 0)
+            except Exception:
+                ap[k] = 0
+        if key.startswith("ml:"):
+            tot = int(q.get("__ml__") or 0)
+            nuevo = {k: min(v, tot) for k, v in ap.items()}
+        else:
+            full = _stk_deltas(prods, q, ml_pid, None)
+            nuevo = {k: (min(v, full.get(k, 0)) if k in prods else v) for k, v in ap.items()}
+        if nuevo != ap:
+            for pid, n in ap.items():
+                dv = n - nuevo.get(pid, n)
+                if dv and pid in prods:
+                    prods[pid]["stock"] = int(prods[pid].get("stock") or 0) + dv
+            entry["delta"] = {k: v for k, v in nuevo.items() if v}
+            entry["estado"] = "paid" if entry["delta"] else "reverted"
+            cambios += 1
+    return cambios
+
+
+def _stock_sync(email, esperar=True, deadline_s=None):
+    """Actualiza el stock trayendo SOLO lo nuevo desde la ultima vez. Devuelve (prods, ordenes).
+    La primera vez (sin cache) trae 16 dias + los pagados sin despachar de 90 dias.
+    esperar=False: si otra actualizacion ya esta corriendo (este u otro worker), no hace nada."""
+    lk = _stk_trylock(email, esperar=(60 if esperar else 0))
+    if lk is None:
+        st0 = _stk_read(STOCK_FILE, {}).get(email) or {}
+        return st0, ((_stk_read(STOCK_ORDENES, {}).get(email) or {}).get("ord") or {})
+    t0 = _time.time()
+    try:
+        deadline = t0 + (deadline_s or _STK_DEADLINE)
+        ult = [0.0]
+
+        def latir(fase):
+            if _time.time() - ult[0] >= 1.0:
+                ult[0] = _time.time()
+                _stk_est_put(email, corriendo=True, latido=ult[0], fase=fase)
+
+        if not (_stk_read(STOCK_FILE, {}).get(email) or {}):
+            _stk_est_put(email, corriendo=False, fin=_time.time(), ok=True, error=None, errores={})
+            return {}, {}
+        latir("arrancando")
+        hoy = _stk_hoy()
+        marca = (_dt.datetime.utcnow() - _dt.timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%S")
+        cache0 = _stk_read(STOCK_ORDENES, {}).get(email) or {}
+        cur = dict(cache0.get("cur") or {})
+        boot_desde = (hoy - _dt.timedelta(days=_STK_RET_DIAS)).isoformat()
+        vent_desde = (hoy - _dt.timedelta(days=_STK_VENTANA)).isoformat()
+        nuevos, tit, errores = {}, {}, {}
+        # --- Shopify
+        stk = _shop_tokens().get(email) or {}
+        if stk.get("access_token") and stk.get("shop"):
+            try:
+                if cur.get("sh"):
+                    crudos = _stk_fetch_shopify(stk, {"status": "any", "updated_at_min": cur["sh"] + "Z"},
+                                                deadline, latir, "Shopify (cambios)")
+                else:
+                    crudos = _stk_fetch_shopify(stk, {"status": "any",
+                                                      "created_at_min": boot_desde + "T00:00:00-03:00"},
+                                                deadline, latir, "Shopify (ultimos 16 dias)")
+                    crudos += _stk_fetch_shopify(stk, {"status": "any", "financial_status": "paid",
+                                                       "fulfillment_status": "unfulfilled",
+                                                       "created_at_min": vent_desde + "T00:00:00-03:00"},
+                                                 deadline, latir, "Shopify (sin despachar)")
+                for o in crudos:
+                    ent, tt = _stk_ord_shopify(o)
+                    nuevos["sh:%s" % o.get("id")] = ent
+                    tit.update(tt)
+                cur["sh"] = marca
+            except Exception as e:
+                errores["Shopify"] = _sege_err(e)
+        # --- TiendaNube
+        tk = _tn_tokens().get(email) or {}
+        if tk.get("access_token") and tk.get("store_id"):
+            try:
+                if cur.get("tn"):
+                    crudos = _stk_fetch_tn(tk, {"updated_at_min": cur["tn"] + "+00:00"}, deadline, latir)
+                else:
+                    crudos = _stk_fetch_tn(tk, {"created_at_min": boot_desde + "T00:00:00-03:00"},
+                                           deadline, latir)
+                for o in crudos:
+                    ent, tt = _stk_ord_tn(o)
+                    nuevos["tn:%s" % o.get("id")] = ent
+                    tit.update(tt)
+                cur["tn"] = marca
+            except Exception as e:
+                errores["TiendaNube"] = _sege_err(e)
+        # --- MercadoLibre (en POTES via el SKU)
+        try:
+            _tok, _uid = _meli_ctx(email)
+        except Exception as e:
+            _tok = _uid = None
+            errores["MercadoLibre"] = _sege_err(e)
+        ml_ok = bool(_tok and _uid)
+        if ml_ok:
+            try:
+                if cur.get("ml"):
+                    filtro = {"order.date_last_updated.from": cur["ml"] + ".000-00:00"}
+                else:
+                    filtro = {"order.date_created.from": boot_desde + "T00:00:00.000-03:00"}
+                for o in _stk_fetch_ml(_tok, _uid, filtro, deadline, latir):
+                    nuevos["ml:%s" % o.get("id")] = _stk_ord_ml(o)
+                cur["ml"] = marca
+            except Exception as e:
+                errores["MercadoLibre"] = _sege_err(e)
+        latir("guardando")
+        lim_ret = (hoy - _dt.timedelta(days=_STK_RET_DIAS)).isoformat()
+        lim_vent = (hoy - _dt.timedelta(days=_STK_VENTANA)).isoformat()
+        with _sege_flock(_STK_LOCK_FILE):
+            # se RELEE todo aca adentro: lo que se haya depositado/corregido mientras se traian
+            # los pedidos queda adentro (antes se escribia lo leido al principio y se perdia)
+            st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+            led = _stk_read(STOCK_LEDGER, {}); ledE = led.get(email) or {}
+            allc = _stk_read(STOCK_ORDENES, {}); c = allc.get(email) or {}
+            ords = c.get("ord") or {}
+            n_antes = sum(1 for p in prods.values() if p.get("meli"))
+            ml_pid = _stk_ml_destino(prods, ml_ok, _stk_ahora_utc())
+            cambios = _stk_aplicar(prods, ledE, nuevos, ml_pid, hoy) if prods else 0
+            ords.update(nuevos)
+            ords = {k: o for k, o in ords.items()
+                    if (o.get("f") or "") >= lim_ret
+                    or (o.get("p") and o.get("e") == "paid" and (o.get("f") or "") >= lim_vent)}
+            if cambios:
+                for k in [k for k, v in ledE.items() if (v.get("fecha") or "9") < lim_vent]:
+                    ledE.pop(k, None)
+                # el LEDGER primero: si el proceso muere entre las dos escrituras, la venta queda
+                # marcada como aplicada y NO se vuelve a descontar
+                led[email] = ledE; _stk_write(STOCK_LEDGER, led)
+            if cambios or sum(1 for p in prods.values() if p.get("meli")) != n_antes:
+                st[email] = prods; _stk_write(STOCK_FILE, st)
+            titE = dict(c.get("tit") or {}); titE.update(tit)
+            c.update({"ord": ords, "tit": titE, "cur": cur,
+                      "boot": c.get("boot") or (_stk_ahora_utc() if cur else "")})
+            allc[email] = c; _stk_write(STOCK_ORDENES, allc)
+            _stock_snap_set(email, prods)
+        _stk_est_put(email, corriendo=False, latido=_time.time(), fin=_time.time(),
+                     ok=not errores, errores=errores, fase="",
+                     error=(None if not errores else "; ".join("%s: %s" % kv for kv in errores.items())),
+                     dur=round(_time.time() - t0, 1), nuevos=len(nuevos), aplicados=cambios)
+        return prods, ords
+    except Exception as e:
+        _stk_est_put(email, corriendo=False, fin=_time.time(), ok=False, fase="",
+                     error=_sege_err(e), dur=round(_time.time() - t0, 1))
+        raise
+    finally:
+        _stk_unlock(lk)
+
+
+def _stk_lanzar(email, forzar=False):
+    """Decide si hace falta actualizar y, si hace falta, lanza el hilo (desde el request: los hilos
+    arrancados al importar el modulo se cuelgan). Devuelve el estado."""
+    est = _stk_est(email)
+    ahora = _time.time()
+    if est.get("corriendo"):
+        if ahora - float(est.get("latido") or 0) < _STK_MUERTO:
+            return est                                   # hay una en curso y late
+        est = _stk_est_put(email, corriendo=False, ok=False, fase="",
+                           error="La actualizacion anterior se corto (se reinicio el servidor). Reintentando.")
+    elif not forzar and ahora - float(est.get("fin") or 0) < _STK_TTL:
+        return est
+    if not (_stk_read(STOCK_FILE, {}).get(email) or {}):
+        return est
+    # el latido se marca ANTES de lanzar: dos requests simultaneos no lanzan dos hilos
+    est = _stk_est_put(email, corriendo=True, latido=ahora, inicio=ahora, fase="arrancando")
+
+    def _tarea():
+        try:
+            _stock_sync(email, esperar=False)
+        except Exception:
+            pass                                         # el error ya quedo en stock_sync.json
+    threading.Thread(target=_tarea, daemon=True, name="stock-sync").start()
+    return est
+
+
+def _stock_metrics(tp, p, ords, ml_pid, hoy):
+    """Ritmo y faltantes de UNA tarjeta, desde los pedidos guardados (nada de red).
+    El ritmo usa DIAS CERRADOS (ayer para atras): con hoy adentro, a la mañana salia bajo y se
+    movia solo durante el dia. Hoy se muestra aparte."""
+    uno = {tp: p}
+    mlp = ml_pid if tp == ml_pid else None
     dias_t, dias_m = {}, {}
-    for o in orders:
-        if o["estado"] != "paid":
-            continue
-        if split and link_pid:
-            _b = o["pid_qty"].get(link_pid, 0)
-            _q = (_b // 2) if split == "60" else (_b % 2)
-        else:
-            _q = o["pid_qty"].get(pid, 0)
-        if not _q:
+    pend = dud = 0
+    for o in ords.values():
+        if o.get("e") != "paid":
             continue
         try:
-            _f = _dt.date.fromisoformat(o["fecha"])
+            off = (hoy - _dt.date.fromisoformat(o.get("f") or "")).days
         except Exception:
             continue
-        _off = (hoy - _f).days
-        if 0 <= _off < 14:
-            if (o.get("canal") or "tienda") == "meli":
-                dias_m[_off] = dias_m.get(_off, 0) + _q
-            else:
-                dias_t[_off] = dias_t.get(_off, 0) + _q
-    ventas14 = [dias.get(13 - i, 0) for i in range(14)]
-    v14_tienda = [dias_t.get(13 - i, 0) for i in range(14)]
-    v14_meli = [dias_m.get(13 - i, 0) for i in range(14)]
-    d14 = sum(ventas14); d7 = sum(ventas14[-7:]); d3 = sum(dias.get(off, 0) for off in range(3))
-    # Promedio/día = promedio REAL de los ultimos 7 dias. Antes era max(d3/3, d7/7): agarraba
-    # el pico de los ultimos 3 dias y lo proyectaba, asi que el numero saltaba solo de un dia
-    # para el otro (con 499 potes en 3 dias marcaba 166/dia en vez de 71). Si no hay 7 dias de
-    # datos cae a 14; d3 queda solo como referencia.
-    # Ritmo: SOLO los ultimos 3 y 7 dias, promedio de ambos. Los 14 dias ya no entran: diluian
-    # el ritmo de ahora con dias viejos mas flojos. Tampoco se toma el MAYOR de los dos (eso
-    # agarraba el pico de 3 dias y lo proyectaba: marcaba 166/dia cuando el real era 71).
+        n = _stk_deltas(uno, o.get("q") or {}, mlp, None).get(tp, 0)
+        if n and 0 <= off < 14:
+            dd = dias_m if o.get("c") == "meli" else dias_t
+            dd[off] = dd.get(off, 0) + n
+            if o.get("c") == "meli" and o.get("d"):
+                dud += int(o.get("d") or 0)
+        if o.get("p"):
+            pend += _stk_deltas(uno, o.get("p") or {}, None, None).get(tp, 0)
+    v14_t = [dias_t.get(13 - i, 0) for i in range(14)]
+    v14_m = [dias_m.get(13 - i, 0) for i in range(14)]
+    ventas14 = [a + b for a, b in zip(v14_t, v14_m)]
+    d14 = sum(ventas14)
+    d7 = sum(ventas14[-8:-1])                         # 7 dias cerrados (sin hoy)
+    d3 = sum(ventas14[-4:-1])                         # 3 dias cerrados (sin hoy)
     if d3 and d7:
         rate = round((d3 / 3.0 + d7 / 7.0) / 2.0)
     elif d3:
@@ -6147,30 +6532,77 @@ def _stock_metrics(email, pid, orders, split=None, link_pid=None):
         rate = round(d7 / 7.0)
     else:
         rate = 0
-    return {"ventas14": ventas14, "v14_tienda": v14_tienda, "v14_meli": v14_meli,
-            "d3": d3, "d7": d7, "d14": d14, "rate": rate}
+    return {"ventas14": ventas14, "v14_tienda": v14_t, "v14_meli": v14_m, "d3": d3, "d7": d7,
+            "d14": d14, "hoy": ventas14[-1], "rate": rate, "pend_despacho": pend, "ml_dudosos": dud}
+
+
+def _stk_sin_mapear(prods, ords, tit, hoy):
+    """Productos CON envio que se vendieron en 14 dias y no descuentan de ninguna tarjeta
+    (ej. un pack de Kaching con su propio ID). Se muestran para decir cuantos potes trae cada uno."""
+    usados = set()
+    for tp, p in prods.items():
+        usados.add(p.get("link_pid") or tp)
+        usados.update((p.get("packs") or {}).keys())
+    cnt = {}
+    for o in ords.values():
+        if o.get("e") != "paid" or o.get("c") == "meli":
+            continue
+        try:
+            if (hoy - _dt.date.fromisoformat(o.get("f") or "")).days >= 14:
+                continue
+        except Exception:
+            continue
+        for pid, n in (o.get("q") or {}).items():
+            if pid not in usados:
+                cnt[pid] = cnt.get(pid, 0) + int(n or 0)
+    out = [{"pid": k, "titulo": (tit.get(k) or k), "unidades": v} for k, v in cnt.items() if v]
+    return sorted(out, key=lambda x: -x["unidades"])[:12]
+
+
+def _stk_respuesta(email, est):
+    hoy = _stk_hoy()
+    prods = _stk_read(STOCK_FILE, {}).get(email) or {}
+    c = _stk_read(STOCK_ORDENES, {}).get(email) or {}
+    ords = c.get("ord") or {}
+    ml_pid = next((k for k, p in prods.items() if p.get("meli")), None)
+    ped = (_stk_read(STOCK_PEDIDOS, {}).get(email) or [])
+    snapE = (_stk_read(STOCK_SNAP, {}).get(email) or {})
+    out, dud = [], 0
+    for pid, p in prods.items():
+        m = _stock_metrics(pid, p, ords, ml_pid, hoy)
+        dud += m["ml_dudosos"]
+        pend = [x for x in ped if x.get("pid") == pid and x.get("estado") == "proceso"]
+        out.append({"id": pid, "nombre": (p.get("nombre") or ""), "unidad": (p.get("unidad") or "u"),
+                    "stock": int(p.get("stock") or 0), "costo": float(p.get("costo") or 0),
+                    "sku": (p.get("sku") or ""), "snap": (snapE.get(str(pid)) or {}),
+                    "pendientes": pend, "split": (p.get("split") or ""),
+                    "link_pid": (p.get("link_pid") or ""), "meli": bool(p.get("meli")),
+                    "packs": (p.get("packs") or {}),
+                    "packs_det": [{"pid": k, "titulo": ((c.get("tit") or {}).get(k) or k), "n": v}
+                                  for k, v in (p.get("packs") or {}).items()], **m})
+    vivo = bool(est.get("corriendo")) and (_time.time() - float(est.get("latido") or 0) < _STK_MUERTO)
+    return {"ok": True, "productos": out, "pid": _os.getpid(),
+            "listo": bool(c.get("boot")),
+            "sin_mapear": _stk_sin_mapear(prods, ords, c.get("tit") or {}, hoy) if c.get("boot") else [],
+            "ml_dudosos": dud,
+            "tarjetas": [{"id": k, "nombre": (p.get("nombre") or k)} for k, p in prods.items()
+                         if not p.get("split")],
+            "sync": {"corriendo": vivo, "fase": (est.get("fase") or ""), "error": est.get("error"),
+                     "errores": (est.get("errores") or {}), "fin": est.get("fin"),
+                     "dur": est.get("dur"), "ahora": _time.time()}}
 
 
 @app.get("/pf-stock")
 def pf_stock():
     email = _user_actual()
     if not email:
-        return jsonify({"ok": False, "productos": []})
-    prods, orders = _stock_sync(email)
-    ped = (_stk_read(STOCK_PEDIDOS, {}).get(email) or [])
-    out = []
-    for pid, p in prods.items():
-        m = _stock_metrics(email, pid, orders, split=p.get("split"), link_pid=p.get("link_pid"))
-        pend = [x for x in ped if x.get("pid") == pid and x.get("estado") == "proceso"]
-        out.append({"id": pid, "nombre": p.get("nombre", ""), "unidad": p.get("unidad", "u"),
-                    "stock": int(p.get("stock", 0)), "costo": float(p.get("costo", 0)),
-                    "sku": p.get("sku", ""), "ventas14": m["ventas14"],
-                    "snap": ((_stk_read(STOCK_SNAP, {}).get(email) or {}).get(str(pid)) or {}),
-                    "v14_tienda": m["v14_tienda"], "v14_meli": m["v14_meli"],
-                    "d3": m["d3"], "d7": m["d7"],
-                    "d14": m["d14"], "rate": m["rate"], "pendientes": pend,
-                    "split": p.get("split", ""), "link_pid": p.get("link_pid", "")})
-    return jsonify({"ok": True, "productos": out})
+        return jsonify({"ok": False, "productos": [],
+                        "err_detalle": "Tu sesion vencio: volve a entrar a RealProfit."}), 401
+    try:
+        est = _stk_lanzar(email, forzar=(request.args.get("forzar") == "1"))
+        return jsonify(_stk_respuesta(email, est))
+    except Exception as e:
+        return jsonify({"ok": False, "productos": [], "err_detalle": _sege_err(e)}), 500
 
 
 @app.get("/pf-stock-catalogo")
@@ -6202,26 +6634,61 @@ def pf_stock_catalogo():
 
 @app.post("/pf-stock-set")
 def pf_stock_set():
+    """Alta o cambio de una tarjeta. Conserva lo que no viene (antes rearmaba el dict y perdia
+    campos). packs={product_id: potes_por_unidad} (0 = no lleva potes; null = sacar).
+    meli=true = los potes de MercadoLibre descuentan de esta tarjeta."""
     email = _user_actual()
     if not email:
-        return jsonify({"ok": False}), 401
+        return jsonify({"ok": False, "msg": "Tu sesion vencio"}), 401
     d = request.get_json(silent=True) or {}
     pid = str(d.get("pid") or "").strip()
     if not pid:
         return jsonify({"ok": False, "msg": "falta el producto"}), 400
-    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
-    prev = prods.get(pid, {}); nuevo = pid not in prods
-    prods[pid] = {"nombre": d.get("nombre") or prev.get("nombre", ""),
-                  "unidad": d.get("unidad") or prev.get("unidad", "u"),
-                  "stock": int(d.get("stock", prev.get("stock", 0))),
-                  "costo": float(d.get("costo", prev.get("costo", 0))),
-                  "sku": d.get("sku") or prev.get("sku", ""),
-                  "link_pid": d.get("link_pid") or prev.get("link_pid", ""),
-                  "split": d.get("split") or prev.get("split", "")}
-    st[email] = prods; _stk_write(STOCK_FILE, st)
-    if nuevo:
-        _stock_seed(email, pid, d.get("link_pid"))
-    return jsonify({"ok": True})
+    try:
+        ahora = _stk_ahora_utc()
+        with _sege_flock(_STK_LOCK_FILE):
+            st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+            nuevo = pid not in prods
+            p = dict(prods.get(pid) or {})
+            for k in ("nombre", "unidad", "sku", "link_pid", "split"):
+                if d.get(k):
+                    p[k] = str(d.get(k))
+            p.setdefault("nombre", ""); p.setdefault("unidad", "u"); p.setdefault("sku", "")
+            p.setdefault("link_pid", ""); p.setdefault("split", "")
+            if d.get("stock") is not None and str(d.get("stock")).strip() != "":
+                p["stock"] = int(float(d.get("stock")))
+            p.setdefault("stock", 0)
+            if d.get("costo") is not None and str(d.get("costo")).strip() != "":
+                p["costo"] = float(d.get("costo"))
+            p.setdefault("costo", 0.0)
+            if isinstance(d.get("packs"), dict):
+                pk = dict(p.get("packs") or {}); pkd = dict(p.get("packs_desde") or {})
+                for k, v in d["packs"].items():
+                    k = str(k).strip()
+                    if not k:
+                        continue
+                    if v is None or str(v).strip() == "":
+                        pk.pop(k, None); pkd.pop(k, None)
+                        continue
+                    n = max(0, min(50, int(float(v))))
+                    if pk.get(k) != n:
+                        pkd[k] = ahora       # cuenta solo para pedidos de aca en adelante
+                    pk[k] = n
+                p["packs"] = pk; p["packs_desde"] = pkd
+            if d.get("meli") is True and not p.get("meli"):
+                for k2, p2 in prods.items():
+                    if k2 != pid and p2.get("meli"):
+                        p2["meli"] = False
+                p["meli"] = True
+                p["ml_desde"] = ahora
+            if nuevo:
+                p["desde"] = ahora           # una tarjeta nueva no descuenta ventas viejas
+            prods[pid] = p
+            st[email] = prods; _stk_write(STOCK_FILE, st)
+            _stock_snap_set(email, prods)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": _sege_err(e)}), 500
 
 
 @app.post("/pf-stock-del")
@@ -6229,49 +6696,66 @@ def pf_stock_del():
     """Elimina un producto del stock (la tarjeta). No toca la tienda, solo el tracking de stock."""
     email = _user_actual()
     if not email:
-        return jsonify({"ok": False}), 401
+        return jsonify({"ok": False, "msg": "Tu sesion vencio"}), 401
     pid = str((request.get_json(silent=True) or {}).get("pid") or "").strip()
-    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
-    if pid in prods:
-        del prods[pid]; st[email] = prods; _stk_write(STOCK_FILE, st)
-    return jsonify({"ok": True})
+    try:
+        with _sege_flock(_STK_LOCK_FILE):
+            st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+            if pid in prods:
+                del prods[pid]; st[email] = prods; _stk_write(STOCK_FILE, st)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": _sege_err(e)}), 500
 
 
 @app.post("/pf-stock-pedir")
 def pf_stock_pedir():
     email = _user_actual()
     if not email:
-        return jsonify({"ok": False}), 401
+        return jsonify({"ok": False, "msg": "Tu sesion vencio"}), 401
     d = request.get_json(silent=True) or {}
-    pid = str(d.get("pid") or ""); qty = int(d.get("qty") or 0)
+    pid = str(d.get("pid") or "")
+    try:
+        qty = int(float(d.get("qty") or 0))
+    except Exception:
+        qty = 0
     if not pid or qty <= 0:
         return jsonify({"ok": False, "msg": "cantidad inválida"}), 400
     import uuid
-    allp = _stk_read(STOCK_PEDIDOS, {}); lst = allp.get(email) or []
-    lst.insert(0, {"id": uuid.uuid4().hex[:10], "pid": pid, "qty": qty,
-                   "fecha": _dt.datetime.utcnow().date().isoformat(), "estado": "proceso"})
-    allp[email] = lst; _stk_write(STOCK_PEDIDOS, allp)
-    return jsonify({"ok": True})
+    try:
+        with _sege_flock(_STK_LOCK_FILE):
+            allp = _stk_read(STOCK_PEDIDOS, {}); lst = allp.get(email) or []
+            lst.insert(0, {"id": uuid.uuid4().hex[:10], "pid": pid, "qty": qty,
+                           "fecha": _stk_hoy().isoformat(), "estado": "proceso"})
+            allp[email] = lst; _stk_write(STOCK_PEDIDOS, allp)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": _sege_err(e)}), 500
 
 
 @app.post("/pf-stock-depositar")
 def pf_stock_depositar():
     email = _user_actual()
     if not email:
-        return jsonify({"ok": False}), 401
+        return jsonify({"ok": False, "msg": "Tu sesion vencio"}), 401
     d = request.get_json(silent=True) or {}
     pedid = str(d.get("id") or "")
-    allp = _stk_read(STOCK_PEDIDOS, {}); lst = allp.get(email) or []
-    o = next((x for x in lst if x.get("id") == pedid and x.get("estado") == "proceso"), None)
-    if not o:
-        return jsonify({"ok": False, "msg": "pedido no encontrado"}), 404
-    st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
-    if o["pid"] in prods:
-        prods[o["pid"]]["stock"] = int(prods[o["pid"]].get("stock", 0)) + int(o["qty"])
-        st[email] = prods; _stk_write(STOCK_FILE, st)
-    o["estado"] = "depositado"
-    allp[email] = lst; _stk_write(STOCK_PEDIDOS, allp)
-    return jsonify({"ok": True})
+    try:
+        with _sege_flock(_STK_LOCK_FILE):
+            allp = _stk_read(STOCK_PEDIDOS, {}); lst = allp.get(email) or []
+            o = next((x for x in lst if x.get("id") == pedid and x.get("estado") == "proceso"), None)
+            if not o:
+                return jsonify({"ok": False, "msg": "pedido no encontrado (ya estaba depositado?)"}), 404
+            st = _stk_read(STOCK_FILE, {}); prods = st.get(email) or {}
+            if o["pid"] in prods:
+                prods[o["pid"]]["stock"] = int(prods[o["pid"]].get("stock") or 0) + int(o.get("qty") or 0)
+                st[email] = prods; _stk_write(STOCK_FILE, st)
+                _stock_snap_set(email, prods)
+            o["estado"] = "depositado"
+            allp[email] = lst; _stk_write(STOCK_PEDIDOS, allp)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": _sege_err(e)}), 500
 
 
 @app.get("/pf-mp-efectivo")

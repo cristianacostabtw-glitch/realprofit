@@ -7988,52 +7988,8 @@ html.mfy-ready #root{opacity:1;transition:opacity .15s ease}
  if(document.readyState!=="loading")go(); else document.addEventListener("DOMContentLoaded",go);
 })();
 </script><script id="metafy-stock">
-(function(){
- function money(n){return "$"+Math.round(n||0).toLocaleString("es-AR");}
- function card(nombre,ml,st,r,e,c,lead,seg){
-  var cob = r>0 ? st/r : 999;                    // días de cobertura
-  var punto = Math.round((lead+seg)*r);          // punto de reposición
-  var falta = Math.max(0, punto-st);
-  var col = cob < lead ? "#f87171" : (cob < lead+seg ? "#fbbf24" : "#34d399");
-  var est = cob < lead ? "CRÍTICO" : (cob < lead+seg ? "REPONER" : "OK");
-  return '<div class="rounded-2xl border p-5" style="border-color:'+col+'33;background:'+col+'0d">'+
-   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'+
-   '<div style="font-size:15px;font-weight:800;color:#fff">'+nombre+'</div>'+
-   '<span style="font-size:10px;font-weight:800;padding:3px 9px;border-radius:99px;background:'+col+'22;color:'+col+'">'+est+'</span></div>'+
-   '<div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:34px;font-weight:800;color:#fff;line-height:1">'+st+'</span><span style="font-size:13px;color:#94a3b8">unidades</span></div>'+
-   '<div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:11px;font-size:12.5px">'+
-   '<div><div style="color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Cobertura</div><div style="color:'+col+';font-weight:800;font-size:16px">'+(cob>900?"—":cob.toFixed(1)+" días")+'</div></div>'+
-   '<div><div style="color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Ritmo</div><div style="color:#e2e8f0;font-weight:700;font-size:16px">'+r.toFixed(1)+' u/día</div></div>'+
-   '<div><div style="color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">Punto reposición</div><div style="color:#e2e8f0;font-weight:700">'+punto+' u</div></div>'+
-   '<div><div style="color:#64748b;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px">En camino</div><div style="color:#e2e8f0;font-weight:700">'+e+' u</div></div>'+
-   '</div>'+
-   (falta>0?'<div style="margin-top:13px;padding:9px 11px;border-radius:9px;background:'+col+'1a;color:'+col+';font-size:12.5px;font-weight:700">⚠️ Pedí '+falta+' u más (te quedan '+(cob>900?"—":cob.toFixed(0))+' días, el proveedor tarda '+lead+')</div>':'')+
-   '<div style="margin-top:11px;font-size:11.5px;color:#64748b">Valor en stock: <b style="color:#cbd5e1">'+money(st*c)+'</b></div>'+
-   '</div>';
- }
- function pintar(d){
-  var cards=document.getElementById("stk_cards"); if(!cards)return;
-  cards.innerHTML = card("VisionPure 30ml","30",d.st30,d.r30,d.e30,d.c30,d.lead,d.seg)
-                  + card("VisionPure 60ml","60",d.st60,d.r60,d.e60,d.c60,d.lead,d.seg);
-  var cob30=d.r30>0?d.st30/d.r30:999, cob60=d.r60>0?d.st60/d.r60:999;
-  var minc=Math.min(cob30,cob60);
-  var valor=d.st30*d.c30 + d.st60*d.c60;
-  var res=document.getElementById("stk_resumen");
-  function kpi(l,v,c){return '<div><div style="font-size:10.5px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:600">'+l+'</div><div style="font-size:19px;font-weight:800;color:'+(c||"#fff")+';margin-top:3px">'+v+'</div></div>';}
-  res.innerHTML = kpi("Valor total en stock",money(valor))
-   + kpi("Unidades totales",(d.st30+d.st60)+" u")
-   + kpi("Cobertura mínima",(minc>900?"—":minc.toFixed(1)+" días"), minc<d.lead?"#f87171":(minc<d.lead+d.seg?"#fbbf24":"#34d399"))
-   + kpi("Ritmo total",(d.r30+d.r60).toFixed(1)+" u/día");
-  var al=document.getElementById("stk_alerta");
-  if(minc < d.lead+d.seg){
-   al.className='rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-center gap-2.5';
-   al.innerHTML='<span class="material-symbols-outlined text-amber-400" style="font-size:20px">warning</span><span class="text-[13px] text-amber-200"><b>Hay que reponer.</b> Con el ritmo actual te quedan <b>'+minc.toFixed(1)+' días</b> y el proveedor tarda <b>'+d.lead+' días</b> (+'+d.seg+' de seguridad).</span>';
-  } else { al.className="hidden"; }
- }
- function cargar(){ fetch("/pf-stock").then(function(r){return r.json();}).then(function(j){ if(j&&j.ok&&j.st)pintar(j.st); }).catch(function(){}); }
- function go(){ cargar(); setInterval(cargar,30000); }
- if(document.readyState!=="loading")go(); else document.addEventListener("DOMContentLoaded",go);
-})();
+/* Quitado 31-10-2026: el poller viejo de METAFY pedia /pf-stock cada 30 s desde cada pestana
+   (998 pedidos en 30 h) y no pintaba nada (esperaba j.st). Stock vive en rpStock (app.py). */
 </script><script id="metafy-comentarios">
 (function(){
  var todos=[],filtro="todos",busca="";
