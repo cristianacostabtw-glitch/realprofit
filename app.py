@@ -2138,8 +2138,11 @@ _SOLO_DASH = r"""
      marcar(p); if(_dSeg.length) _dSegRender(); else res.innerHTML='';
      var head='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+lineas(p).join(' · ')+' <span style="color:#7fbf9f;font-weight:600">('+(p.seg||0)+'s)</span></div>';
      var eg=p.error?('<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12px;margin-bottom:10px"><b>Error del envío:</b> '+_dEsc(p.error)+'</div>'):'';
-     res.innerHTML=head+eg+errBox(p)+res.innerHTML;
+     res.innerHTML=head+eg+errBox(p)+ebookBox(p)+res.innerHTML;
      _dLoaded=false; try{ rpDLoad(); }catch(e){} }
+   function ebookBox(p){ var b=p.ebook||{}, e=b.errores||[], n=b.cerrados||0; if(!n&&!e.length)return '';
+     var fl=e.slice(0,8).map(function(x){ return '<div style="margin-top:4px">'+(x.num?('#'+_dEsc(x.num)+': '):'')+_dEsc(x.msg)+'</div>'; }).join('');
+     return '<div style="background:#14213a;border:1px solid #2f4a6b;border-radius:12px;padding:10px 14px;color:#a9c6ec;font-size:12px;margin-bottom:10px">📘 Guía digital: '+n+' cerrada'+(n===1?'':'s')+' sin aviso al cliente'+(e.length?(' · <b style="color:#fde68a">'+e.length+' no se pudieron cerrar</b> (el seguimiento de esos pedidos SÍ quedó cargado)'+fl):'')+'</div>'; }
    function tick(){ if(pidiendo||reanudando)return; pidiendo=true;
      fetch('/pf-despachos-seg-envio-prog?job='+encodeURIComponent(job)).then(function(r){ return r.json().catch(function(){ return {ok:false,msg:'HTTP '+r.status+' sin JSON',_http:1}; }); }).then(function(p){
        pidiendo=false;
@@ -6369,7 +6372,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-10-31-seg-job"})
+    return jsonify({"ok": True, "v": "2026-10-31-seg-ebook"})
 
 
 _KPI_DBG = {}
@@ -12772,7 +12775,7 @@ _SEG_GQL = ("query($q:String!){orders(first:30,query:$q){edges{node{"
             "customer{firstName lastName phone} "
             "shippingAddress{name phone} "
             "shippingLines(first:2){edges{node{title}}} "
-            "lineItems(first:4){edges{node{quantity}}} "
+            "lineItems(first:4){edges{node{quantity requiresShipping}}} "
             "fulfillments(first:3){trackingInfo{number} status}"
             "}}}}")
 
@@ -12797,7 +12800,8 @@ def _seg_gql_a_rest(node):
         "shipping_address": {"name": sa.get("name") or "", "phone": sa.get("phone") or ""},
         "shipping_lines": [{"title": (e.get("node") or {}).get("title") or ""}
                            for e in ((node.get("shippingLines") or {}).get("edges") or [])],
-        "line_items": [{"quantity": (e.get("node") or {}).get("quantity") or 0}
+        "line_items": [{"quantity": (e.get("node") or {}).get("quantity") or 0,
+                        "requires_shipping": (e.get("node") or {}).get("requiresShipping")}
                        for e in ((node.get("lineItems") or {}).get("edges") or [])],
         "fulfillments": ffs,
     }
@@ -12903,7 +12907,7 @@ def _seg_mapa_orders_shopify(email, numeros) -> dict:
         QF = ("query($ids:[ID!]!){nodes(ids:$ids){... on Order{"
               "legacyResourceId name email phone customer{firstName lastName phone} "
               "shippingAddress{name phone} shippingLines(first:2){edges{node{title}}} "
-              "lineItems(first:4){edges{node{quantity}}} fulfillments(first:3){trackingInfo{number} status}"
+              "lineItems(first:4){edges{node{quantity requiresShipping}}} fulfillments(first:3){trackingInfo{number} status}"
               "}}}")
         idlist = list(gids.values())
         for _i in range(0, len(idlist), 40):
@@ -12953,9 +12957,19 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
     env = salt = fail = 0
     errores = []
     resto = []
+    ya = []
+    ebook = {"cerrados": 0, "errores": []}
+    _eb_lock = threading.Lock()
+
+    def _al_ebook(p, cerr, errs):          # el ebook va APARTE: nunca cambia el resultado del pedido
+        with _eb_lock:
+            ebook["cerrados"] += cerr
+            for m in errs:
+                ebook["errores"].append({"num": p.get("num"), "msg": m})
     for p in ps:
         if p.get("tn"):
             salt += 1
+            ya.append(p)
         else:
             resto.append(p)
     from concurrent.futures import ThreadPoolExecutor
@@ -12963,7 +12977,7 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
         trozo = resto[i:i + 25]
         info = _sege_shop_lote(ctx, trozo)
         with ThreadPoolExecutor(max_workers=6) as ex:
-            res = list(ex.map(lambda q: _sege_shop_uno(ctx, q, info.get(str(q.get("order_id")))), trozo))
+            res = list(ex.map(lambda q: _sege_shop_uno(ctx, q, info.get(str(q.get("order_id"))), _al_ebook), trozo))
         for p, r in zip(trozo, res):
             if r[0] == "env":
                 env += 1
@@ -12972,13 +12986,19 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             else:
                 fail += 1
                 errores.append({"num": p["num"], "msg": r[1] or "error"})
+    if ya:                                 # tracking ya cargado: sólo falta cerrar el ebook (si hay)
+        try:
+            _sege_shop_ebooks_de(ctx, ya, _al_ebook)
+        except Exception as e:
+            ebook["errores"].append({"num": "", "msg": _sege_err(e)})
     if env:
         try:
             _DESP_CACHE.pop(email, None)
             _desp_cache_save()
         except Exception:
             pass
-    return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8]}
+    return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8],
+            "ebook_cerrados": ebook["cerrados"], "ebook_errores": ebook["errores"][:8]}
 
 
 def _seg_tienda_auto(email, pedida="") -> str:
@@ -13105,8 +13125,13 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 _st = " ".join((s.get("title") or "") for s in (o.get("shipping_lines") or [])).lower()
                 nombre = (((cust.get("first_name") or "") + " " + (cust.get("last_name") or "")).strip()
                           or (_D(o.get("shipping_address"))).get("name") or it.get("dest", ""))
-                u = sum(int(float(li.get("quantity") or 0)) for li in (o.get("line_items") or []))
+                # Sólo las unidades que viajan: la "Guía Digital" (requires_shipping=false) no va en la
+                # caja y sumada pasaba 1 pote a "combo de 2" en la plantilla de WhatsApp.
+                u = sum(int(float(li.get("quantity") or 0)) for li in (o.get("line_items") or [])
+                        if li.get("requires_shipping") is not False)
                 tel = _seg_shop_tel(o)
+                # Pendiente de seguimiento = el envío FÍSICO sin tracking. El FO del ebook (digital, sin
+                # tracking, abierto o cerrado) no cuenta: sólo mira si algún fulfillment tiene número.
                 tn_ok = any((f.get("tracking_number") for f in (o.get("fulfillments") or [])))
                 es_suc = _txt_es_sucursal(_st)
                 oid = o.get("id"); fo_id = None
@@ -13709,16 +13734,76 @@ def _sege_shop_ctx(email):
             "base": base, "gql": "%s/graphql.json" % base}
 
 
+_SEGE_MUT_DIGITAL = ("mutation($f:FulfillmentInput!){fulfillmentCreate(fulfillment:$f){"
+                     "fulfillment{id status} userErrors{field message}}}")
+_SEGE_FO_ABIERTO = ("open", "in_progress", "scheduled")     # FO al que se le puede cargar el tracking físico
+_SEGE_FO_DIGITAL_CERRABLE = ("open", "in_progress")         # FO digital (ebook) que se cierra sin aviso
+
+
+def _sege_fo_lineas_digital(lineas, hay_mas=False):
+    """True SOLO si TODAS las líneas del fulfillment order son requiresShipping=false (producto digital:
+    la "Guía Digital" de NoxaLab). Sin líneas, con alguna física, con un dato que falta o con más líneas
+    sin leer (paginado) → False: ante la duda NO es digital y NUNCA se cierra."""
+    if hay_mas or not lineas:
+        return False
+    return all(x is False for x in lineas)
+
+
+def _sege_shop_verificar_digitales(ctx, fos_por_verificar) -> None:
+    """Lee las líneas (requiresShipping) de los fulfillment orders candidatos a digitales y les pone
+    fo["digital"]=True/False. Va APARTE de la consulta de a 25 para no subirle el costo: sólo se
+    piden los FO que lo necesitan (el de deliveryMethod NONE, o los pedidos con más de un FO
+    abierto), que son pocos. Si la consulta falla, quedan digital=None → no se cierran y al elegir
+    el FO para el tracking van al final."""
+    fos = [f for f in fos_por_verificar if f.get("id")]
+    for i in range(0, len(fos), 25):
+        trozo = fos[i:i + 25]
+        q = ("query($ids:[ID!]!){nodes(ids:$ids){... on FulfillmentOrder{id "
+             "lineItems(first:10){pageInfo{hasNextPage} nodes{requiresShipping}}}}}")
+        ids = ["gid://shopify/FulfillmentOrder/%s" % f["id"] for f in trozo]
+        try:
+            j, err = _sege_gql(ctx["gql"], ctx["H"], q, {"ids": ids})
+        except Exception:
+            j, err = None, "x"
+        if err or not j:
+            continue
+        por_id = {}
+        for nd in ((j.get("data") or {}).get("nodes") or []):
+            if isinstance(nd, dict) and nd.get("id"):
+                por_id[str(nd["id"]).rsplit("/", 1)[-1]] = nd
+        for f in trozo:
+            nd = por_id.get(f["id"])
+            if not nd or not isinstance(nd.get("lineItems"), dict):
+                continue
+            li = nd["lineItems"]
+            f["digital"] = _sege_fo_lineas_digital(
+                [(x or {}).get("requiresShipping") for x in (li.get("nodes") or [])],
+                bool((li.get("pageInfo") or {}).get("hasNextPage")))
+
+
+def _sege_fo_necesita_verificar(fos) -> list:
+    """Qué FO de UN pedido hay que verificar línea por línea: los de deliveryMethod NONE (el ebook) y,
+    si el pedido tiene más de un FO abierto, todos los abiertos (para no cargarle el tracking físico
+    al digital por elegir el primero de la lista)."""
+    abiertos = [f for f in fos if f.get("status") in _SEGE_FO_ABIERTO]
+    if len(abiertos) > 1:
+        return abiertos
+    return [f for f in abiertos if f.get("metodo") == "none"]
+
+
 def _sege_shop_lote(ctx, pedidos) -> dict:
     """fulfillment orders + fulfillments de hasta 25 pedidos en UNA consulta GraphQL (antes la vía 2
-    hacía un GET REST por pedido contra el límite de ~2/s y un 429 salía como 'sin fulfillment')."""
+    hacía un GET REST por pedido contra el límite de ~2/s y un 429 salía como 'sin fulfillment').
+    EBOOK: trae también deliveryMethod del FO y requiresShipping del fulfillment (escalares/objeto
+    de 1 punto: la consulta sube ~+5 puntos por pedido). Las líneas de los FO candidatos a digitales
+    se leen en una 2ª consulta chica (_sege_shop_verificar_digitales)."""
     mapa = {}
     ids = [str(p.get("order_id")) for p in pedidos if p.get("order_id")]
     for i in range(0, len(ids), 25):
         trozo = ids[i:i + 25]
         q = "query{" + " ".join(
-            'o%d: order(id:"gid://shopify/Order/%s"){fulfillmentOrders(first:5){nodes{id status}} '
-            'fulfillments(first:5){id status trackingInfo(first:3){number}}}' % (k, oid)
+            'o%d: order(id:"gid://shopify/Order/%s"){fulfillmentOrders(first:5){nodes{id status deliveryMethod{methodType}}} '
+            'fulfillments(first:5){id status requiresShipping trackingInfo(first:3){number}}}' % (k, oid)
             for k, oid in enumerate(trozo)) + "}"
         try:
             j, err = _sege_gql(ctx["gql"], ctx["H"], q)
@@ -13727,54 +13812,207 @@ def _sege_shop_lote(ctx, pedidos) -> dict:
         if err or not j:
             continue                       # esos pedidos caen al camino uno por uno (con reintento)
         dat = j.get("data") or {}
+        verificar = []
         for k, oid in enumerate(trozo):
             o = dat.get("o%d" % k)
             if not isinstance(o, dict) or o.get("fulfillments") is None or o.get("fulfillmentOrders") is None:
                 continue                   # null por error parcial de GraphQL → camino REST, no un falso fallo
             fos = [{"id": str(x.get("id") or "").rsplit("/", 1)[-1],
-                    "status": str(x.get("status") or "").lower()}
+                    "status": str(x.get("status") or "").lower(),
+                    "metodo": str(((x.get("deliveryMethod") or {}).get("methodType")) or "").lower(),
+                    "digital": None}
                    for x in ((o.get("fulfillmentOrders") or {}).get("nodes") or [])]
             fus = []
             for f in (o.get("fulfillments") or []):
                 trk = [str((t or {}).get("number") or "") for t in (f.get("trackingInfo") or [])]
+                rs = f.get("requiresShipping")
                 fus.append({"id": str(f.get("id") or "").rsplit("/", 1)[-1],
                             "status": str(f.get("status") or "").lower(),
-                            "tracking_number": next((t for t in trk if t), "")})
+                            "tracking_number": next((t for t in trk if t), ""),
+                            "requires_shipping": rs if isinstance(rs, bool) else None})
+            verificar.extend(_sege_fo_necesita_verificar(fos))
             mapa[oid] = {"fos": fos, "fus": fus}
+        if verificar:
+            _sege_shop_verificar_digitales(ctx, verificar)
     return mapa
 
 
-def _sege_shop_uno(ctx, p, info):
+def _sege_shop_info_rest(ctx, oid):
+    """Camino REST (un pedido) cuando no vino en el lote. Misma forma que _sege_shop_lote."""
+    H, base = ctx["H"], ctx["base"]
+    rr = _sege_http("GET", "%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=15)
+    if rr.status_code != 200:
+        return None, "fulfillment_orders HTTP %s: %s" % (rr.status_code, (rr.text or "")[:160])
+    fos, lineas_fo = [], {}
+    for f in (rr.json().get("fulfillment_orders") or []):
+        fid = str(f.get("id"))
+        fos.append({"id": fid, "status": str(f.get("status") or "").lower(),
+                    "metodo": str(((f.get("delivery_method") or {}).get("method_type")) or "").lower(),
+                    "digital": None})
+        lineas_fo[fid] = [str((x or {}).get("line_item_id") or "") for x in (f.get("line_items") or [])]
+    fr = _sege_http("GET", "%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=15)
+    if fr.status_code != 200:
+        return None, "fulfillments HTTP %s: %s" % (fr.status_code, (fr.text or "")[:160])
+    fus = []
+    for f in (fr.json().get("fulfillments") or []):
+        lis = [x.get("requires_shipping") for x in (f.get("line_items") or []) if isinstance(x, dict)]
+        rs = (any(v is not False for v in lis)) if lis else None
+        fus.append({"id": str(f.get("id")), "status": str(f.get("status") or "").lower(),
+                    "tracking_number": str(f.get("tracking_number") or ""), "requires_shipping": rs})
+    verificar = _sege_fo_necesita_verificar(fos)
+    if verificar:
+        # el FO de REST no trae requires_shipping por línea → lo saco de las líneas del pedido
+        try:
+            orr = _sege_http("GET", "%s/orders/%s.json" % (base, oid), headers=H, timeout=15,
+                             params={"fields": "id,line_items"})
+            if orr.status_code == 200:
+                rs_por_li = {str(li.get("id")): li.get("requires_shipping")
+                             for li in (((orr.json() or {}).get("order") or {}).get("line_items") or [])}
+                for f in verificar:
+                    lis = lineas_fo.get(f["id"]) or []
+                    f["digital"] = _sege_fo_lineas_digital([rs_por_li.get(x) for x in lis],
+                                                           any(x not in rs_por_li for x in lis))
+        except Exception:
+            pass                           # sin dato → digital=None → no se cierra
+    return {"fos": fos, "fus": fus}, None
+
+
+def _sege_fisico_con_tracking(info, trk="") -> bool:
+    """¿El envío físico del pedido ya tiene tracking (el pedido)? Sólo fulfillments físicos y no cancelados."""
+    for f in ((info or {}).get("fus") or []):
+        if f.get("requires_shipping") is False:
+            continue
+        if (f.get("status") or "") in ("cancelled", "error", "failure"):
+            continue
+        t = f.get("tracking_number") or ""
+        if t and (not trk or t == trk):
+            return True
+    return False
+
+
+def _sege_shop_cerrar_digitales(ctx, info) -> tuple:
+    """Cierra (sin avisar al cliente, sin tracking) cada FO ABIERTO cuyas líneas son TODAS
+    requiresShipping=false: el ebook de NoxaLab, que se entrega por mail al comprar y si no queda
+    el pedido "parcialmente enviado" para siempre. Idempotente: un FO ya cerrado no se toca; un FO
+    con alguna línea física (o sin verificar) NUNCA se cierra. → (cerrados, [errores reales])."""
+    cerr, errs = 0, []
+    for fo in ((info or {}).get("fos") or []):
+        if fo.get("digital") is not True or fo.get("status") not in _SEGE_FO_DIGITAL_CERRABLE:
+            continue
+        v = {"f": {"lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
+                   "notifyCustomer": False}}
+        try:
+            j, err = _sege_gql(ctx["gql"], ctx["H"], _SEGE_MUT_DIGITAL, v)
+            if err:
+                errs.append("FO digital %s: %s" % (fo["id"], err))
+                continue
+            res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
+            ue = res.get("userErrors") or []
+            if res.get("fulfillment") and not ue:
+                cerr += 1
+                fo["status"] = "closed"
+            else:
+                errs.append("FO digital %s: fulfillmentCreate: %s" % (
+                    fo["id"], ((ue[0].get("message") or "") if ue else str(j.get("errors") or j))[:200]))
+        except Exception as e:
+            errs.append("FO digital %s: %s" % (fo["id"], _sege_err(e)))
+    return cerr, errs
+
+
+def _sege_ebook_anotar(al_ebook, p, cerr, errs) -> None:
+    if errs:
+        try:
+            print("[seg-ebook] #%s: no pude cerrar el FO digital: %s" % (p.get("num"), " | ".join(errs)), flush=True)
+        except Exception:
+            pass
+    if al_ebook and (cerr or errs):
+        try:
+            al_ebook(p, cerr, errs)
+        except Exception:
+            pass
+
+
+def _sege_shop_ebook_ya_cargado(ctx, p, info, al_ebook=None) -> None:
+    """Pedido cuyo tracking físico YA estaba (el lector lo vio): sólo falta cerrar el FO digital.
+    Nunca falla ni toca el estado del seguimiento."""
+    try:
+        if info is None and p.get("order_id"):
+            info, _e = _sege_shop_info_rest(ctx, p["order_id"])
+        if not info or not _sege_fisico_con_tracking(info):
+            return
+        cerr, errs = _sege_shop_cerrar_digitales(ctx, info)
+    except Exception as e:
+        cerr, errs = 0, [_sege_err(e)]
+    _sege_ebook_anotar(al_ebook, p, cerr, errs)
+
+
+def _sege_shop_ebooks_de(ctx, pedidos, al_ebook=None, seguir=None) -> None:
+    """Para los pedidos que se saltaron por tener ya el tracking: lote de 25 + cierre de digitales."""
+    from concurrent.futures import ThreadPoolExecutor
+    ps = [p for p in pedidos if p.get("order_id")]
+    for i in range(0, len(ps), 25):
+        if seguir and not seguir():
+            return
+        trozo = ps[i:i + 25]
+        try:
+            info = _sege_shop_lote(ctx, trozo)
+        except Exception:
+            info = {}
+        # sólo los que tienen un FO digital abierto necesitan algo más (los demás no gastan nada)
+        trozo = [p for p in trozo if p.get("order_id") and (
+            str(p["order_id"]) not in info or any(
+                f.get("digital") is True and f.get("status") in _SEGE_FO_DIGITAL_CERRABLE
+                for f in (info[str(p["order_id"])].get("fos") or [])))]
+        if not trozo:
+            continue
+        try:
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                list(ex.map(lambda q: _sege_shop_ebook_ya_cargado(ctx, q, info.get(str(q.get("order_id"))), al_ebook), trozo))
+        except RuntimeError:
+            return                         # el intérprete se apaga: es secundario, no se insiste
+
+
+def _sege_shop_uno(ctx, p, info, al_ebook=None):
     """UN pedido → ('env'|'salt'|'fail', msg). Doble vía, igual que siempre:
     (1) fulfillment order ABIERTO → fulfillmentCreate con tracking + aviso;
     (2) ya preparado → fulfillmentTrackingInfoUpdate al fulfillment existente (salta si ya tiene ese tracking).
-    Es idempotente: si se repite, el (1) ya no encuentra FO abierto y el (2) ve el mismo tracking → 'salt'."""
+    Es idempotente: si se repite, el (1) ya no encuentra FO abierto y el (2) ve el mismo tracking → 'salt'.
+    EBOOK: el FO digital (todas sus líneas requiresShipping=false) NO se usa para el tracking, y con el
+    físico ya con tracking ('env'/'salt') se cierra aparte sin aviso. Un fallo al cerrarlo NO cambia el
+    resultado del pedido: va a al_ebook(p, cerrados, errores) y al log."""
     oid = p.get("order_id")
     if not oid:
         return ("fail", "no está en Shopify")
-    H, base = ctx["H"], ctx["base"]
     if info is None:                       # no vino en el lote → uno por uno, con reintento ante 429
         try:
-            rr = _sege_http("GET", "%s/orders/%s/fulfillment_orders.json" % (base, oid), headers=H, timeout=15)
-            if rr.status_code != 200:
-                return ("fail", "fulfillment_orders HTTP %s: %s" % (rr.status_code, (rr.text or "")[:160]))
-            fos = [{"id": str(f.get("id")), "status": str(f.get("status") or "").lower()}
-                   for f in (rr.json().get("fulfillment_orders") or [])]
-            fr = _sege_http("GET", "%s/orders/%s/fulfillments.json" % (base, oid), headers=H, timeout=15)
-            if fr.status_code != 200:
-                return ("fail", "fulfillments HTTP %s: %s" % (fr.status_code, (fr.text or "")[:160]))
-            fus = [{"id": str(f.get("id")), "status": str(f.get("status") or "").lower(),
-                    "tracking_number": str(f.get("tracking_number") or "")}
-                   for f in (fr.json().get("fulfillments") or [])]
+            info, e_rest = _sege_shop_info_rest(ctx, oid)
+            if e_rest:
+                return ("fail", e_rest)
         except Exception as e:
             return ("fail", _sege_err(e))
-        info = {"fos": fos, "fus": fus}
+    r = _sege_shop_tracking(ctx, p, info)
+    if r[0] in ("env", "salt"):
+        try:
+            cerr, errs = _sege_shop_cerrar_digitales(ctx, info)
+        except Exception as e:
+            cerr, errs = 0, [_sege_err(e)]
+        _sege_ebook_anotar(al_ebook, p, cerr, errs)
+    return r
+
+
+def _sege_shop_tracking(ctx, p, info):
+    """La carga del tracking FÍSICO (vías 1 y 2). Ignora el FO digital y los fulfillments digitales."""
+    H = ctx["H"]
     fos, fus = info.get("fos") or [], info.get("fus") or []
+    fus_fis = [f for f in fus if f.get("requires_shipping") is not False]
     trk = str(p.get("track") or "")
     if trk and any((f.get("tracking_number") or "") == trk
-                   and (f.get("status") or "") not in ("cancelled", "error", "failure") for f in fus):
+                   and (f.get("status") or "") not in ("cancelled", "error", "failure") for f in fus_fis):
         return ("salt", None)
-    fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
+    # FO para el tracking: abierto y NO digital. Los de deliveryMethod NONE sin verificar van al final.
+    cands = [f for f in fos if f.get("status") in _SEGE_FO_ABIERTO and f.get("digital") is not True]
+    cands.sort(key=lambda f: 1 if f.get("metodo") == "none" else 0)
+    fo = cands[0] if cands else None
     try:
         if fo:
             v = {"f": {"lineItemsByFulfillmentOrder": [{"fulfillmentOrderId": "gid://shopify/FulfillmentOrder/%s" % fo["id"]}],
@@ -13785,12 +14023,15 @@ def _sege_shop_uno(ctx, p, info):
             res = ((j.get("data") or {}).get("fulfillmentCreate") or {})
             ue = res.get("userErrors") or []
             if res.get("fulfillment") and not ue:
+                fo["status"] = "closed"
+                fus.append({"id": str((res["fulfillment"].get("id") or "")).rsplit("/", 1)[-1],
+                            "status": "success", "tracking_number": trk, "requires_shipping": True})
                 return ("env", None)
             return ("fail", "fulfillmentCreate: " + ((ue[0].get("message") or "") if ue else str(j.get("errors") or j))[:200])
-        cand = [f for f in fus if (f.get("status") or "") in ("success", "pending", "open", "")]
+        cand = [f for f in fus_fis if (f.get("status") or "") in ("success", "pending", "open", "")]
         ff = next((f for f in cand if not f.get("tracking_number")), None) or (cand[-1] if cand else None)
         if not ff:
-            est = ",".join(str(f.get("status")) for f in fos) or "ninguno"
+            est = ",".join(str(f.get("status")) + ("(digital)" if f.get("digital") is True else "") for f in fos) or "ninguno"
             return ("fail", "sin fulfillment ni FO abierto (FO: %s)" % est)
         v2 = {"fid": "gid://shopify/Fulfillment/%s" % ff["id"], "t": _seg_track_info(p)}
         j, err = _sege_gql(ctx["gql"], H, _SEGE_MUT_TRACK, v2)
@@ -13799,6 +14040,7 @@ def _sege_shop_uno(ctx, p, info):
         res = ((j.get("data") or {}).get("fulfillmentTrackingInfoUpdate") or {})
         ue = res.get("userErrors") or []
         if res.get("fulfillment") and not ue:
+            ff["tracking_number"] = trk
             return ("env", None)
         return ("fail", "trackingInfoUpdate: " + ((ue[0].get("message") or "") if ue else str(j.get("errors") or j))[:200])
     except (requests.exceptions.ReadTimeout, _SegeDuda) as e:
@@ -14176,6 +14418,7 @@ def _sege_run(job, token) -> None:
             st["fail"] = {"tienda": [], "wpp": []}
             st["unc"] = {"tienda": [], "wpp": []}
             st["errores"] = []
+            st["ebook"] = {"cerrados": 0, "errores": []}   # FO digital (ebook): aparte del seguimiento
             st["c"] = {}
             for cn in canales:
                 est = log["est"][cn]
@@ -14226,6 +14469,16 @@ def _sege_run(job, token) -> None:
                 if x:
                     st["anot_pend"].append(x)
 
+        def _al_ebook(p, cerr, errs):
+            # el cierre del FO digital NO toca el resultado del pedido ni se re-manda el seguimiento:
+            # sólo se cuenta y se anota el error real aparte.
+            with _SEGE_LOCK:
+                eb = st.setdefault("ebook", {"cerrados": 0, "errores": []})
+                eb["cerrados"] = int(eb.get("cerrados") or 0) + int(cerr or 0)
+                for m in errs:
+                    if len(eb["errores"]) < 200:
+                        eb["errores"].append({"num": p.get("num"), "msg": m})
+
         def _correr(cn, items, fn_uno, hilos):
             from concurrent.futures import ThreadPoolExecutor as _TPE
 
@@ -14260,7 +14513,7 @@ def _sege_run(job, token) -> None:
             for p in ya:                        # el lector ya vio el tracking cargado
                 _res("tienda", p["num"], "salt", None)
             items = [p for p in items if not p.get("tn")]
-            if not items:
+            if not items and not (es_shop and ya):
                 return
             if es_shop:
                 ctx = _sege_shop_ctx(email)
@@ -14273,7 +14526,15 @@ def _sege_run(job, token) -> None:
                         return
                     trozo = items[i:i + 25]
                     info = _sege_shop_lote(ctx, trozo)
-                    _correr("tienda", trozo, lambda p: _sege_shop_uno(ctx, p, info.get(str(p.get("order_id")))), 6)
+                    _correr("tienda", trozo, lambda p: _sege_shop_uno(ctx, p, info.get(str(p.get("order_id"))), _al_ebook), 6)
+                if ya:
+                    # tracking ya cargado: sólo falta cerrar el FO digital (ebook). Secundario e
+                    # idempotente: no reclama ni anota en el log del seguimiento.
+                    try:
+                        _sege_shop_ebooks_de(ctx, ya, _al_ebook, seguir=lambda: not (
+                            perdido["v"] or apagado["v"] or job in _SEGE_PARAR or _sege_apagando()))
+                    except Exception as e:
+                        _al_ebook({"num": ""}, 0, [_sege_err(e)])
             else:
                 ctx = _sege_tn_ctx(email)
                 if not ctx:
@@ -14525,6 +14786,7 @@ def pf_despachos_seg_envio_prog():
                         "unc_nums": st.get("unc") or {}, "errores": (st.get("errores") or [])[:60],
                         "n_errores": len(st.get("errores") or []), "intentos": st.get("intentos", 1),
                         "motivos": st.get("motivos") or [], "latido": edad,
+                        "ebook": st.get("ebook") or {"cerrados": 0, "errores": []},
                         "seg": int((st.get("t_fin") or _time.time()) - float(st.get("t0") or _time.time()))})
     except Exception as e:
         return jsonify({"ok": False, "msg": "error leyendo el progreso (%s)" % _sege_err(e)}), 500
