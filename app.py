@@ -2143,7 +2143,7 @@ _SOLO_DASH = r"""
    function tick(){ if(pidiendo||reanudando)return; pidiendo=true;
      fetch('/pf-despachos-seg-envio-prog?job='+encodeURIComponent(job)).then(function(r){ return r.json().catch(function(){ return {ok:false,msg:'HTTP '+r.status+' sin JSON',_http:1}; }); }).then(function(p){
        pidiendo=false;
-       if(p&&p._http){ fallos++; return; }
+       if(p&&p._http){ sinResp(); return; }
        fallos=0;
        if(!p||!p.ok){ libre(); olvidar(); res.innerHTML=silencioso?'':('<div style="color:#fb7185;font-size:12.5px">'+_dEsc((p&&p.msg)||'No pude leer el progreso')+'</div>'); return; }
        if(p.listo){ terminar(p); return; }
@@ -2156,14 +2156,19 @@ _SOLO_DASH = r"""
              .catch(function(e){ reanudando=false; aviso='⚠️ No pude retomarlo: '+((e&&e.message)||e); });
            return; }
          libre();
-         res.innerHTML='<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12.5px;margin-bottom:10px"><b>El envío se cayó 3 veces.</b><br>'+_dEsc(p.motivo||'')+'<br><span style="color:#93a3ba">'+lineas(p).join(' · ')+'</span><br><button onclick="rpDSegReanudar(\''+job+'\')" style="margin-top:9px;background:#3a2d0e;color:#fde68a;border:1px solid #6b551c;border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer">🔁 Retomar desde donde quedó</button></div>'+errBox(p);
+         // marco lo que el server YA confirmó: si después se toca "Enviar" en vez de "Retomar", no se le
+         // vuelve a mandar a esos (TiendaNube no tiene chequeo del lado del server: re-mandaba el mail)
+         marcar(p); if(_dSeg.length) _dSegRender(); else res.innerHTML='';
+         res.innerHTML='<div style="background:#2a0e12;border:1px solid #6b1c26;border-radius:12px;padding:12px 14px;color:#fca5a5;font-size:12.5px;margin-bottom:10px"><b>El envío se cayó 3 veces.</b><br>'+_dEsc(p.motivo||'')+'<br><span style="color:#93a3ba">'+lineas(p).join(' · ')+'</span><br><button onclick="rpDSegReanudar(\''+job+'\')" style="margin-top:9px;background:#3a2d0e;color:#fde68a;border:1px solid #6b551c;border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer">🔁 Retomar desde donde quedó</button></div>'+errBox(p)+res.innerHTML;
          return; }
        var _h=0, _c=p.c||{}; ['tienda','wpp'].forEach(function(k){ if(_c[k]) _h+=_c[k].done||0; });
        if(_h>ultHech){ if(ultHech>=0 && reanudas){ reanudas=0; } ultHech=_h; }   // avanza → se renueva el cupo de 3 retomas
        progreso(p);
-     }).catch(function(){ pidiendo=false; fallos++;
+     }).catch(function(){ pidiendo=false; sinResp(); });
+   }
+   function sinResp(){ fallos++;
        if(fallos>=120){ libre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">El server no contesta hace '+Math.round(fallos*1.5)+'s. El envío sigue (o se retoma) del lado del server. <button onclick="rpDSegVer(\''+job+'\')" style="background:#16233a;border:1px solid #2f4a6b;color:#8fbdf5;border-radius:9px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer">Seguir mirando</button></div>'; return; }
-       res.innerHTML=rpDBarra(5,'⚠️ El server no contesta la consulta ('+fallos+' seguidas) — el envío sigue del lado del server, sigo mirando…'); });
+       res.innerHTML=rpDBarra(5,'⚠️ El server no contesta la consulta ('+fallos+' seguidas) — el envío sigue del lado del server, sigo mirando…');
    }
    if(!silencioso) res.innerHTML=rpDBarra(1,'⏳ Envío en marcha…');
    tick();
@@ -13441,6 +13446,7 @@ _SEGE_LATIDO_FILE = DATA_DIR / "jobs" / "_envio_latido"    # lo mira el watchdog
 _SEGE_CANALES = ("tn", "wpp", "todos")
 _SEG_MARK_LOCK = threading.Lock()
 _SEGE_PARAR = set()             # jobs que este proceso tiene que soltar (se está apagando)
+_SEGE_LANZAR_LOCK = threading.Lock()   # lanzar: chequeo "¿ya hay uno?" + alta, atómicos dentro del proceso
 
 
 def _sege_err(e) -> str:
@@ -13723,8 +13729,8 @@ def _sege_shop_lote(ctx, pedidos) -> dict:
         dat = j.get("data") or {}
         for k, oid in enumerate(trozo):
             o = dat.get("o%d" % k)
-            if not isinstance(o, dict):
-                continue
+            if not isinstance(o, dict) or o.get("fulfillments") is None or o.get("fulfillmentOrders") is None:
+                continue                   # null por error parcial de GraphQL → camino REST, no un falso fallo
             fos = [{"id": str(x.get("id") or "").rsplit("/", 1)[-1],
                     "status": str(x.get("status") or "").lower()}
                    for x in ((o.get("fulfillmentOrders") or {}).get("nodes") or [])]
@@ -13765,7 +13771,8 @@ def _sege_shop_uno(ctx, p, info):
         info = {"fos": fos, "fus": fus}
     fos, fus = info.get("fos") or [], info.get("fus") or []
     trk = str(p.get("track") or "")
-    if any((f.get("tracking_number") or "") == trk and trk for f in fus):
+    if trk and any((f.get("tracking_number") or "") == trk
+                   and (f.get("status") or "") not in ("cancelled", "error", "failure") for f in fus):
         return ("salt", None)
     fo = next((f for f in fos if f.get("status") in ("open", "in_progress", "scheduled")), None)
     try:
@@ -14049,7 +14056,16 @@ def _wa_seg_marcar_varios_seguro(email, nums) -> None:
         return
     with _SEG_MARK_LOCK:
         with _sege_flock(str(_WA_SEG_ENV) + ".lock"):
-            d = _wa_seg_all()
+            # _wa_seg_all() devuelve {} si falla la lectura: escribir eso BORRARÍA las marcas de todas
+            # las cuentas y el próximo envío le re-mandaría el seguimiento a todos. Ahora se escribe por
+            # cada WhatsApp (antes una vez por tanda): si existe y no se puede leer, fallar (el pedido
+            # queda OK en el log del job igual, así que el retome tampoco lo repite).
+            if _WA_SEG_ENV.exists():
+                d = _json.loads(_WA_SEG_ENV.read_text(encoding="utf-8"))
+                if not isinstance(d, dict):
+                    raise ValueError("wa_seg_enviado.json no es un objeto")
+            else:
+                d = {}
             m = d.setdefault(email, {})
             ahora = _wa_now()
             for x in nums:
@@ -14069,11 +14085,30 @@ def _sege_estado_nuevo(job, email, canal, force, tienda, pedidos) -> dict:
 
 
 def _sege_latir(job, token, stop) -> None:
-    """Latido a disco cada 1 s + vuelca las plantillas a wa_chats de a tandas (un solo escritor)."""
+    """Latido a disco cada 1 s + dispara el volcado de plantillas a wa_chats de a tandas.
+    El volcado corre en un HILO APARTE (uno por vez): lee y escribe 12+ MB bajo el candado de
+    wa_chats, que comparten el webhook (respuestas de clientes + bot) y el otro worker. Si corría acá
+    adentro, una ráfaga de respuestas al seguimiento podía frenar el latido > 60 s → el job parecía
+    muerto → se "retomaba" estando vivo y lo que estaba en vuelo quedaba EN DUDA sin motivo."""
     ult_anot = _time.time()
+    volc = {"on": False}
+
+    def _volcar(_st):
+        try:
+            _sege_volcar_anot(job, _st)
+        except Exception:
+            pass
+        finally:
+            volc["on"] = False
     while not stop.wait(1.0):
         st = _SEGE_JOBS.get(job)
         if not st or st.get("token") != token:
+            return
+        # Si OTRO proceso retomó el job (lease nuevo), este latido NO puede seguir pisando el estado en
+        # disco: el front vería el progreso saltar entre las dos corridas, o hasta un "listo" falso de
+        # la corrida vieja (que pone listo=True al perder el lease) y dejaría de mirar la nueva.
+        _lz = _sege_lease(job)
+        if _lz and _lz != token:
             return
         try:
             with _SEGE_LOCK:
@@ -14084,9 +14119,13 @@ def _sege_latir(job, token, stop) -> None:
             _job_put(job, snap)
             _SEGE_LATIDO_FILE.parent.mkdir(parents=True, exist_ok=True)
             _SEGE_LATIDO_FILE.write_text(str(_time.time()), encoding="utf-8")
-            if n_anot and (n_anot >= 30 or _time.time() - ult_anot > 15):
-                _sege_volcar_anot(job, st)
+            if n_anot and not volc["on"] and (n_anot >= 30 or _time.time() - ult_anot > 15):
+                volc["on"] = True
                 ult_anot = _time.time()
+                try:
+                    threading.Thread(target=_volcar, args=(st,), daemon=True, name="seg-anot").start()
+                except Exception:
+                    volc["on"] = False
         except Exception:
             pass
 
@@ -14100,6 +14139,25 @@ def _sege_volcar_anot(job, st) -> None:
             st["anot_pend"] = items + list(st.get("anot_pend") or [])
 
 
+def _sege_apagando() -> bool:
+    """¿El proceso se está apagando? (reciclado por --max-requests, deploy, SIGTERM).
+    Al salir, Python primero DRENA los ThreadPoolExecutor (seguiría mandando TODOS los WhatsApp que
+    quedaban en la cola mientras el worker ya no atiende) y un pool nuevo tira RuntimeError
+    "cannot schedule new futures after interpreter shutdown" (el job terminaba 'listo' con ese error
+    y sin mandar el resto). Con esto se suelta el job prolijo y se retoma en el otro worker."""
+    try:
+        import concurrent.futures.thread as _cft
+        if getattr(_cft, "_shutdown", False):
+            return True
+    except Exception:
+        pass
+    try:
+        import sys as _sy
+        return bool(_sy.is_finalizing())
+    except Exception:
+        return False
+
+
 def _sege_run(job, token) -> None:
     st = _SEGE_JOBS[job]
     stop = threading.Event()
@@ -14111,6 +14169,7 @@ def _sege_run(job, token) -> None:
         log = _sege_log_leer(job)
         canales = (["tienda"] if canal in ("tn", "todos") else []) + (["wpp"] if canal in ("wpp", "todos") else [])
         perdido = {"v": False}
+        apagado = {"v": False}               # el proceso se apaga: soltar el job (se retoma en otro worker)
         trabajos = {}
         with _SEGE_LOCK:
             st["ok"] = {"tienda": [], "wpp": []}
@@ -14173,6 +14232,9 @@ def _sege_run(job, token) -> None:
             def _uno(p):
                 if perdido["v"] or job in _SEGE_PARAR:
                     return
+                if apagado["v"] or _sege_apagando():
+                    apagado["v"] = True          # no reclamo ni uno más: lo retoma el otro worker
+                    return
                 n = p["num"]
                 if not _sege_reclamar(job, token, cn, n):
                     perdido["v"] = True          # otro proceso tomó el job (reanudación)
@@ -14183,8 +14245,14 @@ def _sege_run(job, token) -> None:
                     r = ("fail", _sege_err(e), None)
                 kind, msg = r[0], r[1]
                 _res(cn, n, kind, msg, r[2] if len(r) > 2 else None)
-            with _TPE(max_workers=hilos) as ex:
-                list(ex.map(_uno, items))
+            try:
+                with _TPE(max_workers=hilos) as ex:
+                    list(ex.map(_uno, items))
+            except RuntimeError:
+                if _sege_apagando():             # "cannot schedule new futures after interpreter shutdown"
+                    apagado["v"] = True
+                    return
+                raise
 
         def _canal_tienda():
             items = trabajos.get("tienda") or []
@@ -14201,7 +14269,7 @@ def _sege_run(job, token) -> None:
                         _res("tienda", p["num"], "fail", "Shopify no conectado")
                     return
                 for i in range(0, len(items), 25):          # de a 25: 1 consulta + 25 envíos en paralelo
-                    if perdido["v"]:
+                    if perdido["v"] or apagado["v"]:
                         return
                     trozo = items[i:i + 25]
                     info = _sege_shop_lote(ctx, trozo)
@@ -14240,12 +14308,30 @@ def _sege_run(job, token) -> None:
                     try:
                         fn()
                     except Exception as e:
-                        errs_canal[cn] = _sege_err(e)
+                        if _sege_apagando():
+                            apagado["v"] = True
+                        else:
+                            errs_canal[cn] = _sege_err(e)
                 h = threading.Thread(target=_envolver, daemon=True, name="seg-" + cn)
                 h.start()
                 hilos.append(h)
         for h in hilos:                         # tienda y WhatsApp corren A LA VEZ (APIs distintas)
             h.join()
+        if apagado["v"] and not perdido["v"]:
+            # El worker se apaga: NO es "listo". Los pedidos en vuelo ya terminaron (los pools se
+            # esperaron arriba) y quedaron anotados OK/F en el log → el retome no deja nada "en duda".
+            # Latido VIEJO a propósito: el front lo ve caído YA y lo retoma en el otro worker.
+            if st.get("token") == token and _sege_lease(job) == token:
+                with _SEGE_LOCK:
+                    st["interrumpido"] = ("el worker pid %d se apagó a mitad del envío (reciclado por gunicorn "
+                                          "--max-requests, deploy o reinicio). Se retoma desde donde quedó."
+                                          % _os.getpid())
+                    st["msg"] = "interrumpido"
+                    st["token"] = "salida"     # el finally y el latido de este proceso ya no escriben
+                    snap = _json.loads(_json.dumps(st, default=str))
+                snap["ts_lat"] = _time.time() - _SEGE_MUERTO - 1
+                _job_put(job, snap)
+            return
         _sege_volcar_anot(job, st)
         if (st["c"].get("tienda") or {}).get("env"):
             try:
@@ -14326,21 +14412,29 @@ def _sege_limpiar_viejos() -> None:
         pass
 
 
-def _sege_activo_de(email):
-    """Un envío VIVO de esta cuenta (latiendo), si hay. Evita dos envíos a la vez (doble clic, 2 pestañas)."""
+_SEGE_CAIDO_RECIENTE = 600     # s: un envío cortado hace menos que esto se RETOMA en vez de lanzar otro
+
+
+def _sege_activo_de(email, caidos=0):
+    """Un envío VIVO de esta cuenta (latiendo), si hay. Evita dos envíos a la vez (doble clic, 2 pestañas).
+    caidos>0: también devuelve uno SIN TERMINAR que se cortó hace menos de `caidos` s. Sin esto, mientras
+    la pestaña que lo miraba lo retomaba sola, un "Enviar" en otra pestaña largaba un 2º job con los
+    mismos pedidos (log propio, vacío) y los dos le mandaban el WhatsApp al mismo cliente; y lo que el
+    1º había dejado EN DUDA el 2º lo re-mandaba."""
     ahora = _time.time()
     for job, st in list(_SEGE_JOBS.items()):
         if st.get("email") == email and not st.get("listo") and st.get("token") == _sege_lease(job) \
                 and job not in _SEGE_PARAR:
             return job
+    lim = max(_SEGE_MUERTO, caidos or 0)
     try:
         for f in _JOBS_DIR.glob("se*.json"):
             try:
-                if ahora - f.stat().st_mtime > _SEGE_MUERTO:
+                if ahora - f.stat().st_mtime > lim + 5:
                     continue
                 d = _json.loads(f.read_text(encoding="utf-8"))
                 if d.get("tipo") == "seg-envio" and d.get("email") == email and not d.get("listo") \
-                        and _sege_edad(d) <= _SEGE_MUERTO:
+                        and _sege_edad(d) <= lim:
                     return f.stem
             except Exception:
                 continue
@@ -14376,15 +14470,25 @@ def pf_despachos_seg_lanzar():
             c = _wa_conf(email) or {}
             if not (c.get("token") and c.get("phone_id")):
                 return jsonify({"ok": False, "msg": "WhatsApp no está conectado (Config bot)"})
-        otro = _sege_activo_de(email)
-        if otro:
-            return jsonify({"ok": True, "job": otro, "ya": True,
-                            "msg": "ya había un envío en curso: te muestro ese (no se manda dos veces)"})
-        _sege_limpiar_viejos()
-        import uuid as _u
-        job = "se" + _u.uuid4().hex[:12]
-        st = _sege_estado_nuevo(job, email, canal, d.get("force"), tienda, lote)
-        _sege_arrancar(job, st)
+        import hashlib as _hl
+        # Candado por cuenta ENTRE el chequeo y el alta: dos pestañas (o los 2 workers) lanzando a la
+        # vez creaban DOS jobs que mandaban el mismo WhatsApp. _sege_arrancar deja el job en disco
+        # (latiendo) antes de soltar el candado, así el segundo lo ve y se engancha a ese.
+        _lk = _JOBS_DIR / ("_lanzar_%s.lock" % _hl.sha1(email.encode("utf-8")).hexdigest()[:16])
+        with _SEGE_LANZAR_LOCK:
+            with _sege_flock(_lk):
+                otro = _sege_activo_de(email, caidos=_SEGE_CAIDO_RECIENTE)
+                if otro:
+                    _vivo = _sege_activo_de(email) == otro
+                    return jsonify({"ok": True, "job": otro, "ya": True,
+                                    "msg": ("ya había un envío en curso: te muestro ese (no se manda dos veces)" if _vivo else
+                                            "había un envío que se cortó hace poco: lo retomo desde donde quedó (no se "
+                                            "repite nada). Cuando termine, volvé a tocar Enviar para lo que falte.")})
+                _sege_limpiar_viejos()
+                import uuid as _u
+                job = "se" + _u.uuid4().hex[:12]
+                st = _sege_estado_nuevo(job, email, canal, d.get("force"), tienda, lote)
+                _sege_arrancar(job, st)
         return jsonify({"ok": True, "job": job, "total": len(lote)})
     except Exception as e:
         return jsonify({"ok": False, "msg": "no pude arrancar el envío (%s)" % _sege_err(e)}), 500
