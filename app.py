@@ -3794,7 +3794,7 @@ _SOLO_DASH = r"""
    else if(s.fin){ h='Ventas actualizadas '+hace((s.ahora||0)-(s.fin||0))+(s.dur!=null?' &middot; tardó '+s.dur+' s':'')+' &middot; <a onclick="rpStkLoad(true)">actualizar ahora</a>'; }
    if(s.error){ h+='<div class="stk-err" style="margin-top:8px"><b>&#9888; '+(s.corriendo?'Aviso':'Falló la actualización (los números de abajo son los últimos guardados)')+':</b> <span class="stk-det">'+esc(String(s.error))+'</span>'+(s.corriendo?'':' <a onclick="rpStkLoad(true)">Reintentar</a>')+'</div>'; }
    el.innerHTML=h; }
- var _poll=null, _pollT0=0, _cargando=false;
+ var _poll=null, _pollT0=0, _cargando=false, _otra=false;
  function avisos(j){ var h='', sm=(j.sin_mapear||[]), T=(j.tarjetas||[]);
    if(sm.length&&T.length){
      var sel=function(pk){ return T.length>1?('<select id="smt-'+sid(pk)+'" class="f">'+T.map(function(t){return '<option value="'+esc(t.id)+'">'+esc(t.nombre)+'</option>';}).join('')+'</select>'):''; };
@@ -3815,10 +3815,10 @@ _SOLO_DASH = r"""
        if(editando()){ window._STKJ=j; var el=$('rp-stock-sync'); if(el)el.innerHTML+=' &middot; <a onclick="rpStkLoad()"><b>ver los números nuevos</b></a>'; return; }
        pinta(j); })
      .catch(function(e){ var el=$('rp-stock-sync'); if(el)el.innerHTML='<div class="stk-err"><b>&#9888; No pude consultar el avance:</b> <span class="stk-det">'+esc(e.message)+'</span> <a onclick="rpStkLoad()">Reintentar</a></div>'; }); },2000); }
- window.rpStkLoad=function(forzar){ var b=$('rp-stock-body'); if(_cargando)return; _cargando=true; clearTimeout(_poll);
+ window.rpStkLoad=function(forzar){ var b=$('rp-stock-body'); if(_cargando){ _otra=true; return; } _cargando=true; _otra=false; clearTimeout(_poll);
   if(b&&!b.innerHTML.trim()) b.innerHTML='<div class="note" style="margin-top:22px">Cargando&hellip;</div>';
-  req('/pf-stock'+(forzar?'?forzar=1':''),null,20000).then(function(j){ _cargando=false; pintaSync(j); pinta(j); if(j.sync&&j.sync.corriendo){ _pollT0=Date.now(); seguir(); } })
-   .catch(function(e){ _cargando=false; var el=$('rp-stock-sync');
+  req('/pf-stock'+(forzar?'?forzar=1':''),null,20000).then(function(j){ _cargando=false; if(_otra){ _otra=false; rpStkLoad(); return; } pintaSync(j); pinta(j); if(j.sync&&j.sync.corriendo){ _pollT0=Date.now(); seguir(); } })
+   .catch(function(e){ _cargando=false; if(_otra){ _otra=false; rpStkLoad(); return; } var el=$('rp-stock-sync');
      if((window._STK||[]).length && b && b.querySelector('.hero')){ if(el)el.innerHTML='<div class="stk-err"><b>&#9888; No se pudo actualizar (lo de abajo es lo último que se cargó):</b> <span class="stk-det">'+esc(e.message)+'</span> <a onclick="rpStkLoad(true)">Reintentar</a></div>'; return; }
      if(el)el.innerHTML=''; if(b)b.innerHTML=errBox(e.message); }); };
  window.rpStkPack=function(pk,tp,borrar){ var v=null; if(!borrar){ var n=$('smn-'+sid(pk)); if(!n||n.value===''){ tstk('Poné cuántos potes trae (0 si no trae)'); return; } v=Math.max(0,Math.round(+n.value||0)); var s=$('smt-'+sid(pk)), T=((window._STKJ||{}).tarjetas||[]); tp=s?s.value:(T[0]&&T[0].id); }
@@ -5948,6 +5948,7 @@ _STK_MUERTO = 60       # s sin latido = la actualizacion se corto (worker recicl
 _STK_DEADLINE = 150    # s: tope de una actualizacion completa
 _STK_RET_DIAS = 16     # dias de pedidos que se guardan (el ritmo usa 14)
 _STK_VENTANA = 90      # un pedido creado hace mas de esto ya no mueve el stock (igual que antes)
+_STK_CUR_MAX = 30      # dias: un cursor mas viejo que esto se descarta y esa fuente arranca de cero
 _STK_DEVUELVE = ("cancel", "return", "legacy_restock")   # restock_type de Shopify que SI vuelve al estante
 
 
@@ -6213,7 +6214,9 @@ def _stk_fetch_shopify(stk, base, deadline, latir, etiqueta):
 def _stk_fetch_tn(tk, base, deadline, latir):
     store, hdr = tk["store_id"], _tn_headers(tk["access_token"])
     out, page = [], 1
-    while page <= 60:
+    while True:
+        if page > 120:
+            raise RuntimeError("TiendaNube devolvio mas de 120 paginas; no se actualizo para no contar de menos")
         latir("TiendaNube, pagina %d" % page)
         params = dict(base, per_page=50, page=page,
                       fields="id,payment_status,shipping_status,cancelled_at,created_at,updated_at,products")
@@ -6235,7 +6238,9 @@ def _stk_fetch_tn(tk, base, deadline, latir):
 
 def _stk_fetch_ml(tok, uid, filtro, deadline, latir):
     out, off = [], 0
-    while off < 2500:
+    while True:
+        if off >= 5000:
+            raise RuntimeError("MercadoLibre devolvio mas de 5000 ventas; no se actualizo para no contar de menos")
         latir("MercadoLibre, %d ventas" % off)
         r = _stk_get("%s/orders/search" % MELI_API, {"Authorization": "Bearer " + tok},
                      dict(filtro, seller=uid, sort="date_desc", limit=50, offset=off),
@@ -6367,6 +6372,9 @@ def _stock_sync(email, esperar=True, deadline_s=None):
         marca = (_dt.datetime.utcnow() - _dt.timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%S")
         cache0 = _stk_read(STOCK_ORDENES, {}).get(email) or {}
         cur = dict(cache0.get("cur") or {})
+        viejo = (_dt.datetime.utcnow() - _dt.timedelta(days=_STK_CUR_MAX)).strftime("%Y-%m-%dT%H:%M:%S")
+        for _k in [k for k, v in cur.items() if (v or "") < viejo]:
+            cur.pop(_k, None)         # Stock sin abrir hace mas de 30 dias: vuelve a arrancar de cero
         boot_desde = (hoy - _dt.timedelta(days=_STK_RET_DIAS)).isoformat()
         vent_desde = (hoy - _dt.timedelta(days=_STK_VENTANA)).isoformat()
         nuevos, tit, errores = {}, {}, {}
@@ -24019,9 +24027,10 @@ def _meli_stock_potes(email):
     Antes la seccion MELI guardaba su propio numero (stock30) y los dos se separaban solos:
     RealProfit descuenta con cada venta y el de MELI quedaba congelado donde se lo dejo."""
     try:
-        prods, _o = _stock_sync(email)
+        prods, _o = _stock_sync(email, esperar=False)
         if prods:
-            p = sorted(prods.values(), key=lambda x: -int(x.get("stock") or 0))[0]
+            p = next((x for x in prods.values() if x.get("meli")), None) or \
+                sorted(prods.values(), key=lambda x: -int(x.get("stock") or 0))[0]
             return int(p.get("stock") or 0)
     except Exception:
         pass
