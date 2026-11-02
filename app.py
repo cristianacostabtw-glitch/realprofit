@@ -8322,7 +8322,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-02-auditoria"})
+    return jsonify({"ok": True, "v": "2026-11-02-auditoria-mp3"})
 
 
 _KPI_DBG = {}
@@ -17028,6 +17028,7 @@ def _mp_refs_pedido(o, num=None) -> list:
     num = num if num is not None else str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
     out = []
     for ref in (str(o.get("checkout_token") or ""), str(o.get("checkout_id") or ""),
+                str(o.get("cart_token") or ""), str(o.get("token") or ""),
                 str(o.get("id") or ""), str(o.get("order_number") or ""), str(num or "")):
         if ref and ref not in out:
             out.append(ref)
@@ -17042,11 +17043,6 @@ def _mp_pedido_sin_mp(o) -> bool:
     if "mercado" in gw:
         return False
     return any(k in gw for k in ("transfer", "bank", "manual", "efect", "cash", "deposit"))
-
-
-# Forma de una referencia que apunta a UN pedido: token de checkout de Shopify (ej
-# "r7N7EaGFbPuG1hmd0x0jDF3sP") o un id/numero de pedido.
-_MP_REF_PEDIDO_RE = __import__("re").compile(r"[A-Za-z0-9]{20,40}|\d{3,20}")
 
 
 def _mp_bolsas(pagos, orders):
@@ -17065,11 +17061,11 @@ def _mp_bolsas(pagos, orders):
         ref = str(p.get("ref") or "")
         if ref:
             by_ref.setdefault(ref, []).append(p)
-        # Por monto SOLO los pagos sin referencia o con una referencia "a mano". Un pago con token de
-        # checkout o numero de pedido es de UN pedido concreto: si no esta en esta lista es de otro
-        # dia de la ventana D..D+4 (o de otra tienda) y ese dia lo toma por referencia. Si aca se
-        # pegara por monto, el mismo pago se contaria en los dos dias (revision 02-11-2026).
-        if not ref or (ref not in refs and not _MP_REF_PEDIDO_RE.fullmatch(ref)):
+        # Por monto los que NO son de un pedido de esta lista. OJO (02-11-2026, en produccion): las
+        # referencias que manda MP en esta tienda NO coinciden con ningun dato del pedido, asi que casi
+        # todo se empareja por monto+hora. Excluir por "forma de token" dejo 111 de 112 pedidos sin
+        # su pago: NO volver a hacerlo sin antes ver las refs reales.
+        if not (ref and ref in refs):
             by_amt.setdefault(p["amount"], []).append(p)
     return by_ref, by_amt
 
@@ -17159,13 +17155,9 @@ def _mp_pagos_lista(email, desde, hasta):
         h2 = (_dt.date.fromisoformat(hasta) + _dt.timedelta(days=4)).isoformat()
     except Exception:
         h2 = hasta
-    # Y desde el dia ANTERIOR (revision 02-11-2026): el pago se aprueba segundos ANTES de que se
-    # cree el pedido, asi que un pedido de las 00:00:05 tiene su pago a las 23:59:58 del dia
-    # anterior y quedaba sin comision. Los pagos que sobran no se pegan a nadie (ver _mp_bolsas).
-    try:
-        d_mp = (_dt.date.fromisoformat(desde) - _dt.timedelta(days=1)).isoformat()
-    except Exception:
-        d_mp = desde
+    # (02-11-2026: se probo arrancar un dia antes, pero como las referencias de MP no coinciden
+    # con los pedidos y casi todo se empareja por monto, eso agregaba pagos de otro dia. Va desde.)
+    d_mp = desde
     # Histórico (<= FREEZE_END) del congelado; nuevo (> FREEZE_END) en vivo desde MP.
     if fr:
         _fe = _mp_freeze_end(email) or FREEZE_END
@@ -23138,7 +23130,7 @@ def _pf_dia_clave(email, dia) -> str:
     # AUDITORIA 02-11-2026 (pago de MP contado dos veces, envio de Flex/unificados/digitales):
     # los dias desde PF_DIAS_MP2_DESDE se recalculan una vez. Los anteriores no se tocan.
     if str(dia)[:10] >= PF_DIAS_MP2_DESDE:
-        ck += "|mp2"
+        ck += "|mp3"          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
     return ck
 
 
