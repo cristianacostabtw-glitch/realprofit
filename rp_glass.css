@@ -200,10 +200,12 @@ html.rp-glass body > div[style*="z-index: 2000000"]{
     box-shadow: 0 -10px 0 -9px rgba(255,255,255,.06);
   }
 
-  /* las 10 secciones + el candado de Facturación arrancan donde termina la barra
-     (rpWa/rpMeli fuerzan left:72px inline al abrir: el !important de hoja le gana) */
+  /* las 11 secciones + el candado de Facturación arrancan donde termina la barra
+     (rpWa/rpMeli fuerzan left:72px inline al abrir: el !important de hoja le gana).
+     Impuestos (#rp-imp-ov) solo necesita esto: trae su propio vidrio y manchas en app.py */
   html.rp-glass body #rp-integ-ov, html.rp-glass body #rp-prod-ov, html.rp-glass body #rp-comis-ov,
   html.rp-glass body #rp-desp-ov, html.rp-glass body #rp-fact-ov, html.rp-glass body #rp-mov-ov,
+  html.rp-glass body #rp-imp-ov,
   html.rp-glass body #rp-stock-ov, html.rp-glass body #rp-ads-ov, html.rp-glass body #rp-wa-ov,
   html.rp-glass body #rp-meli-ov, html.rp-glass body #rpf-lock{
     left: var(--rpg-ovl) !important;

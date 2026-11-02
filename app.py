@@ -373,6 +373,7 @@ SOLO_ADMIN = [
     "/pf-comisiones", "/pf-cambiar-mp", "/pf-congelar-mp", "/pf-congelado-estado",
     "/pf-cambio-mp-estado",
     "/pf-movimientos",
+    "/pf-impuestos",
     "/clientes", "/pf-clientes",
     "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-",
     "/envialo",
@@ -457,7 +458,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; if(ch.id && ch.id.indexOf('rp-meli-sub-')===0) continue; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-meli-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; if(ch.id && ch.id.indexOf('rp-meli-sub-')===0) continue; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-imp-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-meli-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -514,6 +515,17 @@ _SOLO_DASH = r"""
      fn0.parentNode.insertBefore(cmv, fn0.nextSibling);
     }
    }
+   // Agregar "Impuestos" en la barra (debajo de Facturación, antes de Movimientos).
+   if(!nav.querySelector('#rp-imp-nav')){
+    var ix0=nav.querySelector('#rp-fact-nav')||nav.querySelector('#rp-desp-nav')||nav.querySelector('#rp-comis-nav');
+    if(ix0){ var cix=ix0.cloneNode(true); cix.id='rp-imp-nav'; cix.style.display='';
+     var aix=cix.querySelector('a'); if(aix){ aix.setAttribute('href','#'); aix.removeAttribute('aria-current'); aix.classList.remove('bg-white/[0.08]'); aix.classList.remove('text-primary');
+      var naix=aix.cloneNode(true); aix.parentNode.replaceChild(naix,aix); naix.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpImp(true); }); aix=naix; }
+     var icix=cix.querySelector('.material-symbols-outlined'); if(icix) icix.textContent='account_balance';
+     var spix=cix.querySelectorAll('span'); for(var sz=0;sz<spix.length;sz++){ var s12=spix[sz]; if(!s12.classList.contains('material-symbols-outlined') && s12.children.length===0 && (s12.textContent||'').trim()){ s12.textContent='Impuestos'; } }
+     ix0.parentNode.insertBefore(cix, ix0.nextSibling);
+    }
+   }
    // Agregar "Subir ADS" en la barra (debajo de Movimientos).
    if(!nav.querySelector('#rp-ads-nav')){
     var mn0=nav.querySelector('#rp-mov-nav')||nav.querySelector('#rp-fact-nav')||nav.querySelector('#rp-desp-nav');
@@ -560,7 +572,7 @@ _SOLO_DASH = r"""
    }
    // Al tocar Dashboard (o el logo), cerrar los overlays abiertos (Productos/Integraciones).
    var dls=aside.querySelectorAll('a[href="/dashboard"]');
-   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpAds(false);}catch(e){} try{window.rpStock(false);}catch(e){} try{window.rpWa(false);}catch(e){} try{window.rpMeli(false);}catch(e){} }); } }
+   for(var dz=0;dz<dls.length;dz++){ if(!dls[dz]._rpc){ dls[dz]._rpc=1; dls[dz].addEventListener('click',function(){ try{window.rpProd(false);}catch(e){} try{window.rpInteg(false);}catch(e){} try{window.rpComis(false);}catch(e){} try{window.rpDesp(false);}catch(e){} try{window.rpFact(false);}catch(e){} try{window.rpMov(false);}catch(e){} try{window.rpImp(false);}catch(e){} try{window.rpAds(false);}catch(e){} try{window.rpStock(false);}catch(e){} try{window.rpWa(false);}catch(e){} try{window.rpMeli(false);}catch(e){} }); } }
    // Ocultar TODAS las secciones demo "Top productos" (hardcodeadas del pf.html, una por panel).
    var tops=document.querySelectorAll('h1,h2,h3,h4');
    for(var ti=0;ti<tops.length;ti++){ if((tops[ti].textContent||'').indexOf('Top productos')>-1){ var nd=tops[ti];
@@ -577,7 +589,7 @@ _SOLO_DASH = r"""
    if(!aside._rpSync){ aside._rpSync=1;
     var expW=220;
     var apply=function(open,w){ var ps=document.querySelectorAll('.rp-pill'); for(var k=0;k<ps.length;k++){ ps[k].style.width=w+'px'; ps[k].classList.toggle('rp-open',open); } };
-    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var ov8=document.getElementById('rp-stock-ov'); if(ov8) ov8.style.left=w+'px'; var ovwa=document.getElementById('rp-wa-ov'); if(ovwa) ovwa.style.left=w+'px'; var ovml=document.getElementById('rp-meli-ov'); if(ovml) ovml.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
+    var sync=function(){ var w=Math.round(aside.getBoundingClientRect().width); if(w>110)expW=w; apply(w>110,w); var ov=document.getElementById('rp-integ-ov'); if(ov) ov.style.left=w+'px'; var ov2=document.getElementById('rp-prod-ov'); if(ov2) ov2.style.left=w+'px'; var ov3=document.getElementById('rp-comis-ov'); if(ov3) ov3.style.left=w+'px'; var ov4=document.getElementById('rp-desp-ov'); if(ov4) ov4.style.left=w+'px'; var ov5=document.getElementById('rp-fact-ov'); if(ov5) ov5.style.left=w+'px'; var ov6=document.getElementById('rp-mov-ov'); if(ov6) ov6.style.left=w+'px'; var ovix=document.getElementById('rp-imp-ov'); if(ovix) ovix.style.left=w+'px'; var ov7=document.getElementById('rp-ads-ov'); if(ov7) ov7.style.left=w+'px'; var ov8=document.getElementById('rp-stock-ov'); if(ov8) ov8.style.left=w+'px'; var ovwa=document.getElementById('rp-wa-ov'); if(ovwa) ovwa.style.left=w+'px'; var ovml=document.getElementById('rp-meli-ov'); if(ovml) ovml.style.left=w+'px'; var lk=document.getElementById('rpf-lock'); if(lk) lk.style.left=w+'px'; };
     try{ new ResizeObserver(sync).observe(aside); }catch(e){}
     var ps=document.querySelectorAll('.rp-pill');
     for(var k=0;k<ps.length;k++){ (function(p){ p.addEventListener('mouseenter',function(){ apply(true,expW); }); p.addEventListener('mouseleave',function(){ setTimeout(sync,40); }); })(ps[k]); }
@@ -1220,7 +1232,7 @@ _SOLO_DASH = r"""
   window.rpMovF=function(f){ filtro=f; var ps=document.querySelectorAll('#mv-pills .mpill'); for(var i=0;i<ps.length;i++){ ps[i].classList.toggle('on',ps[i].getAttribute('data-f')===f); } rpMovRender(); };
   function filtered(){ return MOV.filter(function(m){ if(filtro==='todos')return true; if(filtro==='afuera')return esAfuera(m); if(filtro==='ingreso')return esIn(m); if(filtro==='egreso')return esEg(m); return true; }); }
   window.rpMov=function(open){ var o=$('rp-mov-ov'); if(!o)return;
-    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
+    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-ads-ov','rp-stock-ov','rp-imp-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
       var _lk=$('rpf-lock'); if(_lk)_lk.style.display='none';
       try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=$('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
       _rpNavActive('rp-mov-nav');
@@ -1302,6 +1314,582 @@ _SOLO_DASH = r"""
        else if(err){ err.textContent='No se pudo guardar.'; err.style.display='block'; }
      }).catch(function(){ if(btn){btn.disabled=false;btn.style.opacity='';} if(err){err.textContent='Error de conexión.';err.style.display='block';} });
   };
+})();
+</script>
+<div id="rp-imp-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#090b14;display:none;overflow:auto;transition:left .18s ease;font-family:Inter,system-ui,-apple-system,sans-serif;color:#e2e8f0">
+ <style>
+  /* IMPUESTOS: todo scopeado a #rp-imp-ov. Ya trae su propio vidrio y manchas, así se ve igual
+     con y sin el tema glass. Clases ix-* propias (no .kcard/.panel/.tcard): el hover-lift del
+     tema no toca las tarjetas 3D. */
+  #rp-imp-ov *{box-sizing:border-box}
+  #rp-imp-ov .ix-page{position:relative;min-height:100%;overflow:hidden}
+  #rp-imp-ov .ix-blob{position:absolute;border-radius:50%;pointer-events:none}
+  #rp-imp-ov .ix-b1{width:820px;height:820px;left:-6%;top:-200px;background:radial-gradient(closest-side,rgba(37,70,170,.50),rgba(37,70,170,0))}
+  #rp-imp-ov .ix-b2{width:680px;height:680px;right:-160px;top:520px;background:radial-gradient(closest-side,rgba(88,48,170,.46),rgba(88,48,170,0))}
+  #rp-imp-ov .ix-b3{width:640px;height:640px;left:30%;bottom:-220px;background:radial-gradient(closest-side,rgba(16,110,86,.38),rgba(16,110,86,0))}
+  #rp-imp-ov .ix-wrap{position:relative;max-width:1200px;margin:0 auto;padding:32px 24px 60px;display:flex;flex-direction:column;gap:26px}
+  #rp-imp-ov .ix-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px}
+  #rp-imp-ov .ix-tt{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #rp-imp-ov .ix-hico{width:38px;height:38px;border-radius:12px;background:rgba(37,99,235,.16);border:1px solid rgba(59,130,246,.35);display:flex;align-items:center;justify-content:center;color:#93c5fd;flex:none}
+  #rp-imp-ov h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;color:#f4f7fb}
+  #rp-imp-ov h2{margin:0;font-size:16px;font-weight:700;color:#f4f7fb}
+  #rp-imp-ov .ix-chip{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  #rp-imp-ov .ix-chip.ri{color:#a7f3d0;background:rgba(16,185,129,.16);border:1px solid rgba(52,211,153,.35)}
+  #rp-imp-ov .ix-chip.mono{color:#cbd5e1;background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.22)}
+  #rp-imp-ov .ix-sub{margin:6px 0 0;color:#94a3b8;font-size:14px}
+  #rp-imp-ov .ix-nav{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  #rp-imp-ov .ix-nb{font:inherit;font-size:13px;font-weight:600;color:#cbd5e1;background:rgba(11,17,30,.55);border:1px solid rgba(148,163,184,.18);padding:10px 14px;border-radius:12px;cursor:pointer;white-space:nowrap}
+  #rp-imp-ov .ix-nb:hover:not(:disabled){border-color:rgba(148,163,184,.35);color:#fff}
+  #rp-imp-ov .ix-nb:disabled{opacity:.35;cursor:default}
+  #rp-imp-ov .ix-nb.cur{color:#fff;background:#2563eb;border-color:#3b82f6;font-weight:700;box-shadow:0 10px 26px -10px rgba(37,99,235,.9)}
+  #rp-imp-ov .ix-x{font:inherit;flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;width:40px;height:40px;border-radius:12px;font-size:15px;cursor:pointer}
+  #rp-imp-ov .ix-st:empty{display:none}
+  #rp-imp-ov .ix-st{font-size:13px;color:#93c5fd}
+  #rp-imp-ov .ix-err{color:#fecdd3;background:rgba(251,113,133,.10);border:1px solid rgba(251,113,133,.35);border-radius:14px;padding:12px 14px;line-height:1.45}
+  #rp-imp-ov .ix-ok{color:#a7f3d0}
+  /* --- HERO 3D: el tilt va en .ix-tilt (SIN overflow:hidden, si no aplana el 3D); el fondo y el
+     brillo van en .ix-skin, una capa aparte con su propio recorte. El hover es del contenedor
+     de afuera (que no se mueve), así no titila en el borde. --- */
+  #rp-imp-ov .ix-heros{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:26px;padding:8px 0 4px}
+  #rp-imp-ov .ix-hero{position:relative;perspective:1400px;min-width:0}
+  #rp-imp-ov .ix-tilt{position:relative;border-radius:26px;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.75,.2,1)}
+  #rp-imp-ov .ix-skin{position:absolute;inset:0;border-radius:26px;overflow:hidden;pointer-events:none;border:1px solid rgba(147,197,253,.28);background:linear-gradient(160deg,rgba(37,99,235,.30),rgba(11,17,30,.70) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(37,99,235,.55),0 18px 40px -20px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-hero.v .ix-skin{border-color:rgba(196,181,253,.28);background:linear-gradient(160deg,rgba(109,93,252,.30),rgba(11,17,30,.70) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(109,93,252,.55),0 18px 40px -20px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-shine{position:absolute;top:0;bottom:0;left:0;width:45%;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.10),rgba(255,255,255,0));transform:translateX(-130%)}
+  #rp-imp-ov .ix-in{position:relative;padding:30px 32px;transform-style:preserve-3d}
+  #rp-imp-ov .ix-hl{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  #rp-imp-ov .ix-hlab{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#bfdbfe}
+  #rp-imp-ov .ix-hero.v .ix-hlab{color:#ddd6fe}
+  #rp-imp-ov .ix-hchip{font-size:12px;color:#cbd5e1;background:rgba(255,255,255,.08);padding:4px 10px;border-radius:999px}
+  #rp-imp-ov .ix-hnum{margin-top:14px;font-size:64px;line-height:1;font-weight:900;letter-spacing:-.03em;color:#fff;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  #rp-imp-ov .ix-hnum.fav{color:#86efac}
+  #rp-imp-ov .ix-hnum.na{font-size:22px;font-weight:700;line-height:1.35;letter-spacing:0;color:#cbd5e1}
+  #rp-imp-ov .ix-hnum.ld{color:rgba(255,255,255,.35)}
+  #rp-imp-ov .ix-hcta{margin-top:18px;display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13.5px;color:#cbd5e1}
+  #rp-imp-ov .ix-hcta b{color:#fff;font-variant-numeric:tabular-nums}
+  #rp-imp-ov .ix-hcta b.g{color:#86efac}
+  #rp-imp-ov .ix-hnote:empty{display:none}
+  #rp-imp-ov .ix-hnote{margin-top:10px;font-size:12.5px;color:#cbd5e1;line-height:1.45}
+  /* --- KPI chicos --- */
+  #rp-imp-ov .ix-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+  #rp-imp-ov .ix-k,#rp-imp-ov .ix-pn{background:rgba(11,17,30,.55);border:1px solid rgba(148,163,184,.13);-webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%)}
+  #rp-imp-ov .ix-k{border-radius:20px;padding:20px;min-width:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 24px 60px -34px rgba(0,0,0,.65)}
+  #rp-imp-ov .ix-kl{font-size:12.5px;color:#94a3b8;font-weight:600}
+  #rp-imp-ov .ix-kn{margin-top:8px;font-size:26px;font-weight:800;color:#f4f7fb;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  #rp-imp-ov .ix-kn.g{color:#86efac}
+  #rp-imp-ov .ix-ks{margin-top:8px;font-size:12px;color:#94a3b8;line-height:1.4}
+  #rp-imp-ov .ix-bar{margin-top:12px;height:6px;border-radius:20px;background:#182234;overflow:hidden}
+  #rp-imp-ov .ix-bar i{display:block;height:100%;width:0;border-radius:20px;background:#3b82f6}
+  /* --- ajustes del mes (saldo técnico anterior, base de IIBB, exterior) --- */
+  #rp-imp-ov .ix-adj:empty{display:none}
+  #rp-imp-ov .ix-adj{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;font-size:12.5px;color:#94a3b8;padding:12px 16px;border-radius:16px;background:rgba(11,17,30,.40);border:1px solid rgba(148,163,184,.10)}
+  #rp-imp-ov .ix-adj b{color:#e2e8f0;font-variant-numeric:tabular-nums}
+  #rp-imp-ov .ix-adj .ext{color:#64748b}#rp-imp-ov .ix-adj .ext b{color:#94a3b8}
+  #rp-imp-ov .ix-lnk{font:inherit;font-size:12.5px;font-weight:600;color:#93c5fd;background:none;border:0;padding:0 2px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+  #rp-imp-ov .ix-tg{display:inline-flex;gap:3px;padding:3px;border-radius:10px;background:rgba(11,17,30,.6);border:1px solid rgba(148,163,184,.15);vertical-align:middle;margin-left:4px}
+  #rp-imp-ov .ix-tg button{font:inherit;font-size:12px;font-weight:600;color:#94a3b8;background:transparent;border:0;padding:5px 10px;border-radius:7px;cursor:pointer}
+  #rp-imp-ov .ix-tg button.on{color:#fff;background:#2563eb}
+  /* --- paneles (gráfico y gastos) --- */
+  #rp-imp-ov .ix-pn{border-radius:22px;padding:22px 24px;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+  #rp-imp-ov .ix-ph{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px}
+  #rp-imp-ov .ix-pp{margin:4px 0 0;font-size:12.5px;color:#94a3b8;line-height:1.45}
+  #rp-imp-ov .ix-leg{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px;color:#cbd5e1}
+  #rp-imp-ov .ix-leg span{display:flex;align-items:center;gap:6px}
+  #rp-imp-ov .ix-leg i{display:inline-block;width:14px;height:3px;border-radius:2px}
+  #rp-imp-ov .ix-leg i.a{width:12px;height:12px;border-radius:3px;background:rgba(96,165,250,.22)}
+  #rp-imp-ov .ix-chart{margin-top:14px;min-height:90px}
+  #rp-imp-ov .ix-chart svg{display:block;width:100%;height:auto}
+  #rp-imp-ov .ix-cnote{margin:10px 0 0;font-size:12px;color:#64748b;line-height:1.45}
+  #rp-imp-ov .ix-btn{font:inherit;font-size:13px;font-weight:700;color:#fff;background:#2563eb;border:1px solid #3b82f6;padding:11px 16px;border-radius:12px;cursor:pointer;box-shadow:0 10px 26px -10px rgba(37,99,235,.9);white-space:nowrap}
+  #rp-imp-ov .ix-btn.gh{color:#cbd5e1;background:rgba(20,28,46,.72);border-color:rgba(148,163,184,.2);box-shadow:none;font-weight:600}
+  #rp-imp-ov .ix-btn:disabled{opacity:.6;cursor:default}
+  #rp-imp-ov .ix-scroll{overflow-x:auto;margin-top:14px}
+  #rp-imp-ov .ix-tbl{min-width:820px}
+  #rp-imp-ov .ix-tr{display:grid;grid-template-columns:64px minmax(0,2fr) 100px 64px 130px 110px 120px 36px;gap:12px;padding:12px;align-items:center;border-bottom:1px solid rgba(148,163,184,.08);font-size:13.5px;color:#e2e8f0}
+  #rp-imp-ov .ix-tr.h{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;border-bottom-color:rgba(148,163,184,.13);padding:10px 12px}
+  #rp-imp-ov .ix-tr.g{cursor:pointer;border-radius:10px}
+  #rp-imp-ov .ix-tr.g:hover{background:rgba(255,255,255,.035)}
+  #rp-imp-ov .ix-r{text-align:right;font-variant-numeric:tabular-nums}
+  #rp-imp-ov .ix-mut{color:#94a3b8}
+  #rp-imp-ov .ix-cc{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rp-imp-ov .ix-sc{display:inline-block;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+  #rp-imp-ov .ix-sc.suma{color:#a7f3d0;background:rgba(16,185,129,.16);border:1px solid rgba(52,211,153,.35)}
+  #rp-imp-ov .ix-sc.no{color:#cbd5e1;background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.22)}
+  #rp-imp-ov .ix-sc.revisar{color:#fde68a;background:rgba(245,158,11,.14);border:1px solid rgba(251,191,36,.35)}
+  #rp-imp-ov .ix-del{font:inherit;background:none;border:0;color:#fb7185;cursor:pointer;font-weight:800;padding:4px 8px;border-radius:7px;opacity:.5}
+  #rp-imp-ov .ix-tr.g:hover .ix-del,#rp-imp-ov .ix-del:focus{opacity:1}
+  #rp-imp-ov .ix-del:hover{background:rgba(251,113,133,.12)}
+  #rp-imp-ov .ix-empty{padding:28px 12px;text-align:center;color:#64748b;font-size:13px;line-height:1.5}
+  /* --- modal Cargar gasto (va FUERA de .ix-page: nada que se anime lo re-ancla) --- */
+  #rp-imp-ov .ix-modal{position:fixed;inset:0;z-index:120;background:rgba(4,6,12,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;padding:20px}
+  #rp-imp-ov .ix-box{position:relative;width:100%;max-width:540px;max-height:calc(100vh - 40px);overflow:auto;border-radius:22px;padding:24px;background:rgba(13,20,36,.94);border:1px solid rgba(255,255,255,.09);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 40px 80px -30px rgba(0,0,0,.9);display:flex;flex-direction:column;gap:16px}
+  #rp-imp-ov .ix-mh{display:flex;align-items:center;gap:12px}
+  #rp-imp-ov .ix-mi{width:40px;height:40px;border-radius:11px;background:rgba(19,127,236,.13);color:#4aa8ff;display:flex;align-items:center;justify-content:center;flex:none}
+  #rp-imp-ov .ix-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+  #rp-imp-ov .ix-lb{font-size:12.5px;color:#94a3b8;font-weight:600;display:flex;justify-content:space-between;gap:8px}
+  #rp-imp-ov .ix-inp{font:inherit;font-size:14px;color:#f4f7fb;background:rgba(11,17,30,.6);border:1px solid rgba(148,163,184,.2);border-radius:12px;padding:12px 14px;width:100%;color-scheme:dark;outline:none;font-variant-numeric:tabular-nums}
+  #rp-imp-ov .ix-inp:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+  #rp-imp-ov .ix-inp.bad{border-color:#fb7185}
+  #rp-imp-ov .ix-help{font-size:11.5px;color:#64748b}
+  #rp-imp-ov .ix-seg{display:flex;gap:6px;padding:4px;border-radius:12px;background:rgba(11,17,30,.6);border:1px solid rgba(148,163,184,.15);flex-wrap:wrap}
+  #rp-imp-ov .ix-seg button{flex:1;font:inherit;font-size:13px;font-weight:600;color:#94a3b8;background:transparent;border:0;padding:10px 8px;border-radius:9px;cursor:pointer;white-space:nowrap}
+  #rp-imp-ov .ix-seg button.on{color:#fff;background:#2563eb;font-weight:700}
+  #rp-imp-ov .ix-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  #rp-imp-ov .ix-det summary{cursor:pointer;font-size:12.5px;color:#93c5fd;font-weight:600}
+  #rp-imp-ov .ix-det[open] summary{margin-bottom:10px}
+  #rp-imp-ov .ix-res{border-radius:16px;padding:16px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.22);color:#cbd5e1}
+  #rp-imp-ov .ix-res.ok{background:rgba(16,185,129,.12);border-color:rgba(52,211,153,.35);color:#a7f3d0}
+  #rp-imp-ov .ix-res.am{background:rgba(245,158,11,.10);border-color:rgba(251,191,36,.30);color:#fde68a}
+  #rp-imp-ov .ix-res .t{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  #rp-imp-ov .ix-res .t span{font-size:13px;font-weight:700}
+  #rp-imp-ov .ix-res .t b{font-size:22px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}
+  #rp-imp-ov .ix-res .m{margin-top:6px;font-size:12.5px;color:#cbd5e1;line-height:1.5}
+  #rp-imp-ov .ix-acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+  @keyframes rpImpIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes rpImpFa{0%,100%{transform:translate(0,0)}50%{transform:translate(36px,-28px)}}
+  @keyframes rpImpFb{0%,100%{transform:translate(0,0)}50%{transform:translate(-40px,30px)}}
+  @keyframes rpImpSh{0%{transform:translateX(-130%)}55%,100%{transform:translateX(130%)}}
+  @media (prefers-reduced-motion: no-preference){
+   #rp-imp-ov .ix-b1,#rp-imp-ov .ix-b3{animation:rpImpFa 20s ease-in-out infinite}
+   #rp-imp-ov .ix-b2{animation:rpImpFb 24s ease-in-out infinite}
+   #rp-imp-ov .ix-wrap{animation:rpImpIn .6s cubic-bezier(.2,.75,.2,1) backwards}
+   #rp-imp-ov .ix-tilt{transform:rotateX(9deg) rotateY(-7deg)}
+   #rp-imp-ov .ix-hero.v .ix-tilt{transform:rotateX(9deg) rotateY(7deg)}
+   #rp-imp-ov .ix-hero:hover .ix-tilt{transform:rotateX(0deg) rotateY(0deg) translateY(-6px)}
+   #rp-imp-ov .ix-in{transform:translateZ(1px)}
+   #rp-imp-ov .ix-hnum{transform:translateZ(28px)}
+   #rp-imp-ov .ix-shine{animation:rpImpSh 3.4s ease-in-out infinite}
+   #rp-imp-ov .ix-k{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
+   #rp-imp-ov .ix-k:hover{transform:translateY(-3px)}
+   #rp-imp-ov .ix-bar i{transition:width .8s cubic-bezier(.2,.75,.2,1)}
+  }
+  @media(max-width:1000px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:900px){#rp-imp-ov .ix-heros{grid-template-columns:1fr}}
+  @media(max-width:560px){
+   #rp-imp-ov .ix-wrap{padding:20px 16px 60px;gap:20px}
+   #rp-imp-ov h1{font-size:24px}
+   #rp-imp-ov .ix-nav{width:100%}
+   #rp-imp-ov .ix-nb{flex:1;padding:10px 6px}
+   #rp-imp-ov .ix-in{padding:24px 22px}
+   #rp-imp-ov .ix-hnum{font-size:44px}
+   #rp-imp-ov .ix-kpis{grid-template-columns:1fr}
+   #rp-imp-ov .ix-pn{padding:18px 16px}
+   #rp-imp-ov .ix-g2{grid-template-columns:1fr}
+   #rp-imp-ov .ix-modal{padding:10px}
+   #rp-imp-ov .ix-box{padding:18px;max-height:calc(100vh - 20px)}
+   /* tabla de gastos -> tarjeta: concepto + ¿Suma? + borrar arriba; fecha, tipo, monto e IVA abajo */
+   #rp-imp-ov .ix-tbl{min-width:0}
+   #rp-imp-ov .ix-tr.h{display:none}
+   #rp-imp-ov .ix-tr.g{grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px 10px;padding:12px 4px;font-size:12.5px}
+   #rp-imp-ov .ix-tr.g>:nth-child(2){grid-column:1/3;grid-row:1;font-size:13.5px}
+   #rp-imp-ov .ix-tr.g>:nth-child(7){grid-column:3;grid-row:1}
+   #rp-imp-ov .ix-tr.g>:nth-child(8){grid-column:4;grid-row:1}
+   #rp-imp-ov .ix-tr.g>:nth-child(1){grid-column:1;grid-row:2}
+   #rp-imp-ov .ix-tr.g>:nth-child(3){grid-column:2;grid-row:2}
+   #rp-imp-ov .ix-tr.g>:nth-child(4){display:none}
+   #rp-imp-ov .ix-tr.g>:nth-child(5){grid-column:3;grid-row:2}
+   #rp-imp-ov .ix-tr.g>:nth-child(6){grid-column:4;grid-row:2}
+   #rp-imp-ov .ix-tr.g>:nth-child(6)::before{content:"IVA ";color:#64748b;font-size:11px}
+   #rp-imp-ov .ix-del{opacity:1}
+  }
+  /* NUMEROS GRANDES: la letra sigue el ancho REAL de la tarjeta, no el de la ventana. Con la barra
+     abierta (tema glass, ~236px) los breakpoints por ventana partian '$12.461.419' en dos
+     renglones entre 1000 y 1280px. El container va en .ix-hero (que solo tiene la perspectiva) y
+     no en .ix-tilt/.ix-in, para no meter contencion en la cadena preserve-3d. Las columnas de
+     heros y KPI tambien se deciden por el ancho del contenido (.ix-wrap). Sin soporte de
+     container queries quedan las reglas de arriba. */
+  @supports (width:1cqw){
+   #rp-imp-ov .ix-wrap{container:ixw/inline-size}
+   #rp-imp-ov .ix-hero,#rp-imp-ov .ix-k{container-type:inline-size}
+   #rp-imp-ov .ix-hnum:not(.na){font-size:clamp(30px,12.5cqw,64px);white-space:nowrap;overflow-wrap:normal}
+   #rp-imp-ov .ix-kn{font-size:clamp(16px,10.5cqw,26px);white-space:nowrap;overflow-wrap:normal}
+   @container ixw (min-width:700px){#rp-imp-ov .ix-heros{grid-template-columns:repeat(2,minmax(0,1fr))}}
+   @container ixw (max-width:699.98px){#rp-imp-ov .ix-heros{grid-template-columns:1fr}}
+   @container ixw (min-width:900px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+   @container ixw (min-width:420px) and (max-width:899.98px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+   @container ixw (max-width:419.98px){#rp-imp-ov .ix-kpis{grid-template-columns:1fr}}
+   /* la tabla pasa a tarjeta cuando el CONTENIDO no llega a sus 820px (ej. 1000px con la barra
+      abierta), no solo en celu: así el ¿Suma? nunca queda tapado por el scroll de costado */
+   @container ixw (max-width:819.98px){
+    #rp-imp-ov .ix-tbl{min-width:0}
+    #rp-imp-ov .ix-tr.h{display:none}
+    #rp-imp-ov .ix-tr.g{grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px 10px;padding:12px 4px;font-size:12.5px}
+    #rp-imp-ov .ix-tr.g>:nth-child(2){grid-column:1/3;grid-row:1;font-size:13.5px}
+    #rp-imp-ov .ix-tr.g>:nth-child(7){grid-column:3;grid-row:1}
+    #rp-imp-ov .ix-tr.g>:nth-child(8){grid-column:4;grid-row:1}
+    #rp-imp-ov .ix-tr.g>:nth-child(1){grid-column:1;grid-row:2}
+    #rp-imp-ov .ix-tr.g>:nth-child(3){grid-column:2;grid-row:2}
+    #rp-imp-ov .ix-tr.g>:nth-child(4){display:none}
+    #rp-imp-ov .ix-tr.g>:nth-child(5){grid-column:3;grid-row:2}
+    #rp-imp-ov .ix-tr.g>:nth-child(6){grid-column:4;grid-row:2}
+    #rp-imp-ov .ix-tr.g>:nth-child(6)::before{content:"IVA ";color:#64748b;font-size:11px}
+    #rp-imp-ov .ix-del{opacity:1}
+   }
+  }
+ </style>
+ <div class="ix-page">
+  <div class="ix-blob ix-b1" aria-hidden="true"></div>
+  <div class="ix-blob ix-b2" aria-hidden="true"></div>
+  <div class="ix-blob ix-b3" aria-hidden="true"></div>
+  <div class="ix-wrap">
+   <div class="ix-top">
+    <div>
+     <div class="ix-tt">
+      <div class="ix-hico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 1V2l-1 1-3-2-3 2-3-2-3 2-3-2z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+      <h1>Impuestos</h1>
+      <span class="ix-chip ri" id="ix-chip" style="display:none"></span>
+     </div>
+     <p class="ix-sub">Se acumula del día 1 al último día del mes y arranca de cero el 1 del mes siguiente.</p>
+    </div>
+    <div class="ix-nav">
+     <button class="ix-nb" id="ix-prev" onclick="rpImpMes(-1)">‹</button>
+     <button class="ix-nb cur" id="ix-cur" onclick="rpImpLoad()" title="Actualizar" aria-current="date">…</button>
+     <button class="ix-nb" id="ix-next" onclick="rpImpMes(1)">›</button>
+     <button class="ix-x" onclick="rpImp(false)" title="Cerrar" aria-label="Cerrar">&#10005;</button>
+    </div>
+   </div>
+   <div class="ix-st" id="ix-st" role="status" aria-live="polite"></div>
+   <div class="ix-heros">
+    <div class="ix-hero" id="ix-h-iva"><div class="ix-tilt"><div class="ix-skin"><div class="ix-shine"></div></div><div class="ix-in">
+     <div class="ix-hl"><span class="ix-hlab" id="ix-iva-lab">IVA a pagar</span><span class="ix-hchip" id="ix-iva-chip">&nbsp;</span></div>
+     <div class="ix-hnum ld" id="ix-iva-num">$ …</div>
+     <div class="ix-hcta" id="ix-iva-cta"></div>
+     <div class="ix-hnote" id="ix-iva-note"></div>
+    </div></div></div>
+    <div class="ix-hero v" id="ix-h-iibb"><div class="ix-tilt"><div class="ix-skin"></div><div class="ix-in">
+     <div class="ix-hl"><span class="ix-hlab" id="ix-iibb-lab">Ingresos Brutos a pagar</span><span class="ix-hchip" id="ix-iibb-chip">&nbsp;</span></div>
+     <div class="ix-hnum ld" id="ix-iibb-num">$ …</div>
+     <div class="ix-hcta" id="ix-iibb-cta"></div>
+     <div class="ix-hnote" id="ix-iibb-note"></div>
+    </div></div></div>
+   </div>
+   <div class="ix-kpis">
+    <div class="ix-k"><div class="ix-kl">Facturado acumulado</div><div class="ix-kn" id="ix-k-fact">—</div><div class="ix-bar"><i id="ix-k-bar"></i></div><div class="ix-ks" id="ix-k-fact-s">&nbsp;</div></div>
+    <div class="ix-k"><div class="ix-kl" id="ix-k-deb-l">IVA débito (ventas)</div><div class="ix-kn" id="ix-k-deb">—</div><div class="ix-ks">Tienda + MercadoLibre</div></div>
+    <div class="ix-k"><div class="ix-kl">IVA a favor — automático</div><div class="ix-kn g" id="ix-k-auto">—</div><div class="ix-ks" id="ix-k-auto-s">Producto, envíos, comisiones, ads</div></div>
+    <div class="ix-k"><div class="ix-kl">IVA a favor — gastos cargados</div><div class="ix-kn g" id="ix-k-gas">—</div><div class="ix-ks" id="ix-k-gas-s">&nbsp;</div></div>
+   </div>
+   <div class="ix-adj" id="ix-adj"></div>
+   <div class="ix-pn">
+    <div class="ix-ph">
+     <h2>Cómo se fue acumulando el IVA en el mes</h2>
+     <div class="ix-leg">
+      <span><i style="background:#60a5fa"></i>Débito</span>
+      <span><i style="background:#34d399"></i>A favor de la operación</span>
+      <span><i class="a"></i>La diferencia</span>
+     </div>
+    </div>
+    <div class="ix-chart" id="ix-chart"><div class="ix-empty">Cargando el gráfico…</div></div>
+    <p class="ix-cnote">Día a día se ve la operación: ventas contra producto, envíos, fulfillment, comisiones y la publicidad de MercadoLibre. La pauta de Meta (dólares y agencia), las percepciones y los gastos cargados entran en el total de arriba, no en esta curva.</p>
+   </div>
+   <div class="ix-pn">
+    <div class="ix-ph">
+     <div><h2>Gastos del mes</h2><p class="ix-pp">Solo suman al IVA a favor los que tienen factura A a tu CUIT. Sin factura, con factura B o del exterior, no suman.</p></div>
+     <button class="ix-btn" onclick="rpImpGasto()">+ Cargar gasto</button>
+    </div>
+    <div class="ix-scroll"><div class="ix-tbl">
+     <div class="ix-tr h"><span>Fecha</span><span>Concepto</span><span>Tipo</span><span>Moneda</span><span class="ix-r">Monto</span><span class="ix-r">IVA</span><span class="ix-r">¿Suma?</span><span></span></div>
+     <div id="ix-g-body"><div class="ix-empty">Cargando…</div></div>
+    </div></div>
+    <p class="ix-cnote" id="ix-g-foot"></p>
+   </div>
+  </div>
+ </div>
+ <div class="ix-modal" id="ix-modal" onclick="if(event.target===this)rpImpGCerrar()">
+  <div class="ix-box" role="dialog" aria-modal="true" aria-labelledby="ix-m-tit">
+   <div class="ix-mh">
+    <div class="ix-mi"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></div>
+    <div style="flex:1"><div id="ix-m-tit" style="font-size:17px;font-weight:800;color:#f4f7fb">Cargar gasto</div><div style="color:#94a3b8;font-size:12.5px">Si tiene factura A, el IVA se suma solo a tu IVA a favor.</div></div>
+    <button class="ix-x" onclick="rpImpGCerrar()" title="Cerrar" aria-label="Cerrar">&#10005;</button>
+   </div>
+   <div class="ix-f"><label class="ix-lb" for="ix-m-con">Concepto</label><input id="ix-m-con" class="ix-inp" maxlength="120" placeholder="Contadora, Packaging, Klaviyo…"></div>
+   <div class="ix-f"><span class="ix-lb">Tipo</span>
+    <div class="ix-seg" data-k="tipo"><button type="button" data-v="gasto" onclick="rpImpSeg(this)">Gasto</button><button type="button" data-v="suscripcion" onclick="rpImpSeg(this)">Suscripción</button></div></div>
+   <div class="ix-g2">
+    <div class="ix-f"><span class="ix-lb">Moneda</span>
+     <div class="ix-seg" data-k="moneda"><button type="button" data-v="ARS" onclick="rpImpSeg(this)">ARS</button><button type="button" data-v="USD" onclick="rpImpSeg(this)">USD</button></div></div>
+    <div class="ix-f"><label class="ix-lb" for="ix-m-monto" id="ix-m-monto-l">Monto total (con IVA)</label><input id="ix-m-monto" class="ix-inp" inputmode="decimal" placeholder="350.000" oninput="rpImpCalc()"></div>
+   </div>
+   <div class="ix-g2" id="ix-m-usd" style="display:none">
+    <div class="ix-f"><label class="ix-lb" for="ix-m-tc">Tipo de cambio</label><input id="ix-m-tc" class="ix-inp" inputmode="decimal" oninput="rpImpCalc()"></div>
+    <div class="ix-f"><span class="ix-lb">En pesos</span><div class="ix-help" id="ix-m-ars" style="padding:13px 2px;font-size:13px;color:#cbd5e1"></div></div>
+   </div>
+   <div class="ix-f"><label class="ix-lb" for="ix-m-fecha">Fecha del comprobante</label><input id="ix-m-fecha" class="ix-inp" type="date" onchange="rpImpCalc()"></div>
+   <div class="ix-f"><span class="ix-lb">Comprobante</span>
+    <div class="ix-seg" data-k="comp"><button type="button" data-v="A" onclick="rpImpSeg(this)">Factura A</button><button type="button" data-v="B" onclick="rpImpSeg(this)">Factura B</button><button type="button" data-v="sin" onclick="rpImpSeg(this)">Sin factura</button><button type="button" data-v="exterior" onclick="rpImpSeg(this)">Exterior</button></div></div>
+   <div class="ix-f" id="ix-m-alic-w"><span class="ix-lb">Alícuota de IVA de la factura</span>
+    <div class="ix-seg" data-k="alic"><button type="button" data-v="21" onclick="rpImpSeg(this)">21%</button><button type="button" data-v="10.5" onclick="rpImpSeg(this)">10,5%</button><button type="button" data-v="27" onclick="rpImpSeg(this)">27%</button></div></div>
+   <div class="ix-f" id="ix-m-iva-w"><label class="ix-lb" for="ix-m-iva"><span id="ix-m-iva-l">IVA de la factura (en pesos)</span><button type="button" class="ix-lnk" onclick="rpImpIvaAuto()">↺ recalcular</button></label><input id="ix-m-iva" class="ix-inp" inputmode="decimal" oninput="rpImpIvaTocado()"><span class="ix-help">Precalculado del total. Si la factura dice otro número, poné el de la factura.</span></div>
+   <details class="ix-det" id="ix-m-det"><summary>Percepciones (opcional)</summary>
+    <div class="ix-g2">
+     <div class="ix-f"><label class="ix-lb" for="ix-m-piva">Percepción de IVA</label><input id="ix-m-piva" class="ix-inp" inputmode="decimal" placeholder="0"></div>
+     <div class="ix-f"><label class="ix-lb" for="ix-m-piibb">Percepción de IIBB</label><input id="ix-m-piibb" class="ix-inp" inputmode="decimal" placeholder="0"></div>
+    </div>
+   </details>
+   <div class="ix-res" id="ix-m-res"><div class="t"><span id="ix-m-rt"></span><b id="ix-m-rv"></b></div><div class="m" id="ix-m-rm"></div></div>
+   <div class="ix-err" id="ix-m-err" style="display:none"></div>
+   <div class="ix-acts"><button type="button" class="ix-btn gh" onclick="rpImpGCerrar()">Cancelar</button><button type="button" class="ix-btn" id="ix-m-save" onclick="rpImpGGuardar(this)">Guardar gasto</button></div>
+  </div>
+ </div>
+</div>
+<script>
+(function(){
+  // ===================== IMPUESTOS =====================
+  var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  var D=null, SERIE=null, MES=null, _tok=0, _okTk=0, _tries=0, _triesS=0, _tmr=null, _tmrS=null, _ts=0, _msg='';
+  var G={id:null,tipo:'gasto',moneda:'ARS',comp:'A',alic:21,ivaTocado:false};
+  function $(id){return document.getElementById(id);}
+  function fmt(n){ n=Number(n)||0; var s=Math.round(Math.abs(n)).toLocaleString('es-AR'); return (n<=-0.5?'−':'')+'$'+s; }
+  function fmtU(n){ return 'US$ '+(Number(n)||0).toLocaleString('es-AR',{maximumFractionDigits:2}); }
+  function fmtIn(n){ return (Math.round((Number(n)||0)*100)/100).toLocaleString('es-AR',{maximumFractionDigits:2}); }
+  function fmtM(v){ v=Number(v)||0; var a=Math.abs(v); if(a>=1e6) return '$'+(v/1e6).toFixed(1).replace('.',',')+'M'; if(a>=1e3) return '$'+Math.round(v/1e3).toLocaleString('es-AR')+' mil'; return fmt(v); }
+  function pct(v){ return String(v).replace('.',',')+'%'; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function hoyAR(){ var t=new Date(Date.now()-3*3600*1000); return t.getUTCFullYear()+'-'+String(t.getUTCMonth()+1).padStart(2,'0')+'-'+String(t.getUTCDate()).padStart(2,'0'); }
+  function mesAdd(m,k){ var y=+m.slice(0,4), mm=+m.slice(5,7)-1+k; y+=Math.floor(mm/12); mm=((mm%12)+12)%12; return y+'-'+String(mm+1).padStart(2,'0'); }
+  function mesTxt(m){ return MESES[(+m.slice(5,7))-1]||m; }
+  function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+  function dmy(iso){ return iso?(iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4)):''; }
+  // monto escrito a la argentina ('350.000', '1.234,56', '79,99') -> número; NaN si no es número
+  function num(v){ if(typeof v==='number') return isFinite(v)?v:NaN;
+    var s=String(v==null?'':v).replace(/[^\d,.\-]/g,''); if(!s) return NaN;
+    if(s.indexOf(',')>-1) s=s.replace(/\./g,'').replace(',','.');
+    else if((s.match(/\./g)||[]).length>1 || /^-?\d{1,3}\.\d{3}$/.test(s)) s=s.replace(/\./g,'');
+    var n=parseFloat(s); return isFinite(n)?n:NaN; }
+  // fetch que SIEMPRE devuelve el JSON del server (también en 400/500) o un error con el texto real
+  function getJ(url,opts){ return fetch(url,opts||{}).then(function(r){ return r.text().then(function(t){ var j=null; try{j=JSON.parse(t);}catch(e){}
+      if(!j){ throw new Error('HTTP '+r.status+(t?(': '+t.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,160)):'')); } return j; }); }); }
+  function postJ(url,body){ return getJ(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); }
+  function errTxt(j){ return ((j&&j.msg)||'')+((j&&j.err_detalle)?(' — '+j.err_detalle):''); }
+  function estado(txt,err){ var s=$('ix-st'); if(!s)return; if(!txt){ s.innerHTML=''; return; }
+    s.innerHTML=err?('<div class="ix-err">'+esc(txt)+' <button class="ix-lnk" onclick="rpImpLoad()">Reintentar</button></div>'):esc(txt); }
+  window.rpImp=function(open){ var o=$('rp-imp-ov'); if(!o)return;
+    if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-wa-ov','rp-meli-ov'].forEach(function(id){ var x=$(id); if(x)x.style.display='none'; });
+      var _lk=$('rpf-lock'); if(_lk)_lk.style.display='none';
+      var ib=$('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
+      try{ _rpNavActive('rp-imp-nav'); }catch(e){}
+    } else { try{ _rpNavActive(null); }catch(e){} rpImpGCerrar();
+      // cerrada no sigue pidiendo: cada reintento puede disparar el mes entero y la serie en el
+      // server. _tok++ descarta lo que esté en vuelo; si algo quedó a medias, al abrir se recarga.
+      // (_okTk!==_tok = una recarga de totales quedó en vuelo, ej. después de guardar un gasto)
+      clearTimeout(_tmr); clearTimeout(_tmrS);
+      if(!D || SERIE===null || _okTk!==_tok){ D=null; SERIE=null; }
+      _tok++; }
+    o.style.display=open?'block':'none';
+    // números del mes en curso: se refrescan si pasó más de 1 minuto (el cache del server dura 60 s)
+    if(open && (!D || (Date.now()-_ts)>60000)) rpImpLoad(MES||hoyAR().slice(0,7));
+    else if(open) pintarChart(); };   // la serie pudo llegar con la sección cerrada (ancho 0)
+  window.rpImpMes=function(k){ var m=mesAdd(MES||hoyAR().slice(0,7),k); if(m>hoyAR().slice(0,7)) return; rpImpLoad(m); };
+  window.rpImpLoad=function(mes){ MES=mes||MES||hoyAR().slice(0,7); var tk=++_tok; _tries=0; _triesS=0; clearTimeout(_tmr); clearTimeout(_tmrS);
+    D=null; SERIE=null; _msg=''; cargando(); pedir(tk,true); };
+  // recarga SOLO los totales (después de guardar un gasto o un ajuste): la serie no cambia
+  function recargar(msg){ var tk=++_tok; _tries=0; clearTimeout(_tmr); _msg=msg||''; pedir(tk,SERIE===null); }
+  function pedir(tk,conSerie){
+    getJ('/pf-impuestos?mes='+encodeURIComponent(MES)).then(function(j){ if(tk!==_tok)return;
+      if(j.calculando){ if(_tries>=10){ estado('El mes sigue calculándose (son muchos días para traer). Probá de nuevo en un minuto.',true); return; }
+        _tries++; estado('Calculando '+mesTxt(MES)+'… (intento '+_tries+' de 10)'); _tmr=setTimeout(function(){ if(tk===_tok) pedir(tk,conSerie); },3000); return; }
+      if(!j.ok){ estado('No se pudo calcular el mes: '+errTxt(j),true); return; }
+      D=j; _okTk=tk; _ts=Date.now(); estado(_msg); _msg=''; pintar();
+      if(conSerie){ _triesS=0; pedirSerie(tk); } else pintarChart();
+    }).catch(function(e){ if(tk!==_tok)return; estado('Error de conexión: '+e.message,true); }); }
+  function pedirSerie(tk){
+    getJ('/pf-impuestos?mes='+encodeURIComponent(MES)+'&serie=1').then(function(j){ if(tk!==_tok)return;
+      if(j.calculando){ if(_triesS>=10){ chartMsg('No se pudo armar el gráfico: el mes sigue calculándose.'); return; }
+        _triesS++; _tmrS=setTimeout(function(){ if(tk===_tok) pedirSerie(tk); },3000); return; }
+      if(!j.ok){ chartMsg('No se pudo armar el gráfico: '+errTxt(j)); return; }
+      SERIE=j.serie||[]; pintarChart();
+    }).catch(function(e){ if(tk!==_tok)return; chartMsg('No se pudo armar el gráfico (error de conexión: '+e.message+').'); }); }
+  function chartMsg(t){ var c=$('ix-chart'); if(c) c.innerHTML='<div class="ix-empty">'+esc(t)+'</div>'; }
+  function cargando(){
+    var m=MES; $('ix-cur').textContent=cap(mesTxt(m))+' '+m.slice(0,4);
+    $('ix-prev').textContent='‹ '+cap(mesTxt(mesAdd(m,-1)));
+    var nx=mesAdd(m,1); $('ix-next').textContent=cap(mesTxt(nx))+' ›'; $('ix-next').disabled=nx>hoyAR().slice(0,7);
+    ['ix-iva-num','ix-iibb-num'].forEach(function(id){ var e=$(id); e.className='ix-hnum ld'; e.textContent='$ …'; });
+    ['ix-iva-cta','ix-iibb-cta','ix-iva-note','ix-iibb-note','ix-adj'].forEach(function(id){ $(id).innerHTML=''; });
+    ['ix-k-fact','ix-k-deb','ix-k-auto','ix-k-gas'].forEach(function(id){ $(id).textContent='—'; });
+    $('ix-k-bar').style.width='0'; $('ix-k-fact-s').innerHTML='&nbsp;'; $('ix-k-gas-s').innerHTML='&nbsp;';
+    $('ix-g-body').innerHTML='<div class="ix-empty">Cargando…</div>'; $('ix-g-foot').textContent='';
+    chartMsg('Cargando el gráfico…'); estado('Calculando '+mesTxt(m)+'…'); }
+  function pintar(){ var j=D; if(!j)return;
+    var nx=mesAdd(j.mes,1), iv=j.iva||{}, ib=j.iibb||{}, na=!!iv.no_aplica;
+    $('ix-cur').textContent=cap(mesTxt(j.mes))+' '+j.mes.slice(0,4); $('ix-prev').textContent='‹ '+cap(mesTxt(mesAdd(j.mes,-1)));
+    $('ix-next').textContent=cap(mesTxt(nx))+' ›'; $('ix-next').disabled=nx>String(j.hoy||hoyAR()).slice(0,7);
+    var ch=$('ix-chip'); ch.style.display=''; ch.className='ix-chip '+(j.ri&&j.ri.es_ri?'ri':'mono'); ch.textContent=(j.ri&&j.ri.es_ri)?'Responsable Inscripto':'Monotributo';
+    // ---- hero IVA ----
+    var lab=$('ix-iva-lab'), n=$('ix-iva-num'), cta=$('ix-iva-cta'), note=$('ix-iva-note');
+    $('ix-iva-chip').textContent=na?'no aplica':('vence en '+mesTxt(nx));
+    if(na){ lab.textContent='IVA a pagar'; n.className='ix-hnum na'; n.textContent=iv.motivo||'No aplica'; cta.innerHTML=''; note.textContent=''; }
+    else {
+      var pac=(iv.pagos_a_cuenta&&iv.pagos_a_cuenta.total)||0, fav=(iv.cred_auto||0)+(iv.cred_gastos||0)+(iv.st_anterior||0);
+      var h='<span>Débito <b>'+fmt(iv.debito)+'</b></span><span>− A favor <b class="g">'+fmt(fav)+'</b></span>';
+      if(pac>0) h+='<span>− Percepciones <b class="g">'+fmt(pac)+'</b></span>';
+      cta.innerHTML=h; var nt=[];
+      if(iv.a_pagar>0){ lab.textContent='IVA a pagar'; n.className='ix-hnum'; n.textContent=fmt(iv.a_pagar); }
+      else if(iv.saldo_tecnico_favor>0){ lab.textContent='IVA · saldo técnico a favor'; n.className='ix-hnum fav'; n.textContent=fmt(iv.saldo_tecnico_favor);
+        nt.push('No hay IVA a pagar: este saldo pasa al mes que viene.'); if(iv.saldo_libre>0) nt.push('Además, '+fmt(iv.saldo_libre)+' de percepciones quedan como saldo de libre disponibilidad.'); }
+      else if(iv.saldo_libre>0){ lab.textContent='IVA · saldo de libre disponibilidad'; n.className='ix-hnum fav'; n.textContent=fmt(iv.saldo_libre);
+        nt.push('Las percepciones superaron el IVA del mes: ese saldo se puede usar contra otros impuestos o pedir en devolución.'); }
+      else { lab.textContent='IVA a pagar'; n.className='ix-hnum'; n.textContent=fmt(0); }
+      if(iv.parcial_desde) nt.push('Cuenta desde el '+dmy(iv.parcial_desde)+', el día que pasaste a Responsable Inscripto.');
+      note.textContent=nt.join(' ');
+    }
+    // ---- hero IIBB ----
+    $('ix-iibb-chip').textContent=ib.label||'';
+    var il=$('ix-iibb-lab'), inum=$('ix-iibb-num'), a=Number(ib.a_pagar)||0;
+    if(a>=0){ il.textContent='Ingresos Brutos a pagar'; inum.className='ix-hnum'; inum.textContent=fmt(a); $('ix-iibb-note').textContent=''; }
+    else { il.textContent='Ingresos Brutos · saldo a favor'; inum.className='ix-hnum fav'; inum.textContent=fmt(-a); $('ix-iibb-note').textContent='Lo retenido superó lo devengado: el saldo a favor pasa al anticipo siguiente.'; }
+    $('ix-iibb-cta').innerHTML='<span>Devengado <b>'+fmt(ib.devengado)+'</b></span><span title="MercadoPago '+esc(fmt(ib.retenido_mp))+' · percepciones de gastos '+esc(fmt(ib.percep_gastos))+'">− Ya retenido'+((ib.percep_gastos>0)?'':' por MP')+' <b class="g">'+fmt(ib.retenido)+'</b></span>';
+    // ---- KPI chicos ----
+    $('ix-k-fact').textContent=fmt(j.facturado);
+    $('ix-k-bar').style.width=Math.min(100,Math.round((j.dia_n/(j.dias_mes||1))*100))+'%';
+    $('ix-k-fact-s').textContent='Día '+j.dia_n+' de '+j.dias_mes+' · '+(Number(j.ventas)||0).toLocaleString('es-AR')+' venta'+(j.ventas===1?'':'s');
+    $('ix-k-deb-l').textContent='IVA débito (ventas '+pct(j.iva_vta_pct)+')';
+    var gs=j.gastos||{rows:[],n:0,n_suman:0,total_ars:0};
+    if(na){ $('ix-k-deb').textContent='—'; $('ix-k-auto').textContent='—'; $('ix-k-gas').textContent='—'; $('ix-k-gas-s').textContent='No aplica antes de ser Responsable Inscripto'; $('ix-k-auto-s').textContent='Producto, envíos, comisiones, ads'; }
+    else {
+      $('ix-k-deb').textContent=fmt(iv.debito); $('ix-k-auto').textContent=fmt(iv.cred_auto); $('ix-k-gas').textContent=fmt(iv.cred_gastos);
+      var ads=(iv.cred_ads_usd||0)+(iv.cred_ads_agencia||0);
+      $('ix-k-auto-s').textContent='Producto, envíos, comisiones'+(ads>0?(' · ads '+fmt(ads)):', ads');
+      $('ix-k-gas-s').textContent=gs.n_suman+' de '+gs.n+' gasto'+(gs.n===1?'':'s')+' suman (con factura A)';
+    }
+    // ---- ajustes del mes ----
+    var ah='';
+    if(!na){ ah+='<span>Saldo técnico a favor del mes anterior: <b>'+fmt(iv.st_anterior)+'</b> <button class="ix-lnk" onclick="rpImpSt()">Editar</button></span>';
+      if(pac>0) ah+='<span>Percepciones de IVA: <b>'+fmt(pac)+'</b> (MercadoPago '+fmt(iv.pagos_a_cuenta.mp)+' · gastos '+fmt(iv.pagos_a_cuenta.gastos)+')</span>'; }
+    ah+='<span>Base de IIBB:<span class="ix-tg"><button class="'+(ib.base==='neto'?'on':'')+'" onclick="rpImpBase(\'neto\')">Sin IVA</button><button class="'+(ib.base==='bruto'?'on':'')+'" onclick="rpImpBase(\'bruto\')">Con IVA</button></span></span>';
+    if(iv.exterior&&iv.exterior.n>0) ah+='<span class="ext">IVA de servicios del exterior: <b>'+fmt(iv.exterior.monto)+'</b> · a definir con la contadora (no se resta)</span>';
+    $('ix-adj').innerHTML=ah;
+    // ---- tabla de gastos ----
+    var CT={A:'Factura A',M:'Factura M',B:'Factura B',C:'Factura C',sin:'Sin factura',exterior:'Exterior'};
+    $('ix-g-body').innerHTML=(gs.rows||[]).map(function(g){
+      var monto=g.moneda==='USD'?(fmtU(g.monto_orig)+'<div class="ix-mut" style="font-size:11.5px;font-weight:400">'+fmt(g.monto_ars)+'</div>'):fmt(g.monto_ars);
+      var chip=g.estado==='suma'?'Suma':(g.comp==='exterior'?'A definir':'No suma');
+      var id=parseInt(g.id,10)||0, f=String(g.fecha||'');
+      return '<div class="ix-tr g" onclick="rpImpGasto('+id+')" title="'+esc(g.motivo)+'">'
+        +'<span class="ix-mut" style="font-variant-numeric:tabular-nums">'+esc(f.slice(8,10)+'/'+f.slice(5,7))+'</span>'
+        +'<span class="ix-cc">'+esc(g.concepto)+' <span class="ix-mut" style="font-weight:400">· '+esc(CT[g.comp]||g.comp)+'</span></span>'
+        +'<span style="color:#cbd5e1">'+(g.tipo==='suscripcion'?'Suscripción':'Gasto')+'</span>'
+        +'<span style="color:#cbd5e1">'+esc(g.moneda)+'</span>'
+        +'<span class="ix-r" style="font-weight:600">'+monto+'</span>'
+        +'<span class="ix-r" style="color:#cbd5e1">'+((Number(g.iva_monto)||0)>0?fmt(g.iva_monto):'—')+'</span>'
+        +'<span class="ix-r"><span class="ix-sc '+(g.comp==='exterior'?'no':esc(g.estado))+'">'+chip+'</span></span>'
+        +'<span class="ix-r"><button class="ix-del" title="Borrar" aria-label="Borrar gasto" onclick="event.stopPropagation();rpImpGBorrar('+id+')">&#10005;</button></span></div>';
+    }).join('')||'<div class="ix-empty">Todavía no hay gastos cargados en '+esc(mesTxt(j.mes))+'.</div>';
+    $('ix-g-foot').textContent=gs.n?(gs.n+' gasto'+(gs.n===1?'':'s')+' · total '+fmt(gs.total_ars)+(na?'':(' · IVA a favor '+fmt(iv.cred_gastos)))+' · tocá un gasto para editarlo'):'';
+  }
+  function pintarChart(){ var el=$('ix-chart'); if(!el||!D)return;
+    if(SERIE===null){ chartMsg('Cargando el gráfico…'); return; }
+    if(!el.clientWidth) return;   // sección cerrada: sin ancho real el viewBox sale de escritorio; rpImp(true) lo redibuja
+    if(D.iva&&D.iva.no_aplica){ chartMsg(D.iva.motivo||'No aplica'); return; }
+    var S=SERIE.filter(function(p){ return p.ri; });
+    if(!S.length){ chartMsg('Todavía no hay días para graficar.'); return; }
+    // en celu el viewBox se achica (si no, a 350px las letras quedan de 4px): fs = letra en px reales ~12
+    var cw=el.clientWidth, W=Math.max(700,Math.min(1160,Math.round(cw*1.6))), fs=Math.min(24,Math.max(12,12*W/cw)), ck=fs/12;
+    var T=34,B=268,L=20,R=W-20, n=D.dias_mes||31, mx=1;
+    S.forEach(function(p){ mx=Math.max(mx,p.deb_acum,p.cred_acum); });
+    function x(dia){ return L+(R-L)*dia/n; }
+    function y(v){ return B-(B-T)*Math.max(0,v)/mx; }
+    var d0=(+S[0].d.slice(8,10))-1, pts=[[x(d0),B,B]];
+    S.forEach(function(p){ pts.push([x(+p.d.slice(8,10)),y(p.deb_acum),y(p.cred_acum),p]); });
+    function xy(a,k){ return a[0].toFixed(1)+','+a[k].toFixed(1); }
+    var lD='M'+pts.map(function(a){return xy(a,1);}).join(' L'), lC='M'+pts.map(function(a){return xy(a,2);}).join(' L');
+    var area=lD+' L'+pts.slice().reverse().map(function(a){return xy(a,2);}).join(' L')+' Z';
+    var ult=pts[pts.length-1], up=ult[3], mt=mesTxt(D.mes).slice(0,3);
+    var h='<svg viewBox="0 0 '+W+' '+Math.round(B+16+fs)+'" role="img" aria-label="IVA acumulado día a día en '+esc(mesTxt(D.mes))+': al día '+(+up.d.slice(8,10))+', débito '+esc(fmt(up.deb_acum))+' contra '+esc(fmt(up.cred_acum))+' a favor de la operación">';
+    h+='<g stroke="rgba(148,163,184,.12)" stroke-width="1">'; for(var gi=0;gi<5;gi++){ var gy=(T+(B-T)*gi/4).toFixed(1); h+='<line x1="'+L+'" y1="'+gy+'" x2="'+R+'" y2="'+gy+'"/>'; } h+='</g>';
+    h+='<path d="'+area+'" fill="rgba(96,165,250,.22)"/>';
+    h+='<path d="'+lD+'" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+    h+='<path d="'+lC+'" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+    if(ult[0]<R-2){ h+='<line x1="'+ult[0].toFixed(1)+'" y1="'+T+'" x2="'+ult[0].toFixed(1)+'" y2="'+B+'" stroke="rgba(148,163,184,.35)" stroke-dasharray="4 4"/>'; }
+    h+='<circle cx="'+ult[0].toFixed(1)+'" cy="'+ult[1].toFixed(1)+'" r="'+(4.5*ck).toFixed(1)+'" fill="#0b111e" stroke="#60a5fa" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="'+ult[0].toFixed(1)+'" cy="'+ult[2].toFixed(1)+'" r="'+(4.5*ck).toFixed(1)+'" fill="#0b111e" stroke="#34d399" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+    var an=ult[0]>W*0.55?'end':'start', lx=(an==='end'?ult[0]-10:ult[0]+10).toFixed(1);
+    var yD=ult[1]-10*ck, yC=ult[2]+20*ck; if(yC-yD<22*ck) yC=yD+22*ck;
+    h+='<g font-family="Inter,system-ui,sans-serif" font-size="'+fs.toFixed(1)+'" fill="#94a3b8">';
+    [7,14,21,28].forEach(function(dd){ if(dd<n-(ck>1.3?4:1)) h+='<text x="'+x(dd).toFixed(1)+'" y="'+(B+10+fs).toFixed(1)+'" text-anchor="middle">'+dd+' '+mt+'</text>'; });
+    h+='<text x="'+R+'" y="'+(B+10+fs).toFixed(1)+'" text-anchor="end">'+n+' '+mt+'</text>';
+    h+='<text x="'+lx+'" y="'+Math.max(fs+2,yD).toFixed(1)+'" text-anchor="'+an+'" fill="#e2e8f0" font-weight="700">'+esc(fmtM(up.deb_acum))+'</text>';
+    h+='<text x="'+lx+'" y="'+Math.min(B-4,yC).toFixed(1)+'" text-anchor="'+an+'" fill="#86efac" font-weight="700">'+esc(fmtM(up.cred_acum))+'</text></g>';
+    // una franja invisible por día con el detalle (tooltip nativo, también sirve con lector de pantalla)
+    var bw=(R-L)/n; S.forEach(function(p){ var dd=+p.d.slice(8,10);
+      h+='<rect x="'+(x(dd)-bw).toFixed(1)+'" y="'+T+'" width="'+bw.toFixed(1)+'" height="'+(B-T)+'" fill="transparent"><title>'+esc(dd+' de '+mesTxt(D.mes)+' · facturado '+fmt(p.fact)+' · débito acumulado '+fmt(p.deb_acum)+' · a favor acumulado '+fmt(p.cred_acum)+' · diferencia '+fmt(p.deb_acum-p.cred_acum))+'</title></rect>'; });
+    h+='</svg>'; el.innerHTML=h; }
+  // ---- modal Cargar / editar gasto ----
+  function esRI(f){ var r=(D&&D.ri)||{}; if(r.ri_desde) return !!f && f>=r.ri_desde; return String(r.regimen||'').toLowerCase().indexOf('ri')===0; }
+  function fechaDef(){ var h=hoyAR(); if(MES && h.slice(0,7)===MES) return h; return (D&&D.hasta)||((MES||h.slice(0,7))+'-01'); }
+  function conIva(){ return G.comp==='A'||G.comp==='M'||G.comp==='exterior'; }
+  function segs(){ var bs=document.querySelectorAll('#ix-modal .ix-seg button');
+    for(var i=0;i<bs.length;i++){ var k=bs[i].parentNode.getAttribute('data-k'), v=bs[i].getAttribute('data-v'); bs[i].classList.toggle('on', String(G[k])===v); }
+    $('ix-m-usd').style.display=G.moneda==='USD'?'':'none';
+    $('ix-m-alic-w').style.display=(G.comp==='A'||G.comp==='M')?'':'none';
+    $('ix-m-iva-w').style.display=conIva()?'':'none';
+    $('ix-m-iva-l').textContent=G.comp==='exterior'?'IVA del resumen (en pesos, informativo)':'IVA de la factura (en pesos)';
+    $('ix-m-monto-l').textContent='Monto total'+(G.moneda==='USD'?' en dólares':' (con IVA)'); }
+  function arsDe(){ var m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value); if(isNaN(m)) return 0; if(G.moneda==='USD') return isNaN(tc)?0:m*tc; return m; }
+  window.rpImpSeg=function(el){ var k=el.parentNode.getAttribute('data-k'), v=el.getAttribute('data-v'); G[k]=(k==='alic')?parseFloat(v):v;
+    if(k==='comp' && conIva() && !($('ix-m-iva').value||'').trim()) G.ivaTocado=false;   // vacío = lo precalcula (como el server)
+    segs(); rpImpCalc(); };
+  window.rpImpIvaTocado=function(){ G.ivaTocado=true; rpImpCalc(); };
+  window.rpImpIvaAuto=function(){ G.ivaTocado=false; rpImpCalc(); };
+  window.rpImpCalc=function(){ var ars=arsDe(), usd=G.moneda==='USD';
+    $('ix-m-ars').textContent=usd?(ars>0?('≈ '+fmt(ars)):'—'):'';
+    if(conIva() && !G.ivaTocado){ var al=G.comp==='exterior'?21:G.alic; $('ix-m-iva').value=ars>0?fmtIn(ars*al/(100+al)):''; }
+    var iva=num($('ix-m-iva').value); if(isNaN(iva)) iva=0;
+    var f=$('ix-m-fecha').value, cls='', tit, txt, val='';
+    if((G.comp==='A'||G.comp==='M') && esRI(f)){ cls='ok'; tit='Suma a tu IVA a favor'; val=fmt(iva); txt='IVA de la factura '+G.comp+' al '+pct(G.alic)+'. Baja el IVA a pagar del mes.'+(usd?' Va en pesos, tal cual figura en la factura.':''); }
+    else if(G.comp==='A'||G.comp==='M'){ tit='No suma (antes de ser RI)'; txt='La fecha es anterior a que pasaras a Responsable Inscripto'+((D&&D.ri&&D.ri.ri_desde)?(' ('+dmy(D.ri.ri_desde)+')'):'')+': ese IVA no se puede tomar.'; }
+    else if(G.comp==='exterior'){ cls=''; tit='No suma (exterior)'; val=iva>0?fmt(iva):''; txt='Servicio del exterior: se guarda y se muestra aparte, a definir con la contadora. No baja el IVA a pagar.'; }
+    else if(G.comp==='B'||G.comp==='C'){ cls='am'; tit='No suma (factura '+G.comp+')'; txt='Con factura '+G.comp+' el IVA no se puede tomar. Pedí factura A a tu CUIT.'; }
+    else { tit='No suma (sin factura)'; txt='Se guarda como gasto del mes, sin IVA a favor.'; }
+    $('ix-m-res').className='ix-res '+cls; $('ix-m-rt').textContent=tit; $('ix-m-rv').textContent=val; $('ix-m-rm').textContent=txt; };
+  window.rpImpGasto=function(id){ var g=null;
+    if(id!=null && D && D.gastos){ (D.gastos.rows||[]).forEach(function(r){ if(+r.id===+id) g=r; }); }
+    G={id:g?g.id:null, tipo:g?g.tipo:'gasto', moneda:g?g.moneda:'ARS', comp:g?g.comp:'A', alic:(g&&g.alic)?Number(g.alic):21, ivaTocado:!!(g&&Number(g.iva_monto)>0)};
+    $('ix-m-tit').textContent=g?'Editar gasto':'Cargar gasto';
+    $('ix-m-con').value=g?g.concepto:'';
+    $('ix-m-monto').value=g?fmtIn(g.monto_orig):'';
+    $('ix-m-tc').value=(g&&g.tc)?fmtIn(g.tc):((D&&D.dolar)?fmtIn(D.dolar):'');
+    $('ix-m-fecha').value=g?g.fecha:fechaDef();
+    $('ix-m-iva').value=(g&&g.iva_monto)?fmtIn(g.iva_monto):'';
+    $('ix-m-piva').value=(g&&g.percep_iva)?fmtIn(g.percep_iva):''; $('ix-m-piibb').value=(g&&g.percep_iibb)?fmtIn(g.percep_iibb):'';
+    $('ix-m-det').open=!!(g&&(g.percep_iva||g.percep_iibb));
+    var e=$('ix-m-err'); e.style.display='none'; e.textContent='';
+    var ins=document.querySelectorAll('#ix-modal .ix-inp'); for(var i=0;i<ins.length;i++) ins[i].classList.remove('bad');
+    segs(); rpImpCalc(); $('ix-modal').style.display='flex'; setTimeout(function(){ try{ $('ix-m-con').focus(); }catch(x){} },30); };
+  window.rpImpGCerrar=function(){ var m=$('ix-modal'); if(m) m.style.display='none'; };
+  window.rpImpGGuardar=function(btn){ var e=$('ix-m-err'); e.style.display='none';
+    var ins=document.querySelectorAll('#ix-modal .ix-inp'); for(var i=0;i<ins.length;i++) ins[i].classList.remove('bad');
+    function bad(id,msg){ var el=$(id); if(el){ el.classList.add('bad'); try{el.focus();}catch(x){} } e.textContent=msg; e.style.display='block'; }
+    var con=($('ix-m-con').value||'').trim(), m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value), f=$('ix-m-fecha').value;
+    if(!con) return bad('ix-m-con','Poné un concepto (ej: Contadora, Packaging).');
+    if(isNaN(m)||m<=0) return bad('ix-m-monto','Poné el monto total pagado.');
+    if(G.moneda==='USD'&&(isNaN(tc)||tc<=0)) return bad('ix-m-tc','Poné el tipo de cambio.');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(f||'')) return bad('ix-m-fecha','Poné la fecha del comprobante.');
+    var iv=($('ix-m-iva').value||'').trim(), iva=iv===''?null:num(iv);
+    if(conIva() && iva!==null && (isNaN(iva)||iva<0)) return bad('ix-m-iva','El IVA tiene que ser un número (0 o más).');
+    function perc(id){ var t=($(id).value||'').trim(); if(t==='') return 0; var v=num(t); return (isNaN(v)||v<0)?NaN:v; }
+    var piva=perc('ix-m-piva'), piibb=perc('ix-m-piibb');
+    if(isNaN(piva)){ $('ix-m-det').open=true; return bad('ix-m-piva','La percepción tiene que ser un número (0 o más).'); }
+    if(isNaN(piibb)){ $('ix-m-det').open=true; return bad('ix-m-piibb','La percepción tiene que ser un número (0 o más).'); }
+    var body={id:G.id, fecha:f, concepto:con, tipo:G.tipo, moneda:G.moneda, monto_orig:m, tc:(G.moneda==='USD'?tc:null),
+              comp:G.comp, alic:G.alic, iva_monto:(conIva()?iva:null), percep_iva:piva, percep_iibb:piibb};
+    if(btn){ btn.disabled=true; }
+    postJ('/pf-impuestos-gasto',body).then(function(j){ if(btn) btn.disabled=false;
+      if(!j.ok){ e.textContent='No se pudo guardar: '+errTxt(j); e.style.display='block'; return; }
+      rpImpGCerrar(); var gm=f.slice(0,7);
+      recargar(gm!==MES?('Gasto guardado en '+mesTxt(gm)+' '+gm.slice(0,4)+' (no es el mes que estás viendo).'):''); })
+     .catch(function(x){ if(btn) btn.disabled=false; e.textContent='Error de conexión: '+x.message; e.style.display='block'; }); };
+  window.rpImpGBorrar=function(id){ if(!confirm('¿Borrar este gasto?')) return;
+    postJ('/pf-impuestos-gasto-del',{id:id}).then(function(j){ if(!j.ok){ alert('No se pudo borrar: '+errTxt(j)); return; } recargar(); })
+     .catch(function(x){ alert('Error de conexión: '+x.message); }); };
+  function postConf(b){ postJ('/pf-impuestos-conf',b).then(function(j){ if(!j.ok){ alert('No se pudo guardar el ajuste: '+errTxt(j)); return; } recargar(); })
+     .catch(function(x){ alert('Error de conexión: '+x.message); }); }
+  window.rpImpSt=function(){ if(!D||!D.iva||D.iva.no_aplica) return; var act=D.iva.st_anterior||0;
+    var v=prompt('Saldo técnico a favor de IVA que quedó de '+mesTxt(mesAdd(D.mes,-1))+' (sale de la DDJJ de ese mes). Dejalo vacío para 0:', act?fmtIn(act):'');
+    if(v===null) return; var n=v.trim()===''?0:num(v); if(isNaN(n)||n<0){ alert('Tiene que ser un monto (0 o más).'); return; }
+    postConf({mes:D.mes, st_anterior:n}); };
+  window.rpImpBase=function(b){ if(!D||!D.iibb||D.iibb.base===b) return; postConf({iibb_base:b}); };
+  var _rz=null; window.addEventListener('resize',function(){ clearTimeout(_rz); _rz=setTimeout(function(){ var o=$('rp-imp-ov'); if(o&&o.style.display==='block'&&SERIE) pintarChart(); },200); });
+  document.addEventListener('keydown',function(ev){ if(ev.key==='Escape'){ var m=$('ix-modal'); if(m&&m.style.display==='flex') rpImpGCerrar(); } });
 })();
 </script>
 <script>
@@ -1521,22 +2109,22 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oix=document.getElementById('rp-imp-ov'); if(_oix)_oix.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
  window._rpNavActive=function(id){ try{
    var _wo=document.getElementById('rp-wa-ov'); if(_wo && id!=='rp-wa-nav') _wo.style.display='none';
-   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-ads-nav','rp-wa-nav','rp-stock-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
+   ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-imp-nav','rp-ads-nav','rp-wa-nav','rp-stock-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
    var das=document.querySelectorAll('aside nav a[href="/dashboard"]'), da=null; for(var i=0;i<das.length;i++){ if(das[i].querySelector('.material-symbols-outlined')){ da=das[i]; break; } }
    if(da){ da.classList.toggle('bg-white/[0.08]', !id); da.classList.toggle('text-primary', !id); }
  }catch(e){} }
  function rpProdSetActive(on){ _rpNavActive(on?'rp-prod-nav':null); }
- window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
+ window.rpProd=function(open){ var o=document.getElementById('rp-prod-ov'); if(!o)return; if(open){ var oi=document.getElementById('rp-integ-ov'); if(oi) oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib) ib.classList.remove('rp-active'); var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oix=document.getElementById('rp-imp-ov'); if(_oix)_oix.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpProdSetActive(!!open); if(open) rpProdLoad(); };
  function rpComisSetActive(on){ _rpNavActive(on?'rp-comis-nav':null); }
  function rpComisTotal(){ var g=function(id){var el=document.getElementById(id); return el?(parseFloat(el.value||'0')||0):0;};
    var ti=g('rp-c-tienda'), iva=g('rp-c-iva'), iibb=g('rp-c-iibb'), t;
    if(window._rpMpReal!=null){ t=window._rpMpReal + ti + iibb; }
    else { t=(g('rp-c-mp')+g('rp-c-cuotas'))*(1+iva/100) + ti + iibb; }
    var el=document.getElementById('rp-c-total'); if(el) el.textContent=(Math.round(t*100)/100)+'%'; }
- window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
+ window.rpComis=function(open){ var o=document.getElementById('rp-comis-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op)op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oi=document.getElementById('rp-integ-ov'); if(oi){oi.style.display='none'; var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oix=document.getElementById('rp-imp-ov'); if(_oix)_oix.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; rpComisSetActive(!!open); if(open) rpComisLoad(); };
 
  // ===================== DESPACHOS =====================
  var _dRows=[], _dFilt='empaquetar', _dDesde=null, _dHasta=null, _dLoaded=false, _dTienda='todas', _dTiendas=[];
@@ -1548,7 +2136,7 @@ _SOLO_DASH = r"""
  function _dColor(nm){ var s=0; for(var i=0;i<(nm||'').length;i++) s+=nm.charCodeAt(i); return _DCOL[s%_DCOL.length]; }
  function _dStat(msg,color){ var s=document.getElementById('rp-d-status'); if(s){ s.textContent=msg||''; s.style.color=color||'#34d399'; } }
  window.rpDesp=function(open){ var o=document.getElementById('rp-desp-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-imp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none';
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-desp-nav');
@@ -1556,14 +2144,14 @@ _SOLO_DASH = r"""
    o.style.display=open?'block':'none';
    if(open && !_dLoaded) rpDLoad(); };
  window.rpWa=function(open){ var o=document.getElementById('rp-wa-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-meli-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-meli-ov','rp-imp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      var f=document.getElementById('rp-wa-frame'); if(f && !f.getAttribute('src')){ f.setAttribute('src','/wa'); }
      o.style.left='72px';
      _rpNavActive('rp-wa-nav');
    } else { _rpNavActive(null); }
    o.style.display=open?'block':'none'; };
  window.rpMeli=function(open){ var o=document.getElementById('rp-meli-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-wa-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-wa-ov','rp-imp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      var f=document.getElementById('rp-meli-frame'); if(f && !f.getAttribute('src')){ f.setAttribute('src','/meli'); }
      o.style.left='72px';
      _rpNavActive('rp-meli-nav');
@@ -2182,7 +2770,7 @@ _SOLO_DASH = r"""
  function _fStat(m,c){ var s=document.getElementById('rpf-status'); if(s){ s.textContent=m||''; s.style.color=c||'#34d399'; } }
  function _fEmit(){ var v=(document.getElementById('rpf-emit')||{}).value||''; if(!v)return ''; var p=v.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
  window.rpFact=function(open){ var o=document.getElementById('rp-fact-ov'); if(!o)return;
-   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
+   if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-mov-ov','rp-ads-ov','rp-stock-ov','rp-imp-ov'].forEach(function(id){ var x=document.getElementById(id); if(x)x.style.display='none'; });
      try{rpProdSetActive(false);}catch(e){} try{rpComisSetActive(false);}catch(e){} var ib=document.getElementById('rp-integ-btn'); if(ib)ib.classList.remove('rp-active');
      _rpNavActive('rp-fact-nav');
    } else { _rpNavActive(null); }
@@ -3778,7 +4366,7 @@ _SOLO_DASH = r"""
  function tile(k,v,cls){return '<div class="card tile '+cls+'"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';}
  function tstk(m){var t=$('rp-stk-toast');if(!t)return;t.textContent=m;t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';clearTimeout(t._t);t._t=setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(18px)';},2500);}
  window.rpStock=function(open){ var o=$('rp-stock-ov'); if(!o)return;
-  if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov'].forEach(function(id){var x=$(id);if(x)x.style.display='none';}); var lk=$('rpf-lock'); if(lk)lk.style.display='none'; }
+  if(open){ ['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-ads-ov','rp-imp-ov'].forEach(function(id){var x=$(id);if(x)x.style.display='none';}); var lk=$('rpf-lock'); if(lk)lk.style.display='none'; }
   o.style.display=open?'block':'none'; try{window._rpNavActive(open?'rp-stock-nav':null);}catch(e){} if(open) rpStkLoad(); else clearTimeout(_poll); };
  // Pedidos con TIEMPO MAXIMO y error REAL: antes un fetch sin timeout dejaba "Cargando…" para siempre
  function req(url,opts,ms){ ms=ms||20000; var o=opts||{}, ctl=(typeof AbortController!=='undefined')?new AbortController():null, to=setTimeout(function(){ if(ctl)ctl.abort(); },ms); if(ctl)o.signal=ctl.signal;
@@ -3939,7 +4527,7 @@ _SOLO_DASH = r"""
 </div>
 <style>
 @media(max-width:820px){
- #rp-stock-ov,#rp-ads-ov,#rp-prod-ov,#rp-comis-ov,#rp-integ-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov,#rpf-lock{left:0 !important}
+ #rp-stock-ov,#rp-ads-ov,#rp-prod-ov,#rp-comis-ov,#rp-integ-ov,#rp-desp-ov,#rp-fact-ov,#rp-mov-ov,#rp-imp-ov,#rpf-lock{left:0 !important}
  #rpf-lock{padding:18px !important}
  #rpf-lock p{max-width:100% !important}
  #rp-moblau{display:flex !important}
@@ -3978,6 +4566,7 @@ _SOLO_DASH = r"""
   <div class="mi" onclick="rpMob('rpStock')"><span class="material-symbols-outlined">warehouse</span>Stock</div>
   <div class="mi" onclick="rpMob('rpMov')"><span class="material-symbols-outlined">swap_vert</span>Movimientos</div>
   <div class="mi" onclick="rpMob('rpFact')"><span class="material-symbols-outlined">receipt_long</span>Facturaci&oacute;n</div>
+  <div class="mi" onclick="rpMob('rpImp')"><span class="material-symbols-outlined">account_balance</span>Impuestos</div>
   <div class="mi" onclick="rpMob('rpDesp')"><span class="material-symbols-outlined">local_shipping</span>Despachos</div>
   <div class="mi" onclick="rpMob('rpProd')"><span class="material-symbols-outlined">inventory_2</span>Productos</div>
   <div class="mi" onclick="rpMob('rpComis')"><span class="material-symbols-outlined">percent</span>Comisiones</div>
@@ -3986,7 +4575,7 @@ _SOLO_DASH = r"""
 </div>
 <script>
  window.rpMob=function(name){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); try{ if(typeof window[name]==='function') window[name](true); }catch(e){} };
- window.rpMobClose=function(){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); ['rpProd','rpComis','rpInteg','rpDesp','rpFact','rpMov','rpAds','rpStock'].forEach(function(n){ try{ if(typeof window[n]==='function') window[n](false); }catch(e){} }); };
+ window.rpMobClose=function(){ var sh=document.getElementById('rp-mobsheet'); if(sh)sh.classList.remove('on'); ['rpProd','rpComis','rpInteg','rpDesp','rpFact','rpMov','rpImp','rpAds','rpStock'].forEach(function(n){ try{ if(typeof window[n]==='function') window[n](false); }catch(e){} }); };
  // El "Más" y el ☰ nativos del celu estaban de adorno -> los enganchamos para abrir nuestro menú.
  function rpMobOpen(e){ var sh=document.getElementById('rp-mobsheet'); if(sh){ if(e){e.preventDefault();e.stopPropagation();} sh.classList.add('on'); return true; } return false; }
  document.addEventListener('click', function(e){ if(window.innerWidth>820)return; try{
@@ -4169,7 +4758,7 @@ _SOLO_DASH = r"""
  function $(id){return document.getElementById(id);}
  function opt(a){return a.map(function(o){return '<option value="'+o.v+'">'+o.t+'</option>';}).join('');}
  window.rpAds=function(open){var o=$('rp-ads-ov');if(!o)return;
-  if(open){['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov'].forEach(function(id){var x=document.getElementById(id);if(x)x.style.display='none';});var _l=document.getElementById('rpf-lock');if(_l)_l.style.display='none';}
+  if(open){['rp-prod-ov','rp-comis-ov','rp-integ-ov','rp-desp-ov','rp-fact-ov','rp-mov-ov','rp-imp-ov'].forEach(function(id){var x=document.getElementById(id);if(x)x.style.display='none';});var _l=document.getElementById('rpf-lock');if(_l)_l.style.display='none';}
   o.style.display=open?'block':'none';try{window._rpNavActive(open?'rp-ads-nav':null);}catch(e){}if(open)rpaInit();};
  var _inited=false;
  function rpaInit(){ var d=new Date();d.setDate(d.getDate()+1);$('rpa-fecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
@@ -6882,7 +7471,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-10-31-wa-chats"})
+    return jsonify({"ok": True, "v": "2026-11-01-impuestos"})
 
 
 _KPI_DBG = {}
@@ -21669,6 +22258,607 @@ def pf_periodo():
     if email:
         return jsonify({"ok": True, **_pf_periodo_blob(email, desde, hasta)})
     return jsonify({"ok": True, **_blob_vacio()})
+
+
+# ===================== IMPUESTOS (IVA + IIBB del mes) =====================
+# Seccion "Impuestos" (solo admin): cuanto IVA e IIBB se va acumulando del dia 1 al fin de mes.
+# NO toca raw ni la ganancia del Dashboard: toma los totales de _pf_periodo_blob TAL CUAL y les
+# suma ENCIMA lo que se carga aca (gastos con factura A, percepciones de proveedores, saldo
+# tecnico del mes anterior). Los gastos van en un archivo PROPIO y no en movimientos.json: ese se
+# resetea entero si cambia MOV_SEED_VERSION y guarda la fecha 'dd/mm' sin anio.
+_IMP_FILE = DATA_DIR / "impuestos_gastos.json"   # {email: {seq, rows:[...], conf:{iibb_base, computa_ext, st_anterior:{"YYYY-MM": monto}}}}
+_IMP_LOCK = DATA_DIR / "impuestos_gastos.lock"   # flock entre los 2 workers (leer-cambiar-escribir)
+_IMP_COMPS = ("A", "M", "B", "C", "sin", "exterior")
+_IMP_ALICS = (21.0, 10.5, 27.0)
+_IMP_SERIE_CACHE = {}   # (email, desde, hasta) -> (momento, serie): los dias cerrados no cambian
+
+
+class _ImpErr(Exception):
+    """Error de validacion de la seccion Impuestos: el texto va TAL CUAL a la pantalla."""
+
+
+def _imp_all(estricto=False, cola="No guardé nada para no pisarlos.") -> dict:
+    """Lee el archivo de gastos. Con estricto=True un JSON roto corta con error en vez de devolver
+    {}: antes de ESCRIBIR, vacio pisaria los gastos de todos; al MOSTRAR el mes, vacio daria 0
+    gastos y un IVA a pagar inflado sin ningun aviso. 'cola' es la segunda frase del cartel."""
+    try:
+        d = _json.loads(_IMP_FILE.read_text(encoding="utf-8"))
+        if not isinstance(d, dict):
+            raise ValueError("el archivo no es un objeto JSON")
+        return d
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        if estricto:
+            raise _ImpErr("No pude leer los gastos guardados (%s: %s). %s"
+                          % (type(e).__name__, str(e)[:120], cola))
+        return {}
+
+
+def _imp_write(d) -> None:
+    """Escritura atomica (tmp + replace): el otro worker nunca lee el JSON a medio escribir."""
+    _IMP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _IMP_FILE.with_name("%s.tmp%d" % (_IMP_FILE.name, _os.getpid()))
+    tmp.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    _os.replace(str(tmp), str(_IMP_FILE))
+
+
+def _imp_cuenta(d, email) -> dict:
+    """La parte de UNA cuenta, con la forma completa aunque el archivo venga viejo o a medias."""
+    cur = d.get(email)
+    if not isinstance(cur, dict):
+        cur = {}
+    if not isinstance(cur.get("rows"), list):
+        cur["rows"] = []
+    if not isinstance(cur.get("conf"), dict):
+        cur["conf"] = {}
+    try:
+        cur["seq"] = int(cur.get("seq") or 0)
+    except Exception:
+        cur["seq"] = 0
+    return cur
+
+
+def _imp_num(v):
+    """Monto del front: numero, o texto argentino ('1.234,56', '$ 350.000'). None si no es un
+    numero valido, para no confundir 'no vino' con 0."""
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        f = float(v)
+    else:
+        s = str(v).strip().replace("US$", "").replace("$", "").replace(" ", "")
+        if not s:
+            return None
+        if "," in s:                                       # 1.234,56
+            s = s.replace(".", "").replace(",", ".")
+        elif s.count(".") > 1 or re.fullmatch(r"-?\d{1,3}\.\d{3}", s):   # 1.234.567 / 350.000
+            s = s.replace(".", "")
+        try:
+            f = float(s)
+        except Exception:
+            return None
+    if f != f or f in (float("inf"), float("-inf")):
+        return None
+    return f
+
+
+def _imp_fecha(s):
+    """'YYYY-MM-DD' -> date, o None si no es una fecha real."""
+    try:
+        s = str(s or "").strip()
+        if len(s) != 10:
+            return None
+        return _dt.datetime.strptime(s, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _imp_ri_conf(email) -> dict:
+    """UNA sola fuente para el regimen: la config de Finanzas (regimen / ri_desde). El tilde RI
+    de Comisiones no tiene fecha y no sirve para un mes con cambio de regimen a la mitad."""
+    c = _fin_conf().get(email)
+    return c if isinstance(c, dict) else {}
+
+
+def _imp_es_ri(conf, f) -> bool:
+    """_fin_es_ri recibe un date (no un string). Si algo falla, NO es RI: mejor no mostrar IVA
+    que inventarlo."""
+    try:
+        return bool(f) and bool(_fin_es_ri(conf, f))
+    except Exception:
+        return False
+
+
+def _imp_dmy(iso) -> str:
+    s = str(iso or "")
+    return "%s/%s/%s" % (s[8:10], s[5:7], s[0:4]) if len(s) >= 10 else s
+
+
+def _imp_gasto_estado(g, conf_ri):
+    """(suma_credito, estado, motivo) de un gasto. suma_credito se CALCULA aca y nunca se le cree
+    al cliente: factura A o M y fecha desde que es Responsable Inscripto. El exterior se guarda
+    pero no suma nunca (a definir con la contadora)."""
+    comp = g.get("comp")
+    f = _imp_fecha(g.get("fecha"))
+    if comp == "exterior":
+        return False, "revisar", "Servicio del exterior: a definir con la contadora, no baja el IVA"
+    if comp in ("A", "M"):
+        if _imp_es_ri(conf_ri, f):
+            return True, "suma", "Factura %s: el IVA suma a tu IVA a favor" % comp
+        rd = str(conf_ri.get("ri_desde") or "")[:10]
+        return False, "no", ("Fecha anterior a ser Responsable Inscripto"
+                             + (" (desde %s)" % _imp_dmy(rd) if rd else ""))
+    if comp in ("B", "C"):
+        return False, "revisar", "Factura %s: el IVA no se puede tomar (pedí factura A)" % comp
+    return False, "no", "Sin factura: no hay IVA para tomar"
+
+
+def _imp_validar_gasto(data) -> dict:
+    """Arma el gasto a guardar con lo que manda el front. Todo se valida aca: montos >= 0, fecha
+    real, strings recortados. monto_ars es SIEMPRE el total pagado en pesos."""
+    if not isinstance(data, dict):
+        raise _ImpErr("Datos inválidos: tiene que venir un objeto con el gasto.")
+    f = _imp_fecha(data.get("fecha"))
+    if not f:
+        raise _ImpErr("Fecha inválida: tiene que ser AAAA-MM-DD.")
+    hoy = _imp_fecha(_hoy())
+    if f.year < 2020 or (hoy and f > hoy + _dt.timedelta(days=366)):
+        raise _ImpErr("Fecha fuera de rango: %s." % _imp_dmy(f.isoformat()))
+    concepto = str(data.get("concepto") or "").strip()[:120]
+    if not concepto:
+        raise _ImpErr("Falta el concepto (ej: Contadora, Packaging).")
+    tipo = str(data.get("tipo") or "gasto").strip().lower().replace("ó", "o")
+    if tipo not in ("gasto", "suscripcion"):
+        raise _ImpErr("Tipo inválido: '%s' (gasto o suscripción)." % tipo[:20])
+    moneda = str(data.get("moneda") or "ARS").strip().upper()
+    if moneda not in ("ARS", "USD"):
+        raise _ImpErr("Moneda inválida: '%s' (ARS o USD)." % moneda[:10])
+    monto = _imp_num(data.get("monto_orig") if data.get("monto_orig") is not None else data.get("monto"))
+    if monto is None or monto <= 0:
+        raise _ImpErr("Falta el monto total pagado (tiene que ser mayor a 0).")
+    tc = None
+    if moneda == "USD":
+        tc = _imp_num(data.get("tc"))
+        if tc is None or tc <= 0:
+            raise _ImpErr("Falta el tipo de cambio del gasto en dólares.")
+        monto_ars = round(monto * tc, 2)
+    else:
+        monto_ars = round(monto, 2)
+    comp = str(data.get("comp") or "sin").strip()
+    comp = {"a": "A", "m": "M", "b": "B", "c": "C", "-": "sin", "sin factura": "sin",
+            "ninguno": "sin", "ext": "exterior"}.get(comp.lower(), comp)
+    if comp not in _IMP_COMPS:
+        raise _ImpErr("Comprobante inválido: '%s'." % comp[:20])
+    alic = None
+    iva = 0.0
+    if comp in ("A", "M", "exterior"):
+        alic = _imp_num(data.get("alic"))
+        if comp == "exterior" or alic is None:
+            alic = 21.0
+        if alic not in _IMP_ALICS:
+            raise _ImpErr("Alícuota inválida: %s (21, 10,5 o 27)." % str(alic).replace(".", ","))
+        iva = _imp_num(data.get("iva_monto"))
+        if iva is None:            # no vino: se precalcula como IVA contenido en el total (pisable)
+            iva = monto_ars * alic / (100.0 + alic)
+        if iva < 0:
+            raise _ImpErr("El IVA no puede ser negativo.")
+        if iva > monto_ars + 0.01:
+            raise _ImpErr("El IVA (%s) no puede ser mayor que el total pagado en pesos (%s)."
+                          % (round(iva, 2), monto_ars))
+    percs = {}
+    for k, nom in (("percep_iva", "percepción de IVA"), ("percep_iibb", "percepción de IIBB")):
+        v = _imp_num(data.get(k))
+        if v is None:
+            v = 0.0
+        if v < 0:
+            raise _ImpErr("La %s no puede ser negativa." % nom)
+        percs[k] = round(v, 2)
+    return {"fecha": f.isoformat(), "concepto": concepto, "tipo": tipo, "moneda": moneda,
+            "monto_orig": round(monto, 2), "tc": (round(tc, 4) if tc else None),
+            "monto_ars": monto_ars, "comp": comp,
+            "alic": (int(alic) if alic is not None and alic == int(alic) else alic),
+            "iva_monto": round(iva, 2), "percep_iva": percs["percep_iva"],
+            "percep_iibb": percs["percep_iibb"]}
+
+
+def _imp_mes_rango(mes):
+    """'YYYY-MM' -> (d1, fin_de_mes, hasta) con hasta = min(fin de mes, hoy). Mes futuro o mal
+    escrito -> _ImpErr con el motivo."""
+    mes = str(mes or "").strip()
+    try:
+        if len(mes) != 7 or mes[4] != "-":
+            raise ValueError(mes)
+        y, m = int(mes[:4]), int(mes[5:7])
+        d1 = _dt.date(y, m, 1)
+    except Exception:
+        raise _ImpErr("Mes inválido: '%s' (tiene que ser AAAA-MM)." % mes[:12])
+    fin = _dt.date(y + (1 if m == 12 else 0), 1 if m == 12 else m + 1, 1) - _dt.timedelta(days=1)
+    hoy = _imp_fecha(_hoy())
+    if d1 > hoy:
+        raise _ImpErr("Ese mes todavía no empezó (hoy es %s)." % _imp_dmy(hoy.isoformat()))
+    return d1, fin, min(fin, hoy)
+
+
+def _imp_blob_ok(email, blob, desde, hasta) -> bool:
+    """¿El blob salio de _pf_periodo_calcular PARA ESTE RANGO? Se compara por IDENTIDAD con el
+    cache: todo calculo real termina en _PF_CACHE[(email, desde, hasta)] = (momento, blob), y lo
+    que _pf_mejor trae del disco para hoy tambien queda guardado bajo esa clave. Los atajos de
+    _pf_periodo_blob con el candado tomado (_load_last_blob = la foto de HOY, _blob_vacio() =
+    ceros) NO se guardan ahi, asi que no pasan por el mes. No se mira raw['canales']: se arma en
+    un try que puede fallar (el mes quedaba 'calculando' para siempre) y una foto de hoy con
+    canales=[] pasaba por cualquier mes. Una cuenta sin nada conectado SI pasa: su _blob_vacio()
+    sale del calculo real y queda en el cache. Si otro hilo recalcula justo entre medio da False
+    y el front reintenta a los 3 s."""
+    if not isinstance(blob, dict) or not isinstance(blob.get("raw"), dict):
+        return False
+    c = _PF_CACHE.get((email, desde, hasta))
+    return bool(c) and c[1] is blob and "iva_total" in blob["raw"]
+
+
+def _imp_cred_oper(r) -> float:
+    """IVA a favor de la OPERACION de un raw: producto, envio, fulfillment facturado, comisiones
+    de MP y ML, adelanto y pauta de MELI. SIN percepciones (van como pago a cuenta) y SIN ads
+    (no hay gasto de Meta por dia). Replica a mano el _base_cred del bloque IVA de
+    _pf_periodo_calcular (app.py L21382-21390 antes de esta seccion): si alla cambia que entra al
+    credito, hay que cambiarlo ACA tambien o el grafico deja de cerrar contra el total. No se saco
+    un helper comun a proposito: tocar _pf_periodo_calcular mueve la ganancia del Dashboard."""
+    _oper_cred = float(r.get("oper_monto", 0) or 0) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+    _base = (float(r.get("costo_prod", 0) or 0) + float(r.get("envio_monto", 0) or 0)
+             + _oper_cred
+             + float(r.get("mp_costo_real", 0) or 0)
+             + float(r.get("meli_comision", 0) or 0)
+             + float(r.get("meli_adelanto", 0) or 0)
+             + float(r.get("publi_meli", 0) or 0))
+    return _base * _IVA_F_CMP
+
+
+_IMP_SERIE_CAMPOS = ("facturado", "ordenes", "costo_prod", "envio_monto", "oper_monto",
+                     "mp_costo_real", "meli_comision", "meli_adelanto")
+
+
+def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
+    """Serie dia por dia del mes, ACUMULADA. Los dias cerrados salen de _pf_canales_dia (disco),
+    en un loop SECUENCIAL (nunca hilos: con ThreadPoolExecutor ya quedo todo en $0). El ultimo
+    dia (HOY si el mes esta en curso) va POR DIFERENCIA contra el total del mes: no se le vuelve a
+    pegar a las APIs y la serie cierra exacta contra los numeros de arriba. Los dias antes de ser
+    RI suman facturado pero no IVA."""
+    # La clave lleva el regimen y una huella del total: si cambia ri_desde en Finanzas o el mes se
+    # recalcula (costos, tarifa de envio), el grafico no puede quedar 12 h con la serie vieja y
+    # dejar de cerrar contra los numeros de arriba.
+    key = (email, d1.isoformat(), hasta.isoformat(),
+           str(conf_ri.get("ri_desde") or "")[:10], str(conf_ri.get("regimen") or ""),
+           round(float(raw_tot.get("facturado", 0) or 0), 2),
+           round(float(raw_tot.get("costo_prod", 0) or 0), 2),
+           round(float(raw_tot.get("envio_monto", 0) or 0), 2))
+    now = _dt.datetime.utcnow()
+    c = _IMP_SERIE_CACHE.get(key)
+    if c and (now - c[0]).total_seconds() < _pf_ttl(hasta.isoformat()):
+        return c[1]
+    dias = []
+    acum = dict.fromkeys(_IMP_SERIE_CAMPOS, 0.0)
+    acum["publi_meli"] = 0.0
+    # pf_dias.json se lee UNA vez: _pf_canales_dia lo parsea ENTERO (hasta 800 dias con prod y
+    # ords) en cada llamada, y eran ~30 por request. Misma clave que usa _pf_canales_dia; si el
+    # dia no esta en disco, va por _pf_canales_dia como siempre (lo calcula y lo guarda).
+    dias_disco = _pf_dias_cache()
+    ver = _pf_costos_ver()
+    f = d1
+    while f < hasta:
+        fi = f.isoformat()
+        vals = dict.fromkeys(_IMP_SERIE_CAMPOS, 0.0)
+        try:
+            g = dias_disco.get("%s|%s|%s" % (email, fi, ver)) if _pf_cerrado(fi) else None
+            b = g.get("blob") if isinstance(g, dict) else None
+            if not b:
+                b, _s, _t = _pf_canales_dia(email, fi)
+            r = (b or {}).get("raw") or {}
+            for k in _IMP_SERIE_CAMPOS:
+                vals[k] = float(r.get(k, 0) or 0)
+        except Exception:
+            pass                       # el dia que falla lo absorbe la diferencia del ultimo
+        try:
+            vals["publi_meli"] = float(_meli_publi(email, fi, fi) or 0)
+        except Exception:
+            vals["publi_meli"] = 0.0
+        for k in acum:
+            acum[k] += vals[k]
+        dias.append((f, vals))
+        f += _dt.timedelta(days=1)
+    ult = {k: float(raw_tot.get(k, 0) or 0) - acum[k] for k in acum}
+    dias.append((hasta, ult))
+    out = []
+    fa = da = ca = 0.0
+    for f, v in dias:
+        ri = _imp_es_ri(conf_ri, f)
+        deb = v["facturado"] * _IVA_F_VTA if ri else 0.0
+        cred = _imp_cred_oper(v) if ri else 0.0
+        fa += v["facturado"]
+        da += deb
+        ca += cred
+        out.append({"d": f.isoformat(), "fact": round(v["facturado"], 2),
+                    "ventas": int(round(v["ordenes"])), "deb": round(deb, 2), "cred": round(cred, 2),
+                    "fact_acum": round(fa, 2), "deb_acum": round(da, 2), "cred_acum": round(ca, 2),
+                    "ri": ri})
+    _IMP_SERIE_CACHE[key] = (now, out)
+    if len(_IMP_SERIE_CACHE) > 200:    # memoria del proceso: no crecer sin limite
+        # sobre una COPIA: otro hilo puede estar agregando o sacando claves mientras tanto
+        for k, _v in sorted(list(_IMP_SERIE_CACHE.items()), key=lambda kv: kv[1][0])[:100]:
+            _IMP_SERIE_CACHE.pop(k, None)
+    return out
+
+
+def _imp_resumen(email, mes, con_serie=False) -> dict:
+    """Todo lo de la seccion para un mes. Si _pf_periodo_blob todavia no tiene el mes calculado
+    devuelve {calculando: True} y el front reintenta a los 3 s."""
+    d1, fin, hasta = _imp_mes_rango(mes)
+    desde_s, hasta_s = d1.isoformat(), hasta.isoformat()
+    mes = desde_s[:7]
+    blob = _pf_periodo_blob(email, desde_s, hasta_s)
+    if not _imp_blob_ok(email, blob, desde_s, hasta_s):
+        return {"ok": False, "calculando": True, "mes": mes}
+    raw = blob.get("raw") or {}
+    conf_ri = _imp_ri_conf(email)
+    ri_desde = str(conf_ri.get("ri_desde") or "")[:10] or None
+    es_ri_fin = _imp_es_ri(conf_ri, hasta)
+    # ---- IVA: SOLO por los dias en que ya es Responsable Inscripto ----
+    iva = {"no_aplica": False, "parcial_desde": None}
+    raw_iva = raw
+    if not es_ri_fin:
+        iva = {"no_aplica": True,
+               "motivo": ("Antes de ser Responsable Inscripto (desde %s)" % _imp_dmy(ri_desde)
+                          if ri_desde else "La cuenta figura como Monotributo: no hay IVA que liquidar")}
+    elif not _imp_es_ri(conf_ri, d1):
+        # Paso a RI a mitad de mes: el IVA del blob del mes entero incluiria dias de monotributo.
+        # Se pide el blob desde el primer dia RI (mismas formulas, ads incluidos) y se valida igual.
+        ri_d = d1
+        while ri_d < hasta and not _imp_es_ri(conf_ri, ri_d):
+            ri_d += _dt.timedelta(days=1)
+        b2 = _pf_periodo_blob(email, ri_d.isoformat(), hasta_s)
+        if not _imp_blob_ok(email, b2, ri_d.isoformat(), hasta_s):
+            return {"ok": False, "calculando": True, "mes": mes}
+        raw_iva = b2.get("raw") or {}
+        iva["parcial_desde"] = ri_d.isoformat()
+    # ---- gastos cargados del mes ----
+    # Estricto TAMBIEN al leer: con el archivo roto, {} mostraba 0 gastos y el IVA a pagar inflado
+    # sin ningun cartel. El _ImpErr sale como 400 con el texto real y el front pone Reintentar.
+    cur = _imp_cuenta(_imp_all(estricto=True, cola="No muestro el mes para no darte un IVA "
+                               "sin tus gastos."), email)
+    conf = cur["conf"]
+    rows = []
+    cred_g = pac_g = perc_iibb_g = ext_iva = total_ars = 0.0
+    n_suman = n_ext = 0
+    for g in cur["rows"]:
+        if not isinstance(g, dict) or not str(g.get("fecha") or "").startswith(mes):
+            continue
+        suma, estado, motivo = _imp_gasto_estado(g, conf_ri)
+        iva_m = float(g.get("iva_monto", 0) or 0)
+        if suma:
+            cred_g += iva_m
+            n_suman += 1
+        if _imp_es_ri(conf_ri, _imp_fecha(g.get("fecha"))):
+            pac_g += float(g.get("percep_iva", 0) or 0)    # pago a cuenta de IVA (solo siendo RI)
+        perc_iibb_g += float(g.get("percep_iibb", 0) or 0)
+        if g.get("comp") == "exterior":
+            ext_iva += iva_m
+            n_ext += 1
+        total_ars += float(g.get("monto_ars", 0) or 0)
+        rows.append(dict(g, suma_credito=suma, estado=estado, motivo=motivo))
+    rows.sort(key=lambda x: (str(x.get("fecha") or ""), int(x.get("id") or 0)))
+    # ---- IVA del mes (sin tocar raw) ----
+    # saldo tecnico = debito - credito de compras - saldo tecnico a favor del mes anterior.
+    # Las percepciones NO son credito: son pagos a cuenta y se restan DESPUES; si dan vuelta el
+    # resultado, ese saldo es de LIBRE DISPONIBILIDAD, no tecnico (art. 24 Ley de IVA).
+    st_map = conf.get("st_anterior") if isinstance(conf.get("st_anterior"), dict) else {}
+    st_ant = float(st_map.get(mes, 0) or 0)
+    if not iva.get("no_aplica"):
+        deb = float(raw_iva.get("iva_total", 0) or 0)
+        perc_mp = float(raw_iva.get("percep_iva", 0) or 0)
+        cred_auto = float(raw_iva.get("iva_favor", 0) or 0) - perc_mp
+        ads_usd = float(raw_iva.get("iva_ads_usd", 0) or 0)
+        ads_ag = float(raw_iva.get("iva_ads", 0) or 0)
+        st = deb - cred_auto - cred_g - st_ant
+        pac = perc_mp + pac_g
+        if st > 0:
+            a_pagar = st - pac
+            st_fav, libre = 0.0, (-a_pagar if a_pagar < 0 else 0.0)
+            a_pagar = max(a_pagar, 0.0)
+        else:
+            a_pagar, st_fav, libre = 0.0, -st, pac
+        iva.update({
+            "debito": round(deb, 2), "cred_auto": round(cred_auto, 2),
+            "cred_oper": round(cred_auto - ads_usd - ads_ag, 2),
+            "cred_ads_usd": round(ads_usd, 2), "cred_ads_agencia": round(ads_ag, 2),
+            "cred_gastos": round(cred_g, 2), "st_anterior": round(st_ant, 2),
+            "saldo_tecnico": round(st, 2),
+            "pagos_a_cuenta": {"total": round(pac, 2), "mp": round(perc_mp, 2), "gastos": round(pac_g, 2)},
+            "a_pagar": round(a_pagar, 2), "saldo_tecnico_favor": round(st_fav, 2),
+            "saldo_libre": round(libre, 2)})
+    iva["exterior"] = {"monto": round(ext_iva, 2), "n": n_ext,
+                       "computa_ext": bool(conf.get("computa_ext"))}   # informativo: NUNCA resta
+    # ---- IIBB ----
+    base = conf.get("iibb_base") if conf.get("iibb_base") in ("neto", "bruto") else "neto"
+    fact = float(raw.get("facturado", 0) or 0)
+    pct_txt = ("%g" % IIBB_PCT).replace(".", ",")
+    if base == "bruto":
+        dev = float(raw.get("iibb_monto", 0) or 0)
+        lab_iibb = "%s%% sobre lo facturado con IVA" % pct_txt
+    else:
+        # Base neta = lo facturado SIN el IVA debito. Solo lo vendido siendo RI lleva IVA adentro:
+        # en monotributo no hay nada que descontar (dividir por 1,21 daba el devengado ~17% mas
+        # bajo). raw_iva es el blob desde el primer dia RI (o raw entero si es RI todo el mes, y
+        # ahi da EXACTO lo de siempre); los dias de monotributo van sin dividir.
+        neto_tot = fact - float(raw.get("reemb_monto", 0) or 0)
+        neto_ri = 0.0
+        if not iva.get("no_aplica"):
+            neto_ri = (float(raw_iva.get("facturado", 0) or 0)
+                       - float(raw_iva.get("reemb_monto", 0) or 0))
+        dev = ((neto_tot - neto_ri) + neto_ri / (1.0 + IVA_VENTAS_PCT / 100.0)) * IIBB_PCT / 100.0
+        lab_iibb = ("%s%% sobre lo facturado (monotributo: sin IVA que descontar)" % pct_txt
+                    if iva.get("no_aplica") else "%s%% sobre lo facturado sin IVA" % pct_txt)
+    ret_mp = float(raw.get("retenciones_mp", 0) or 0)
+    ret = ret_mp + perc_iibb_g
+    iibb = {"base": base, "pct": IIBB_PCT, "devengado": round(dev, 2), "retenido_mp": round(ret_mp, 2),
+            "percep_gastos": round(perc_iibb_g, 2), "retenido": round(ret, 2),
+            "a_pagar": round(dev - ret, 2), "label": lab_iibb}
+    out = {"ok": True, "mes": mes, "desde": desde_s, "hasta": hasta_s, "hoy": _hoy(),
+           "dias_mes": fin.day, "dia_n": (hasta - d1).days + 1,
+           "ri": {"es_ri": es_ri_fin, "ri_desde": ri_desde,
+                  "regimen": str(conf_ri.get("regimen") or "monotributo")},
+           "iva_vta_pct": raw.get("iva_vta_pct", IVA_VENTAS_PCT),
+           "iva_cmp_pct": raw.get("iva_cmp_pct", IVA_COMPRAS_PCT),
+           "iibb_pct": IIBB_PCT, "facturado": round(fact, 2),
+           "ventas": int(raw.get("ordenes", 0) or 0), "dolar": raw.get("dolar"),
+           "iva": iva, "iibb": iibb,
+           "gastos": {"rows": rows, "n": len(rows), "n_suman": n_suman,
+                      "total_ars": round(total_ars, 2)},
+           "conf": {"iibb_base": base, "computa_ext": bool(conf.get("computa_ext")),
+                    "st_anterior": round(st_ant, 2)}}
+    if con_serie:
+        out["serie"] = _imp_serie(email, d1, hasta, raw, conf_ri)
+    return out
+
+
+@app.get("/pf-impuestos")
+def pf_impuestos():
+    """Totales del mes (?mes=YYYY-MM). Con &serie=1 suma la serie diaria: el front la pide
+    DESPUES de pintar los totales, porque la primera vez puede tardar."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Tu sesión venció: volvé a entrar a RealProfit."}), 401
+    mes = (request.args.get("mes") or _hoy()[:7]).strip()
+    serie = (request.args.get("serie") or "") in ("1", "true", "si")
+    try:
+        return jsonify(_imp_resumen(email, mes, serie))
+    except _ImpErr as e:
+        return jsonify({"ok": False, "msg": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No se pudo calcular el mes.", "err_detalle": _sege_err(e)}), 500
+
+
+@app.post("/pf-impuestos-gasto")
+def pf_impuestos_gasto():
+    """Alta (sin id) o edicion (con id) de un gasto. Leer-cambiar-escribir bajo flock."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Tu sesión venció: volvé a entrar a RealProfit."}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        g = _imp_validar_gasto(data)
+        gid = data.get("id")
+        ahora = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
+        with _sege_flock(_IMP_LOCK):
+            d = _imp_all(estricto=True)
+            cur = _imp_cuenta(d, email)
+            if gid not in (None, "", 0, "0"):
+                try:
+                    gid = int(gid)
+                except Exception:
+                    raise _ImpErr("id de gasto inválido.")
+                i = next((k for k, r in enumerate(cur["rows"])
+                          if isinstance(r, dict) and int(r.get("id") or 0) == gid), None)
+                if i is None:
+                    raise _ImpErr("Ese gasto ya no existe (¿lo borraron desde otra pestaña?).")
+                g["id"] = gid
+                g["creado"] = cur["rows"][i].get("creado")
+                g["editado"] = ahora
+                cur["rows"][i] = g
+            else:
+                cur["seq"] += 1
+                g["id"] = cur["seq"]
+                g["creado"] = ahora
+                cur["rows"].append(g)
+            d[email] = cur
+            _imp_write(d)
+        suma, estado, motivo = _imp_gasto_estado(g, _imp_ri_conf(email))
+        return jsonify({"ok": True, "row": dict(g, suma_credito=suma, estado=estado, motivo=motivo)})
+    except _ImpErr as e:
+        return jsonify({"ok": False, "msg": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No se pudo guardar el gasto.", "err_detalle": _sege_err(e)}), 500
+
+
+@app.post("/pf-impuestos-gasto-del")
+def pf_impuestos_gasto_del():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Tu sesión venció: volvé a entrar a RealProfit."}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        if not isinstance(data, dict):
+            raise _ImpErr("Datos inválidos: tiene que venir un objeto con el id del gasto.")
+        try:
+            gid = int(data.get("id"))
+        except Exception:
+            raise _ImpErr("id de gasto inválido.")
+        with _sege_flock(_IMP_LOCK):
+            d = _imp_all(estricto=True)
+            cur = _imp_cuenta(d, email)
+            n0 = len(cur["rows"])
+            cur["rows"] = [r for r in cur["rows"]
+                           if not (isinstance(r, dict) and int(r.get("id") or 0) == gid)]
+            if len(cur["rows"]) == n0:
+                raise _ImpErr("Ese gasto ya no existe (¿lo borraron desde otra pestaña?).")
+            d[email] = cur
+            _imp_write(d)
+        return jsonify({"ok": True})
+    except _ImpErr as e:
+        return jsonify({"ok": False, "msg": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No se pudo borrar el gasto.", "err_detalle": _sege_err(e)}), 500
+
+
+@app.post("/pf-impuestos-conf")
+def pf_impuestos_conf():
+    """Ajustes de la seccion: iibb_base ('neto'|'bruto'), computa_ext (bool, informativo) y el
+    saldo tecnico a favor del mes anterior por mes ({mes, st_anterior}; vacio = se borra)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Tu sesión venció: volvé a entrar a RealProfit."}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        if not isinstance(data, dict):
+            raise _ImpErr("Datos inválidos: tiene que venir un objeto con el ajuste.")
+        cambios = {}
+        if "iibb_base" in data:
+            b = str(data.get("iibb_base") or "").strip().lower()
+            if b not in ("neto", "bruto"):
+                raise _ImpErr("Base de IIBB inválida: '%s' (neto o bruto)." % b[:12])
+            cambios["iibb_base"] = b
+        if "computa_ext" in data:
+            cambios["computa_ext"] = bool(data.get("computa_ext") is True)
+        st = None
+        if "st_anterior" in data:
+            mes = _imp_mes_rango(data.get("mes"))[0].isoformat()[:7]
+            v = data.get("st_anterior")
+            if v is None or (isinstance(v, str) and not v.strip()):
+                st = (mes, None)
+            else:
+                n = _imp_num(v)
+                if n is None or n < 0:
+                    raise _ImpErr("El saldo técnico tiene que ser un monto (0 o más).")
+                st = (mes, round(n, 2))
+        if not cambios and st is None:
+            raise _ImpErr("No vino ningún ajuste para guardar.")
+        with _sege_flock(_IMP_LOCK):
+            d = _imp_all(estricto=True)
+            cur = _imp_cuenta(d, email)
+            cur["conf"].update(cambios)
+            if st is not None:
+                m = cur["conf"].get("st_anterior")
+                m = m if isinstance(m, dict) else {}
+                if st[1] is None or st[1] == 0:
+                    m.pop(st[0], None)
+                else:
+                    m[st[0]] = st[1]
+                cur["conf"]["st_anterior"] = m
+            d[email] = cur
+            _imp_write(d)
+        return jsonify({"ok": True, "conf": cur["conf"]})
+    except _ImpErr as e:
+        return jsonify({"ok": False, "msg": str(e)}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No se pudo guardar el ajuste.", "err_detalle": _sege_err(e)}), 500
 
 
 PROD_COSTOS = DATA_DIR / "prod_costos.json"   # costos por producto que carga cada usuario (persistente)

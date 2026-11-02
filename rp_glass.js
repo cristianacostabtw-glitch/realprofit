@@ -100,7 +100,7 @@
   }
   function rpGlass_algunaSeccion() {
     var ids = ['rp-prod-ov', 'rp-comis-ov', 'rp-desp-ov', 'rp-fact-ov', 'rp-mov-ov', 'rp-stock-ov',
-               'rp-ads-ov', 'rp-wa-ov', 'rp-meli-ov', 'rp-integ-ov'];
+               'rp-ads-ov', 'rp-wa-ov', 'rp-meli-ov', 'rp-integ-ov', 'rp-imp-ov'];
     for (var i = 0; i < ids.length; i++) { if (rpGlass_abierto(ids[i])) return true; }
     return false;
   }
