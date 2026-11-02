@@ -4480,6 +4480,23 @@ _SOLO_DASH = r"""
  // DE A UN ARCHIVO POR PEDIDO: el tope de 35 MB es del pedido entero, asi que mandar 10 fotos
  // juntas fallaba aunque cada una pesara poco. Asi ademas se ve el avance y un archivo que falla
  // no tira abajo a los demas.
+ // Las fotos 4K (7-9 MB) tardaban una eternidad en subir y Meta igual las rechaza por grandes.
+ // Se achican ACA, en el navegador, antes de mandarlas: lado largo 2048 px, JPG 0.9 (~1 MB).
+ // Si algo falla (formato raro, navegador viejo) se manda la original, como antes.
+ function rpaAchicarFoto(f){ return new Promise(function(ok){
+  if(!/\.(jpg|jpeg|png|webp)$/i.test(f.name)||f.size<=2.5*1024*1024){ ok(f); return; }
+  try{ var url=URL.createObjectURL(f), im=new Image();
+   im.onload=function(){ try{ var M=2048, w=im.naturalWidth, h=im.naturalHeight, k=Math.min(1, M/Math.max(w,h));
+     var c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
+     var x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+     URL.revokeObjectURL(url);
+     c.toBlob(function(b){ if(!b||b.size>=f.size){ ok(f); return; }
+      ok(new File([b], f.name.replace(/\.[^.]+$/,'')+'.jpg', {type:'image/jpeg'})); }, 'image/jpeg', 0.9);
+    }catch(e){ URL.revokeObjectURL(url); ok(f); } };
+   im.onerror=function(){ URL.revokeObjectURL(url); ok(f); };
+   im.src=url;
+  }catch(e){ ok(f); }
+ }); }
  window.rpaSubir=function(){ var inp=$('rpa-file'); if(!inp.files||!inp.files.length)return;
   var L=[].slice.call(inp.files), allImg=true, allVid=true;
   L.forEach(function(f){ if(/\.(jpg|jpeg|png|webp)$/i.test(f.name))allVid=false; else allImg=false; });
@@ -4494,8 +4511,9 @@ _SOLO_DASH = r"""
    }
    aviso('\u23f3 Subiendo '+(i+1)+' de '+L.length+' '+KIND+'\u2026 ('+L[i].name+')');
    $('rpa-vc').textContent='subiendo '+(i+1)+'/'+L.length+'\u2026';
-   var fd=new FormData(); fd.append('videos',L[i]); if(UPLOAD_ID) fd.append('upload_id',UPLOAD_ID);
-   fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+   rpaAchicarFoto(L[i]).then(function(arch){
+   var fd=new FormData(); fd.append('videos',arch); if(UPLOAD_ID) fd.append('upload_id',UPLOAD_ID);
+   return fetch('/pf-ads-subir',{method:'POST',body:fd}); }).then(function(r){return r.json();}).then(function(j){
     if(j&&j.ok){ UPLOAD_ID=j.upload_id; VIDS=j.videos.length; VLIST=j.videos; RMAP=[]; }
     else { fallos.push(L[i].name+((j&&j.msg)?(' \u2014 '+j.msg):'')); }
     uno(i+1);
