@@ -5086,6 +5086,21 @@ _SOLO_DASH = r"""
    im.src=url;
   }catch(e){ ok(f); }
  }); }
+ // Videos de mas de 25 MB: en pedazos de 8 MB a /pf-ads-subir-parte (el tope de 35 MB es por pedido).
+ // Cada pedazo se reintenta 3 veces antes de dar el video por fallado. Devuelve el json final.
+ function rpaPartes(f, prog){ var CH=8*1024*1024, n=Math.ceil(f.size/CH);
+  function parte(k, intento){ var fd=new FormData();
+   fd.append('parte', f.slice(k*CH, Math.min(f.size,(k+1)*CH)), f.name); fd.append('name', f.name);
+   fd.append('idx', k); fd.append('total', n); fd.append('off', k*CH); if(UPLOAD_ID) fd.append('upload_id', UPLOAD_ID);
+   return fetch('/pf-ads-subir-parte',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
+    if(!j||!j.ok) return j||{ok:false,msg:'sin respuesta'};
+    UPLOAD_ID=j.upload_id; prog(Math.round((k+1)*100/n));
+    return (k+1<n)? parte(k+1,0) : j;
+   }).catch(function(e){ if(intento<3) return new Promise(function(z){setTimeout(z,1500);}).then(function(){return parte(k,intento+1);});
+    return {ok:false,msg:'se cortó la conexión subiendo el pedazo '+(k+1)+' de '+n}; });
+  }
+  return parte(0,0);
+ }
  window.rpaSubir=function(){ var inp=$('rpa-file'); if(!inp.files||!inp.files.length)return;
   var L=[].slice.call(inp.files), allImg=true, allVid=true;
   L.forEach(function(f){ if(/\.(jpg|jpeg|png|webp)$/i.test(f.name))allVid=false; else allImg=false; });
@@ -5101,8 +5116,9 @@ _SOLO_DASH = r"""
    aviso('\u23f3 Subiendo '+(i+1)+' de '+L.length+' '+KIND+'\u2026 ('+L[i].name+')');
    $('rpa-vc').textContent='subiendo '+(i+1)+'/'+L.length+'\u2026';
    rpaAchicarFoto(L[i]).then(function(arch){
+   if(arch.size>25*1024*1024) return rpaPartes(arch, function(pc){ aviso('\u23f3 Subiendo '+(i+1)+' de '+L.length+' '+KIND+'\u2026 '+pc+'% ('+L[i].name+')'); });
    var fd=new FormData(); fd.append('videos',arch); if(UPLOAD_ID) fd.append('upload_id',UPLOAD_ID);
-   return fetch('/pf-ads-subir',{method:'POST',body:fd}); }).then(function(r){return r.json();}).then(function(j){
+   return fetch('/pf-ads-subir',{method:'POST',body:fd}).then(function(r){return r.json();}); }).then(function(j){
     if(j&&j.ok){ UPLOAD_ID=j.upload_id; VIDS=j.videos.length; VLIST=j.videos; RMAP=[]; }
     else { fallos.push(L[i].name+((j&&j.msg)?(' \u2014 '+j.msg):'')); }
     uno(i+1);
@@ -19880,7 +19896,9 @@ def _ads_run(job, params):
             if up_id:
                 st["msg"] = "Tomando tus videos…"; _job_put(job, st)
                 updir = _ads_up_dir(up_id)
-                rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)) if (updir and _os.path.isdir(updir)) else []
+                # "_parte_*" = un video grande que quedó a medio subir (pedazos): no se manda a Meta
+                rutas = sorted(_os.path.join(updir, f) for f in _os.listdir(updir)
+                               if not f.startswith("_parte_")) if (updir and _os.path.isdir(updir)) else []
                 if not rutas:
                     raise RuntimeError("no encontré los videos que subiste (probá subirlos de nuevo)")
             else:
@@ -20847,6 +20865,66 @@ def pf_ads_subir():
     _idx = _ads_up_idx_load()                         # y al disco, para que lo vea cualquier worker
     _idx[up_id] = {"dir": d, "ts": __import__("time").time(), "email": _user_actual() or ""}
     _ads_up_idx_save(_idx)
+    return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
+
+
+@app.post("/pf-ads-subir-parte")
+def pf_ads_subir_parte():
+    """Un video de más de 35 MB no entraba nunca: Flask corta el pedido entero en ese tope
+    (MAX_CONTENT_LENGTH) y respondía "El archivo es muy grande". Ahora el navegador lo manda en
+    pedazos de 8 MB que se van pegando en el disco; con el último queda el archivo entero en la
+    tanda (mismo upload_id) y la respuesta es igual a la de /pf-ads-subir."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    import uuid
+    f = request.files.get("parte")
+    name = _os.path.basename((request.form.get("name") or "").strip())
+    try:
+        idx = int(request.form.get("idx") or 0)
+        total = int(request.form.get("total") or 0)
+        off = int(request.form.get("off") or 0)
+    except ValueError:
+        return jsonify({"ok": False, "msg": "pedazo mal armado (idx/total/off)"}), 400
+    EXT = (".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")
+    if not f or not name or not name.lower().endswith(EXT) or total < 1 or not (0 <= idx < total):
+        return jsonify({"ok": False, "msg": "pedazo inválido (%s %s/%s)" % (name or "sin nombre", idx + 1, total)}), 400
+    up_id = (request.form.get("upload_id") or "").strip()
+    d = ""
+    if up_id:
+        _idx0 = _ads_up_idx_load().get(up_id) or {}
+        if _idx0.get("dir") and _idx0.get("email") == (_user_actual() or ""):
+            d = _idx0["dir"]
+        else:
+            up_id = ""
+    if not up_id:
+        if idx != 0:
+            return jsonify({"ok": False, "msg": "se perdió la tanda a mitad del video: subilo de nuevo"}), 409
+        up_id = uuid.uuid4().hex[:12]
+        _ads_up_purga()
+        d = str(_ADS_UPDIR / up_id)
+    _os.makedirs(d, exist_ok=True)
+    parcial = _os.path.join(d, "_parte_" + name)
+    tiene = _os.path.getsize(parcial) if (idx > 0 and _os.path.exists(parcial)) else 0
+    if tiene != off:
+        return jsonify({"ok": False, "msg": "se cortó la subida de %s (tenía %d bytes, llegó el pedazo del byte %d): subilo de nuevo" % (name, tiene, off)}), 409
+    with open(parcial, "wb" if idx == 0 else "ab") as out:
+        f.save(out)
+    # la tanda queda registrada desde el primer pedazo (la ve cualquiera de los 2 workers)
+    _ADS_UPLOADS[up_id] = d
+    _ix = _ads_up_idx_load()
+    _ix[up_id] = {"dir": d, "ts": __import__("time").time(), "email": _user_actual() or ""}
+    _ads_up_idx_save(_ix)
+    if idx < total - 1:
+        return jsonify({"ok": True, "parcial": True, "upload_id": up_id})
+    dest = _os.path.join(d, name); k = 1
+    while _os.path.exists(dest):
+        dest = _os.path.join(d, "%d_%s" % (k, name)); k += 1
+    _os.replace(parcial, dest)
+    vids = []
+    for nm in sorted(_os.listdir(d)):
+        pth = _os.path.join(d, nm)
+        if _os.path.isfile(pth) and nm.lower().endswith(EXT) and not nm.startswith("_parte_"):
+            vids.append({"name": nm, "mb": round(_os.path.getsize(pth) / 1048576)})
     return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
 
 
