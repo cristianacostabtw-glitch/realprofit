@@ -17990,10 +17990,55 @@ def _ads_es_imagen(ruta):
     return ruta.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
 
 
+def _ads_achicar_imagen(ruta, lado=2048):
+    """Meta rechaza las imágenes 4K ("El nuevo tamaño de la imagen que intentas subir es demasiado
+    grande", 01-11-2026 con 9 jpg de 7-9MB en CP5). Las dejamos con el lado largo en `lado` px y JPG
+    calidad alta: para un anuncio no se nota y pesan ~1MB. Si no hace falta, o si ffmpeg falla,
+    devuelve la ruta original (nunca frena la subida)."""
+    import subprocess as _sp
+    try:
+        if _os.path.getsize(ruta) <= 3 * 1024 * 1024 and lado >= 2048:
+            return ruta
+        exe = _ads_ffmpeg()
+        if not exe:
+            return ruta
+        sal = _os.path.splitext(ruta)[0] + "_meta%d.jpg" % lado
+        esc = ("scale='if(gte(iw,ih),min(%d,iw),-2)':'if(gte(iw,ih),-2,min(%d,ih))':flags=lanczos"
+               % (lado, lado))
+        _sp.run([exe, "-v", "error", "-y", "-i", ruta, "-vf", esc, "-q:v", "3", "-frames:v", "1", sal],
+                check=True, timeout=120, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        if _os.path.exists(sal) and _os.path.getsize(sal) > 0:
+            return sal
+    except Exception:
+        pass
+    return ruta
+
+
 def _ads_subir_imagen(acct, ruta):
     """Sube una imagen a /adimages y devuelve su image_hash."""
-    with open(ruta, "rb") as f:
-        r = _ads_call("POST", "act_%s/adimages" % acct, files={"img": f})
+    chica = _ads_achicar_imagen(ruta)
+    try:
+        try:
+            with open(chica, "rb") as f:
+                r = _ads_call("POST", "act_%s/adimages" % acct, files={"img": f})
+        except Exception as e:
+            # si Meta igual dice que es grande, un segundo intento más chico
+            if "grande" not in str(e).lower() and "large" not in str(e).lower():
+                raise
+            if chica != ruta:
+                try:
+                    _os.remove(chica)
+                except Exception:
+                    pass
+            chica = _ads_achicar_imagen(ruta, 1440)
+            with open(chica, "rb") as f:
+                r = _ads_call("POST", "act_%s/adimages" % acct, files={"img": f})
+    finally:
+        if chica != ruta:
+            try:
+                _os.remove(chica)
+            except Exception:
+                pass
     imgs = r.get("images", {}) or {}
     if not imgs:
         raise RuntimeError("Meta no devolvió el hash de la imagen")
