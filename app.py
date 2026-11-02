@@ -6252,6 +6252,138 @@ def _envio_rc2(o, suc) -> float:
     return 8217.44 if suc else 10467.60
 
 
+# AUMENTO DE REDCHAT/ANDREANI (medido el 02-11-2026): ~11% en todas las zonas. Entro con las
+# guias generadas el 27-10. Por fecha de PEDIDO el corte es el 26-10 a las 20:30: los pedidos
+# de ese dia hasta las 20:19 salieron con la tarifa vieja (su guia se hizo el mismo 26) y desde
+# las 20:38 todos con la nueva. Quedan 8 pedidos del 24 al 26 cuya guia se genero tarde y pagaron
+# la nueva: no se pueden distinguir por la fecha del pedido y siguen con la vieja (en los datos son 6,
+# todos a domicilio, entre $786 y $1.396 c/u: $7.276,80 en total).
+#
+# COMO SE MIDIO: se bajaron de app.redchat.com.ar los 1.100 envios del 23-10 al 01-11 (Andreani +
+# Flex). El Flex NO cambio. Las zonas de Andreani son las mismas que en ENVIO_RC2_*; solo cambia
+# el precio de cada zona:
+#   sucursal  6.701,22 -> 7.455,10 | 8.217,44 -> 9.153,41 | 8.999,27 -> 10.029,12 | 9.022,63 -> 10.055,29
+#   domicilio 9.158,15 -> 10.216,90 | 10.467,60 -> 11.685,07 | 11.396,07 -> 12.726,07 | 11.940,18 -> 13.336,15
+# Con eso se corrigieron 41 CP que la tabla de RC2 tenia mal o nunca habia visto (19 ya fallaban
+# con la tarifa vieja). Verificado: esta tabla reproduce los 965 envios de Andreani del periodo
+# al centavo (los viejos pasados a su zona nueva), sin ningun CP con dos precios distintos.
+# Despues se cotizaron en RedChat (Ordenes -> Cotizar, no cobra) los 170 pedidos por empaquetar
+# del 02-11: aparecieron 6 CP mas (Tierra del Fuego desde 9410 y 4 domicilios caros) y se sumaron.
+ENVIO_RC3_DESDE = "2026-10-26T20:30"
+
+ENVIO_RC3_SUC_BANDAS = (
+    (1000, 1999, 7455.10),   # CABA + GBA + La Plata
+    (2000, 3299, 9153.41),   # Bs As interior, Santa Fe sur, Entre Rios
+    (3300, 4399, 10029.12),  # NEA, Tucuman, Santiago del Estero. 4300-4399 (La Banda y el interior de
+                             # Santiago) es DEDUCIDO, no medido: en RC2 era un hueco que caia al precio
+                             # por defecto. Confirmar con el primer envio real a La Banda.
+    (4400, 4599, 10055.29),  # Salta y San Pedro de Jujuy: la banda cara (medido 4400 4403 4430 4500 4530 4560 4562)
+    (4600, 4699, 10055.29),  # Jujuy
+    (4700, 4999, 10029.12),  # Catamarca
+    (5000, 5299, 9153.41),   # Cordoba capital y alrededores
+    (5300, 5799, 10029.12),  # La Rioja, San Juan, Mendoza, San Luis
+    (5800, 5999, 9153.41),   # Cordoba interior
+    (6000, 6999, 9153.41),   # Bs As oeste y noroeste
+    (7000, 7999, 9153.41),   # Bs As interior y costa (7600 Mar del Plata)
+    (8000, 8199, 10029.12),  # Bahia Blanca: paga la banda cara
+    (8200, 8299, 9153.41),   # La Pampa (8200 General Acha)
+    (8300, 8999, 10029.12),  # Neuquen, Rio Negro
+    (9000, 9409, 10029.12),  # Chubut, Santa Cruz
+    (9410, 9999, 10055.29),  # Tierra del Fuego (9410 Ushuaia, 9412 Tolhuin, 9420 Rio Grande: cotizados 02-11)
+)
+ENVIO_RC3_DOM_BANDAS = (
+    (1000, 1999, 10216.90),  # AMBA (casi no se usa: el conurbano va por Flex)
+    (2000, 3299, 11685.07),
+    (3300, 4399, 12726.07),  # NEA, Tucuman, Santiago del Estero (4200 medido; 4300-4399 deducido)
+    (4400, 4999, 13336.15),  # Salta, Jujuy (Catamarca capital va suelto, abajo)
+    (5000, 5299, 11685.07),  # Cordoba
+    (5300, 5799, 12726.07),  # San Juan, Mendoza, San Luis
+    (5800, 5999, 11685.07),  # Cordoba interior
+    (6000, 6999, 11685.07),
+    (7000, 7999, 11685.07),
+    (8000, 8199, 11685.07),  # Bahia Blanca
+    (8200, 8999, 12726.07),  # La Pampa, Neuquen, Rio Negro (8500 Viedma medido)
+    (9000, 9999, 13336.15),  # Chubut, Santa Cruz, Tierra del Fuego
+)
+# CP sueltos que NO siguen la banda. Todos medidos (los de RC2 pasados a su precio nuevo).
+ENVIO_RC3_SUC_CP = {
+    # pagan como AMBA
+    "2760": 7455.10,   # San Antonio de Areco
+    "2800": 7455.10,   # Zarate
+    "2804": 7455.10,   # Campana
+    "2812": 7455.10,   # Pavon / Capilla del Senor (Exaltacion de la Cruz)
+    "2930": 7455.10,   # San Pedro
+    "2942": 7455.10,   # Baradero
+    "6600": 7455.10,   # Mercedes
+    "6605": 7455.10,   # Navarro
+    "6620": 7455.10,   # Chivilcoy
+    "6700": 7455.10,   # Lujan
+    "6703": 7455.10,   # Lujan
+    "7116": 7455.10,   # Lezama
+    "7260": 7455.10,   # Saladillo
+    # pagan la banda de Cuyo/NEA, no la de su provincia
+    "3196": 10029.12,  # Esquina (Corrientes)
+    "3230": 10029.12,  # Paso de los Libres (Corrientes)
+    "6277": 10029.12,  # Buena Esperanza (San Luis)
+    "6430": 10029.12,  # Pehuajo
+    "7106": 10029.12,  # Santa Teresita (Partido de la Costa)
+    "7107": 10029.12,  # Santa Teresita
+    "7108": 10029.12,  # Mar del Tuyu
+    "7109": 10029.12,  # Mar de Ajo
+    "7540": 10029.12,  # Coronel Suarez
+    # norte de Santa Fe: paga como el resto de Santa Fe, no como el NEA
+    "3550": 9153.41,   # Vera
+    "3560": 9153.41,   # Reconquista
+}
+ENVIO_RC3_DOM_CP = {
+    "6720": 10216.90,  # San Andres de Giles -> paga como AMBA
+    "7240": 10216.90,  # Lobos               -> idem
+    "7245": 10216.90,  # Roque Perez         -> idem
+    "3560": 11685.07,  # Reconquista  -> como Santa Fe, no como el NEA
+    "3586": 11685.07,  # Las Toscas   -> idem
+    "8307": 11685.07,  # Catrie (Rio Negro)       -> zona 2
+    "8325": 11685.07,  # General Fernandez Oro    -> zona 2
+    "4700": 12726.07,  # Catamarca capital -> zona 3, no la de Salta/Jujuy
+    "4707": 12726.07,  # Valle Viejo       -> idem
+    "5883": 12726.07,  # Cortaderas (San Luis)
+    "2152": 13336.15,  # Granadero Baigorria (Santa Fe) -> la mas cara (cotizado 02-11)
+    "2609": 13336.15,  # Maria Teresa (Santa Fe)  -> la mas cara
+    "2740": 13336.15,  # Arrecifes                -> idem (ya pasaba con RC2: reclamar a RedChat)
+    "3054": 13336.15,  # Pedro Gomez Cello (Santa Fe) (cotizado 02-11)
+    "3103": 13336.15,  # Villa Libertador San Martin (Entre Rios)
+    "3380": 13336.15,  # Eldorado (Misiones)
+    "3705": 13336.15,  # Juan Jose Castelli (Chaco)
+    "4139": 13336.15,  # Santa Maria (Catamarca)
+    "4190": 13336.15,  # Rosario de la Frontera (Salta)
+    "5871": 13336.15,  # Villa Sarmiento (Cordoba)
+    "6237": 13336.15,  # America (Rivadavia) (cotizado 02-11)
+    "6241": 13336.15,  # Piedritas
+    "7200": 13336.15,  # Las Flores (cotizado 02-11)
+    "7203": 13336.15,  # Rauch
+    "7620": 13336.15,  # Balcarce (ya pasaba con RC2)
+    # San Antonio Oeste: con RC2 pagaba un precio propio ($11.974,22, un solo envio). Con la tarifa
+    # nueva todavia no hubo ninguno: ESTIMADO con el mismo aumento que su zona (x1,11691).
+    # Reemplazar por el precio real con el primer envio (Viedma 8500 cotizo la banda, $12.726,07).
+    "8520": 13374.17,
+}
+
+
+def _envio_rc3(o, suc) -> float:
+    """Igual que _envio_rc2 con la tarifa del aumento. Sin CP legible cae en la banda del medio:
+    nunca devuelve 0 ni None, porque eso inflaria la ganancia."""
+    cp = _rc2_cp4(o)
+    puntual = (ENVIO_RC3_SUC_CP if suc else ENVIO_RC3_DOM_CP).get(cp)
+    if puntual:
+        return puntual
+    bandas = ENVIO_RC3_SUC_BANDAS if suc else ENVIO_RC3_DOM_BANDAS
+    if cp:
+        n = int(cp)
+        for desde, hasta, precio in bandas:
+            if desde <= n <= hasta:
+                return precio
+    return 9153.41 if suc else 11685.07
+
+
 # TARIFA DE ENVIALO FLEX POR REDCHAT, medida el 24-10-2026 sobre los mismos 2.142 envios.
 # Aumento el 14-10 ($5.600/$6.200/$6.300/$8.200 -> $5.900/$6.500/$6.600/$8.500). Son 4 anillos y
 # NO coinciden con las zonas caba/norte/oeste/sur de _flex_zona: San Isidro (1642) y Martinez
@@ -6470,6 +6602,9 @@ def _envio_costo(o) -> int:
     z = _envio_zona(o)
     fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
     _hora = _envio_hora_ar(o)
+    if _hora and _hora >= ENVIO_RC3_DESDE:
+        # Aumento de RedChat/Andreani (~11%), mismas zonas: ver ENVIO_RC3_*.
+        return _envio_rc3(o, suc)
     if _hora and _hora >= ENVIO_RC2_DESDE:
         # Andreani le saco el cupon: ahora se paga por RedChat, precio cerrado por zona.
         # Ya no se suma seguro ni se aplica el 0,75 del cupon: ese precio es el final.
@@ -8151,7 +8286,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-02-gastos-v3-ful800"})
+    return jsonify({"ok": True, "v": "2026-11-02-rc3"})
 
 
 _KPI_DBG = {}
@@ -22564,6 +22699,10 @@ def _pf_dia_clave(email, dia) -> str:
     ck = "%s|%s|%s" % (email, dia, _pf_costos_ver())
     if _ful_sin_iva(dia):
         ck += "|ful%s" % FULFILLMENT_ORDEN_NEGRO
+    # AUMENTO DE REDCHAT (ENVIO_RC3_DESDE): los dias desde el 26-10 ya estaban guardados con la
+    # tarifa vieja; con '|rc3' se recalculan UNA vez. Los anteriores conservan su clave.
+    if str(dia)[:10] >= ENVIO_RC3_DESDE[:10]:
+        ck += "|rc3"
     return ck
 
 
