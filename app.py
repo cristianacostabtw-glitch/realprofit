@@ -5708,6 +5708,19 @@ def _blob_vacio() -> dict:
 
 
 # ---------------- Datos reales de Shopify → dashboard ----------------
+# Si _shopify_orders corto por un error HTTP en ESTE hilo (lo mira _pf_canales_dia para no
+# grabar un dia incompleto). Tambien lo marcan MercadoPago y Tiendanube (_canal_fallo).
+_SHOP_ESTADO = threading.local()
+
+
+def _canal_fallo(cual) -> None:
+    try:
+        if not getattr(_SHOP_ESTADO, "fallo", None):
+            _SHOP_ESTADO.fallo = cual
+    except Exception:
+        pass
+
+
 def _shopify_orders(shop, token, desde, hasta, deadline=None, max_pages=80, timeout=30):
     """Trae los pedidos de Shopify del período (paginado por Link header).
     deadline/max_pages/timeout: topes opcionales para que un caller pesado (ej Insertar SKU) NO se cuelgue;
@@ -5722,17 +5735,27 @@ def _shopify_orders(shop, token, desde, hasta, deadline=None, max_pages=80, time
               # cada pago con SU pedido y todo caia al match por monto.
               "fields": ("id,order_number,name,total_price,current_total_price,financial_status,"
                          "cancelled_at,line_items,refunds,created_at,shipping_lines,shipping_address,"
-                         "checkout_token,checkout_id,cart_token,token")}
+                         "checkout_token,checkout_id,cart_token,token,gateway,payment_gateway_names")}
     headers = {"X-Shopify-Access-Token": token}
     import time as _tsleep
-    for _ in range(max_pages):
+    for _pag in range(max_pages):
         if deadline and _tsleep.time() > deadline:     # se agotó el presupuesto de tiempo → corto con lo que tengo
+            try:
+                _SHOP_ESTADO.fallo = "tiempo"
+            except Exception:
+                pass
             break
         r = requests.get(url, headers=headers, params=params, timeout=timeout)
         if r.status_code == 429 or r.status_code >= 500:   # límite/servidor: reintenta la MISMA página, NO corta
             _tsleep.sleep(float(r.headers.get("Retry-After", 1)) + 0.3)
             continue
         if r.status_code != 200:
+            # AUDITORIA 02-11-2026: se anota el corte. Antes salia una lista vacia o a medias sin
+            # aviso y ese dia se grababa en pf_dias.json como "0 pedidos" para siempre.
+            try:
+                _SHOP_ESTADO.fallo = r.status_code
+            except Exception:
+                pass
             break
         out.extend(r.json().get("orders", []))
         link = r.headers.get("Link", "") or r.headers.get("link", "")
@@ -5744,6 +5767,11 @@ def _shopify_orders(shop, token, desde, hasta, deadline=None, max_pages=80, time
             break
         url = nxt
         params = None
+    else:
+        try:
+            _SHOP_ESTADO.fallo = "paginas"      # quedaron paginas sin leer: lista a medias
+        except Exception:
+            pass
     return out
 
 
@@ -6438,6 +6466,35 @@ def _envio_unificado_paga(num) -> bool:
     return True
 
 
+def _pedido_solo_digital(o) -> bool:
+    """True si ningun renglon viaja (solo la Guia Digital, requires_shipping=false). Mismo
+    criterio que Despachos: un renglon sin el dato cuenta como fisico."""
+    lis = o.get("line_items") or []
+    return bool(lis) and not any(li.get("requires_shipping") is None or li.get("requires_shipping")
+                                 for li in lis if isinstance(li, dict))
+
+
+def _envio_de_pedido(email, o, emap=None):
+    """(costo, fuente) del envio de UN pedido, con el MISMO criterio en todas las pantallas
+    (AUDITORIA 02-11-2026: el modal, /pf-pedidos-cero y /pf-debug-ordenes le ponian la tarifa de
+    Andreani a los Flex y a los unificados, y no cerraban con el Dashboard):
+      unificado -> 0 (viaja en el paquete de otro) · digital -> 0 (no viaja) ·
+      Flex -> _flex_costo_envio · costo real de Envialo si esta · si no, tabla por zona."""
+    num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+    if not _envio_unificado_paga(num):
+        return 0.0, "unificado"
+    if _pedido_solo_digital(o):
+        return 0.0, "digital"
+    metodo = " ".join((x.get("title") or "") for x in (o.get("shipping_lines") or []))
+    fx = _flex_costo_envio(o) if _logi_de(email, num, metodo) == "flex" else None
+    if fx is not None:
+        return float(fx), "flex"
+    real = (emap if emap is not None else {}).get(num)
+    if real is not None:
+        return float(real), "real"
+    return float(_envio_costo(o)), "tabla"
+
+
 def _envio_final_and2(zona, valor_declarado, suc=False) -> int:
     """Lo que se paga de verdad por un envio con la tarifa medida el 30-09-2026."""
     tabla = ENVIO_AND2_SUC if suc else ENVIO_AND2_DOM
@@ -7043,6 +7100,9 @@ def pf_pedidos_cero():
     for o in orders:
         if o.get("cancelled_at"):
             continue
+        # mismo filtro que el dashboard: solo los pedidos cobrados/cerrados cuentan
+        if (o.get("financial_status") or "").lower() not in ("paid", "partially_paid", "refunded", "partially_refunded"):
+            continue
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         if tot > 0:
             continue
@@ -7056,10 +7116,7 @@ def pf_pedidos_cero():
             if c:
                 cp += _costo_qty(c, q)
             prods.append("%s x%d" % ((li.get("title") or "?")[:40], q))
-        env = emap.get(num)
-        env_fuente = "real"
-        if env is None:
-            env = _envio_costo(o); env_fuente = "promedio"
+        env, env_fuente = _envio_de_pedido(email, o, emap)   # igual que el dashboard
         _ful_o = _oper_orden(_oper_dia_pedido(o.get("created_at"), desde, hasta))   # tarifa de SU fecha
         cust = o.get("customer") or {}
         nota = (o.get("note") or "").strip()
@@ -7200,21 +7257,13 @@ def pf_debug_ordenes():
     # MISMO filtro que el dashboard: efectivo/transferencia pendiente NO es una venta todavia.
     # Sin esto el detalle traia pedidos que el resumen no cuenta y no cerraba contra la pantalla.
     _PAG = ("paid", "partially_paid", "refunded", "partially_refunded")
+    _todas = list(orders)          # las bolsas de MP se arman con TODOS, como en el dashboard
     orders = [o for o in orders if (o.get("financial_status") or "").lower() in _PAG]
     orders.sort(key=lambda o: int(o.get("order_number") or 0), reverse=True)
     costos = (_costos().get(email) or {})
     emap = _envialo_costos(email)
     pagos = _mp_pagos_lista(email, desde, hasta)
-    by_ref, by_amt = {}, {}
-    # Los pagos de MERCADOLIBRE quedan FUERA de la bolsa de la tienda: su comision ya se cuenta
-    # en meli_comision y, al entrar aca, se pegaba por monto a pedidos de Shopify del mismo
-    # importe y se restaba dos veces (medido 29-09-2026: 26 pagos, $596.169 en UN dia).
-    for p in (pagos or []):
-        if _mp_es_de_meli(p.get("ref")):
-            continue
-        if p["ref"]:
-            by_ref.setdefault(str(p["ref"]), []).append(p)
-        by_amt.setdefault(p["amount"], []).append(p)
+    by_ref, by_amt = _mp_bolsas(pagos, _todas)   # igual que el dashboard
     out = []
     for o in orders[:n]:
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
@@ -7239,26 +7288,13 @@ def pf_debug_ordenes():
                 _nad += _q
             _det.append({"producto": _t[:46], "cant": _q})
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-        # envío real o promedio
-        env = emap.get(num)
-        env_fuente = "envialo" if env is not None else "promedio"
-        if env is None:
-            env = _envio_costo(o)
+        # envío con el mismo criterio que el dashboard (flex / unificado / digital / real / tabla)
+        env, env_fuente = _envio_de_pedido(email, o, emap)
         # match MP. Se anota COMO matcheo: por referencia (confiable) o por monto (puede cruzarse
         # con otro pedido del mismo precio, que es lo que pasa con precios fijos).
         pago = None; _como = "sin match"; _ref_usada = ""
         if pagos is not None:
-            for ref in (str(o.get("checkout_token") or ""), str(o.get("checkout_id") or ""),
-                        str(o.get("id")), str(o.get("order_number")), num):
-                if not ref:
-                    continue
-                lst = by_ref.get(ref)
-                if lst:
-                    pago = lst.pop(0); _como = "referencia"; _ref_usada = ref; break
-            if pago is None:
-                pago = _mp_tomar_cercano(by_amt.get(round(tot)), o.get("created_at"))
-                if pago is not None:
-                    _como = "monto+hora"
+            pago, _como, _ref_usada = _mp_match_pedido(o, num, tot, by_ref, by_amt)
         mp_fee = pago["fee"] if pago else 0.0
         mp_neto = pago["net"] if pago else None
         mp_ret = (pago.get("ret") or 0.0) if pago else 0.0      # IIBB/Ganancias ya retenidos
@@ -8286,7 +8322,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-02-rc3"})
+    return jsonify({"ok": True, "v": "2026-11-02-auditoria"})
 
 
 _KPI_DBG = {}
@@ -8446,7 +8482,8 @@ def pf_orden():
                          params={"name": "#" + num, "status": "any", "limit": 1,
                                  "fields": "id,order_number,name,created_at,financial_status,total_price,"
                                            "current_total_price,total_discounts,line_items,customer,"
-                                           "contact_email,gateway,payment_gateway_names,shipping_lines,shipping_address"}, timeout=25)
+                                           "contact_email,gateway,payment_gateway_names,shipping_lines,shipping_address,"
+                                           "checkout_token,checkout_id"}, timeout=25)
         orders = (r.json() or {}).get("orders") or []
         o = orders[0] if orders else None
     except Exception:
@@ -8470,13 +8507,10 @@ def pf_orden():
     pagos = _mp_pagos_lista(email, d0, d1) if fecha else None
     pago = None
     if pagos:
-        for p in pagos:
-            if p["ref"] in (str(o.get("id")), str(o.get("order_number")), num):
-                pago = p; break
-        if pago is None:
-            for p in pagos:
-                if p["amount"] == round(tot):
-                    pago = p; break
+        # Mismo criterio que el dashboard (AUDITORIA 02-11-2026): antes buscaba sin el
+        # checkout_token y caia al PRIMER pago del mismo monto, aunque fuera de otra venta o de MELI.
+        _br, _ba = _mp_bolsas(pagos, [o])
+        pago = _mp_match_pedido(o, num, tot, _br, _ba)[0]
     fee_mp = pago["fee_mp"] if pago else 0.0
     fee_cuotas = pago["fee_cuotas"] if pago else 0.0
     inst = pago["inst"] if pago else 1
@@ -8484,8 +8518,7 @@ def pf_orden():
     iibb = tot * IIBB_PCT / 100.0                       # Ingresos Brutos (3%). La retencion que
     # MP ya descontó no se resta de nuevo: viene adentro de pago["net"], que es de donde parte.
     # Envío: costo REAL de Envialo si el pedido está ahí; si no, promedio domicilio/sucursal.
-    _real_env = _envialo_costos(email).get(num)
-    envio = _real_env if _real_env is not None else _envio_costo(o)
+    envio, envio_fuente = _envio_de_pedido(email, o, _envialo_costos(email))   # igual que el dashboard
     # MP ya descuenta sus comisiones en pago["net"]; si no hay pago, lo estimamos.
     net_mp = pago["net"] if pago else round(tot - fee_mp - fee_cuotas, 2)
     # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto, envío
@@ -8502,9 +8535,12 @@ def pf_orden():
         "medio": medio, "items": items,
         "total": round(tot, 2), "descuento": round(desc, 2),
         "fee_mp": round(fee_mp, 2), "fee_cuotas": round(fee_cuotas, 2), "cuotas": inst,
-        "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2),
+        "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2), "envio_fuente": envio_fuente,
         "fulfillment": FULFILLMENT_ORDEN, "insumos": INSUMOS_ORDEN, "oper": _ful_o,
-        "envio_real": _real_env is not None,
+        # exacto (sin "aprox."): costo real cargado, Flex con su costo pegado, o 0 justo
+        # (unificado / solo digital). La tabla de Andreani o la tarifa Flex por CP son estimados.
+        "envio_real": (envio_fuente in ("real", "unificado", "digital")
+                       or (envio_fuente == "flex" and str(num) in (_flex_costos_all() or {}))),
         "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
 
 
@@ -9924,8 +9960,6 @@ mark{background:rgba(232,177,62,.32);color:inherit;border-radius:3px;padding:0 2
   <div class="acts">
    <span id="vivo" style="font-size:11.5px;color:var(--ink3)"></span>
    <span id="msg"></span>
-   <label class="btn" for="fx">Subir estado de Andreani</label>
-   <input id="fx" type="file" accept=".xlsx,.xls" onchange="subir(this)">
    <a class="btn sec" href="/">&#8592; RealProfit</a>
   </div>
  </header>
@@ -9947,12 +9981,8 @@ mark{background:rgba(232,177,62,.32);color:inherit;border-radius:3px;padding:0 2
    <tbody id="tb"></tbody></table></div>
   <div class="more" id="more" style="display:none"><button onclick="masFilas()">Ver más envíos</button></div>
   <div id="vacio" class="vacio" style="display:none">
-   <b>Todavía no cargaste ningún estado</b>
-   Bajá el listado de Andreani y subilo acá.
-   <ol><li>Entrá a <b>pymes.andreani.com</b></li>
-    <li>Poné el filtro de fecha en <b>Últimos 30 días</b> (viene en 7)</li>
-    <li><b>Ver mis envíos</b> &rarr; <b>Descargar envíos</b></li>
-    <li>Subí ese archivo con el botón de arriba</li></ol>
+   <b>Todavía no hay estados de envío</b>
+   Los envíos aparecen acá cuando se suben las etiquetas desde Despachos.
   </div>
  </div>
 </div>
@@ -10140,8 +10170,11 @@ REGLAS
   nombra el gasto ("subscripciones", "nafta", "pago puntos ia") ES ese concepto → devolvé
   tipo "gastos" con {"concepto":"...","monto":0}.
 - Si no dice fecha, usá la fecha de HOY que te paso abajo.
-- El concepto va corto y claro, con mayúscula inicial: "Nafta reparto", "Cajas", "Pago Andreani".
-- NO son gastos para cargar (devolvé tipo "otro" y avisá en "nota"): publicidad de Meta/Facebook/ads.
+- El concepto va corto y claro, con mayúscula inicial: "Nafta reparto", "Cajas", "Cinta de embalar".
+- NO son gastos para cargar (devolvé tipo "otro" y avisá en "nota"): publicidad de Meta/Facebook/ads,
+  ni ENVÍOS (carga de saldo de RedChat, pagos a Andreani, Envialo, correo) ni comisiones de
+  MercadoPago/MercadoLibre ni el fulfillment: la planilla ya los resta pedido por pedido y cargarlos
+  acá los contaría dos veces.
 - "sueldo": el mensaje es un PAGO DE SUELDO a una persona del equipo ("sueldo otty", "pago agus",
   "le pagué a agus att", "transferencia sueldo oty"). NO va en gastos: va en su propio bloque.
   Devolvé "sueldo" con la persona TAL CUAL la nombran (no la corrijas) y el monto.
@@ -16952,13 +16985,16 @@ def _mp_seg(x) -> float:
         return 0.0
 
 
-def _mp_tomar_cercano(lst, cuando):
+def _mp_tomar_cercano(lst, cuando, max_seg=None):
     """De los pagos del MISMO importe, saca el que se aprobo MAS CERCA del pedido.
     Antes se tomaba el primero de la lista: con precios fijos (59.990 / 69.990 / 79.990) hay
     decenas de pagos identicos por dia y cada pedido se quedaba con el de otro. La comision por
     venta salia cualquiera (se vieron 41,5% y 4,5% en pedidos del mismo precio) aunque el total
     del dia cerrara. El pedido y su pago se crean con segundos de diferencia, asi que la hora
-    los une bien. Si no hay hora en ninguno de los dos, cae al primero, como antes."""
+    los une bien. Si no hay hora en ninguno de los dos, cae al primero, como antes.
+    max_seg (AUDITORIA 02-11-2026): si viene, un pago mas lejos que eso NO se toma. Un pedido sin
+    pago propio (transferencia) se quedaba con el pago de OTRA venta del mismo precio aunque fuera
+    de otro dia, y ese pago despues se volvia a usar por referencia: comision contada dos veces."""
     if not lst:
         return None
     t0 = _mp_seg(cuando)
@@ -16970,11 +17006,126 @@ def _mp_tomar_cercano(lst, cuando):
         if not tp:
             continue
         d = abs(tp - t0)
+        if max_seg is not None and d > max_seg:
+            continue
         if mejor_d is None or d < mejor_d:
             mejor, mejor_d = i, d
     if mejor_d is None:
+        if max_seg is not None and any(_mp_seg(p.get("fecha")) for p in lst):
+            return None
         return lst.pop(0)
     return lst.pop(mejor)
+
+
+# Tope para emparejar un pedido con un pago SOLO por monto: el pago se crea segundos despues del
+# pedido. 3 horas cubre una tarjeta que tarda; mas que eso es el pago de otra venta.
+_MP_MONTO_MAX_SEG = 3 * 3600
+
+
+def _mp_refs_pedido(o, num=None) -> list:
+    """Las referencias con las que MP puede traer el pago de este pedido. El checkout_token
+    PRIMERO: es lo que MP manda de external_reference en esta tienda."""
+    num = num if num is not None else str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+    out = []
+    for ref in (str(o.get("checkout_token") or ""), str(o.get("checkout_id") or ""),
+                str(o.get("id") or ""), str(o.get("order_number") or ""), str(num or "")):
+        if ref and ref not in out:
+            out.append(ref)
+    return out
+
+
+def _mp_pedido_sin_mp(o) -> bool:
+    """Pedido cobrado por fuera de MercadoPago (transferencia, efectivo, 'Cargar pedido' del bot
+    de WhatsApp): no tiene pago en MP y NO debe agarrar por monto el pago de otra venta."""
+    names = o.get("payment_gateway_names") or []
+    gw = (" ".join(str(x) for x in names) + " " + str(o.get("gateway") or "")).lower()
+    if "mercado" in gw:
+        return False
+    return any(k in gw for k in ("transfer", "bank", "manual", "efect", "cash", "deposit"))
+
+
+# Forma de una referencia que apunta a UN pedido: token de checkout de Shopify (ej
+# "r7N7EaGFbPuG1hmd0x0jDF3sP") o un id/numero de pedido.
+_MP_REF_PEDIDO_RE = __import__("re").compile(r"[A-Za-z0-9]{20,40}|\d{3,20}")
+
+
+def _mp_bolsas(pagos, orders):
+    """(by_ref, by_amt) de los pagos de la tienda. AUDITORIA 02-11-2026: cada pago va a UNA sola
+    bolsa. Antes el mismo pago estaba en las dos: un pedido sin pago lo agarraba por monto y su
+    dueno lo volvia a agarrar por referencia (mp_costo y retenciones x2). Los de MercadoLibre
+    quedan fuera (su comision ya esta en meli_comision; medido 29-09: $596.169 en UN dia).
+    Un pago cuya referencia es de un pedido de la lista solo se puede tomar por referencia."""
+    refs = set()
+    for o in (orders or []):
+        refs.update(_mp_refs_pedido(o))
+    by_ref, by_amt = {}, {}
+    for p in (pagos or []):
+        if _mp_es_de_meli(p.get("ref")):
+            continue
+        ref = str(p.get("ref") or "")
+        if ref:
+            by_ref.setdefault(ref, []).append(p)
+        # Por monto SOLO los pagos sin referencia o con una referencia "a mano". Un pago con token de
+        # checkout o numero de pedido es de UN pedido concreto: si no esta en esta lista es de otro
+        # dia de la ventana D..D+4 (o de otra tienda) y ese dia lo toma por referencia. Si aca se
+        # pegara por monto, el mismo pago se contaria en los dos dias (revision 02-11-2026).
+        if not ref or (ref not in refs and not _MP_REF_PEDIDO_RE.fullmatch(ref)):
+            by_amt.setdefault(p["amount"], []).append(p)
+    return by_ref, by_amt
+
+
+def _mp_sumar_pagos(partes):
+    """Un solo pago con la suma de varias partes del MISMO pedido."""
+    p0 = max(partes, key=lambda x: float(x.get("amount") or 0))
+    out = dict(p0)
+    for k in ("amount", "net", "fee", "fee_mp", "fee_cuotas", "ret", "perc_iva"):
+        out[k] = round(sum(float(x.get(k) or 0) for x in partes), 2)
+    out["amount"] = round(out["amount"])
+    cargos = {}
+    for x in partes:
+        for nm, am in (x.get("cargos") or {}).items():
+            cargos[nm] = round(cargos.get(nm, 0.0) + float(am or 0), 2)
+    out["cargos"] = cargos
+    out["partes"] = len(partes)
+    return out
+
+
+def _mp_match_pedido(o, num, tot, by_ref, by_amt):
+    """(pago, como, ref) del pedido: por referencia y, si no, por monto+hora con tope. Un pago
+    tomado se saca de las DOS bolsas, asi no lo vuelve a usar otro pedido."""
+    pago, como, ref_usada = None, "sin match", ""
+    for ref in _mp_refs_pedido(o, num):
+        lst = by_ref.get(ref)
+        if lst:
+            if len(lst) == 1:
+                pago = lst.pop(0)
+            else:
+                # Pagado en 2 o mas partes (dos tarjetas, dinero en cuenta + tarjeta): todas traen
+                # la MISMA referencia. Se suman en un solo pago, si no la segunda parte no se
+                # contaba en ningun lado (revision 02-11-2026).
+                partes = list(lst); del lst[:]
+                pago = _mp_sumar_pagos(partes)
+                for x in partes:                     # y ninguna parte queda suelta por monto
+                    b = by_amt.get(x.get("amount"))
+                    if b:
+                        for i, y in enumerate(b):
+                            if y is x:
+                                b.pop(i)
+                                break
+            como, ref_usada = "referencia", ref
+            break
+    if pago is None and not _mp_pedido_sin_mp(o):
+        pago = _mp_tomar_cercano(by_amt.get(round(tot)), o.get("created_at"), _MP_MONTO_MAX_SEG)
+        if pago is not None:
+            como = "monto+hora"
+    if pago is not None:
+        for bolsa in (by_ref.get(str(pago.get("ref") or "")), by_amt.get(pago.get("amount"))):
+            if bolsa:
+                for i, x in enumerate(bolsa):
+                    if x is pago:
+                        bolsa.pop(i)
+                        break
+    return pago, como, ref_usada
 
 
 def _mp_es_de_meli(ref) -> bool:
@@ -17008,14 +17159,21 @@ def _mp_pagos_lista(email, desde, hasta):
         h2 = (_dt.date.fromisoformat(hasta) + _dt.timedelta(days=4)).isoformat()
     except Exception:
         h2 = hasta
+    # Y desde el dia ANTERIOR (revision 02-11-2026): el pago se aprueba segundos ANTES de que se
+    # cree el pedido, asi que un pedido de las 00:00:05 tiene su pago a las 23:59:58 del dia
+    # anterior y quedaba sin comision. Los pagos que sobran no se pegan a nadie (ver _mp_bolsas).
+    try:
+        d_mp = (_dt.date.fromisoformat(desde) - _dt.timedelta(days=1)).isoformat()
+    except Exception:
+        d_mp = desde
     # Histórico (<= FREEZE_END) del congelado; nuevo (> FREEZE_END) en vivo desde MP.
     if fr:
         _fe = _mp_freeze_end(email) or FREEZE_END
-        _live_ini = _dia_post(_fe) if desde <= _fe else desde
+        _live_ini = _dia_post(_fe) if d_mp <= _fe else d_mp
         _run_live = hasta > _fe
-        _frozen = _mp_freeze_slice(fr, desde, min(h2, _fe))
+        _frozen = _mp_freeze_slice(fr, d_mp, min(h2, _fe))
     else:
-        _live_ini = desde; _run_live = True; _frozen = []
+        _live_ini = d_mp; _run_live = True; _frozen = []
     ini = _live_ini + "T00:00:00.000-03:00"
     fin = h2 + "T23:59:59.999-03:00"
     out = []
@@ -17058,6 +17216,7 @@ def _mp_pagos_lista(email, desde, hasta):
                                      "range": "date_approved", "begin_date": ini, "end_date": fin,
                                      "status": "approved", "offset": offset, "limit": 100}, timeout=30)
             if r.status_code >= 400:
+                _canal_fallo("mp")              # el dia no se graba como completo
                 if not _frozen and offset == 0:
                     return None
                 break
@@ -17116,8 +17275,10 @@ def _mp_pagos_lista(email, desde, hasta):
             if offset >= (data.get("paging") or {}).get("total", 0) or not res:
                 break
     except Exception:
+        _canal_fallo("mp")
         if not _frozen:
             return None
+        return out                      # a medias: no va al cache
     _MP_LISTA_CACHE[ck] = (_t.time(), out)
     return out
 
@@ -17261,6 +17422,10 @@ def _shopify_resumen(email, desde, hasta):
     try:
         orders = _shopify_orders(shop, token, desde, hasta)
     except Exception:
+        try:
+            _SHOP_ESTADO.fallo = "exc"      # timeout / conexion: el dia no se graba (revision 02-11)
+        except Exception:
+            pass
         return None
     costos = (_costos().get(email) or {})
     r = resumen_vacio()
@@ -17271,16 +17436,7 @@ def _shopify_resumen(email, desde, hasta):
     # MP: pagos reales del período para MATCHEAR cada pedido con su pago (comisión exacta).
     pagos = _mp_pagos_lista(email, desde, hasta)
     mp_conectado = pagos is not None
-    by_ref, by_amt = {}, {}
-    # Los pagos de MERCADOLIBRE quedan FUERA de la bolsa de la tienda: su comision ya se cuenta
-    # en meli_comision y, al entrar aca, se pegaba por monto a pedidos de Shopify del mismo
-    # importe y se restaba dos veces (medido 29-09-2026: 26 pagos, $596.169 en UN dia).
-    for p in (pagos or []):
-        if _mp_es_de_meli(p.get("ref")):
-            continue
-        if p["ref"]:
-            by_ref.setdefault(str(p["ref"]), []).append(p)
-        by_amt.setdefault(p["amount"], []).append(p)
+    by_ref, by_amt = _mp_bolsas(pagos, orders)   # sin MELI y cada pago en UNA sola bolsa
     mp_costo = 0.0
     mp_match = 0
     iibb_ret = 0.0     # IIBB que MP ya retuvo en los pagos del periodo (pago a cuenta)
@@ -17319,37 +17475,25 @@ def _shopify_resumen(email, desde, hasta):
         fact += tot
         # Envío: costo REAL de Envialo si el pedido ya está ahí; si no, promedio domicilio/sucursal.
         _num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
-        if _envio_unificado_paga(_num):
-            envio_zona += _envio_costo(o)   # SIEMPRE la tabla Andreani por zona (con descuento)
-            # Si el pedido se marco como FLEX, no paga tarifa de correo: cuesta lo que cuesta
-            # llevarlo. Si todavia no se cargo ese costo, se deja la tabla de Andreani antes
-            # que inventar un numero que le cambie la ganancia a ciegas.
-            _metodo = " ".join((x.get("title") or "") for x in (o.get("shipping_lines") or []))
-            _fx = _flex_costo_envio(o) if _logi_de(email, _num, _metodo) == "flex" else None
-            if _fx is not None:
-                envio_monto += _fx; envio_flex += 1
-            else:
-                _real = emap.get(_num)
-                if _real is not None:
-                    envio_monto += _real; envio_real += 1
-                else:
-                    envio_monto += _envio_costo(o)
-        # else: viaja dentro del paquete de otro pedido (ver ENVIOS_UNIFICADOS) -> no suma envio
+        # Si el pedido se marco como FLEX, no paga tarifa de correo: cuesta lo que cuesta
+        # llevarlo. Si todavia no se cargo ese costo, se deja la tabla de Andreani antes
+        # que inventar un numero que le cambie la ganancia a ciegas. Unificado (viaja en el
+        # paquete de otro) o solo digital (la Guia, no viaja) -> 0. Ver _envio_de_pedido.
+        _env, _env_f = _envio_de_pedido(email, o, emap)
+        envio_monto += _env
+        if _env_f == "flex":
+            envio_flex += 1
+        elif _env_f == "real":
+            envio_real += 1
+        if _env_f not in ("unificado", "digital"):
+            envio_zona += _envio_costo(o)   # SIEMPRE la tabla Andreani por zona (auditoria)
         # MP: matcheo este pedido con su pago real (por referencia; fallback por monto exacto).
         pago = None
         if mp_conectado:
             # El checkout_token PRIMERO: es lo que MP manda de external_reference en esta tienda
             # (ej "r7N7EaGFbPuG1hmd0x0jDF3sP"). Sin el, NINGUN pedido matcheaba por referencia y
             # los 124 del 29-09-2026 caian al match por MONTO, que con precios fijos se cruza.
-            for ref in (str(o.get("checkout_token") or ""), str(o.get("checkout_id") or ""),
-                        str(o.get("id")), str(o.get("order_number")), _num):
-                if not ref:
-                    continue
-                lst = by_ref.get(ref)
-                if lst:
-                    pago = lst.pop(0); break
-            if pago is None:
-                pago = _mp_tomar_cercano(by_amt.get(round(tot)), o.get("created_at"))
+            pago = _mp_match_pedido(o, _num, tot, by_ref, by_amt)[0]
             if pago is not None:
                 mp_costo += pago["fee"]; mp_match += 1
                 # IIBB ya adelantado por MP en ESTE pago. No es costo aparte (el IIBB_PCT del
@@ -17465,7 +17609,10 @@ def _tn_orders_raw(email, desde, hasta):
                 "created_at_min": desde + "T00:00:00-03:00",
                 "created_at_max": hasta + "T23:59:59-03:00"}, timeout=40)
             lote = r.json() if r.content else []
+            if r.status_code >= 500 or r.status_code in (401, 403, 429):
+                _canal_fallo("tn")
         except Exception:
+            _canal_fallo("tn")
             lote = []
         if not isinstance(lote, list) or not lote:
             break
@@ -17689,9 +17836,9 @@ def _tn_resumen(email, desde, hasta):
     orders = [o for o in _tn_orders_raw(email, desde, hasta) if not o.get("cancelled_at")]
     costos = (_costos().get(email) or {})
     pagos = _mp_pagos_lista(email, desde, hasta)
-    by_amt = {}
-    for p in (pagos or []):
-        by_amt.setdefault(p["amount"], []).append(p)
+    # Mismas bolsas que Shopify (revision 02-11-2026): sin los pagos de MercadoLibre y sin los que
+    # tienen la referencia de un pedido de Shopify (esos son de otra venta).
+    by_ref, by_amt = _mp_bolsas(pagos, [])
     mp_conectado = pagos is not None
     r = resumen_vacio()
     r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
@@ -17726,9 +17873,9 @@ def _tn_resumen(email, desde, hasta):
         _es_suc = _tn_shipping(o).get("type") == "pickup" or _envio_suc(o)
         envio_monto += _ez["sucursal"] if _es_suc else _ez["domicilio"]
         if mp_conectado:
-            lst = by_amt.get(round(tot))
-            if lst:
-                pago = lst.pop(0); mp_costo += pago["fee"]; mp_match += 1
+            pago = _mp_match_pedido(o, str(o.get("number") or ""), tot, by_ref, by_amt)[0]
+            if pago is not None:
+                mp_costo += pago["fee"]; mp_match += 1
                 iibb_ret += float(pago.get("ret") or 0)
                 perc_iva += float(pago.get("perc_iva") or 0)
         for p in (o.get("products") or []):
@@ -17837,30 +17984,14 @@ def _shopify_ordenes(email, dias=90):
         return []
     orders = [o for o in orders if not o.get("cancelled_at")]
     pagos = _mp_pagos_lista(email, desde, hasta)   # para el neto real por pedido
-    by_ref, by_amt = {}, {}
-    # Los pagos de MERCADOLIBRE quedan FUERA de la bolsa de la tienda: su comision ya se cuenta
-    # en meli_comision y, al entrar aca, se pegaba por monto a pedidos de Shopify del mismo
-    # importe y se restaba dos veces (medido 29-09-2026: 26 pagos, $596.169 en UN dia).
-    for p in (pagos or []):
-        if _mp_es_de_meli(p.get("ref")):
-            continue
-        if p["ref"]:
-            by_ref.setdefault(str(p["ref"]), []).append(p)
-        by_amt.setdefault(p["amount"], []).append(p)
+    by_ref, by_amt = _mp_bolsas(pagos, orders)     # igual que el dashboard
     out = []
     for o in orders:
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
         pago = None
         if pagos is not None:
-            for ref in (str(o.get("id")), str(o.get("order_number")), num):
-                lst = by_ref.get(ref)
-                if lst:
-                    pago = lst.pop(0); break
-            if pago is None:
-                lst = by_amt.get(round(tot))
-                if lst:
-                    pago = lst.pop(0)
+            pago = _mp_match_pedido(o, num, tot, by_ref, by_amt)[0]
         neto = pago["net"] if pago else tot
         fs = (o.get("financial_status") or "").lower()
         out.append({"num": num, "origen": "Shopify",
@@ -18441,21 +18572,21 @@ def _meta_spend(email, desde, hasta):
     total = 0.0
     hubo = False
     usd_ars = 0.0                 # lo que salio de cuentas en USD, ya en pesos (para el IVA)
+    usd_raw = 0.0                 # esos mismos DOLARES, tal cual los cobra Meta (vista USD)
+    # DIA POR DIA, CADA DIA CON SU DOLAR (Cristian, 02-11-2026). Antes todo el periodo se pasaba a
+    # pesos con el dolar de ESTE momento: "ultimos 7 dias" ponia los 7 dias al dolar de hoy. Ahora
+    # Meta devuelve el gasto de cada dia (time_increment=1, sigue siendo un solo pedido por cuenta)
+    # y cada dia va al dolar de pauta de SU fecha (_dolar_pauta_dia: el de la liquidacion de Emma).
+    # Los DOLARES no cambian: son los que cobra Meta. Lo que cambia es cuantos pesos cuesta cada uno.
     for acc in cuentas:
         try:
-            r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
-                             params={"access_token": token, "fields": "spend,account_currency",
-                                     "time_range": _json.dumps({"since": desde, "until": hasta}),
-                                     "level": "account"}, timeout=30)
-            data = r.json().get("data") or []
-            if data:
+            filas = _meta_dias_estable(acc, desde, hasta, _meta_insights_dias(token, acc, desde, hasta))
+            if filas:
                 hubo = True
-                spend = float(data[0].get("spend") or 0)
-                moneda = (data[0].get("account_currency") or "").upper()
-                # Si la cuenta factura en USD y la tienda es en pesos, convierto con el dólar en vivo
-                # (mismo criterio que METAFY: USDC/ARS de criptoya). Se puede fijar con la env DOLAR_ARS.
+            for dia, spend, moneda in filas:
                 if moneda == "USD" or es_owner:
-                    spend *= _dolar_ads(desde)      # cotizacion + lo que se lleva la cambiaria
+                    usd_raw += spend
+                    spend *= _dolar_pauta_dia(email, dia)
                     usd_ars += spend
                 # La cuenta de AGENCIA (CP3) no se paga directo a Meta: la agencia factura el
                 # gasto + su comisión, así que lo que sale del bolsillo es ese total. Sin esto el
@@ -18465,13 +18596,85 @@ def _meta_spend(email, desde, hasta):
                 total += spend
         except Exception:
             pass
+    # El "solo crece" va sobre los DOLARES de cada dia (_meta_dias_estable), no sobre los pesos: asi
+    # un dolar de un dia que se corrige (historico que vuelve, cotizacion que baja) cambia los pesos
+    # como corresponde y nunca queda trabado un valor inflado (revision 02-11-2026).
     try:
         if len(_ADS_USD_ARS) > 400:
             _ADS_USD_ARS.clear()
-        _ADS_USD_ARS[(email, desde, hasta)] = usd_ars if hubo else 0.0
+        if len(_ADS_USD_RAW) > 400:
+            _ADS_USD_RAW.clear()
+        _ADS_USD_ARS[(email, desde, hasta)] = round(usd_ars, 2)
+        _ADS_USD_RAW[(email, desde, hasta)] = round(usd_raw, 2)
     except Exception:
         pass
-    return _meta_spend_estable(email, desde, hasta, total if hubo else 0.0)
+    return round(total, 2)
+
+
+_META_DIAS_FILE = DATA_DIR / "meta_dias_max.json"   # {cuenta|dia: [gasto maximo visto, moneda]}
+_META_DIAS_LOCK = threading.Lock()
+
+
+def _meta_dias_estable(acc, desde, hasta, filas) -> list:
+    """El gasto de cada dia de una cuenta SOLO crece (maximo visto, en disco, compartido entre los
+    workers): si Meta devuelve 0 o menos por un instante, o un dia no viene, se usa lo ya visto.
+    Es lo mismo que hacia _meta_spend_estable con el total en pesos, pero por dia y en la moneda de
+    la cuenta, para que los pesos se puedan recalcular siempre con el dolar de cada dia."""
+    with _META_DIAS_LOCK:
+        try:
+            d = _json.loads(_META_DIAS_FILE.read_text(encoding="utf-8"))
+            ok_disco = isinstance(d, dict)
+        except FileNotFoundError:
+            d, ok_disco = {}, True
+        except Exception:
+            d, ok_disco = {}, False
+        if not isinstance(d, dict):
+            d = {}
+        vistos, out, cambio = set(), [], False
+        for dia, spend, mon in (filas or []):
+            k = "%s|%s" % (acc, dia)
+            prev = d.get(k)
+            if prev and str(prev[1]) == str(mon) and float(prev[0]) > float(spend):
+                spend = float(prev[0])
+            elif not prev or float(prev[0]) != float(spend) or str(prev[1]) != str(mon):
+                d[k] = [round(float(spend), 2), mon]
+                cambio = True
+            vistos.add(dia)
+            out.append((dia, float(spend), mon))
+        pref = "%s|" % acc
+        for k, v in d.items():
+            if k.startswith(pref):
+                dia = k[len(pref):]
+                if desde <= dia <= hasta and dia not in vistos and v and float(v[0]) > 0:
+                    out.append((dia, float(v[0]), v[1]))
+        if cambio and ok_disco:
+            try:
+                tmp = _META_DIAS_FILE.with_name("%s.tmp%d_%d" % (_META_DIAS_FILE.name, _os.getpid(), threading.get_ident()))
+                tmp.write_text(_json.dumps(d), encoding="utf-8")
+                _os.replace(str(tmp), str(_META_DIAS_FILE))
+            except Exception:
+                pass
+    return sorted(out)
+
+
+def _meta_insights_dias(token, acc, desde, hasta) -> list:
+    """[(dia, gasto, moneda)] de UNA cuenta, dia por dia (time_increment=1), siguiendo la
+    paginacion de Meta. Lista vacia si no hubo gasto o no se pudo leer."""
+    out = []
+    url = "https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc)
+    params = {"access_token": token, "fields": "spend,account_currency",
+              "time_range": _json.dumps({"since": desde, "until": hasta}),
+              "level": "account", "time_increment": 1, "limit": 500}
+    for _ in range(20):
+        j = requests.get(url, params=params, timeout=30).json()
+        for x in (j.get("data") or []):
+            out.append((str(x.get("date_start") or desde)[:10], float(x.get("spend") or 0),
+                        (x.get("account_currency") or "").upper()))
+        nxt = (j.get("paging") or {}).get("next")
+        if not nxt:
+            break
+        url, params = nxt, None
+    return out
 
 
 def _meta_spend_agencia(email, desde, hasta) -> float:
@@ -18515,19 +18718,25 @@ def _meta_spend_estable(email, desde, hasta, spend) -> float:
     """El gasto de ADS de un período SOLO crece (máximo visto). Se guarda en DISCO (/var/data) y NO en
     memoria: así TODOS los workers de gunicorn devuelven el MISMO valor. Antes cada worker tenía su propio
     máximo en memoria → según qué worker atendía, el número bajaba/subía = TITILEO. También evita el
-    parpadeo cuando Meta devuelve 0 o un valor más bajo por un instante (eventual consistency)."""
+    parpadeo cuando Meta devuelve 0 o un valor más bajo por un instante (eventual consistency).
+    Meta ya NO pasa por aca (02-11-2026): usa _meta_dias_estable, por dia y en dolares. Queda para
+    TikTok."""
     key = "%s|%s|%s" % (email, desde, hasta)
     with _META_SPEND_LOCK:
         try:
             d = _json.loads(_META_SPEND_FILE.read_text(encoding="utf-8")) if _META_SPEND_FILE.exists() else {}
         except Exception:
-            d = {}
+            return spend               # no se pudo leer: no piso el archivo
+        if not isinstance(d, dict):
+            return spend
         prev = float(d.get(key, 0.0) or 0.0)
         val = spend if spend > prev else prev
         if val != prev:
             d[key] = val
             try:
-                _META_SPEND_FILE.write_text(_json.dumps(d), encoding="utf-8")
+                tmp = _META_SPEND_FILE.with_name("%s.tmp%d_%d" % (_META_SPEND_FILE.name, _os.getpid(), threading.get_ident()))
+                tmp.write_text(_json.dumps(d), encoding="utf-8")
+                _os.replace(str(tmp), str(_META_SPEND_FILE))
             except Exception:
                 pass
     return val
@@ -18569,6 +18778,122 @@ def _dolar_ads(desde=None) -> float:
 # ARS que salieron de cuentas en USD, por periodo. Lo llena _meta_spend y lo lee el bloque de
 # IVA: asi el credito fiscal sale sin pedirle nada mas a Meta.
 _ADS_USD_ARS = {}
+# Los DOLARES de esas cuentas tal cual los cobra Meta, por periodo (vista USD del Dashboard).
+_ADS_USD_RAW = {}
+
+# ───────────── EL DOLAR DE PAUTA DE CADA DIA (Cristian, 02-11-2026) ─────────────
+# Cada dia de pauta en USD se pasa a pesos con el dolar de SU fecha, no con el de hoy. "La
+# comision de Emma nunca cambia, lo que cambia es el valor del USDT": desde ADS_USD_DESDE es la
+# cotizacion cripto de ESE dia / _factor_ads_usd (1,2% bancario + 8,5% sobre el neto); antes, la
+# cotizacion de ese dia sola. Los DOLARES no se tocan: son los que cobra Meta.
+# La cotizacion de cada dia se anota en dolar_dia.json mientras el dia corre (la ultima que se vio
+# queda fija al cerrar). Para dias viejos sin anotar se usa el historico publico de argentinadatos
+# (dolar cripto, venta: la misma serie que dolarapi).
+DOLAR_DIA_F = DATA_DIR / "dolar_dia.json"
+_DOLAR_DIA_MEM = {"d": None, "ts": 0.0}
+_DOLAR_HIST_MEM = {"d": {}, "ts": 0.0}
+
+
+def _dolar_dia_tabla() -> dict:
+    if _DOLAR_DIA_MEM["d"] is None or _time.time() - _DOLAR_DIA_MEM["ts"] > 60:
+        try:
+            _DOLAR_DIA_MEM["d"] = _json.loads(DOLAR_DIA_F.read_text(encoding="utf-8")) or {}
+        except Exception:
+            _DOLAR_DIA_MEM["d"] = _DOLAR_DIA_MEM["d"] or {}
+        _DOLAR_DIA_MEM["ts"] = _time.time()
+    return _DOLAR_DIA_MEM["d"]
+
+
+def _dolar_dia_anotar(dia, val) -> None:
+    try:
+        if abs(float(_dolar_dia_tabla().get(dia) or 0) - float(val)) < 0.005:
+            return
+        try:                       # se relee el disco: el otro worker pudo anotar otro dia
+            d = _json.loads(DOLAR_DIA_F.read_text(encoding="utf-8")) or {}
+        except FileNotFoundError:
+            d = {}
+        except Exception:
+            return
+        d[dia] = round(float(val), 2)
+        tmp = DOLAR_DIA_F.with_name("%s.tmp%d" % (DOLAR_DIA_F.name, _os.getpid()))
+        tmp.write_text(_json.dumps(d, sort_keys=True), encoding="utf-8")
+        _os.replace(str(tmp), str(DOLAR_DIA_F))
+        _DOLAR_DIA_MEM["d"] = d
+    except Exception:
+        pass
+
+
+def _dolar_hist_publico() -> dict:
+    """{dia: dolar cripto venta} de api.argentinadatos.com, en memoria 12 h. Si la API falla se
+    reintenta recien a los 10 min (antes, cada dia de cada cuenta esperaba el timeout)."""
+    ahora = _time.time()
+    if _DOLAR_HIST_MEM["d"] and ahora - _DOLAR_HIST_MEM["ts"] < 12 * 3600:
+        return _DOLAR_HIST_MEM["d"]
+    if ahora - float(_DOLAR_HIST_MEM.get("fallo_ts") or 0) < 600:
+        return _DOLAR_HIST_MEM["d"]
+    try:
+        j = requests.get("https://api.argentinadatos.com/v1/cotizaciones/dolares/cripto", timeout=5).json()
+        d = {str(x.get("fecha"))[:10]: float(x.get("venta") or 0) for x in (j or []) if x.get("venta")}
+        if d:
+            _DOLAR_HIST_MEM.update({"d": d, "ts": ahora, "fallo_ts": 0})
+            return d
+    except Exception:
+        pass
+    _DOLAR_HIST_MEM["fallo_ts"] = ahora
+    return _DOLAR_HIST_MEM["d"]
+
+
+def _dolar_base_dia(dia) -> float:
+    """La cotizacion (sin Emma) de UN dia. Hoy: en vivo (y se anota). Dia cerrado: la anotada; si
+    no hay, la del historico publico de ese dia (o el dia anterior mas cercano); si tampoco, vivo."""
+    import os
+    try:
+        return float((os.getenv("DOLAR_ARS") or "").strip())     # valor fijo por env: manda
+    except ValueError:
+        pass
+    dia = str(dia)[:10]
+    hoy = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3))).date().isoformat()
+    if dia >= hoy:
+        v = _dolar_ars_vivo()
+        if v and dia == hoy and not _dolar_cache.get("emergencia"):
+            _dolar_dia_anotar(dia, v)      # nunca el piso de emergencia (API caida)
+        return v
+    tabla = _dolar_dia_tabla()
+    v = tabla.get(dia)
+    if v:
+        return float(v)
+    h = _dolar_hist_publico()
+    if h:
+        prev = [k for k in h if k <= dia]
+        if prev:
+            return float(h[max(prev)])
+    prev = [k for k in tabla if k < dia]       # sin historico: el ultimo dia anotado antes
+    if prev:
+        return float(tabla[max(prev)])
+    return _dolar_ars_vivo()
+
+
+def _dolar_pauta_dia(email, dia) -> float:
+    """Pesos que costo UN dolar de pauta gastado ese dia (ver el bloque de arriba)."""
+    dia = str(dia)[:10]
+    base = _dolar_base_dia(dia)        # tambien deja anotada la cotizacion de hoy
+    if ADS_USD_DESDE and dia < ADS_USD_DESDE:
+        return base
+    return base / _factor_ads_usd()
+
+
+def _dolar_pauta_periodo(email, desde, hasta) -> float:
+    """Dolar de pauta PROMEDIO del periodo, pesado por lo que se gasto cada dia (pesos / dolares de
+    _meta_spend). Para pantallas que piden a Meta el periodo entero (MCP). 0 si no hay datos."""
+    k = (email, desde, hasta)
+    if k not in _ADS_USD_RAW:
+        try:
+            _meta_spend(email, desde, hasta)
+        except Exception:
+            pass
+    raw = float(_ADS_USD_RAW.get(k) or 0)
+    ars = float(_ADS_USD_ARS.get(k) or 0)
+    return ars / raw if raw > 0 and ars > 0 else 0.0
 
 _dolar_cache = {"ts": 0, "val": 0.0}
 
@@ -18578,8 +18903,8 @@ def _dolar_ars_vivo() -> float:
     Config con env DOLAR_ARS: número fijo (ej 1500), 'blue', o 'cripto'/'arq' (default)."""
     import os, time as _t
     c = _dolar_cache
-    if c["val"] and (_t.time() - c["ts"] < 600):
-        return c["val"]
+    if (c["val"] or c.get("emergencia")) and (_t.time() - c["ts"] < 600):
+        return c["val"] or 1000.0
     cfg = (os.getenv("DOLAR_ARS") or "cripto").strip().lower()
     try:
         return float(cfg)                    # valor fijo si pusieron un número
@@ -18600,8 +18925,10 @@ def _dolar_ars_vivo() -> float:
     except Exception:
         val = 0.0
     if not val or val < 500:                 # API caída → último bueno o piso sano (nunca 1)
+        c["emergencia"] = not c["val"]       # el 1000 de emergencia no se anota como dato del dia
+        c["ts"] = _t.time() - 540            # se reintenta en 1 min, no en cada llamada
         return c["val"] or 1000.0
-    c.update({"ts": _t.time(), "val": val})
+    c.update({"ts": _t.time(), "val": val, "emergencia": False})
     return val
 
 
@@ -20064,7 +20391,17 @@ def _fin_mp_entrada(email, f) -> dict:
 def _fin_datos_dia(email, f) -> dict:
     """Los números reales del día ya cerrado, para la fila de ese día."""
     d = f.strftime("%Y-%m-%d")
-    res = _shopify_resumen(email, d, d) or {}
+    try:
+        _SHOP_ESTADO.fallo = None
+    except Exception:
+        pass
+    res = _shopify_resumen(email, d, d)
+    # Si Shopify o MercadoPago fallaron, NO se arma la fila: una fila con 0 ventas pisaria la buena
+    # que ya estaba (el bot recarga los ultimos 3 dias). La proxima noche se vuelve a intentar.
+    _fallo = getattr(_SHOP_ESTADO, "fallo", None)
+    if _fallo or (res is None and (_shop_tokens().get(email) or {}).get("access_token")):
+        raise RuntimeError("Shopify/MercadoPago no respondieron para %s (%s): no escribo la fila" % (d, _fallo or "sin datos"))
+    res = res or {}
     raw = res.get("raw") or {}
     fact = float(raw.get("facturado") or 0)
     # INGRESO LIMPIO = suma del NETO de los pagos DE LAS ÓRDENES DE ESE DÍA.
@@ -20093,7 +20430,10 @@ def _fin_datos_dia(email, f) -> dict:
     ml_v = ml_u = 0
     ml_fact = ml_limpio = ml_iibb = 0.0
     try:
-        ml = _meli_resumen(email, d, d) or {}
+        ml = _meli_resumen(email, d, d)
+        if ml is None and _meli_tokens().get(email):
+            raise RuntimeError("MELI sin respuesta")
+        ml = ml or {}
         mraw = ml.get("raw") or ml
         ml_v = int(mraw.get("meli_ventas") or mraw.get("ordenes") or 0)
         ml_u = int(mraw.get("meli_unidades") or mraw.get("unidades") or 0)
@@ -20101,7 +20441,8 @@ def _fin_datos_dia(email, f) -> dict:
         ml_limpio = float(mraw.get("meli_cobrado") or mraw.get("cobrado") or 0)
         ml_iibb = float(mraw.get("iibb_monto") or 0)
     except Exception:
-        pass
+        if _meli_tokens().get(email):      # MELI conectado y fallo: no se escribe la fila a medias
+            raise RuntimeError("MercadoLibre no respondio para %s: no escribo la fila" % d)
     fact += ml_fact
     limpio += ml_limpio
     return {"fecha": d,
@@ -20115,9 +20456,11 @@ def _fin_datos_dia(email, f) -> dict:
             "mp_bruto": mp.get("bruto", 0.0), "mp_pagos": mp.get("pagos", 0),
             "mp_otros_neto": mp.get("otros_neto", 0.0), "mp_otros_pagos": mp.get("otros_pagos", 0),
             "mp_fuente": "MP x orden",
-            # ENVÍO: la tabla Andreani por ZONA con el descuento propio (provincia/CP + sucursal
-            # vs domicilio), la misma que usa RealProfit. La planilla traía "=5200*pedidos" (estimado).
-            "envio": round(float(raw.get("envio_zona_monto") or 0), 2),
+            # ENVÍO: el MISMO que resta el Dashboard (envio_monto): Flex a su costo real, Andreani
+            # por la tabla de su zona, y 0 los unificados y los solo digitales. AUDITORIA 02-11-2026:
+            # antes iba envio_zona_monto, que cobraba los Flex con la tabla de Andreani ($10.216,90
+            # un Flex de CABA que cuesta $5.900) y la planilla no cerraba con el Dashboard.
+            "envio": round(float(raw.get("envio_monto") or 0), 2),
             # IIBB como lo calcula RealProfit (3,5% configurable), no el 2% que traía la planilla.
             "iibb": round(float(raw.get("iibb_monto") or 0) + ml_iibb, 2),
             "ads_usd": _fin_ads_usd(email, d, d),
@@ -20364,6 +20707,9 @@ def _fin_cargar_dia(email, f) -> dict:
     return dat
 
 
+_FIN_RECARGA_DIAS = 3      # el bot de la 1:15 recarga ayer y los 2 dias anteriores
+
+
 def _fin_bot_loop():
     """Todos los días ~1:15am (hora AR) carga el día que cerró, por cada cuenta configurada."""
     import time as _t
@@ -20378,10 +20724,14 @@ def _fin_bot_loop():
             for email, c in (_fin_conf() or {}).items():
                 if not c.get("sheet") or c.get("auto") is False:
                     continue
-                try:
-                    _fin_cargar_dia(email, ayer)
-                except Exception:
-                    pass
+                # Ayer y los 2 dias anteriores (revision 02-11-2026): al despachar se marcan Flex,
+                # se pegan costos reales y entran cancelaciones; sin esto la fila quedaba con el
+                # numero de la 1:15 y no cerraba con el Dashboard. Recargar una fila es idempotente.
+                for _atras in range(max(1, _FIN_RECARGA_DIAS) - 1, -1, -1):
+                    try:
+                        _fin_cargar_dia(email, ayer - _dt.timedelta(days=_atras))
+                    except Exception:
+                        pass
         except Exception:
             _t.sleep(300)
 
@@ -21990,9 +22340,17 @@ def _pf_cerrado(hasta) -> bool:
         return False
 
 
-def _pf_ttl(hasta) -> int:
-    """Segundos que vale el cache: 12 h si el período está cerrado, 60 s si incluye hoy."""
-    return 43200 if _pf_cerrado(hasta) else 60
+def _pf_ttl(hasta, blob=None) -> int:
+    """Segundos que vale el cache: 12 h si el período está cerrado, 60 s si incluye hoy. Si algun
+    dia del periodo salio con un canal caido, como mucho 15 min: asi el reintento del dia llega a
+    la pantalla (revision 02-11-2026)."""
+    t = 43200 if _pf_cerrado(hasta) else 60
+    try:
+        if blob and ((blob.get("raw") or {}).get("dia_incompleto")):
+            return min(t, 900)
+    except Exception:
+        pass
+    return t
 
 _LAST_BLOB = DATA_DIR / "last_blob.json"   # ULTIMO dashboard de HOY por usuario -> home() lo inyecta = carga instantanea (estilo Escalafy)
 def _save_last_blob(email, blob):
@@ -22058,7 +22416,7 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
     key = (email, desde, hasta)
     now = _dt.datetime.utcnow()
     c = _PF_CACHE.get(key)
-    if c and (now - c[0]).total_seconds() < _pf_ttl(hasta):
+    if c and (now - c[0]).total_seconds() < _pf_ttl(hasta, c[1]) and not _pf_invalidado(email, c[0]):
         return _pf_mejor(email, c[1], desde, hasta, key, now)
     # home() entra con solo_fresco=True: si no hay un valor FRESCO en memoria devuelve None y la
     # pagina sale al instante (el front pide /pf-periodo por su cuenta y la cortina tapa hasta que
@@ -22087,7 +22445,8 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
             return _blob_vacio()
     try:
         c2 = _PF_CACHE.get(key)      # pudo terminar el otro mientras yo esperaba el candado
-        if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < _pf_ttl(hasta):
+        if c2 and (_dt.datetime.utcnow() - c2[0]).total_seconds() < _pf_ttl(hasta, c2[1]) \
+                and not _pf_invalidado(email, c2[0]):
             return _pf_mejor(email, c2[1], desde, hasta, key, now)
         return _pf_periodo_calcular(email, desde, hasta, key, now)
     finally:
@@ -22099,6 +22458,79 @@ _PF_LOCKS_G = threading.Lock()     # candado del diccionario de candados
 
 
 PF_DIAS = DATA_DIR / "pf_dias.json"   # un dia CERRADO ya calculado: no cambia nunca mas
+
+# INVALIDAR A MANO (AUDITORIA 02-11-2026). Marcar un pedido como Flex/Andreani en Despachos o pegar
+# el costo real de los Flex cambia el envio de dias que YA estaban cerrados y guardados, y como
+# esos datos no entran en la clave del dia el Dashboard seguia con el numero viejo para siempre.
+# _pf_invalidar borra de pf_dias.json los ultimos dias de la cuenta y anota la hora en
+# pf_inval.json: los dos workers dejan de servir lo que calcularon antes de esa hora.
+PF_INVAL = DATA_DIR / "pf_inval.json"   # {email: epoch de la ultima invalidacion}
+_PF_INVAL_MEM = {"mt": None, "d": {}}
+
+
+def _pf_inval_ts(email) -> float:
+    try:
+        mt = PF_INVAL.stat().st_mtime
+    except Exception:
+        return 0.0
+    if mt != _PF_INVAL_MEM["mt"]:
+        try:
+            _PF_INVAL_MEM["d"] = _json.loads(PF_INVAL.read_text(encoding="utf-8")) or {}
+        except Exception:
+            _PF_INVAL_MEM["d"] = {}
+        _PF_INVAL_MEM["mt"] = mt
+    try:
+        return float(_PF_INVAL_MEM["d"].get(email) or 0)
+    except Exception:
+        return 0.0
+
+
+def _pf_invalidado(email, momento_utc) -> bool:
+    """True si lo cacheado en momento_utc (datetime UTC naive) es anterior a una invalidacion."""
+    t = _pf_inval_ts(email)
+    if not t:
+        return False
+    try:
+        return momento_utc.replace(tzinfo=_dt.timezone.utc).timestamp() < t
+    except Exception:
+        return False
+
+
+def _pf_invalidar(email, dias=20) -> int:
+    """Borra de pf_dias.json los dias de la cuenta de las ultimas `dias` fechas y marca la hora.
+    Devuelve cuantos dias borro. Nunca rompe al que lo llama."""
+    n = 0
+    try:
+        hoy = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3))).date()
+        lim = (hoy - _dt.timedelta(days=int(dias))).isoformat()
+        pref = str(email) + "|"
+        with _PF_DIAS_LOCK:
+            d = _pf_dias_leer()
+            if d is None:
+                d = {}
+            for k in [k for k in d if k.startswith(pref) and (k.split("|") + ["", ""])[1] >= lim]:
+                d.pop(k, None); n += 1
+            if n:
+                _pf_dias_escribir(d)
+    except Exception:
+        pass
+    try:
+        try:
+            inv = _json.loads(PF_INVAL.read_text(encoding="utf-8")) or {}
+        except Exception:
+            inv = {}
+        inv[str(email)] = round(_time.time() + 1)
+        tmp = PF_INVAL.with_suffix(".tmp")
+        tmp.write_text(_json.dumps(inv, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(PF_INVAL)
+    except Exception:
+        pass
+    try:
+        for k in [k for k in list(_PF_CACHE) if k and k[0] == email]:
+            _PF_CACHE.pop(k, None)
+    except Exception:
+        pass
+    return n
 
 # ---------------- Generador de creativos: biblioteca de moldes ----------------
 # Los moldes son estaticos REALES de la competencia bajados de la Meta Ad Library, filtrados
@@ -22703,25 +23135,86 @@ def _pf_dia_clave(email, dia) -> str:
     # tarifa vieja; con '|rc3' se recalculan UNA vez. Los anteriores conservan su clave.
     if str(dia)[:10] >= ENVIO_RC3_DESDE[:10]:
         ck += "|rc3"
+    # AUDITORIA 02-11-2026 (pago de MP contado dos veces, envio de Flex/unificados/digitales):
+    # los dias desde PF_DIAS_MP2_DESDE se recalculan una vez. Los anteriores no se tocan.
+    if str(dia)[:10] >= PF_DIAS_MP2_DESDE:
+        ck += "|mp2"
     return ck
 
 
-def _pf_dias_cache() -> dict:
+PF_DIAS_MP2_DESDE = "2026-10-01"
+
+
+_PF_DIAS_LOCK = threading.RLock()     # un read-modify-write a la vez dentro del worker
+
+
+def _pf_dias_leer():
+    """El contenido de pf_dias.json, {} si no existe, o None si no se pudo LEER (error de disco: no
+    hay que escribir encima). Como se escribe atomico, un JSON que no parsea esta roto de verdad:
+    se aparta como pf_dias.json.roto y se arranca de cero (los dias se recalculan)."""
     try:
-        return _json.loads(PF_DIAS.read_text(encoding="utf-8"))
-    except Exception:
+        txt = PF_DIAS.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {}
+    except Exception:
+        return None
+    try:
+        d = _json.loads(txt)
+        if isinstance(d, dict):
+            return d
+    except Exception:
+        pass
+    try:
+        _os.replace(str(PF_DIAS), str(PF_DIAS.with_name(PF_DIAS.name + ".roto")))
+    except Exception:
+        return None
+    return {}
+
+
+def _pf_dias_cache() -> dict:
+    d = _pf_dias_leer()
+    return d if d is not None else {}
+
+
+def _pf_dias_escribir(d) -> None:
+    """Escritura atomica (tmp + replace): el otro worker nunca lee el archivo a medias. El tmp es
+    unico por hilo: dos hilos del mismo worker no se pisan el archivo temporal."""
+    tmp = PF_DIAS.with_name("%s.tmp%d_%d" % (PF_DIAS.name, _os.getpid(), threading.get_ident()))
+    tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    _os.replace(str(tmp), str(PF_DIAS))
+
+
+def _pf_dias_podar(d) -> dict:
+    """Tope de 800 (revision 02-11-2026): primero se van las claves HUERFANAS (las de un dia cuya
+    clave actual es otra: |ful800, |rc3, |mp2, cambio de tarifa Flex) y despues las de los dias
+    mas VIEJOS. Antes cortaba por orden alfabetico y se llevaba cuentas enteras."""
+    out = {}
+    for k, v in d.items():
+        partes = str(k).split("|")
+        if len(partes) >= 3:
+            try:
+                if _pf_dia_clave(partes[0], partes[1]) != k:
+                    continue
+            except Exception:
+                pass
+        out[k] = v
+    if len(out) > 800:
+        out = dict(sorted(out.items(), key=lambda kv: (str(kv[0]).split("|") + ["", ""])[1])[-800:])
+    return out
 
 
 def _pf_dias_guardar(clave, blob):
     """Guarda FUSIONANDO, nunca reemplazando: hay 2 workers y el que escribe entero se lleva
     puestos los dias que guardo el otro (mismo bug que ya paso con los chats de WhatsApp)."""
     try:
-        d = _pf_dias_cache()
-        d[clave] = blob
-        if len(d) > 800:                     # no crecer sin limite: dejo los 800 mas nuevos
-            d = dict(sorted(d.items())[-800:])
-        PF_DIAS.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        with _PF_DIAS_LOCK:
+            d = _pf_dias_leer()
+            if d is None:                    # no se pudo leer el disco: no lo piso
+                return
+            d[clave] = blob
+            if len(d) > 800:
+                d = _pf_dias_podar(d)
+            _pf_dias_escribir(d)
     except Exception:
         pass
 
@@ -22759,19 +23252,102 @@ def _pf_canales(email, desde, hasta):
     return blob, sh_n, tn_n
 
 
+# AUDITORIA 02-11-2026: un dia recien cerrado TODAVIA cambia (cancelaciones y reembolsos al
+# despachar, transferencias que se marcan pagas al otro dia, Flex que se marca a mano). Los dias de
+# los ultimos _PF_DIA_FRESCO_DIAS se vuelven a calcular si lo guardado tiene mas de
+# _PF_DIA_FRESCO_SEG. Despues de eso si quedan fijos, como siempre.
+_PF_DIA_FRESCO_DIAS = 3
+_PF_DIA_FRESCO_SEG = 6 * 3600
+# Un dia que se leyo con MercadoLibre caido no se graba (ni se usa lo grabado) mientras sea de
+# los ultimos _PF_DIA_INCOMPLETO_DIAS: pasado eso se acepta, para no recalcular eterno.
+_PF_DIA_INCOMPLETO_DIAS = 7
+_PF_DIA_REINTENTO_SEG = 15 * 60       # un dia grabado incompleto se reintenta cada 15 min
+
+
+def _pf_dia_edad(dia) -> int:
+    try:
+        hoy = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3))).date()
+        return (hoy - _dt.datetime.strptime(str(dia)[:10], "%Y-%m-%d").date()).days
+    except Exception:
+        return 9999
+
+
+def _pf_dia_incompleto(email, blob, dia) -> bool:
+    """True si el dia se leyo con MercadoLibre caido y la cuenta tiene MELI conectado."""
+    if _pf_dia_edad(dia) > _PF_DIA_INCOMPLETO_DIAS:
+        return False
+    raw = (blob or {}).get("raw") or {}
+    if raw.get("meli_ok") is False:
+        try:
+            return bool(_meli_tokens().get(email))
+        except Exception:
+            return False
+    return False
+
+
 def _pf_canales_dia(email, dia):
-    """Un DIA suelto, cacheado en disco si ya cerro. Un dia pasado no cambia nunca, asi que se
-    calcula UNA vez y despues sale de disco."""
+    """Un DIA suelto, cacheado en disco si ya cerro. Un dia pasado casi no cambia, asi que se
+    calcula una vez y despues sale de disco (salvo los ultimos dias, ver _PF_DIA_FRESCO_*)."""
     cerrado = _pf_cerrado(dia)
     ck = _pf_dia_clave(email, dia)
+    g = None
     if cerrado:
         g = _pf_dias_cache().get(ck)
         if g:
-            return g.get("blob"), int(g.get("sh") or 0), int(g.get("tn") or 0)
-    blob, sh_n, tn_n = _pf_canales(email, dia, dia)
+            ts = float(g.get("ts") or 0)
+            ahora = _time.time()
+            if ts and ts < _pf_inval_ts(email):
+                g = None                       # calculado antes de una invalidacion: no sirve
+            elif g.get("incompleto"):
+                if ahora - ts < _PF_DIA_REINTENTO_SEG:
+                    return _pf_marca_inc(g.get("blob")), int(g.get("sh") or 0), int(g.get("tn") or 0)
+            else:
+                viejo = _pf_dia_edad(dia) <= _PF_DIA_FRESCO_DIAS and ahora - ts > _PF_DIA_FRESCO_SEG
+                # un refresco que fallo hace poco no se reintenta en cada pedido (cada 15 min)
+                if viejo and ahora - float(g.get("reintento_ts") or 0) < _PF_DIA_REINTENTO_SEG:
+                    viejo = False
+                if not viejo and not _pf_dia_incompleto(email, g.get("blob"), dia):
+                    return g.get("blob"), int(g.get("sh") or 0), int(g.get("tn") or 0)
+    try:
+        _SHOP_ESTADO.fallo = None
+    except Exception:
+        pass
+    t0 = round(_time.time())                    # la hora del ARRANQUE: si mientras tanto alguien
+    blob, sh_n, tn_n = _pf_canales(email, dia, dia)   # invalida, lo grabado queda viejo
+    shop_fallo = getattr(_SHOP_ESTADO, "fallo", None)
+    incompleto = bool(shop_fallo) or not blob or _pf_dia_incompleto(email, blob, dia)
+    if cerrado and incompleto and g:
+        # Un recalculo con un canal caido (o que no devolvio nada) NO pisa ni tapa lo que ya
+        # estaba guardado: se sigue sirviendo eso y se anota el intento (revision 02-11-2026).
+        g2 = dict(g)
+        g2["reintento_ts"] = t0
+        if g.get("incompleto"):
+            g2["ts"] = t0
+        _pf_dias_guardar(ck, g2)
+        b0 = g.get("blob")
+        return (_pf_marca_inc(b0) if g.get("incompleto") else b0), int(g.get("sh") or 0), int(g.get("tn") or 0)
     if cerrado and blob:
-        _pf_dias_guardar(ck, {"blob": blob, "sh": sh_n, "tn": tn_n})
+        if not incompleto:
+            _pf_dias_guardar(ck, {"blob": blob, "sh": sh_n, "tn": tn_n, "ts": t0})
+        else:
+            # No hay uno bueno: se graba marcado y se reintenta cada _PF_DIA_REINTENTO_SEG, asi un
+            # corte largo de MELI no hace recalcular el dia en cada pedido del dashboard.
+            _pf_dias_guardar(ck, {"blob": blob, "sh": sh_n, "tn": tn_n, "ts": t0, "incompleto": True})
+    if blob and incompleto:
+        blob = _pf_marca_inc(blob)
     return blob, sh_n, tn_n
+
+
+def _pf_marca_inc(blob):
+    """Copia del blob con raw['dia_incompleto']=True (lo usa el TTL del periodo)."""
+    try:
+        if blob and isinstance(blob.get("raw"), dict):
+            b = dict(blob)
+            b["raw"] = dict(blob["raw"], dia_incompleto=True)
+            return b
+    except Exception:
+        pass
+    return blob
 
 
 def _pf_canales_periodo(email, desde, hasta):
@@ -22811,6 +23387,7 @@ def _pf_canales_periodo(email, desde, hasta):
     sh_n = tn_n = 0
     f = d1
     ml_ok_todos = True        # _combinar_resumen solo copia la lista SUM: meli_ok se perderia
+    inc_alguno = False        # algun dia se leyo con un canal caido (ver _pf_canales_dia)
     om_si = ow_si = 0.0       # fulfillment de los dias sin IVA (tampoco esta en la lista SUM)
     nw_si = 0                 # pedidos de la tienda de esos dias (costo de la tienda en el break even)
     while f <= d2:
@@ -22819,6 +23396,8 @@ def _pf_canales_periodo(email, desde, hasta):
             if b:
                 if (b.get("raw") or {}).get("meli_ok") is False:
                     ml_ok_todos = False
+                if (b.get("raw") or {}).get("dia_incompleto"):
+                    inc_alguno = True
                 a1, a2, a3 = _ful_sin_iva_dia(b.get("raw"), f.isoformat())
                 blob = _combinar_resumen(blob, b)
                 om_si += a1
@@ -22831,6 +23410,8 @@ def _pf_canales_periodo(email, desde, hasta):
         f += _dt.timedelta(days=1)
     if blob and isinstance(blob.get("raw"), dict):
         blob["raw"]["meli_ok"] = ml_ok_todos
+        if inc_alguno:
+            blob["raw"]["dia_incompleto"] = True
         _ful_marcar(blob, om_si, ow_si, nw_si)
     if blob:
         blob["raw"]["desde"] = desde
@@ -23047,7 +23628,13 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         _pm_usd = float(r.get("publi_meli", 0) or 0)
         _da_usd = _dolar_ads(desde) or 0.0
         _dm_usd = _dolar_ars_vivo() or 0.0
-        _meta_usd = (_pu_usd / _da_usd) if (_da_usd and _pu_usd) else 0.0
+        # Los DOLARES tal cual los cobra Meta (dia por dia, sin reconvertir): en USD la pauta es lo
+        # que factura Meta, el dolar de Emma solo cambia los pesos (regla de Cristian, 28-10).
+        _raw_usd = _ADS_USD_RAW.get((email, desde, hasta))
+        if _raw_usd is not None:
+            _meta_usd = float(_raw_usd or 0)
+        else:
+            _meta_usd = (_pu_usd / _da_usd) if (_da_usd and _pu_usd) else 0.0
         _nat_usd = (_pa_usd - _pu_usd) + _pm_usd          # CP3 media + MELI, en pesos
         r["publi_usd"] = round(_meta_usd + (_nat_usd / _dm_usd if _dm_usd else 0.0), 2)
     except Exception:
@@ -23376,6 +23963,27 @@ def _imp_dmy(iso) -> str:
     return "%s/%s/%s" % (s[8:10], s[5:7], s[0:4]) if len(s) >= 10 else s
 
 
+# GASTO QUE YA ENTRA SOLO (AUDITORIA 02-11-2026): el envio (RedChat / Envialo / Andreani / correo),
+# las comisiones de MercadoPago y MercadoLibre y el fulfillment ya se restan pedido por pedido en el
+# Dashboard, y su IVA ya esta en el 'IVA a favor automatico'. Si se cargan aca como gasto (p.ej. la
+# Factura A de una carga de saldo de RedChat) se contarian DOS veces: gasto y IVA. Se guardan para
+# verlos, pero no suman ni al IVA ni a los gastos extras.
+_IMP_YA_AUTO_RE = __import__("re").compile(
+    r"red\s*chat|envialo|andreani|servicio\s+de\s+correo|"
+    r"comisi[oó]n(es)?\s+(de\s+)?mercado\s*(pago|libre)|cargos?\s+(por\s+)?(venta|env[ií]o)s?\s+(de\s+)?mercado\s*libre|"
+    r"factura\s+(de\s+)?mercado\s*(pago|libre)|fulfil+ment", __import__("re").I)
+# Compras reales que mencionan a esas empresas pero NO son el envio/comision de un pedido.
+_IMP_NO_AUTO_RE = __import__("re").compile(
+    r"compra|pr[eé]stamo|cuota|point|devoluci|muestra|influencer|proveedor", __import__("re").I)
+
+
+def _imp_ya_automatico(g) -> bool:
+    if not isinstance(g, dict) or g.get("clase") == "carga" or g.get("tipo") == "sueldo":
+        return False
+    c = str(g.get("concepto") or "")
+    return bool(_IMP_YA_AUTO_RE.search(c)) and not _IMP_NO_AUTO_RE.search(c)
+
+
 def _imp_gasto_estado(g, conf_ri, emma="Emma"):
     """(suma_credito, estado, motivo) de un gasto. suma_credito se CALCULA aca y nunca se le cree
     al cliente: factura A o M y fecha desde que es Responsable Inscripto. El exterior se guarda
@@ -23388,6 +23996,10 @@ def _imp_gasto_estado(g, conf_ri, emma="Emma"):
     f = _imp_fecha(g.get("fecha"))
     if g.get("clase") != "carga" and g.get("tipo") == "sueldo":
         return False, "no", "Sueldo: se paga sin factura, va como gasto del mes (no suma IVA)"
+    if _imp_ya_automatico(g):
+        return False, "auto", ("Ya entra solo: el envío, las comisiones de MercadoPago/MercadoLibre y el "
+                               "fulfillment se restan pedido por pedido y su IVA ya está en 'IVA a favor "
+                               "automático'. Cargado acá se contaría dos veces: queda guardado sin sumar")
     if g.get("clase") != "carga" and comp == "emma_usdt":
         return False, "via_emma", ("Pagado con USDT de %s: no suma IVA (el IVA va una sola vez, en la "
                                    "factura de %s). Acá cuenta solo como gasto" % (emma, emma))
@@ -23430,6 +24042,8 @@ def _imp_gasto_cuentas(g, suma) -> dict:
             extra = _imp_carga_costo(mf, pi, pb, g.get("desc_iva_base"))
         if g.get("destino") == "meta":
             en_pauta, extra = extra, 0.0
+    elif _imp_ya_automatico(g):
+        extra = 0.0                # ya esta restado en el Dashboard (ver _IMP_YA_AUTO_RE)
     else:
         extra = float(g.get("monto_ars", 0) or 0)
     iva_r = float(g.get("iva_monto", 0) or 0) if suma else 0.0
@@ -28771,6 +29385,42 @@ except Exception:
     pass
 
 
+def _pf_precalentar_loop():
+    """Despues de un deploy que cambia claves de pf_dias (|mp2), recalcula los dias cerrados en
+    segundo plano, DE A UNO y con pausa, asi el primer "30 dias" u "octubre" no tiene que hacer
+    30 dias de golpe dentro de un request. Lo hace UN solo worker (candado de archivo)."""
+    import time as _t
+    _t.sleep(90)
+    try:
+        import fcntl
+        lk = open(str(DATA_DIR / "pf_precalentar.lock"), "w")
+        fcntl.flock(lk.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except Exception:
+        return                                   # el otro worker ya lo esta haciendo
+    try:
+        hoy = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3))).date()
+        d0 = _dt.date.fromisoformat(PF_DIAS_MP2_DESDE)
+        for email in list((_shop_tokens() or {}).keys()):
+            d = d0
+            while d < hoy:
+                dia = d.isoformat()
+                try:
+                    if _pf_dia_clave(email, dia) not in _pf_dias_cache():
+                        _pf_canales_dia(email, dia)
+                        _t.sleep(3)
+                except Exception:
+                    pass
+                d += _dt.timedelta(days=1)
+    except Exception:
+        pass
+
+
+try:
+    threading.Thread(target=_pf_precalentar_loop, daemon=True, name="pf-precalentar").start()
+except Exception:
+    pass
+
+
 def _wa_web_send(email, wid, text):
     """Manda un texto por el WhatsApp Web (servicio Baileys). Devuelve (ok, id, err)."""
     if not (WA_WEB_URL and WA_WEB_SECRET):
@@ -31546,7 +32196,8 @@ function saveAdv(){
  post('/wa-bot-config',{temp:val('botTemp'),demora:val('botDemora'),
   ignora_grupos:(g&&g.classList.contains('on'))?'1':'0',excluidos:val('botExcl'),
   instr_int:val('botInstrInt'),reglas_si:val('botReglasSi'),reglas_no:val('botReglasNo'),
-  canal:val('botCanal'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit')}).then(function(r){
+  canal:val('botCanal'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit'),
+  pago_borrar:(document.getElementById('botPagAli')?'1':'0')}).then(function(r){
   var m=document.getElementById('botMsg');
   if(m) m.innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
  });
@@ -31554,7 +32205,17 @@ function saveAdv(){
 function toggleBot(){ BOTON=!BOTON; var b=document.getElementById('botTgl'); if(b)b.classList.toggle('on',BOTON); var t=document.getElementById('botTglTxt'); if(t)t.textContent=BOTON?'está respondiendo solo':'apagado, no responde'; syncBotTop(); }
 function schedUI(){ var b=document.getElementById('schedBox'); if(b) b.style.display=(val('botSched')=='franja')?'flex':'none'; }
 function saveBot(){
- post('/wa-bot-config',{bot:BOTON?"1":"0",mode:val("botMode"),nombre:val("botNombre"),estilo:BEST,humanizar:(BHUM?"1":"0"),handoff_msg:val("botHandoff"),handoff_rules:val("botRules"),canal:val('botCanal'),sched:val('botSched'),desde:val('botDesde'),hasta:val('botHasta'),marca:val('botMarca'),pago_titular:val('botPagTit'),pago_alias:val('botPagAli'),pago_cuit:val('botPagCuit'),instr:document.getElementById('botInstr').value}).then(function(r){
+ // AUDITORIA 02-11-2026: SOLO se mandan los campos que estan en pantalla. Antes mandaba
+ // canal y los datos de cobro (titular/alias/CUIT) aunque esos inputs viven en "Ajustes
+ // avanzados": val() daba '' y el servidor BORRABA el alias de cobro y volvia el canal a 'api'.
+ var o={bot:BOTON?"1":"0",estilo:BEST,humanizar:(BHUM?"1":"0")};
+ [['mode','botMode'],['nombre','botNombre'],['handoff_msg','botHandoff'],['handoff_rules','botRules'],
+  ['canal','botCanal'],['sched','botSched'],['desde','botDesde'],['hasta','botHasta'],['marca','botMarca'],
+  ['pago_titular','botPagTit'],['pago_alias','botPagAli'],['pago_cuit','botPagCuit']].forEach(function(k){
+  if(document.getElementById(k[1])) o[k[0]]=val(k[1]);
+ });
+ var ins=document.getElementById('botInstr'); if(ins) o.instr=ins.value;
+ post('/wa-bot-config',o).then(function(r){
   document.getElementById('botMsg').innerHTML=r.ok?'<div class="msgline msgok">&#10003; Guardado'+(r.bot?' &#8212; bot ENCENDIDO':' &#8212; bot apagado')+'</div>':'<div class="msgline msgbad">'+esc(r.msg||'error')+'</div>';
   syncBotTop();
  });
@@ -33116,12 +33777,16 @@ def wa_bot_config_set():
         c["bot_instr"] = (request.form.get("instr") or "")[:12000]
     if "marca" in request.form:
         c["bot_marca"] = (request.form.get("marca") or "")[:80]
-    if "pago_titular" in request.form:
-        c["bot_pago_titular"] = (request.form.get("pago_titular") or "")[:120]
-    if "pago_alias" in request.form:
-        c["bot_pago_alias"] = (request.form.get("pago_alias") or "")[:120]
-    if "pago_cuit" in request.form:
-        c["bot_pago_cuit"] = (request.form.get("pago_cuit") or "")[:20]
+    # Datos de cobro: uno VACIO no pisa uno ya guardado (AUDITORIA 02-11-2026: el Guardar de la
+    # pantalla principal los mandaba en blanco y el bot se quedaba sin alias para cerrar ventas).
+    # Para borrarlos a proposito hay que mandar pago_borrar=1.
+    _pb = (request.form.get("pago_borrar") or "") == "1"
+    for _k, _ck, _mx in (("pago_titular", "bot_pago_titular", 120), ("pago_alias", "bot_pago_alias", 120),
+                         ("pago_cuit", "bot_pago_cuit", 20)):
+        if _k in request.form:
+            _v = (request.form.get(_k) or "").strip()[:_mx]
+            if _v or _pb or not c.get(_ck):
+                c[_ck] = _v
     if "canal" in request.form:
         v = request.form.get("canal")
         c["bot_canal"] = v if v in ("api", "web", "ambos") else "api"
@@ -37422,7 +38087,13 @@ def _mcp_tool_negocio(email, a):
         r.get("ordenes", 0), r.get("ordenes_web", 0), r.get("meli_ventas", 0)))
     L.append("Facturacion      %s" % _mcp_pesos(r.get("facturado")))
     L.append("Ganancia         %s   (margen %s%%)" % (_mcp_pesos(r.get("ganancia")), r.get("margen", 0)))
-    L.append("Ticket promedio  %s" % _mcp_pesos(r.get("aov")))
+    # el raw trae 'ticket'/'tot_aov' (no 'aov': salia siempre $0, auditoria 02-11-2026)
+    try:
+        _tk = float(r.get("ticket") or r.get("tot_aov") or 0) or (
+            float(r.get("facturado") or 0) / int(r.get("ordenes") or 0) if int(r.get("ordenes") or 0) else 0.0)
+    except Exception:
+        _tk = 0.0
+    L.append("Ticket promedio  %s" % _mcp_pesos(_tk))
     L.append("")
     L.append("PUBLICIDAD")
     L.append("  Inversion      %s" % _mcp_pesos(r.get("publi_ars")))
@@ -37475,7 +38146,8 @@ def _mcp_ads_insights(email, d, h, nivel="account", campos=None, limite=500):
     # Usar la misma para los dos dejaba el ROAS igual al de Meta y escondia que el dolar
     # encarecio la pauta un 10%. Esta tabla mostraba el gasto mas barato que el dashboard.
     dolar = _dolar_ars_vivo() or 1.0
-    dolar_gasto = _dolar_ads(d) or dolar
+    # el mismo dolar que el Dashboard: cada dia con el suyo, promediado por lo que se gasto
+    dolar_gasto = _dolar_pauta_periodo(email, d, h) or _dolar_ads(d) or dolar
     f = campos or "spend,account_currency"
     for nom, acc in cuentas:
         if acc in vistas:
@@ -37834,6 +38506,7 @@ def pf_flex_costos():
         tmp.replace(FLEX_COSTOS_F)
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:120])}), 500
+    _pf_invalidar(email)        # el envio de dias ya cerrados cambia: se recalculan
     return jsonify({"ok": True, "cargados": len(nuevos), "total": len(todo),
                     "detalle": sorted(nuevos.items(), key=lambda x: -int(x[0]))[:15]})
 
@@ -37894,6 +38567,7 @@ def pf_desp_logistica():
         _DESP_CACHE.pop(email, None); _desp_cache_save()
     except Exception:
         pass
+    _pf_invalidar(email)        # y los dias ya cerrados con el envio viejo (auditoria 02-11)
     return jsonify({"ok": True, "marcados": n, "logistica": cual,
                     "costo_configurado": bool(_FLEX_COSTO_UNICO or any(_FLEX_COSTO_ZONA.values()))})
 
