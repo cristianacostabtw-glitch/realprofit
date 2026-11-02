@@ -5087,19 +5087,26 @@ _SOLO_DASH = r"""
   }catch(e){ ok(f); }
  }); }
  // Videos de mas de 25 MB: en pedazos de 8 MB a /pf-ads-subir-parte (el tope de 35 MB es por pedido).
- // Cada pedazo se reintenta 3 veces antes de dar el video por fallado. Devuelve el json final.
- function rpaPartes(f, prog){ var CH=8*1024*1024, n=Math.ceil(f.size/CH);
-  function parte(k, intento){ var fd=new FormData();
+ // El primero va solo (crea la tanda) y el resto de a 4 A LA VEZ: una sola conexion a Render no
+ // llenaba la linea. Cada pedazo reintenta 3 veces. Al final, fin=1 arma el archivo. Devuelve el json final.
+ function rpaPartes(f, prog){ var CH=8*1024*1024, n=Math.ceil(f.size/CH), hechos=0, sig=1, error=null;
+  function manda(k, intento){ var fd=new FormData();
    fd.append('parte', f.slice(k*CH, Math.min(f.size,(k+1)*CH)), f.name); fd.append('name', f.name);
-   fd.append('idx', k); fd.append('total', n); fd.append('off', k*CH); if(UPLOAD_ID) fd.append('upload_id', UPLOAD_ID);
+   fd.append('off', k*CH); fd.append('size', f.size); if(UPLOAD_ID) fd.append('upload_id', UPLOAD_ID);
    return fetch('/pf-ads-subir-parte',{method:'POST',body:fd}).then(function(r){return r.json();}).then(function(j){
-    if(!j||!j.ok) return j||{ok:false,msg:'sin respuesta'};
-    UPLOAD_ID=j.upload_id; prog(Math.round((k+1)*100/n));
-    return (k+1<n)? parte(k+1,0) : j;
-   }).catch(function(e){ if(intento<3) return new Promise(function(z){setTimeout(z,1500);}).then(function(){return parte(k,intento+1);});
-    return {ok:false,msg:'se cortó la conexión subiendo el pedazo '+(k+1)+' de '+n}; });
+    if(!j||!j.ok) throw {msg:(j&&j.msg)||'sin respuesta', fatal:true};
+    UPLOAD_ID=j.upload_id; hechos++; prog(Math.round(hechos*100/n));
+   }).catch(function(e){ if(e&&e.fatal) throw e;
+    if(intento<3) return new Promise(function(z){setTimeout(z,1500);}).then(function(){return manda(k,intento+1);});
+    throw {msg:'se cortó la conexión subiendo el pedazo '+(k+1)+' de '+n}; });
   }
-  return parte(0,0);
+  function hilo(){ if(error||sig>=n) return Promise.resolve(); var k=sig++;
+   return manda(k,0).then(hilo, function(e){ error=e; }); }
+  return manda(0,0).then(function(){ var hs=[]; for(var t=0;t<4;t++) hs.push(hilo()); return Promise.all(hs); })
+   .then(function(){ if(error) throw error; var fd=new FormData(); fd.append('name', f.name); fd.append('off', 0);
+    fd.append('size', f.size); fd.append('fin', '1'); fd.append('upload_id', UPLOAD_ID);
+    return fetch('/pf-ads-subir-parte',{method:'POST',body:fd}).then(function(r){return r.json();}); })
+   .catch(function(e){ return {ok:false, msg:(e&&e.msg)||String(e)}; });
  }
  window.rpaSubir=function(){ var inp=$('rpa-file'); if(!inp.files||!inp.files.length)return;
   var L=[].slice.call(inp.files), allImg=true, allVid=true;
@@ -20871,23 +20878,24 @@ def pf_ads_subir():
 @app.post("/pf-ads-subir-parte")
 def pf_ads_subir_parte():
     """Un video de más de 35 MB no entraba nunca: Flask corta el pedido entero en ese tope
-    (MAX_CONTENT_LENGTH) y respondía "El archivo es muy grande". Ahora el navegador lo manda en
-    pedazos de 8 MB que se van pegando en el disco; con el último queda el archivo entero en la
-    tanda (mismo upload_id) y la respuesta es igual a la de /pf-ads-subir."""
+    (MAX_CONTENT_LENGTH). El navegador lo manda en pedazos de 8 MB, VARIOS A LA VEZ (una sola
+    conexión a Render, en EE.UU., no llenaba la línea: 0,45-0,87 MB/s medido el 02-11-2026).
+    Cada pedazo se escribe en su posición (os.pwrite, sirve aunque lleguen desordenados o a los 2
+    workers) y al final un pedido con fin=1 controla el tamaño y deja el archivo en la tanda.
+    Respuesta final igual a la de /pf-ads-subir."""
     if not _user_actual():
         return jsonify({"ok": False}), 401
     import uuid
-    f = request.files.get("parte")
     name = _os.path.basename((request.form.get("name") or "").strip())
     try:
-        idx = int(request.form.get("idx") or 0)
-        total = int(request.form.get("total") or 0)
         off = int(request.form.get("off") or 0)
+        size = int(request.form.get("size") or 0)
     except ValueError:
-        return jsonify({"ok": False, "msg": "pedazo mal armado (idx/total/off)"}), 400
+        return jsonify({"ok": False, "msg": "pedazo mal armado (off/size)"}), 400
+    fin = (request.form.get("fin") or "") == "1"
     EXT = (".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp")
-    if not f or not name or not name.lower().endswith(EXT) or total < 1 or not (0 <= idx < total):
-        return jsonify({"ok": False, "msg": "pedazo inválido (%s %s/%s)" % (name or "sin nombre", idx + 1, total)}), 400
+    if not name or not name.lower().endswith(EXT) or size < 1 or not (0 <= off < size):
+        return jsonify({"ok": False, "msg": "pedazo inválido (%s, byte %s de %s)" % (name or "sin nombre", off, size)}), 400
     up_id = (request.form.get("upload_id") or "").strip()
     d = ""
     if up_id:
@@ -20895,27 +20903,59 @@ def pf_ads_subir_parte():
         if _idx0.get("dir") and _idx0.get("email") == (_user_actual() or ""):
             d = _idx0["dir"]
         else:
-            up_id = ""
-    if not up_id:
-        if idx != 0:
             return jsonify({"ok": False, "msg": "se perdió la tanda a mitad del video: subilo de nuevo"}), 409
+    else:
+        if off != 0 or fin:
+            return jsonify({"ok": False, "msg": "el primer pedazo tiene que ir solo y sin tanda"}), 400
         up_id = uuid.uuid4().hex[:12]
         _ads_up_purga()
         d = str(_ADS_UPDIR / up_id)
     _os.makedirs(d, exist_ok=True)
     parcial = _os.path.join(d, "_parte_" + name)
-    tiene = _os.path.getsize(parcial) if (idx > 0 and _os.path.exists(parcial)) else 0
-    if tiene != off:
-        return jsonify({"ok": False, "msg": "se cortó la subida de %s (tenía %d bytes, llegó el pedazo del byte %d): subilo de nuevo" % (name, tiene, off)}), 409
-    with open(parcial, "wb" if idx == 0 else "ab") as out:
-        f.save(out)
-    # la tanda queda registrada desde el primer pedazo (la ve cualquiera de los 2 workers)
-    _ADS_UPLOADS[up_id] = d
-    _ix = _ads_up_idx_load()
-    _ix[up_id] = {"dir": d, "ts": __import__("time").time(), "email": _user_actual() or ""}
-    _ads_up_idx_save(_ix)
-    if idx < total - 1:
+    if not fin:
+        f = request.files.get("parte")
+        if not f:
+            return jsonify({"ok": False, "msg": "llegó un pedazo vacío de %s" % name}), 400
+        datos = f.read()
+        if not datos or off + len(datos) > size:
+            return jsonify({"ok": False, "msg": "pedazo de %s fuera de rango" % name}), 400
+        fd = _os.open(parcial, _os.O_CREAT | _os.O_WRONLY, 0o644)
+        try:
+            _os.pwrite(fd, datos, off)
+        finally:
+            _os.close(fd)
+        # anota qué pedazo llegó (O_APPEND: dos workers escribiendo a la vez no se pisan). Con esto
+        # el cierre sabe si falta alguno del medio, que el tamaño solo no muestra (quedaría un hueco).
+        fa = _os.open(parcial + ".ok", _os.O_CREAT | _os.O_WRONLY | _os.O_APPEND, 0o644)
+        try:
+            _os.write(fa, ("%d %d\n" % (off, len(datos))).encode())
+        finally:
+            _os.close(fa)
+        del datos
+        _ADS_UPLOADS[up_id] = d
+        if off == 0:                                  # la tanda queda registrada con el primer pedazo
+            _ix = _ads_up_idx_load()
+            _ix[up_id] = {"dir": d, "ts": __import__("time").time(), "email": _user_actual() or ""}
+            _ads_up_idx_save(_ix)
         return jsonify({"ok": True, "parcial": True, "upload_id": up_id})
+    # fin=1: todos los pedazos llegaron (el navegador espera a todos antes de mandarlo)
+    llego = {}
+    try:
+        for ln in open(parcial + ".ok", encoding="ascii").read().split("\n"):
+            if ln.strip():
+                o, n_ = ln.split()
+                llego[int(o)] = int(n_)
+    except (OSError, ValueError):
+        pass
+    pos = 0
+    while pos in llego and llego[pos] > 0:
+        pos += llego[pos]
+    if pos != size:
+        return jsonify({"ok": False, "msg": "a %s le faltan pedazos (llegaron seguidos %d de %d bytes): subilo de nuevo" % (name, pos, size)}), 409
+    try:
+        _os.remove(parcial + ".ok")
+    except OSError:
+        pass
     dest = _os.path.join(d, name); k = 1
     while _os.path.exists(dest):
         dest = _os.path.join(d, "%d_%s" % (k, name)); k += 1
