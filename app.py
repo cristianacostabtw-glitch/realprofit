@@ -681,7 +681,7 @@ _SOLO_DASH = r"""
    <div style="width:44px;height:44px;border-radius:11px;flex:none;background:#10233a;border:1px solid #1c3f63;display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="color:#5aa2f5;font-size:22px">local_shipping</span></div>
    <div style="flex:1;min-width:0">
     <div style="font-weight:700;color:#f1f5f9;font-size:15px">Env&iacute;o</div>
-    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma <b style="color:#cbd5e1">$877,60/pedido</b> de fulfillment (armado $800 + 9,7% de la cambiaria; los insumos se cargan aparte como gasto mensual).</div>
+    <div style="color:#94a3b8;font-size:12.5px;margin-top:5px">Se resta autom&aacute;tico por pedido usando el <b style="color:#34d399">costo REAL de Andreani por zona</b> (con tu <b style="color:#5aa2f5">30% de descuento</b>), seg&uacute;n la provincia/CP del cliente y si es a domicilio o sucursal. Si ten&eacute;s <b style="color:#5aa2f5">Envialo</b> conectado, usa ese costo real. Adem&aacute;s se suma __RP_FUL_TXT__</div>
     <div style="margin-top:12px;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;overflow:hidden;font-size:12px">
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;background:#0e1a2b;color:#7db3f5;font-weight:700;padding:8px 12px"><span>Zona</span><span style="text-align:right">Sucursal</span><span style="text-align:right">Domicilio</span></div>
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>AMBA (CABA+GBA+La Plata)</span><span style="text-align:right">$4.530</span><span style="text-align:right">$7.115</span></div>
@@ -1370,6 +1370,29 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-hcta b.g{color:#86efac}
   #rp-imp-ov .ix-hnote:empty{display:none}
   #rp-imp-ov .ix-hnote{margin-top:10px;font-size:12.5px;color:#cbd5e1;line-height:1.45}
+  /* --- hero GASTOS EXTRAS (ancho entero, debajo de IVA e IIBB): misma cadena 3D que los otros --- */
+  #rp-imp-ov .ix-heros1{padding:2px 0 4px}
+  #rp-imp-ov .ix-hero.x .ix-skin{border-color:rgba(110,231,183,.26);background:linear-gradient(160deg,rgba(16,150,110,.28),rgba(11,17,30,.72) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(16,185,129,.42),0 18px 40px -20px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-hero.x .ix-hlab{color:#a7f3d0}
+  #rp-imp-ov .ix-gxg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:18px 28px;align-items:start;transform-style:preserve-3d}
+  #rp-imp-ov .ix-gxg>div{min-width:0;transform-style:preserve-3d}
+  #rp-imp-ov .ix-gxc{margin-top:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  #rp-imp-ov .ix-gxk{border-radius:16px;padding:12px 14px;background:rgba(11,17,30,.5);border:1px solid rgba(148,163,184,.14);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 20px -14px rgba(0,0,0,.9);min-width:0}
+  #rp-imp-ov .ix-gxk.e{border-color:rgba(52,211,153,.32);background:rgba(16,185,129,.09)}
+  #rp-imp-ov .ix-gxk.u{border-color:rgba(45,212,191,.3);background:rgba(20,184,166,.08)}
+  #rp-imp-ov .ix-gxk.u i em{color:#5eead4}
+  #rp-imp-ov .ix-gxk.u span{white-space:normal;overflow:visible}
+  #rp-imp-ov .ix-gxk i .pp{display:block;white-space:normal;overflow:visible;font-size:inherit;font-weight:600;color:#cbd5e1}
+  #rp-imp-ov .ix-gxk.s{border-color:rgba(167,139,250,.32);background:rgba(139,92,246,.09)}
+  #rp-imp-ov .ix-gxk.s i em{color:#c4b5fd}
+  #rp-imp-ov .ix-gxk span{display:block;font-size:12px;font-weight:700;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #rp-imp-ov .ix-gxk b{display:block;margin-top:4px;font-size:18px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #rp-imp-ov .ix-gxk i{display:block;margin-top:3px;font-style:normal;font-size:11.5px;color:#94a3b8;line-height:1.35}
+  #rp-imp-ov .ix-gxk i em{font-style:normal;color:#86efac;font-weight:700}
+  #rp-imp-ov .ix-gxt:empty{display:none}
+  #rp-imp-ov .ix-gxt{margin-top:18px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;color:#cbd5e1;line-height:1.5}
+  #rp-imp-ov .ix-gxt b{color:#fff;font-variant-numeric:tabular-nums}
+  #rp-imp-ov .ix-gxt b.t{font-size:15px}
   /* --- KPI chicos --- */
   #rp-imp-ov .ix-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
   #rp-imp-ov .ix-k,#rp-imp-ov .ix-pn{background:rgba(11,17,30,.55);border:1px solid rgba(148,163,184,.13);-webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%)}
@@ -1404,8 +1427,10 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-btn.gh{color:#cbd5e1;background:rgba(20,28,46,.72);border-color:rgba(148,163,184,.2);box-shadow:none;font-weight:600}
   #rp-imp-ov .ix-btn:disabled{opacity:.6;cursor:default}
   #rp-imp-ov .ix-scroll{overflow-x:auto;margin-top:14px}
-  #rp-imp-ov .ix-tbl{min-width:820px}
-  #rp-imp-ov .ix-tr{display:grid;grid-template-columns:64px minmax(0,2fr) 100px 64px 130px 110px 120px 36px;gap:12px;padding:12px;align-items:center;border-bottom:1px solid rgba(148,163,184,.08);font-size:13.5px;color:#e2e8f0}
+  #rp-imp-ov .ix-tbl{min-width:1000px}
+  #rp-imp-ov .ix-tr{display:grid;grid-template-columns:54px minmax(0,2fr) 146px 132px 112px 112px 112px 104px 34px;gap:10px;padding:12px;align-items:center;border-bottom:1px solid rgba(148,163,184,.08);font-size:13.5px;color:#e2e8f0}
+  #rp-imp-ov .ix-sub2{color:#94a3b8;font-size:11.5px;font-weight:400}
+  #rp-imp-ov .ix-neg{color:#86efac}
   #rp-imp-ov .ix-tr.h{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#94a3b8;border-bottom-color:rgba(148,163,184,.13);padding:10px 12px}
   #rp-imp-ov .ix-tr.g{cursor:pointer;border-radius:10px}
   #rp-imp-ov .ix-tr.g:hover{background:rgba(255,255,255,.035)}
@@ -1416,35 +1441,109 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-sc.suma{color:#a7f3d0;background:rgba(16,185,129,.16);border:1px solid rgba(52,211,153,.35)}
   #rp-imp-ov .ix-sc.no{color:#cbd5e1;background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.22)}
   #rp-imp-ov .ix-sc.revisar{color:#fde68a;background:rgba(245,158,11,.14);border:1px solid rgba(251,191,36,.35)}
+  #rp-imp-ov .ix-sc.auto{color:#bfdbfe;background:rgba(59,130,246,.14);border:1px solid rgba(96,165,250,.35)}
+  #rp-imp-ov .ix-sc.emma{color:#a7f3d0;background:rgba(16,185,129,.12);border:1px solid rgba(52,211,153,.3);max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  #rp-imp-ov .ix-sc.via_emma{color:#99f6e4;background:rgba(20,184,166,.12);border:1px solid rgba(45,212,191,.32)}
   #rp-imp-ov .ix-del{font:inherit;background:none;border:0;color:#fb7185;cursor:pointer;font-weight:800;padding:4px 8px;border-radius:7px;opacity:.5}
   #rp-imp-ov .ix-tr.g:hover .ix-del,#rp-imp-ov .ix-del:focus{opacity:1}
   #rp-imp-ov .ix-del:hover{background:rgba(251,113,133,.12)}
   #rp-imp-ov .ix-empty{padding:28px 12px;text-align:center;color:#64748b;font-size:13px;line-height:1.5}
-  /* --- modal Cargar gasto (va FUERA de .ix-page: nada que se anime lo re-ancla) --- */
-  #rp-imp-ov .ix-modal{position:fixed;inset:0;z-index:120;background:rgba(4,6,12,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;padding:20px}
-  #rp-imp-ov .ix-box{position:relative;width:100%;max-width:540px;max-height:calc(100vh - 40px);overflow:auto;border-radius:22px;padding:24px;background:rgba(13,20,36,.94);border:1px solid rgba(255,255,255,.09);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 40px 80px -30px rgba(0,0,0,.9);display:flex;flex-direction:column;gap:16px}
+  /* --- modal Cargar gasto, EN 3D (va FUERA de .ix-page: nada que se anime lo re-ancla) ---
+     Cadena 3D: .ix-modal (perspectiva) > .ix-m3 (se inclina; preserve-3d y SIN overflow) >
+     .ix-mskin (el vidrio y el brillo: el overflow:hidden va ahi, que es una hoja) + .ix-box (el
+     scroll). Un scroll aplana a sus hijos, por eso las tarjetas de adentro (tipo de carga y
+     resultado) traen su PROPIA perspectiva. Sin animacion (reduced-motion) queda todo plano. */
+  #rp-imp-ov .ix-modal{position:fixed;inset:0;z-index:120;background:rgba(4,6,12,.6);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;padding:20px;perspective:1600px}
+  #rp-imp-ov .ix-m3{position:relative;width:100%;max-width:600px;border-radius:26px;transform-style:preserve-3d;transition:transform .5s cubic-bezier(.2,.75,.2,1)}
+  #rp-imp-ov .ix-mskin{position:absolute;inset:0;border-radius:26px;overflow:hidden;pointer-events:none;border:1px solid rgba(147,197,253,.22);background:linear-gradient(165deg,rgba(37,99,235,.22),rgba(13,20,36,.97) 34%,rgba(9,13,25,.98));box-shadow:inset 0 1px 0 rgba(255,255,255,.14),inset 0 -2px 0 rgba(0,0,0,.35),0 2px 0 rgba(255,255,255,.04),0 24px 48px -18px rgba(0,0,0,.85),0 70px 120px -40px rgba(37,99,235,.42)}
+  #rp-imp-ov .ix-mskin .ix-shine{width:32%}
+  #rp-imp-ov .ix-box{position:relative;max-height:calc(100vh - 40px);max-height:calc(100dvh - 40px);overflow:auto;border-radius:26px;padding:24px;padding-bottom:max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:16px;overscroll-behavior:contain}
   #rp-imp-ov .ix-mh{display:flex;align-items:center;gap:12px}
-  #rp-imp-ov .ix-mi{width:40px;height:40px;border-radius:11px;background:rgba(19,127,236,.13);color:#4aa8ff;display:flex;align-items:center;justify-content:center;flex:none}
+  #rp-imp-ov .ix-mi{width:42px;height:42px;border-radius:13px;background:linear-gradient(160deg,#3b82f6,#1d4ed8);color:#fff;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 3px 0 #1e3a8a,0 12px 22px -10px rgba(37,99,235,.9)}
   #rp-imp-ov .ix-f{display:flex;flex-direction:column;gap:6px;min-width:0}
   #rp-imp-ov .ix-lb{font-size:12.5px;color:#94a3b8;font-weight:600;display:flex;justify-content:space-between;gap:8px}
-  #rp-imp-ov .ix-inp{font:inherit;font-size:14px;color:#f4f7fb;background:rgba(11,17,30,.6);border:1px solid rgba(148,163,184,.2);border-radius:12px;padding:12px 14px;width:100%;color-scheme:dark;outline:none;font-variant-numeric:tabular-nums}
-  #rp-imp-ov .ix-inp:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+  #rp-imp-ov .ix-inp{font:inherit;font-size:14px;color:#f4f7fb;background:rgba(6,10,20,.7);border:1px solid rgba(148,163,184,.2);border-radius:12px;padding:12px 14px;width:100%;color-scheme:dark;outline:none;font-variant-numeric:tabular-nums;box-shadow:inset 0 2px 6px rgba(0,0,0,.45),0 1px 0 rgba(255,255,255,.04)}
+  #rp-imp-ov .ix-inp:focus{border-color:#3b82f6;box-shadow:inset 0 2px 6px rgba(0,0,0,.45),0 0 0 3px rgba(59,130,246,.25)}
   #rp-imp-ov .ix-inp.bad{border-color:#fb7185}
-  #rp-imp-ov .ix-help{font-size:11.5px;color:#64748b}
-  #rp-imp-ov .ix-seg{display:flex;gap:6px;padding:4px;border-radius:12px;background:rgba(11,17,30,.6);border:1px solid rgba(148,163,184,.15);flex-wrap:wrap}
-  #rp-imp-ov .ix-seg button{flex:1;font:inherit;font-size:13px;font-weight:600;color:#94a3b8;background:transparent;border:0;padding:10px 8px;border-radius:9px;cursor:pointer;white-space:nowrap}
-  #rp-imp-ov .ix-seg button.on{color:#fff;background:#2563eb;font-weight:700}
+  #rp-imp-ov .ix-inp.big{font-size:20px;font-weight:800;padding:13px 14px}
+  #rp-imp-ov .ix-help{font-size:11.5px;color:#64748b;line-height:1.4}
+  #rp-imp-ov .ix-help:empty{display:none}
+  #rp-imp-ov .ix-seg{display:flex;gap:6px;padding:4px 4px 6px;border-radius:12px;background:rgba(6,10,20,.65);border:1px solid rgba(148,163,184,.15);flex-wrap:wrap;box-shadow:inset 0 2px 6px rgba(0,0,0,.4)}
+  #rp-imp-ov .ix-seg button{flex:1;font:inherit;font-size:13px;font-weight:600;color:#94a3b8;background:transparent;border:0;padding:10px 8px;border-radius:9px;cursor:pointer;white-space:nowrap;transition:transform .15s,box-shadow .2s,background .2s,color .2s}
+  #rp-imp-ov .ix-seg button:hover:not(.on){color:#e2e8f0;background:rgba(255,255,255,.04)}
+  #rp-imp-ov .ix-seg button.on{color:#fff;background:linear-gradient(180deg,#3b82f6,#2563eb);font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 3px 0 #1e3a8a,0 8px 16px -8px rgba(37,99,235,.9)}
+  #rp-imp-ov .ix-seg button:active{transform:translateY(2px)}
+  #rp-imp-ov .ix-seg.sm button{font-size:12px;padding:8px 6px}
   #rp-imp-ov .ix-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   #rp-imp-ov .ix-det summary{cursor:pointer;font-size:12.5px;color:#93c5fd;font-weight:600}
   #rp-imp-ov .ix-det[open] summary{margin-bottom:10px}
-  #rp-imp-ov .ix-res{border-radius:16px;padding:16px;background:rgba(148,163,184,.08);border:1px solid rgba(148,163,184,.22);color:#cbd5e1}
-  #rp-imp-ov .ix-res.ok{background:rgba(16,185,129,.12);border-color:rgba(52,211,153,.35);color:#a7f3d0}
-  #rp-imp-ov .ix-res.am{background:rgba(245,158,11,.10);border-color:rgba(251,191,36,.30);color:#fde68a}
-  #rp-imp-ov .ix-res .t{display:flex;justify-content:space-between;align-items:center;gap:10px}
-  #rp-imp-ov .ix-res .t span{font-size:13px;font-weight:700}
-  #rp-imp-ov .ix-res .t b{font-size:22px;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}
-  #rp-imp-ov .ix-res .m{margin-top:6px;font-size:12.5px;color:#cbd5e1;line-height:1.5}
   #rp-imp-ov .ix-acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+  #rp-imp-ov .ix-m3 .ix-btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 3px 0 #1e3a8a,0 12px 24px -10px rgba(37,99,235,.9);transition:transform .15s,box-shadow .2s}
+  #rp-imp-ov .ix-m3 .ix-btn.gh{box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 3px 0 rgba(2,6,16,.9)}
+  #rp-imp-ov .ix-m3 .ix-btn:active:not(:disabled){transform:translateY(2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 1px 0 #1e3a8a}
+  /* tipo de carga: 2 tarjetas grandes que se levantan al pasar y quedan HUNDIDAS al elegirlas */
+  #rp-imp-ov .ix-clsw{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;perspective:900px;padding-top:2px}
+  #rp-imp-ov .ix-cls{position:relative;font:inherit;text-align:left;color:#cbd5e1;cursor:pointer;border-radius:18px;padding:16px 16px 15px;border:1px solid rgba(148,163,184,.2);background:linear-gradient(160deg,rgba(30,41,64,.92),rgba(11,17,30,.95));box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 6px 0 -1px rgba(2,6,16,.95),0 18px 30px -16px rgba(0,0,0,.9);transform-style:preserve-3d;transition:transform .35s cubic-bezier(.3,1.3,.4,1),box-shadow .3s,border-color .2s,background .2s;display:flex;flex-direction:column;gap:8px;min-width:0}
+  #rp-imp-ov .ix-cls:focus-visible{outline:2px solid #60a5fa;outline-offset:3px}
+  #rp-imp-ov .ix-cls .ic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:rgba(37,99,235,.18);color:#93c5fd;border:1px solid rgba(96,165,250,.3);box-shadow:0 10px 18px -8px rgba(37,99,235,.85)}
+  #rp-imp-ov .ix-cls.e .ic{background:rgba(16,185,129,.16);color:#6ee7b7;border-color:rgba(52,211,153,.32);box-shadow:0 10px 18px -8px rgba(16,185,129,.85)}
+  #rp-imp-ov .ix-cls .tt{font-size:15px;font-weight:800;color:#f4f7fb;line-height:1.2}
+  #rp-imp-ov .ix-cls .ss{font-size:12px;color:#94a3b8;line-height:1.4}
+  #rp-imp-ov .ix-cls .ck{position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2563eb;color:#fff;font-size:12px;font-weight:900;opacity:0;transform:scale(.5);transition:opacity .2s,transform .3s cubic-bezier(.3,1.5,.4,1)}
+  #rp-imp-ov .ix-cls.e .ck{background:#059669}
+  #rp-imp-ov .ix-cls.on{border-color:rgba(96,165,250,.8);background:linear-gradient(160deg,rgba(37,99,235,.36),rgba(11,17,30,.95));box-shadow:inset 0 3px 12px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1),0 1px 0 rgba(2,6,16,.95),0 0 0 3px rgba(59,130,246,.22),0 14px 30px -14px rgba(37,99,235,.95)}
+  #rp-imp-ov .ix-cls.e.on{border-color:rgba(52,211,153,.75);background:linear-gradient(160deg,rgba(16,185,129,.28),rgba(11,17,30,.95));box-shadow:inset 0 3px 12px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1),0 1px 0 rgba(2,6,16,.95),0 0 0 3px rgba(16,185,129,.2),0 14px 30px -14px rgba(16,185,129,.9)}
+  #rp-imp-ov .ix-cls.on .ck{opacity:1;transform:scale(1)}
+  /* bloques de cada tipo de carga */
+  #rp-imp-ov .ix-blk{display:flex;flex-direction:column;gap:16px}
+  #rp-imp-ov .ix-pct{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end}
+  #rp-imp-ov .ix-suf{position:relative}
+  #rp-imp-ov .ix-suf .ix-inp{padding-right:30px}
+  #rp-imp-ov .ix-suf i{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-style:normal;color:#64748b;font-weight:700;pointer-events:none}
+  #rp-imp-ov .ix-pill{padding:12px 14px;border-radius:12px;font-weight:800;font-size:14px;color:#fde68a;background:rgba(245,158,11,.12);border:1px solid rgba(251,191,36,.3);white-space:nowrap;font-variant-numeric:tabular-nums;box-shadow:0 3px 0 rgba(120,53,15,.55)}
+  #rp-imp-ov .ix-fx{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;font-size:12.5px;font-weight:800;color:#a7f3d0;background:rgba(16,185,129,.13);border:1px solid rgba(52,211,153,.35);padding:7px 12px;border-radius:999px;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 3px 0 rgba(6,78,59,.6)}
+  #rp-imp-ov .ix-fxw{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+  #rp-imp-ov .ix-fxw .ix-seg{flex:1;min-width:220px}
+  #rp-imp-ov .ix-fx.gr{color:#cbd5e1;background:rgba(148,163,184,.12);border-color:rgba(148,163,184,.3);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 3px 0 rgba(2,6,16,.8)}
+  /* comprobante "Pagado con USDT de Emma": renglón propio y verde al elegirlo */
+  #rp-imp-ov .ix-seg button.wide{flex-basis:100%}
+  #rp-imp-ov .ix-seg button.wide.on{background:linear-gradient(180deg,#10b981,#059669);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 3px 0 #065f46,0 8px 16px -8px rgba(16,185,129,.9)}
+  /* aviso de la carga para Meta: bien a la vista, debajo de la opción */
+  #rp-imp-ov .ix-mwarn{font-size:12.5px;line-height:1.5;color:#fde68a;background:rgba(245,158,11,.12);border:1px solid rgba(251,191,36,.4);border-radius:12px;padding:10px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 3px 0 rgba(120,53,15,.55)}
+  #rp-imp-ov .ix-mwarn b{color:#fef3c7}
+  /* sueldos: personas ya cargadas como chips rápidos (pastillas en relieve) */
+  #rp-imp-ov .ix-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+  #rp-imp-ov .ix-chips:empty{display:none}
+  #rp-imp-ov .ix-chips button{font:inherit;font-size:12px;font-weight:700;color:#cbd5e1;background:linear-gradient(180deg,rgba(30,41,64,.95),rgba(15,23,42,.95));border:1px solid rgba(148,163,184,.22);padding:6px 11px;border-radius:999px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 2px 0 rgba(2,6,16,.9);transition:transform .15s,box-shadow .2s,background .2s,color .2s}
+  #rp-imp-ov .ix-chips button:hover:not(.on){color:#fff;border-color:rgba(167,139,250,.45)}
+  #rp-imp-ov .ix-chips button.on{color:#fff;background:linear-gradient(180deg,#8b5cf6,#6d28d9);border-color:#a78bfa;box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 2px 0 #4c1d95}
+  #rp-imp-ov .ix-chips button:active{transform:translateY(2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+  /* resultado en vivo: tarjeta 3D como los heros de la seccion */
+  #rp-imp-ov .ix-r3{position:relative;perspective:1100px}
+  #rp-imp-ov .ix-r3t{position:relative;border-radius:20px;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.75,.2,1)}
+  #rp-imp-ov .ix-r3s{position:absolute;inset:0;border-radius:20px;overflow:hidden;pointer-events:none;border:1px solid rgba(148,163,184,.3);background:linear-gradient(160deg,rgba(71,85,105,.34),rgba(11,17,30,.82) 60%);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 30px 50px -26px rgba(0,0,0,.95),0 12px 24px -16px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-r3.ok .ix-r3s{border-color:rgba(110,231,183,.34);background:linear-gradient(160deg,rgba(16,185,129,.30),rgba(11,17,30,.82) 60%);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 30px 56px -26px rgba(16,185,129,.6),0 12px 24px -16px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-r3.am .ix-r3s{border-color:rgba(251,191,36,.32);background:linear-gradient(160deg,rgba(245,158,11,.22),rgba(11,17,30,.82) 60%)}
+  #rp-imp-ov .ix-r3.bl .ix-r3s{border-color:rgba(147,197,253,.32);background:linear-gradient(160deg,rgba(37,99,235,.30),rgba(11,17,30,.82) 60%);box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 30px 56px -26px rgba(37,99,235,.6),0 12px 24px -16px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-r3i{position:relative;padding:18px 20px;transform-style:preserve-3d}
+  #rp-imp-ov .ix-r3h{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  #rp-imp-ov .ix-r3h span{font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#cbd5e1}
+  #rp-imp-ov .ix-r3h em{font-style:normal;font-size:11.5px;font-weight:700;color:#e2e8f0;background:rgba(255,255,255,.09);padding:4px 10px;border-radius:999px}
+  #rp-imp-ov .ix-r3n{margin-top:8px;font-size:36px;line-height:1.05;font-weight:900;letter-spacing:-.02em;color:#fff;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+  #rp-imp-ov .ix-r3.ok .ix-r3n.g{color:#86efac}
+  #rp-imp-ov .ix-r3l{margin-top:12px;display:flex;flex-direction:column}
+  #rp-imp-ov .ix-r3w{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 0;border-top:1px dashed rgba(255,255,255,.1);font-size:13px;color:#cbd5e1}
+  #rp-imp-ov .ix-r3w small{display:block;font-size:11px;color:#94a3b8;margin-top:1px}
+  #rp-imp-ov .ix-r3w b{color:#fff;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  #rp-imp-ov .ix-r3w.neg b{color:#fca5a5}
+  #rp-imp-ov .ix-r3w.pos b{color:#86efac}
+  #rp-imp-ov .ix-r3w.off b{color:#94a3b8;text-decoration:line-through;text-decoration-color:rgba(148,163,184,.6)}
+  #rp-imp-ov .ix-r3w.via b{color:#5eead4}
+  #rp-imp-ov .ix-r3w.tot{border-top:1px solid rgba(255,255,255,.18);font-weight:700;color:#f4f7fb}
+  #rp-imp-ov .ix-r3w.tot b{font-size:15px}
+  #rp-imp-ov .ix-r3m:empty{display:none}
+  #rp-imp-ov .ix-r3m{margin-top:10px;font-size:12.5px;color:#cbd5e1;line-height:1.5;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.22)}
+  #rp-imp-ov .ix-r3m.warn{color:#bfdbfe;background:rgba(37,99,235,.16);border:1px solid rgba(96,165,250,.3)}
   @keyframes rpImpIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @keyframes rpImpFa{0%,100%{transform:translate(0,0)}50%{transform:translate(36px,-28px)}}
   @keyframes rpImpFb{0%,100%{transform:translate(0,0)}50%{transform:translate(-40px,30px)}}
@@ -1462,6 +1561,33 @@ _SOLO_DASH = r"""
    #rp-imp-ov .ix-k{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
    #rp-imp-ov .ix-k:hover{transform:translateY(-3px)}
    #rp-imp-ov .ix-bar i{transition:width .8s cubic-bezier(.2,.75,.2,1)}
+   #rp-imp-ov .ix-hero.x .ix-tilt{transform:rotateX(7deg)}
+   #rp-imp-ov .ix-hero.x:hover .ix-tilt{transform:rotateX(0deg) translateY(-6px)}
+   #rp-imp-ov .ix-gxk{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
+   #rp-imp-ov .ix-gxk:hover{transform:translateZ(16px) translateY(-2px)}
+   /* modal: entra girando desde abajo; el brillo cruza UNA vez (es un formulario, no distrae) */
+   #rp-imp-ov .ix-m3{animation:rpImpMIn .55s cubic-bezier(.2,.75,.2,1) backwards}
+   #rp-imp-ov .ix-mskin .ix-shine{animation:rpImpSh 1.9s ease-out .3s 1 both}
+   #rp-imp-ov .ix-cls{transform:rotateX(10deg)}
+   #rp-imp-ov .ix-cls .ic{transform:translateZ(22px)}
+   #rp-imp-ov .ix-cls:hover{transform:rotateX(0deg) translateY(-5px) translateZ(14px)}
+   #rp-imp-ov .ix-cls.on{transform:rotateX(0deg) translateY(3px) scale(.985)}
+   #rp-imp-ov .ix-cls:active{transform:translateY(4px) scale(.975)}
+   #rp-imp-ov .ix-r3t{transform:rotateX(8deg) rotateY(-4deg)}
+   #rp-imp-ov .ix-r3:hover .ix-r3t{transform:rotateX(0deg) rotateY(0deg) translateY(-3px)}
+   #rp-imp-ov .ix-r3i{transform:translateZ(1px)}
+   #rp-imp-ov .ix-r3n{transform:translateZ(26px)}
+   #rp-imp-ov .ix-r3s .ix-shine{animation:rpImpSh 3.8s ease-in-out infinite}
+  }
+  @keyframes rpImpMIn{from{opacity:0;transform:rotateX(16deg) translateY(40px) scale(.96)}to{opacity:1;transform:none}}
+  /* tilt leve del panel entero al pasar el mouse (solo con mouse, no en el celu) */
+  @media (prefers-reduced-motion: no-preference) and (hover:hover) and (pointer:fine){
+   #rp-imp-ov .ix-m3:hover:not(:focus-within){transform:rotateX(1deg) rotateY(-1deg) translateY(-2px)}
+  }
+  /* sin animacion: plano de verdad (sin el hundido al apretar, sin el tilde que crece) */
+  @media (prefers-reduced-motion: reduce){
+   #rp-imp-ov .ix-m3,#rp-imp-ov .ix-cls,#rp-imp-ov .ix-cls .ck,#rp-imp-ov .ix-seg button,#rp-imp-ov .ix-m3 .ix-btn,#rp-imp-ov .ix-r3t,#rp-imp-ov .ix-chips button{transition:none}
+   #rp-imp-ov .ix-seg button:active,#rp-imp-ov .ix-m3 .ix-btn:active:not(:disabled),#rp-imp-ov .ix-cls .ck,#rp-imp-ov .ix-cls.on .ck,#rp-imp-ov .ix-chips button:active{transform:none}
   }
   @media(max-width:1000px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media(max-width:900px){#rp-imp-ov .ix-heros{grid-template-columns:1fr}}
@@ -1475,21 +1601,37 @@ _SOLO_DASH = r"""
    #rp-imp-ov .ix-kpis{grid-template-columns:1fr}
    #rp-imp-ov .ix-pn{padding:18px 16px}
    #rp-imp-ov .ix-g2{grid-template-columns:1fr}
-   #rp-imp-ov .ix-modal{padding:10px}
-   #rp-imp-ov .ix-box{padding:18px;max-height:calc(100vh - 20px)}
-   /* tabla de gastos -> tarjeta: concepto + ¿Suma? + borrar arriba; fecha, tipo, monto e IVA abajo */
+   #rp-imp-ov .ix-modal{padding:8px}
+   #rp-imp-ov .ix-box{padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom));max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);gap:14px}
+   #rp-imp-ov .ix-clsw{gap:10px}
+   #rp-imp-ov .ix-cls{padding:13px 12px 12px;gap:6px}
+   #rp-imp-ov .ix-cls .ic{width:34px;height:34px}
+   #rp-imp-ov .ix-cls .tt{font-size:14px;padding-right:18px}
+   #rp-imp-ov .ix-cls .ss{font-size:11.5px}
+   #rp-imp-ov .ix-pct{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+   #rp-imp-ov .ix-pill{grid-column:1/3;text-align:center}
+   #rp-imp-ov .ix-r3i{padding:16px}
+   #rp-imp-ov .ix-r3n{font-size:30px}
+   #rp-imp-ov .ix-gxg{grid-template-columns:1fr}
+   #rp-imp-ov .ix-gxk b{font-size:16px}
+   /* tabla de gastos -> tarjeta de 3 renglones (6 columnas): concepto + ¿Suma? + borrar;
+      fecha, extra y monto; pagado, IVA recuperado y costo real */
    #rp-imp-ov .ix-tbl{min-width:0}
    #rp-imp-ov .ix-tr.h{display:none}
-   #rp-imp-ov .ix-tr.g{grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px 10px;padding:12px 4px;font-size:12.5px}
-   #rp-imp-ov .ix-tr.g>:nth-child(2){grid-column:1/3;grid-row:1;font-size:13.5px}
-   #rp-imp-ov .ix-tr.g>:nth-child(7){grid-column:3;grid-row:1}
-   #rp-imp-ov .ix-tr.g>:nth-child(8){grid-column:4;grid-row:1}
-   #rp-imp-ov .ix-tr.g>:nth-child(1){grid-column:1;grid-row:2}
-   #rp-imp-ov .ix-tr.g>:nth-child(3){grid-column:2;grid-row:2}
-   #rp-imp-ov .ix-tr.g>:nth-child(4){display:none}
-   #rp-imp-ov .ix-tr.g>:nth-child(5){grid-column:3;grid-row:2}
-   #rp-imp-ov .ix-tr.g>:nth-child(6){grid-column:4;grid-row:2}
-   #rp-imp-ov .ix-tr.g>:nth-child(6)::before{content:"IVA ";color:#64748b;font-size:11px}
+   #rp-imp-ov .ix-tr.g{grid-template-columns:repeat(6,minmax(0,1fr));gap:8px 10px;padding:14px 4px;font-size:12.5px}
+   #rp-imp-ov .ix-tr.g>:nth-child(2){grid-column:1/4;grid-row:1;font-size:13.5px}
+   #rp-imp-ov .ix-tr.g>:nth-child(8){grid-column:4/6;grid-row:1}
+   #rp-imp-ov .ix-tr.g>:nth-child(9){grid-column:6/7;grid-row:1}
+   #rp-imp-ov .ix-tr.g>:nth-child(1){grid-column:1/2;grid-row:2}
+   #rp-imp-ov .ix-tr.g>:nth-child(3){grid-column:2/4;grid-row:2;min-width:0}
+   #rp-imp-ov .ix-tr.g>:nth-child(4){grid-column:4/7;grid-row:2}
+   #rp-imp-ov .ix-tr.g>:nth-child(5){grid-column:1/3;grid-row:3;text-align:left}
+   #rp-imp-ov .ix-tr.g>:nth-child(6){grid-column:3/5;grid-row:3;text-align:left}
+   #rp-imp-ov .ix-tr.g>:nth-child(7){grid-column:5/7;grid-row:3}
+   #rp-imp-ov .ix-tr.g>:nth-child(5)::before{content:"Pagado"}
+   #rp-imp-ov .ix-tr.g>:nth-child(6)::before{content:"IVA recuperado"}
+   #rp-imp-ov .ix-tr.g>:nth-child(7)::before{content:"Costo real"}
+   #rp-imp-ov .ix-tr.g>:nth-child(n+5):nth-child(-n+7)::before{display:block;color:#64748b;font-size:10.5px;font-weight:600;margin-bottom:2px}
    #rp-imp-ov .ix-del{opacity:1}
   }
   /* NUMEROS GRANDES: la letra sigue el ancho REAL de la tarjeta, no el de la ventana. Con la barra
@@ -1508,21 +1650,28 @@ _SOLO_DASH = r"""
    @container ixw (min-width:900px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
    @container ixw (min-width:420px) and (max-width:899.98px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
    @container ixw (max-width:419.98px){#rp-imp-ov .ix-kpis{grid-template-columns:1fr}}
-   /* la tabla pasa a tarjeta cuando el CONTENIDO no llega a sus 820px (ej. 1000px con la barra
+   /* en el hero de gastos el número va en la columna izquierda (~45% del ancho): letra más chica */
+   @container ixw (min-width:700px){#rp-imp-ov .ix-gxg{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}#rp-imp-ov .ix-hero.x .ix-hnum:not(.na){font-size:clamp(28px,5.4cqw,60px)}}
+   @container ixw (max-width:699.98px){#rp-imp-ov .ix-gxg{grid-template-columns:1fr}}
+   /* la tabla pasa a tarjeta cuando el CONTENIDO no llega a sus 1000px (ej. con la barra
       abierta), no solo en celu: así el ¿Suma? nunca queda tapado por el scroll de costado */
-   @container ixw (max-width:819.98px){
+   @container ixw (max-width:999.98px){
     #rp-imp-ov .ix-tbl{min-width:0}
     #rp-imp-ov .ix-tr.h{display:none}
-    #rp-imp-ov .ix-tr.g{grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px 10px;padding:12px 4px;font-size:12.5px}
-    #rp-imp-ov .ix-tr.g>:nth-child(2){grid-column:1/3;grid-row:1;font-size:13.5px}
-    #rp-imp-ov .ix-tr.g>:nth-child(7){grid-column:3;grid-row:1}
-    #rp-imp-ov .ix-tr.g>:nth-child(8){grid-column:4;grid-row:1}
-    #rp-imp-ov .ix-tr.g>:nth-child(1){grid-column:1;grid-row:2}
-    #rp-imp-ov .ix-tr.g>:nth-child(3){grid-column:2;grid-row:2}
-    #rp-imp-ov .ix-tr.g>:nth-child(4){display:none}
-    #rp-imp-ov .ix-tr.g>:nth-child(5){grid-column:3;grid-row:2}
-    #rp-imp-ov .ix-tr.g>:nth-child(6){grid-column:4;grid-row:2}
-    #rp-imp-ov .ix-tr.g>:nth-child(6)::before{content:"IVA ";color:#64748b;font-size:11px}
+    #rp-imp-ov .ix-tr.g{grid-template-columns:repeat(6,minmax(0,1fr));gap:8px 10px;padding:14px 4px;font-size:12.5px}
+    #rp-imp-ov .ix-tr.g>:nth-child(2){grid-column:1/4;grid-row:1;font-size:13.5px}
+    #rp-imp-ov .ix-tr.g>:nth-child(8){grid-column:4/6;grid-row:1}
+    #rp-imp-ov .ix-tr.g>:nth-child(9){grid-column:6/7;grid-row:1}
+    #rp-imp-ov .ix-tr.g>:nth-child(1){grid-column:1/2;grid-row:2}
+    #rp-imp-ov .ix-tr.g>:nth-child(3){grid-column:2/4;grid-row:2;min-width:0}
+    #rp-imp-ov .ix-tr.g>:nth-child(4){grid-column:4/7;grid-row:2}
+    #rp-imp-ov .ix-tr.g>:nth-child(5){grid-column:1/3;grid-row:3;text-align:left}
+    #rp-imp-ov .ix-tr.g>:nth-child(6){grid-column:3/5;grid-row:3;text-align:left}
+    #rp-imp-ov .ix-tr.g>:nth-child(7){grid-column:5/7;grid-row:3}
+    #rp-imp-ov .ix-tr.g>:nth-child(5)::before{content:"Pagado"}
+    #rp-imp-ov .ix-tr.g>:nth-child(6)::before{content:"IVA recuperado"}
+    #rp-imp-ov .ix-tr.g>:nth-child(7)::before{content:"Costo real"}
+    #rp-imp-ov .ix-tr.g>:nth-child(n+5):nth-child(-n+7)::before{display:block;color:#64748b;font-size:10.5px;font-weight:600;margin-bottom:2px}
     #rp-imp-ov .ix-del{opacity:1}
    }
   }
@@ -1563,6 +1712,16 @@ _SOLO_DASH = r"""
      <div class="ix-hnote" id="ix-iibb-note"></div>
     </div></div></div>
    </div>
+   <div class="ix-heros1">
+    <div class="ix-hero x" id="ix-h-gx"><div class="ix-tilt"><div class="ix-skin"></div><div class="ix-in">
+     <div class="ix-hl"><span class="ix-hlab">Gastos extras del mes</span><span class="ix-hchip" id="ix-gx-chip">&nbsp;</span></div>
+     <div class="ix-gxg">
+      <div><div class="ix-hnum ld" id="ix-gx-num">$ …</div><div class="ix-hcta" id="ix-gx-cta"></div><div class="ix-hnote" id="ix-gx-note"></div></div>
+      <div class="ix-gxc" id="ix-gx-cortes"></div>
+     </div>
+     <div class="ix-gxt" id="ix-gx-tot"></div>
+    </div></div></div>
+   </div>
    <div class="ix-kpis">
     <div class="ix-k"><div class="ix-kl">Facturado acumulado</div><div class="ix-kn" id="ix-k-fact">—</div><div class="ix-bar"><i id="ix-k-bar"></i></div><div class="ix-ks" id="ix-k-fact-s">&nbsp;</div></div>
     <div class="ix-k"><div class="ix-kl" id="ix-k-deb-l">IVA débito (ventas)</div><div class="ix-kn" id="ix-k-deb">—</div><div class="ix-ks">Tienda + MercadoLibre</div></div>
@@ -1580,15 +1739,15 @@ _SOLO_DASH = r"""
      </div>
     </div>
     <div class="ix-chart" id="ix-chart"><div class="ix-empty">Cargando el gráfico…</div></div>
-    <p class="ix-cnote">Día a día se ve la operación: ventas contra producto, envíos, fulfillment, comisiones y la publicidad de MercadoLibre. La pauta de Meta (dólares y agencia), las percepciones y los gastos cargados entran en el total de arriba, no en esta curva.</p>
+    <p class="ix-cnote">Día a día se ve la operación: ventas contra producto, envíos, fulfillment<span id="ix-cnote-ful"></span>, comisiones y la publicidad de MercadoLibre. La pauta de Meta (dólares y agencia), las percepciones y los gastos cargados entran en el total de arriba, no en esta curva.</p>
    </div>
    <div class="ix-pn">
     <div class="ix-ph">
-     <div><h2>Gastos del mes</h2><p class="ix-pp">Solo suman al IVA a favor los que tienen factura A a tu CUIT. Sin factura, con factura B o del exterior, no suman.</p></div>
+     <div><h2>Gastos del mes</h2><p class="ix-pp">Solo suman al IVA a favor los que tienen factura A a tu CUIT (también las cargas <span class="ix-emma-con">con Emma</span> que no son para la pauta de Meta). Sin factura, con factura B o del exterior, no suman. Lo pagado con USDT de <span class="ix-emma">Emma</span> y los sueldos van como gasto, sin IVA.</p></div>
      <button class="ix-btn" onclick="rpImpGasto()">+ Cargar gasto</button>
     </div>
     <div class="ix-scroll"><div class="ix-tbl">
-     <div class="ix-tr h"><span>Fecha</span><span>Concepto</span><span>Tipo</span><span>Moneda</span><span class="ix-r">Monto</span><span class="ix-r">IVA</span><span class="ix-r">¿Suma?</span><span></span></div>
+     <div class="ix-tr h"><span>Fecha</span><span>Concepto</span><span>Tipo</span><span class="ix-r">Monto</span><span class="ix-r">Total pagado</span><span class="ix-r">IVA recuperado</span><span class="ix-r">Costo real</span><span class="ix-r">¿Suma?</span><span></span></div>
      <div id="ix-g-body"><div class="ix-empty">Cargando…</div></div>
     </div></div>
     <p class="ix-cnote" id="ix-g-foot"></p>
@@ -1596,39 +1755,104 @@ _SOLO_DASH = r"""
   </div>
  </div>
  <div class="ix-modal" id="ix-modal" onclick="if(event.target===this)rpImpGCerrar()">
-  <div class="ix-box" role="dialog" aria-modal="true" aria-labelledby="ix-m-tit">
+  <div class="ix-m3" role="dialog" aria-modal="true" aria-labelledby="ix-m-tit">
+   <div class="ix-mskin" aria-hidden="true"><div class="ix-shine"></div></div>
+   <div class="ix-box">
    <div class="ix-mh">
-    <div class="ix-mi"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></div>
-    <div style="flex:1"><div id="ix-m-tit" style="font-size:17px;font-weight:800;color:#f4f7fb">Cargar gasto</div><div style="color:#94a3b8;font-size:12.5px">Si tiene factura A, el IVA se suma solo a tu IVA a favor.</div></div>
+    <div class="ix-mi"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></div>
+    <div style="flex:1;min-width:0"><div id="ix-m-tit" style="font-size:18px;font-weight:800;color:#f4f7fb">Cargar gasto</div><div style="color:#94a3b8;font-size:12.5px">Elegí qué estás cargando. Abajo ves en vivo cuánto te cuesta y cuánto IVA recuperás.</div></div>
     <button class="ix-x" onclick="rpImpGCerrar()" title="Cerrar" aria-label="Cerrar">&#10005;</button>
    </div>
-   <div class="ix-f"><label class="ix-lb" for="ix-m-con">Concepto</label><input id="ix-m-con" class="ix-inp" maxlength="120" placeholder="Contadora, Packaging, Klaviyo…"></div>
-   <div class="ix-f"><span class="ix-lb">Tipo</span>
-    <div class="ix-seg" data-k="tipo"><button type="button" data-v="gasto" onclick="rpImpSeg(this)">Gasto</button><button type="button" data-v="suscripcion" onclick="rpImpSeg(this)">Suscripción</button></div></div>
+   <div class="ix-clsw" role="group" aria-label="Tipo de carga">
+    <button type="button" class="ix-cls e" id="ix-m-cls-c" onclick="rpImpClase('carga')" aria-pressed="false">
+     <span class="ck" aria-hidden="true">&#10003;</span>
+     <span class="ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg></span>
+     <span class="tt">Factura con <span class="ix-emma">Emma</span></span>
+     <span class="ss">el contador te factura y te acredita en USDT</span>
+    </button>
+    <button type="button" class="ix-cls" id="ix-m-cls-g" onclick="rpImpClase('gasto')" aria-pressed="false">
+     <span class="ck" aria-hidden="true">&#10003;</span>
+     <span class="ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 1 1V2l-1 1-3-2-3 2-3-2-3 2-3-2z"/><path d="M8 9h8M8 13h6"/></svg></span>
+     <span class="tt">Gasto común</span>
+     <span class="ss">proveedor / suscripción</span>
+    </button>
+   </div>
    <div class="ix-g2">
-    <div class="ix-f"><span class="ix-lb">Moneda</span>
-     <div class="ix-seg" data-k="moneda"><button type="button" data-v="ARS" onclick="rpImpSeg(this)">ARS</button><button type="button" data-v="USD" onclick="rpImpSeg(this)">USD</button></div></div>
-    <div class="ix-f"><label class="ix-lb" for="ix-m-monto" id="ix-m-monto-l">Monto total (con IVA)</label><input id="ix-m-monto" class="ix-inp" inputmode="decimal" placeholder="350.000" oninput="rpImpCalc()"></div>
+    <div class="ix-f"><label class="ix-lb" for="ix-m-con">Concepto</label><input id="ix-m-con" class="ix-inp" maxlength="120" placeholder="Contadora, Packaging, Klaviyo…" oninput="rpImpConTocado()"></div>
+    <div class="ix-f"><label class="ix-lb" for="ix-m-fecha">Fecha del comprobante</label><input id="ix-m-fecha" class="ix-inp" type="date" onchange="rpImpCalc()"></div>
    </div>
-   <div class="ix-g2" id="ix-m-usd" style="display:none">
-    <div class="ix-f"><label class="ix-lb" for="ix-m-tc">Tipo de cambio</label><input id="ix-m-tc" class="ix-inp" inputmode="decimal" oninput="rpImpCalc()"></div>
-    <div class="ix-f"><span class="ix-lb">En pesos</span><div class="ix-help" id="ix-m-ars" style="padding:13px 2px;font-size:13px;color:#cbd5e1"></div></div>
+   <!-- ===== Factura con Emma (la cambiaria) ===== -->
+   <div class="ix-blk" id="ix-m-carga">
+    <div class="ix-f"><label class="ix-lb" for="ix-m-mf"><span>Monto de la factura</span><button type="button" class="ix-lnk" onclick="rpImpEmmaNom()">Cambiar nombre de <span class="ix-emma">Emma</span></button></label>
+     <input id="ix-m-mf" class="ix-inp big" inputmode="decimal" placeholder="2.000.000" oninput="rpImpCalc()">
+     <span class="ix-help">En pesos. Es lo que le pedís que te cargue: la factura A sale por este monto con el IVA 21% ya adentro.</span></div>
+    <div class="ix-f"><span class="ix-lb">Te descuenta</span>
+     <div class="ix-pct">
+      <div class="ix-f"><label class="ix-help" for="ix-m-pi" style="color:#94a3b8">IVA</label><div class="ix-suf"><input id="ix-m-pi" class="ix-inp" inputmode="decimal" oninput="rpImpCalc()"><i>%</i></div></div>
+      <div class="ix-f"><label class="ix-help" for="ix-m-pb" style="color:#94a3b8">Impuestos bancarios</label><div class="ix-suf"><input id="ix-m-pb" class="ix-inp" inputmode="decimal" oninput="rpImpCalc()"><i>%</i></div></div>
+      <div class="ix-pill" id="ix-m-ptot">= 9,7%</div>
+     </div>
+     <div class="ix-fxw"><span class="ix-help" style="color:#94a3b8">El % de IVA va sobre</span>
+      <div class="ix-seg sm" data-k="pbase"><button type="button" data-v="total" onclick="rpImpSeg(this)">El total de la factura</button><button type="button" data-v="neto" onclick="rpImpSeg(this)">El neto sin IVA</button></div></div>
+     <span class="ix-help" id="ix-m-pbase-h">El bancario va siempre sobre el total. Quedan guardados para la próxima carga.</span></div>
+    <div class="ix-f"><span class="ix-lb">Moneda en que te acredita</span>
+     <div class="ix-seg" data-k="acmon"><button type="button" data-v="USDT" onclick="rpImpSeg(this)">USDT</button><button type="button" data-v="USD" onclick="rpImpSeg(this)">USD</button><button type="button" data-v="ARS" onclick="rpImpSeg(this)">Pesos</button></div></div>
+    <div class="ix-f" id="ix-m-tccw"><label class="ix-lb" for="ix-m-tcc" id="ix-m-tcc-l">Cotización</label><input id="ix-m-tcc" class="ix-inp" inputmode="decimal" oninput="rpImpCalc()"><span class="ix-help" id="ix-m-tcc-h"></span></div>
+    <div class="ix-f"><span class="ix-lb">¿Para qué es la plata?</span>
+     <div class="ix-seg" data-k="destino"><button type="button" data-v="otro" onclick="rpImpSeg(this)">Suscripciones y otras compras</button><button type="button" data-v="meta" onclick="rpImpSeg(this)">Publicidad de Meta en dólares</button></div>
+     <div class="ix-mwarn" id="ix-m-metaw" role="note" style="display:none"><b>Ojo: esta carga es para la pauta de Meta en dólares.</b> Ese IVA ya se cuenta solo en "IVA a favor automático" y el recargo ya está en el costo de la publicidad del Dashboard: se guarda para que veas el costo, pero <b>no suma IVA ni va a Gastos extras</b>. Si la plata es para suscripciones u otras compras, elegí "Suscripciones y otras compras".</div></div>
    </div>
-   <div class="ix-f"><label class="ix-lb" for="ix-m-fecha">Fecha del comprobante</label><input id="ix-m-fecha" class="ix-inp" type="date" onchange="rpImpCalc()"></div>
-   <div class="ix-f"><span class="ix-lb">Comprobante</span>
-    <div class="ix-seg" data-k="comp"><button type="button" data-v="A" onclick="rpImpSeg(this)">Factura A</button><button type="button" data-v="B" onclick="rpImpSeg(this)">Factura B</button><button type="button" data-v="sin" onclick="rpImpSeg(this)">Sin factura</button><button type="button" data-v="exterior" onclick="rpImpSeg(this)">Exterior</button></div></div>
-   <div class="ix-f" id="ix-m-alic-w"><span class="ix-lb">Alícuota de IVA de la factura</span>
-    <div class="ix-seg" data-k="alic"><button type="button" data-v="21" onclick="rpImpSeg(this)">21%</button><button type="button" data-v="10.5" onclick="rpImpSeg(this)">10,5%</button><button type="button" data-v="27" onclick="rpImpSeg(this)">27%</button></div></div>
-   <div class="ix-f" id="ix-m-iva-w"><label class="ix-lb" for="ix-m-iva"><span id="ix-m-iva-l">IVA de la factura (en pesos)</span><button type="button" class="ix-lnk" onclick="rpImpIvaAuto()">↺ recalcular</button></label><input id="ix-m-iva" class="ix-inp" inputmode="decimal" oninput="rpImpIvaTocado()"><span class="ix-help">Precalculado del total. Si la factura dice otro número, poné el de la factura.</span></div>
+   <!-- ===== Gasto común (proveedor / suscripción) ===== -->
+   <div class="ix-blk" id="ix-m-gasto">
+    <div class="ix-f"><span class="ix-lb">Tipo</span>
+     <div class="ix-seg" data-k="tipo"><button type="button" data-v="gasto" onclick="rpImpSeg(this)">Gasto</button><button type="button" data-v="suscripcion" onclick="rpImpSeg(this)">Suscripción</button><button type="button" data-v="sueldo" onclick="rpImpSeg(this)">Sueldo</button></div></div>
+    <!-- sueldos: ATT, el tuyo, el de tu socio, los editores (por video). En pesos y sin factura -->
+    <div class="ix-blk" id="ix-m-sueldo" style="display:none">
+     <div class="ix-f"><label class="ix-lb" for="ix-m-per">Persona / rol</label>
+      <input id="ix-m-per" class="ix-inp" maxlength="40" placeholder="ATT, Socio, Editor Juan…" oninput="rpImpPersona()" autocomplete="off">
+      <div class="ix-chips" id="ix-m-perc" role="group" aria-label="Personas ya cargadas"></div></div>
+     <div class="ix-f"><span class="ix-lb">Cómo se paga</span>
+      <div class="ix-seg" data-k="pago"><button type="button" data-v="fijo" onclick="rpImpSeg(this)">Monto fijo</button><button type="button" data-v="video" onclick="rpImpSeg(this)">Por video</button></div></div>
+     <div class="ix-f" id="ix-m-sfijo"><label class="ix-lb" for="ix-m-smonto">Monto (en pesos)</label><input id="ix-m-smonto" class="ix-inp big" inputmode="decimal" placeholder="400.000" oninput="rpImpCalc()"></div>
+     <div class="ix-g2" id="ix-m-svid" style="display:none">
+      <div class="ix-f"><label class="ix-lb" for="ix-m-vids">Videos</label><input id="ix-m-vids" class="ix-inp" inputmode="numeric" placeholder="12" oninput="rpImpCalc()"></div>
+      <div class="ix-f"><label class="ix-lb" for="ix-m-pvid">Precio por video</label><input id="ix-m-pvid" class="ix-inp" inputmode="decimal" placeholder="15.000" oninput="rpImpCalc()"></div>
+     </div>
+     <div class="ix-fxw"><span class="ix-fx gr">Sin factura · en pesos · no suma IVA</span></div>
+    </div>
+    <div class="ix-blk" id="ix-m-gcom">
+    <div class="ix-g2">
+     <div class="ix-f"><span class="ix-lb">Moneda</span>
+      <div class="ix-seg" data-k="moneda"><button type="button" data-v="ARS" onclick="rpImpSeg(this)">ARS</button><button type="button" data-v="USD" onclick="rpImpSeg(this)">USD</button><button type="button" data-v="USDT" onclick="rpImpSeg(this)">USDT</button></div></div>
+     <div class="ix-f"><label class="ix-lb" for="ix-m-monto" id="ix-m-monto-l">Monto total pagado</label><input id="ix-m-monto" class="ix-inp" inputmode="decimal" placeholder="350.000" oninput="rpImpCalc()"></div>
+    </div>
+    <div class="ix-g2" id="ix-m-usd" style="display:none">
+     <div class="ix-f"><label class="ix-lb" for="ix-m-tc" id="ix-m-tc-l">Cotización</label><input id="ix-m-tc" class="ix-inp" inputmode="decimal" oninput="rpImpTcTocado()"><span class="ix-help" id="ix-m-tc-h"></span></div>
+     <div class="ix-f"><span class="ix-lb">En pesos</span><div class="ix-help" id="ix-m-ars" style="padding:13px 2px;font-size:13px;color:#cbd5e1"></div></div>
+    </div>
+    <div class="ix-f"><span class="ix-lb">Comprobante</span>
+     <div class="ix-seg" data-k="comp"><button type="button" data-v="A" onclick="rpImpSeg(this)">Factura A</button><button type="button" data-v="B" onclick="rpImpSeg(this)">Factura B</button><button type="button" data-v="sin" onclick="rpImpSeg(this)">Sin factura</button><button type="button" data-v="exterior" onclick="rpImpSeg(this)">Exterior</button><button type="button" class="wide" data-v="emma_usdt" onclick="rpImpSeg(this)">Pagado con USDT de <span class="ix-emma">Emma</span></button></div></div>
+    <div class="ix-f" id="ix-m-fa"><span class="ix-lb">La factura dice</span>
+     <div class="ix-fxw"><span class="ix-fx" id="ix-m-fx">Factura A · IVA 21%</span>
+      <div class="ix-seg sm" data-k="imodo"><button type="button" data-v="incluido" onclick="rpImpSeg(this)">Total con IVA adentro</button><button type="button" data-v="suma" onclick="rpImpSeg(this)">Neto + IVA aparte</button></div></div></div>
+    </div>
+   </div>
+   <div class="ix-f" id="ix-m-iva-w"><label class="ix-lb" for="ix-m-iva"><span id="ix-m-iva-l">IVA de la factura (en pesos)</span><button type="button" class="ix-lnk" onclick="rpImpIvaAuto()">↺ recalcular</button></label><input id="ix-m-iva" class="ix-inp" inputmode="decimal" oninput="rpImpIvaTocado()"><span class="ix-help">Precalculado al 21%. Si la factura dice otro número, poné el de la factura.</span></div>
    <details class="ix-det" id="ix-m-det"><summary>Percepciones (opcional)</summary>
     <div class="ix-g2">
      <div class="ix-f"><label class="ix-lb" for="ix-m-piva">Percepción de IVA</label><input id="ix-m-piva" class="ix-inp" inputmode="decimal" placeholder="0"></div>
      <div class="ix-f"><label class="ix-lb" for="ix-m-piibb">Percepción de IIBB</label><input id="ix-m-piibb" class="ix-inp" inputmode="decimal" placeholder="0"></div>
     </div>
    </details>
-   <div class="ix-res" id="ix-m-res"><div class="t"><span id="ix-m-rt"></span><b id="ix-m-rv"></b></div><div class="m" id="ix-m-rm"></div></div>
+   <div class="ix-r3" id="ix-m-res" aria-live="polite"><div class="ix-r3t"><div class="ix-r3s" aria-hidden="true"><div class="ix-shine"></div></div><div class="ix-r3i">
+    <div class="ix-r3h"><span id="ix-m-rt">Resultado</span><em id="ix-m-rc"></em></div>
+    <div class="ix-r3n" id="ix-m-rv">$0</div>
+    <div class="ix-r3l" id="ix-m-rl"></div>
+    <div class="ix-r3m" id="ix-m-rm"></div>
+   </div></div></div>
    <div class="ix-err" id="ix-m-err" style="display:none"></div>
    <div class="ix-acts"><button type="button" class="ix-btn gh" onclick="rpImpGCerrar()">Cancelar</button><button type="button" class="ix-btn" id="ix-m-save" onclick="rpImpGGuardar(this)">Guardar gasto</button></div>
+   </div>
   </div>
  </div>
 </div>
@@ -1637,7 +1861,7 @@ _SOLO_DASH = r"""
   // ===================== IMPUESTOS =====================
   var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   var D=null, SERIE=null, MES=null, _tok=0, _okTk=0, _tries=0, _triesS=0, _tmr=null, _tmrS=null, _ts=0, _msg='';
-  var G={id:null,tipo:'gasto',moneda:'ARS',comp:'A',alic:21,ivaTocado:false};
+  var G={id:null,clase:'carga',tipo:'gasto',moneda:'ARS',comp:'A',imodo:'incluido',acmon:'USDT',destino:'otro',pbase:'neto',pago:'fijo',ivaTocado:false,conTocado:false,tcTocado:false};
   function $(id){return document.getElementById(id);}
   function fmt(n){ n=Number(n)||0; var s=Math.round(Math.abs(n)).toLocaleString('es-AR'); return (n<=-0.5?'−':'')+'$'+s; }
   function fmtU(n){ return 'US$ '+(Number(n)||0).toLocaleString('es-AR',{maximumFractionDigits:2}); }
@@ -1709,6 +1933,8 @@ _SOLO_DASH = r"""
     ['ix-k-fact','ix-k-deb','ix-k-auto','ix-k-gas'].forEach(function(id){ $(id).textContent='—'; });
     $('ix-k-bar').style.width='0'; $('ix-k-fact-s').innerHTML='&nbsp;'; $('ix-k-gas-s').innerHTML='&nbsp;';
     $('ix-g-body').innerHTML='<div class="ix-empty">Cargando…</div>'; $('ix-g-foot').textContent='';
+    var gn=$('ix-gx-num'); gn.className='ix-hnum ld'; gn.textContent='$ …';
+    ['ix-gx-cta','ix-gx-note','ix-gx-cortes','ix-gx-tot'].forEach(function(id){ $(id).innerHTML=''; }); $('ix-gx-chip').innerHTML='&nbsp;';
     chartMsg('Cargando el gráfico…'); estado('Calculando '+mesTxt(m)+'…'); }
   function pintar(){ var j=D; if(!j)return;
     var nx=mesAdd(j.mes,1), iv=j.iva||{}, ib=j.iibb||{}, na=!!iv.no_aplica;
@@ -1749,9 +1975,10 @@ _SOLO_DASH = r"""
     else {
       $('ix-k-deb').textContent=fmt(iv.debito); $('ix-k-auto').textContent=fmt(iv.cred_auto); $('ix-k-gas').textContent=fmt(iv.cred_gastos);
       var ads=(iv.cred_ads_usd||0)+(iv.cred_ads_agencia||0);
-      $('ix-k-auto-s').textContent='Producto, envíos, comisiones'+(ads>0?(' · ads '+fmt(ads)):', ads');
+      $('ix-k-auto-s').textContent='Producto, envíos, comisiones'+(ads>0?(' · ads '+fmt(ads)):', ads')+(fulSinIva()?(' · desde el '+dmy(D.ful_sin_iva_desde).slice(0,5)+' el fulfillment no suma IVA'):'');
       $('ix-k-gas-s').textContent=gs.n_suman+' de '+gs.n+' gasto'+(gs.n===1?'':'s')+' suman (con factura A)';
     }
+    $('ix-cnote-ful').textContent=fulSinIva()?(' (desde el '+dmy(j.ful_sin_iva_desde).slice(0,5)+' no suma: los $800 de armado ya no tienen IVA)'):'';
     // ---- ajustes del mes ----
     var ah='';
     if(!na){ ah+='<span>Saldo técnico a favor del mes anterior: <b>'+fmt(iv.st_anterior)+'</b> <button class="ix-lnk" onclick="rpImpSt()">Editar</button></span>';
@@ -1759,23 +1986,79 @@ _SOLO_DASH = r"""
     ah+='<span>Base de IIBB:<span class="ix-tg"><button class="'+(ib.base==='neto'?'on':'')+'" onclick="rpImpBase(\'neto\')">Sin IVA</button><button class="'+(ib.base==='bruto'?'on':'')+'" onclick="rpImpBase(\'bruto\')">Con IVA</button></span></span>';
     if(iv.exterior&&iv.exterior.n>0) ah+='<span class="ext">IVA de servicios del exterior: <b>'+fmt(iv.exterior.monto)+'</b> · a definir con la contadora (no se resta)</span>';
     $('ix-adj').innerHTML=ah;
+    // ---- gastos extras del mes (hero de ancho entero) ----
+    pintaEmma();
+    var tp=Number(gs.total_pagado)||0, ir=Number(gs.iva_recupera)||0, cr=Number(gs.costo_real)||0, gxn=$('ix-gx-num');
+    $('ix-gx-chip').textContent=(gs.n||0)+' gasto'+(gs.n===1?'':'s');
+    gxn.className='ix-hnum'; gxn.textContent=fmt(tp);
+    $('ix-gx-cta').innerHTML='<span>IVA que recuperás <b class="g">'+fmt(ir)+'</b></span>'
+      +(cr<0?('<span>Te dejan a favor <b class="g">'+fmt(-cr)+'</b></span>'):('<span>Costo real <b>'+fmt(cr)+'</b></span>'));
+    var ep=Number(gs.en_pauta)||0, gnt=[];
+    if(gs.n){ gnt.push('Total pagado: en las cargas con '+emma()+' cuenta solo el costo de la cambiaria, no el monto de la factura (esa plata no se gastó, cambió de moneda). Costo real = total pagado − IVA que recuperás.');
+      if(ep>0) gnt.push('Las cargas para la pauta de Meta costaron '+fmt(ep)+' y no se suman acá: ese recargo ya está dentro del costo de la publicidad del Dashboard (igual que su IVA, que ya está en el automático).');
+      if(gs.cortes&&gs.cortes.emma_usdt&&gs.cortes.emma_usdt.n) gnt.push('Lo pagado con USDT de '+emma()+' cuenta como gasto (USDT × cotización) pero sin IVA: el IVA va una sola vez, en la factura de '+emma()+' (sumarlo acá sería contarlo dos veces).');
+      if(gs.cortes&&gs.cortes.sueldos&&gs.cortes.sueldos.n) gnt.push('Los sueldos van en pesos y sin factura: gasto del mes, sin IVA.');
+      if(!na && ir>0 && (Number(iv.saldo_tecnico_favor)||0)>0) gnt.push('Ojo: este mes el IVA ya te da saldo a favor, así que parte de este IVA no baja nada ahora; queda como saldo para el mes que viene.'); }
+    else gnt.push('Todavía no cargaste gastos este mes. Tocá "+ Cargar gasto" abajo.');
+    $('ix-gx-note').textContent=gnt.join(' ');
+    // Cada gasto va a UNA de las 5 primeras (sumadas dan el total pagado). 'suscripciones' es un
+    // TIPO, no un comprobante: ya está adentro de las otras (por eso va como "de eso").
+    var CO=gs.cortes||{}, en=emma(), cards=[];
+    function cOf(k){ return CO[k]||{n:0,total:0,iva:0}; }
+    function nTxt(n,s1,s2){ n=Number(n)||0; return n.toLocaleString('es-AR')+' '+(n===1?s1:s2); }
+    function ivaTxt(o,t){ return (Number(o.iva)||0)>0?(t+' <em>'+esc(fmt(o.iva))+'</em>'):'sin IVA a favor'; }
+    function card(cls,tit,big,lin,tt){ return '<div class="ix-gxk'+(cls?(' '+cls):'')+'" title="'+esc(tt)+'"><span>'+esc(tit)+'</span><b>'+fmt(big)+'</b><i>'+lin+'</i></div>'; }
+    var ce=cOf('emma'), cu=cOf('emma_usdt'), ca=cOf('factura_a'), cn=cOf('sin_factura'), cs=cOf('sueldos'), cq=cOf('suscripciones');
+    var oep=Number(ce.en_pauta)||0, ua=Number(ce.usdt_acred)||0, uu=Number(cu.usdt)||0;
+    var l1=(Number(ce.iva)||0)>0?ivaTxt(ce,'IVA que te dieron'):((Number(ce.n_auto)||0)>0?'IVA ya contado en el automático':'sin IVA a favor');
+    if(oep>0) l1+=' · '+esc(fmt(oep))+' para Meta, ya en la pauta';
+    l1+=' · '+(Number(ce.n)||0);
+    if(ua>0||uu>0){ var sal=r2(ua-uu); l1+='<br>USDT para compras: acreditados <em>'+esc(fmtQ(ua,'USDT'))+'</em> · usados '+esc(fmtQ(uu,'USDT'))+' · '+(sal>=0?('quedan '+esc(fmtQ(sal,'USDT'))):('usaste '+esc(fmtQ(-sal,'USDT'))+' de otro mes')); }
+    cards.push(card('e','Factura con '+en,ce.total,l1,'Factura con '+en+': te costaron '+fmt(ce.total)+' (solo la cambiaria)'+(oep>0?(' · más '+fmt(oep)+' de cargas para Meta que no se suman (ya están en la pauta)'):'')));
+    var ceIva=(Number(ce.iva)||0)>0;
+    cards.push(card('u','Pagado con USDT de '+en,cu.total,(uu>0?('≈ '+esc(fmtQ(uu,'USDT'))+' · '):'')+(ceIva?'IVA ya recuperado en la factura':'no suma IVA (va en la factura)')+' · '+(Number(cu.n)||0),
+      'Pagado con USDT de '+en+': '+fmt(cu.total)+'. Cuenta como gasto pero no suma IVA: el IVA va una sola vez, en la factura de '+en+'.'));
+    cards.push(card('','Con factura A',ca.total,ivaTxt(ca,'IVA que recuperás')+' · '+(Number(ca.n)||0),'Con factura A: pagado '+fmt(ca.total)));
+    cards.push(card('','Sin factura A',cn.total,'B, sin factura o exterior: sin IVA · '+(Number(cn.n)||0),'Sin factura A: pagado '+fmt(cn.total)+' (B, sin factura o exterior)'));
+    var pers=(cs.personas||[]).map(function(p){ return '<span class="pp">'+esc(p.persona==='otros'?('otros ('+p.otros+')'):p.persona)+' <em>'+esc(fmtM(p.total))+'</em></span>'; });
+    // una persona por renglón: el monto queda pegado a su nombre (en el celu no se mezclan)
+    var lsd=(pers.length?pers.join(''):'sin sueldos este mes · ')+((Number(cs.videos)||0)>0?(esc(nTxt(cs.videos,'video','videos'))+' · '):'')+esc(nTxt(cs.n,'pago','pagos'))+' · sin IVA';
+    cards.push(card('s','Sueldos',cs.total,lsd,'Sueldos: '+fmt(cs.total)+' en '+nTxt(cs.n,'pago','pagos')+'. En pesos y sin factura: gasto del mes, sin IVA.'
+      +(cs.personas||[]).map(function(p){ return ' · '+(p.persona==='otros'?('otros ('+p.otros+')'):p.persona)+' '+fmt(p.total)+((Number(p.videos)||0)>0?(' ('+nTxt(p.videos,'video','videos')+')'):''); }).join('')));
+    cards.push(card('','De eso, suscripciones',cq.total,ivaTxt(cq,'IVA que recuperás')+' · '+(Number(cq.n)||0)+' · ya incluidas arriba','De eso, suscripciones: pagado '+fmt(cq.total)+' (ya están sumadas en las otras tarjetas según su comprobante)'));
+    $('ix-gx-cortes').innerHTML=cards.join('');
+    var TM=j.total_mes;
+    $('ix-gx-tot').innerHTML=TM?('Todo junto este mes: IVA a pagar <b>'+fmt(TM.iva)+'</b> + IIBB a pagar <b>'+fmt(TM.iibb)+'</b> + gastos extras <b>'+fmt(TM.gastos)+'</b> = <b class="t">'+fmt(TM.total)+'</b>'):'';
     // ---- tabla de gastos ----
-    var CT={A:'Factura A',M:'Factura M',B:'Factura B',C:'Factura C',sin:'Sin factura',exterior:'Exterior'};
+    var CT={A:'Factura A',M:'Factura M',B:'Factura B',C:'Factura C',sin:'Sin factura',exterior:'Exterior',emma_usdt:'USDT de '+emma()};
+    var SUB='<div class="ix-sub2">';
     $('ix-g-body').innerHTML=(gs.rows||[]).map(function(g){
-      var monto=g.moneda==='USD'?(fmtU(g.monto_orig)+'<div class="ix-mut" style="font-size:11.5px;font-weight:400">'+fmt(g.monto_ars)+'</div>'):fmt(g.monto_ars);
-      var chip=g.estado==='suma'?'Suma':(g.comp==='exterior'?'A definir':'No suma');
-      var id=parseInt(g.id,10)||0, f=String(g.fecha||'');
+      var carga=g.clase==='carga', monto;
+      if(carga) monto=fmt(g.monto_orig)+SUB+'factura'+((g.acredita_moneda&&g.acredita_moneda!=='ARS'&&g.acreditado_orig)?(' · ≈ '+esc(fmtQ(g.acreditado_orig,g.acredita_moneda))):'')+'</div>';
+      else if(g.tipo==='sueldo'&&g.pago==='video') monto=fmt(g.monto_ars)+SUB+esc((parseInt(g.videos,10)||0)+' video'+((parseInt(g.videos,10)||0)===1?'':'s')+' × '+fmt(g.precio_video))+'</div>';
+      else if(g.moneda==='USD'||g.moneda==='USDT') monto=esc(fmtQ(g.monto_orig,g.moneda))+SUB+fmt(g.monto_ars)+'</div>';
+      else monto=fmt(g.monto_orig||g.monto_ars)+(g.iva_modo==='suma'?(SUB+'neto + IVA = '+fmt(g.monto_ars)+'</div>'):'');
+      var sld=!carga&&g.tipo==='sueldo';
+      var chip=g.estado==='suma'?'Suma':(g.estado==='auto'?'Ya contado':(g.estado==='via_emma'?('Vía '+emma()):(sld?'Sin IVA':(g.comp==='exterior'?'A definir':'No suma'))));
+      var id=parseInt(g.id,10)||0, f=String(g.fecha||''), ext=Number(g.extra), ivr=Number(g.iva_recupera)||0, cre=Number(g.costo_real);
+      if(!isFinite(ext)) ext=Number(g.monto_ars)||0; if(!isFinite(cre)) cre=ext-ivr;
+      var tipo=carga?('<span class="ix-sc emma" title="'+esc('Factura con '+emma()+(g.destino==='meta'?' · para la pauta de Meta':' · suscripciones y otras compras'))+'">'+esc(emma())+' · '+(g.destino==='meta'?'Meta':'compras')+'</span>'):('<span style="color:#cbd5e1">'+(sld?'Sueldo':(g.tipo==='suscripcion'?'Suscripción':'Gasto'))+'</span>');
+      // concepto: [principal, detalle]; en un sueldo, "Sueldo · persona" (el por video va debajo del monto)
+      var cp=sld?['Sueldo · '+(g.persona||'—'),(g.concepto&&g.concepto!=='Sueldo · '+(g.persona||''))?g.concepto:(g.pago==='video'?'por video':'sin factura')]
+                :[String(g.concepto||''),carga?(g.destino==='meta'?'para Meta':'suscripciones y compras'):(CT[g.comp]||g.comp)];
+      var cc=esc(cp[0])+' <span class="ix-mut" style="font-weight:400">· '+esc(cp[1])+'</span>';
       return '<div class="ix-tr g" onclick="rpImpGasto('+id+')" title="'+esc(g.motivo)+'">'
         +'<span class="ix-mut" style="font-variant-numeric:tabular-nums">'+esc(f.slice(8,10)+'/'+f.slice(5,7))+'</span>'
-        +'<span class="ix-cc">'+esc(g.concepto)+' <span class="ix-mut" style="font-weight:400">· '+esc(CT[g.comp]||g.comp)+'</span></span>'
-        +'<span style="color:#cbd5e1">'+(g.tipo==='suscripcion'?'Suscripción':'Gasto')+'</span>'
-        +'<span style="color:#cbd5e1">'+esc(g.moneda)+'</span>'
-        +'<span class="ix-r" style="font-weight:600">'+monto+'</span>'
-        +'<span class="ix-r" style="color:#cbd5e1">'+((Number(g.iva_monto)||0)>0?fmt(g.iva_monto):'—')+'</span>'
-        +'<span class="ix-r"><span class="ix-sc '+(g.comp==='exterior'?'no':esc(g.estado))+'">'+chip+'</span></span>'
+        +'<span class="ix-cc" title="'+esc(cp[0]+' · '+cp[1])+'">'+cc+'</span>'
+        +'<span style="min-width:0">'+tipo+'</span>'
+        +'<span class="ix-r" style="color:#cbd5e1">'+monto+'</span>'
+        +'<span class="ix-r" style="font-weight:700">'+fmt(ext)+(carga?(SUB+(Number(g.en_pauta)>0?('costo '+fmt(g.en_pauta)+', ya en la pauta'):('costo '+esc(pct(cargaPct(g)))))+'</div>'):'')+'</span>'
+        +'<span class="ix-r'+(ivr>0?' ix-neg':' ix-mut')+'">'+(ivr>0?fmt(ivr):'—')+'</span>'
+        +'<span class="ix-r'+(cre<0?' ix-neg':'')+'" style="font-weight:600">'+fmt(cre)+'</span>'
+        +'<span class="ix-r"><span class="ix-sc '+(g.comp==='exterior'?'no':esc(g.estado))+'">'+esc(chip)+'</span></span>'
         +'<span class="ix-r"><button class="ix-del" title="Borrar" aria-label="Borrar gasto" onclick="event.stopPropagation();rpImpGBorrar('+id+')">&#10005;</button></span></div>';
     }).join('')||'<div class="ix-empty">Todavía no hay gastos cargados en '+esc(mesTxt(j.mes))+'.</div>';
-    $('ix-g-foot').textContent=gs.n?(gs.n+' gasto'+(gs.n===1?'':'s')+' · total '+fmt(gs.total_ars)+(na?'':(' · IVA a favor '+fmt(iv.cred_gastos)))+' · tocá un gasto para editarlo'):'';
+    $('ix-g-foot').textContent=gs.n?(gs.n+' gasto'+(gs.n===1?'':'s')+' · total pagado '+fmt(tp)+' · IVA recuperado '+fmt(ir)+' · costo real '+fmt(cr)+' · tocá un gasto para editarlo'):'';
   }
   function pintarChart(){ var el=$('ix-chart'); if(!el||!D)return;
     if(SERIE===null){ chartMsg('Cargando el gráfico…'); return; }
@@ -1814,69 +2097,245 @@ _SOLO_DASH = r"""
       h+='<rect x="'+(x(dd)-bw).toFixed(1)+'" y="'+T+'" width="'+bw.toFixed(1)+'" height="'+(B-T)+'" fill="transparent"><title>'+esc(dd+' de '+mesTxt(D.mes)+' · facturado '+fmt(p.fact)+' · débito acumulado '+fmt(p.deb_acum)+' · a favor acumulado '+fmt(p.cred_acum)+' · diferencia '+fmt(p.deb_acum-p.cred_acum))+'</title></rect>'; });
     h+='</svg>'; el.innerHTML=h; }
   // ---- modal Cargar / editar gasto ----
+  // Dos tipos de carga: 'carga' = Factura con Emma (la cambiaria: factura A por el monto con el
+  // IVA 21% adentro, te acredita en USDT lo que queda después del 8,5% + 1,2%) y 'gasto' =
+  // gasto común (proveedor / suscripción). Lo de acá es la VISTA PREVIA: el server recalcula
+  // todo al guardar (monto en pesos, IVA, costo, acreditado y si suma).
   function esRI(f){ var r=(D&&D.ri)||{}; if(r.ri_desde) return !!f && f>=r.ri_desde; return String(r.regimen||'').toLowerCase().indexOf('ri')===0; }
   function fechaDef(){ var h=hoyAR(); if(MES && h.slice(0,7)===MES) return h; return (D&&D.hasta)||((MES||h.slice(0,7))+'-01'); }
-  function conIva(){ return G.comp==='A'||G.comp==='M'||G.comp==='exterior'; }
+  function emma(){ return String((D&&D.conf&&D.conf.emma_nombre)||'Emma'); }
+  function cargaDef(){ var c=(D&&D.conf&&D.conf.carga)||{}; return {iva:(c.iva!=null?Number(c.iva):8.5), banco:(c.banco!=null?Number(c.banco):1.2), moneda:(c.moneda||'USDT'), base:(c.base==='total'?'total':'neto')}; }
+  // lo que se queda Emma (igual que _imp_carga_costo del server): bancario sobre el total y el %
+  // de IVA sobre el total o sobre el neto sin IVA
+  function costoCarga(mf,pi,pb,base){ return mf*pb/100+(base==='neto'?mf/1.21:mf)*pi/100; }
+  // % efectivo de una carga guardada (con base 'neto' no es la suma de los dos %)
+  function cargaPct(g){ var mf=Number(g.monto_orig)||0, c=Number(g.costo); if(mf>0&&isFinite(c)) return r2(c/mf*100); return r2((Number(g.desc_iva_pct)||0)+(Number(g.desc_banco_pct)||0)); }
+  function conDef(){ return 'Factura con '+emma(); }
+  function esCarga(){ return G.clase==='carga'; }
+  // Sueldo (ATT, socios, editores): en pesos y sin factura. 'emma_usdt' = pagado con los USDT que
+  // te acreditó Emma: gasto, pero su IVA ya entró en la factura de la carga (no se suma otra vez).
+  function esSueldo(){ return !esCarga() && G.tipo==='sueldo'; }
+  function esUE(){ return !esCarga() && !esSueldo() && G.comp==='emma_usdt'; }
+  function esA(){ return !esCarga() && !esSueldo() && (G.comp==='A'||G.comp==='M'); }
+  function conIva(){ return esCarga()||(!esSueldo()&&(G.comp==='A'||G.comp==='M'||G.comp==='exterior')); }
+  // ¿el mes que se ve tiene días desde que el fulfillment ya no tiene IVA?
+  function fulSinIva(){ var fd=D&&D.ful_sin_iva_desde; return !!fd && String(D.hasta||'')>=fd; }
+  function emmaUlt(){ var u=D&&D.conf&&D.conf.emma_ult; return (u&&typeof u==='object')?u:null; }
+  // cotización para lo pagado con USDT de Emma: la de la última carga con Emma; si no, la del día
+  function tcEmma(){ var u=emmaUlt(); return (u&&Number(u.tc)>0)?Number(u.tc):((D&&D.dolar)||null); }
+  function conSueldo(){ var p=($('ix-m-per').value||'').replace(/\s+/g,' ').trim(); return 'Sueldo'+(p?(' · '+p):''); }
+  function perSug(){ var out=[], seen={};
+    ((D&&D.conf&&D.conf.sueldo_personas)||[]).concat(['ATT','Cristian','Socio','Editor']).forEach(function(p){ p=String(p==null?'':p).trim(); var k=p.toLowerCase(); if(p&&!seen[k]&&out.length<8){ seen[k]=1; out.push(p); } });
+    return out; }
+  function perChips(){ var el=$('ix-m-perc'); if(!el) return; var cur=($('ix-m-per').value||'').replace(/\s+/g,' ').trim().toLowerCase();
+    el.innerHTML=perSug().map(function(p){ var on=p.toLowerCase()===cur; return '<button type="button" class="'+(on?'on':'')+'" aria-pressed="'+(on?'true':'false')+'" data-p="'+esc(p)+'" onclick="rpImpPerChip(this)">'+esc(p)+'</button>'; }).join(''); }
+  function r2(n){ return Math.round((Number(n)||0)*100)/100; }
+  function fmtQ(n,mon){ var s=(Number(n)||0).toLocaleString('es-AR',{maximumFractionDigits:2}); return mon==='USD'?('US$ '+s):(mon==='ARS'?fmt(n):(s+' '+mon)); }
+  function pintaEmma(){ var n=emma(), es=document.querySelectorAll('#rp-imp-ov .ix-emma'); for(var i=0;i<es.length;i++) es[i].textContent=n;
+    var c=document.querySelectorAll('#rp-imp-ov .ix-emma-con'); for(var k=0;k<c.length;k++) c[k].textContent='con '+n; }
   function segs(){ var bs=document.querySelectorAll('#ix-modal .ix-seg button');
-    for(var i=0;i<bs.length;i++){ var k=bs[i].parentNode.getAttribute('data-k'), v=bs[i].getAttribute('data-v'); bs[i].classList.toggle('on', String(G[k])===v); }
-    $('ix-m-usd').style.display=G.moneda==='USD'?'':'none';
-    $('ix-m-alic-w').style.display=(G.comp==='A'||G.comp==='M')?'':'none';
+    for(var i=0;i<bs.length;i++){ var k=bs[i].parentNode.getAttribute('data-k'), v=bs[i].getAttribute('data-v'), on=String(G[k])===v;
+      // gastos viejos con factura C o M: se marca el botón que se comporta igual (B / A) sin cambiar el dato
+      if(k==='comp' && ((G.comp==='C'&&v==='B')||(G.comp==='M'&&v==='A'))) on=true;
+      bs[i].classList.toggle('on',on); bs[i].setAttribute('aria-pressed',on?'true':'false'); }
+    var cc=$('ix-m-cls-c'), cg=$('ix-m-cls-g'); cc.classList.toggle('on',esCarga()); cg.classList.toggle('on',!esCarga());
+    cc.setAttribute('aria-pressed',esCarga()?'true':'false'); cg.setAttribute('aria-pressed',esCarga()?'false':'true');
+    $('ix-m-carga').style.display=esCarga()?'':'none'; $('ix-m-gasto').style.display=esCarga()?'none':'';
+    $('ix-m-tccw').style.display=G.acmon==='ARS'?'none':'';
+    $('ix-m-tcc-l').textContent='Cotización (pesos por 1 '+G.acmon+')';
+    $('ix-m-usd').style.display=G.moneda==='ARS'?'none':'';
+    $('ix-m-tc-l').textContent='Cotización (pesos por 1 '+G.moneda+')';
+    $('ix-m-fa').style.display=esA()?'':'none';
+    $('ix-m-fx').textContent='Factura '+(G.comp==='M'?'M':'A')+' · IVA 21%';
     $('ix-m-iva-w').style.display=conIva()?'':'none';
-    $('ix-m-iva-l').textContent=G.comp==='exterior'?'IVA del resumen (en pesos, informativo)':'IVA de la factura (en pesos)';
-    $('ix-m-monto-l').textContent='Monto total'+(G.moneda==='USD'?' en dólares':' (con IVA)'); }
-  function arsDe(){ var m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value); if(isNaN(m)) return 0; if(G.moneda==='USD') return isNaN(tc)?0:m*tc; return m; }
-  window.rpImpSeg=function(el){ var k=el.parentNode.getAttribute('data-k'), v=el.getAttribute('data-v'); G[k]=(k==='alic')?parseFloat(v):v;
+    $('ix-m-iva-l').textContent=esCarga()?'IVA de la factura (21% incluido, en pesos)':(G.comp==='exterior'?'IVA del resumen (en pesos, informativo)':(G.imodo==='suma'?'IVA 21% de la factura (en pesos)':'IVA de la factura (en pesos)'));
+    var mon=G.moneda==='USD'?' en dólares':(G.moneda==='USDT'?' en USDT':''), sld=esSueldo(), ue=esUE(), u=emmaUlt();
+    $('ix-m-monto-l').textContent=(esA()&&G.imodo==='suma')?('Neto de la factura (sin IVA)'+mon):((ue?'Monto pagado':'Monto total pagado')+mon);
+    $('ix-m-sueldo').style.display=sld?'':'none'; $('ix-m-gcom').style.display=sld?'none':'';
+    $('ix-m-sfijo').style.display=G.pago==='video'?'none':''; $('ix-m-svid').style.display=G.pago==='video'?'':'none';
+    $('ix-m-metaw').style.display=(esCarga()&&G.destino==='meta')?'':'none';
+    $('ix-m-det').style.display=(sld||ue)?'none':'';
+    var tcAhora=num($('ix-m-tc').value), tcPre=!!(u&&Number(u.tc)>0&&!G.tcTocado&&Math.abs(tcAhora-Number(u.tc))<0.005);
+    $('ix-m-tc-h').textContent=ue?((u&&Number(u.tc)>0)?(tcPre?('Precargada con la de tu última carga con '+emma()+' ('+dmy(u.fecha)+'): '+fmtIn(u.tc)+'. Si pagaste a otra, cambiala.'):('Tu última carga con '+emma()+' ('+dmy(u.fecha)+') fue a '+fmtIn(u.tc)+'.')):('Todavía no hay cargas con '+emma()+': va la cotización del día.')):'';
+    if(sld) perChips();
+    $('ix-m-save').textContent=esCarga()?'Guardar carga':(sld?'Guardar sueldo':'Guardar gasto');
+    pintaEmma(); }
+  // monto en pesos del gasto común (antes del IVA aparte); 0 si falta algo
+  function arsDe(){ var m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value); if(isNaN(m)||m<0) return 0; if(G.moneda!=='ARS') return (isNaN(tc)||tc<=0)?0:m*tc; return m; }
+  function ivaAuto(){ if(esCarga()){ var mf=num($('ix-m-mf').value); return (isNaN(mf)||mf<=0)?0:mf*21/121; }
+    var a=arsDe(); return (esA()&&G.imodo==='suma')?a*0.21:a*21/121; }
+  window.rpImpClase=function(c){ if(c!=='carga'&&c!=='gasto') return; if(G.clase===c){ segs(); return; }
+    var ci=$('ix-m-con');
+    // el concepto por defecto de la carga se pone/saca solo mientras no lo hayas escrito vos
+    if(c==='carga' && (!(ci.value||'').trim() || !G.conTocado)){ ci.value=conDef(); G.conTocado=false; }
+    else if(c==='gasto' && !G.conTocado && ci.value===conDef()){ ci.value=(G.tipo==='sueldo')?conSueldo():''; }
+    G.clase=c; G.ivaTocado=false; segs(); rpImpCalc(); };
+  window.rpImpPersona=function(){ if(esSueldo() && !G.conTocado) $('ix-m-con').value=conSueldo(); perChips(); rpImpCalc(); };
+  window.rpImpPerChip=function(el){ var i=$('ix-m-per'); i.value=el.getAttribute('data-p')||''; rpImpPersona();
+    try{ i.focus(); var n=i.value.length; i.setSelectionRange(n,n); }catch(x){} };
+  window.rpImpTcTocado=function(){ G.tcTocado=true; segs(); rpImpCalc(); };
+  window.rpImpConTocado=function(){ G.conTocado=true; };
+  window.rpImpSeg=function(el){ var k=el.parentNode.getAttribute('data-k'), v=el.getAttribute('data-v'), prev=G[k]; G[k]=v;
+    if((k==='comp'||k==='imodo') && !G.ivaTocado) $('ix-m-iva').value='';
     if(k==='comp' && conIva() && !($('ix-m-iva').value||'').trim()) G.ivaTocado=false;   // vacío = lo precalcula (como el server)
+    // pagado con USDT de Emma: arranca en USDT y con la cotización de la última carga con Emma
+    // (mientras no la hayas escrito vos); al salir vuelve la del día
+    if(k==='comp' && v!==prev){ if(v==='emma_usdt' && G.moneda==='ARS') G.moneda='USDT';
+      if(!G.tcTocado){ var t=(v==='emma_usdt')?tcEmma():((D&&D.dolar)||null); $('ix-m-tc').value=t?fmtIn(t):''; } }
+    // el concepto del sueldo se pone/saca solo mientras no lo hayas escrito vos
+    if(k==='tipo' && v!==prev && !G.conTocado){ var ci=$('ix-m-con');
+      if(v==='sueldo') ci.value=conSueldo(); else if(prev==='sueldo' && /^Sueldo/.test(ci.value||'')) ci.value=''; }
     segs(); rpImpCalc(); };
   window.rpImpIvaTocado=function(){ G.ivaTocado=true; rpImpCalc(); };
   window.rpImpIvaAuto=function(){ G.ivaTocado=false; rpImpCalc(); };
-  window.rpImpCalc=function(){ var ars=arsDe(), usd=G.moneda==='USD';
-    $('ix-m-ars').textContent=usd?(ars>0?('≈ '+fmt(ars)):'—'):'';
-    if(conIva() && !G.ivaTocado){ var al=G.comp==='exterior'?21:G.alic; $('ix-m-iva').value=ars>0?fmtIn(ars*al/(100+al)):''; }
-    var iva=num($('ix-m-iva').value); if(isNaN(iva)) iva=0;
-    var f=$('ix-m-fecha').value, cls='', tit, txt, val='';
-    if((G.comp==='A'||G.comp==='M') && esRI(f)){ cls='ok'; tit='Suma a tu IVA a favor'; val=fmt(iva); txt='IVA de la factura '+G.comp+' al '+pct(G.alic)+'. Baja el IVA a pagar del mes.'+(usd?' Va en pesos, tal cual figura en la factura.':''); }
-    else if(G.comp==='A'||G.comp==='M'){ tit='No suma (antes de ser RI)'; txt='La fecha es anterior a que pasaras a Responsable Inscripto'+((D&&D.ri&&D.ri.ri_desde)?(' ('+dmy(D.ri.ri_desde)+')'):'')+': ese IVA no se puede tomar.'; }
-    else if(G.comp==='exterior'){ cls=''; tit='No suma (exterior)'; val=iva>0?fmt(iva):''; txt='Servicio del exterior: se guarda y se muestra aparte, a definir con la contadora. No baja el IVA a pagar.'; }
-    else if(G.comp==='B'||G.comp==='C'){ cls='am'; tit='No suma (factura '+G.comp+')'; txt='Con factura '+G.comp+' el IVA no se puede tomar. Pedí factura A a tu CUIT.'; }
-    else { tit='No suma (sin factura)'; txt='Se guarda como gasto del mes, sin IVA a favor.'; }
-    $('ix-m-res').className='ix-res '+cls; $('ix-m-rt').textContent=tit; $('ix-m-rv').textContent=val; $('ix-m-rm').textContent=txt; };
+  function fila(lab,val,cls,sub){ return '<div class="ix-r3w '+(cls||'')+'"><span>'+esc(lab)+(sub?'<small>'+esc(sub)+'</small>':'')+'</span><b>'+esc(val)+'</b></div>'; }
+  function res(cls,tit,chip,val,big,filas,nota,warn){ $('ix-m-res').className='ix-r3 '+(cls||''); $('ix-m-rt').textContent=tit; $('ix-m-rc').textContent=chip||'';
+    var v=$('ix-m-rv'); v.textContent=val; v.className='ix-r3n'+(big?' g':''); $('ix-m-rl').innerHTML=filas.join('');
+    var m=$('ix-m-rm'); m.textContent=nota||''; m.className='ix-r3m'+(warn?' warn':''); }
+  window.rpImpCalc=function(){ var f=$('ix-m-fecha').value, ri=esRI(f), rd=(D&&D.ri&&D.ri.ri_desde)?(' ('+dmy(D.ri.ri_desde)+')'):'';
+    if(conIva() && !G.ivaTocado){ var ia=ivaAuto(); $('ix-m-iva').value=ia>0?fmtIn(ia):''; }
+    var iva=num($('ix-m-iva').value); if(isNaN(iva)||iva<0) iva=0;
+    if(esCarga()){
+      var mf=num($('ix-m-mf').value); if(isNaN(mf)||mf<0) mf=0;
+      var pi=num($('ix-m-pi').value), pb=num($('ix-m-pb').value); if(isNaN(pi)) pi=0; if(isNaN(pb)) pb=0;
+      var neto=G.pbase==='neto', costo=r2(costoCarga(mf,pi,pb,G.pbase)), tp=neto?(mf>0?r2(costo/mf*100):r2(pi/1.21+pb)):r2(pi+pb), acr=r2(mf-costo), tc=num($('ix-m-tcc').value);
+      var u=(G.acmon!=='ARS' && tc>0)?acr/tc:null;
+      $('ix-m-ptot').textContent=(neto?'≈ ':'= ')+pct(tp);
+      $('ix-m-pbase-h').textContent=neto?('El '+pct(pi)+' va sobre el neto sin IVA ('+fmt(mf/1.21)+'), como la liquidación del 22-10. El bancario va siempre sobre el total. Quedan guardados para la próxima carga.'):'El bancario va siempre sobre el total. Quedan guardados para la próxima carga.';
+      $('ix-m-tcc-h').textContent=(u!==null&&mf>0)?('Te llegan ≈ '+fmtQ(u,G.acmon)+' ('+fmt(acr)+' ÷ '+fmtIn(tc)+')'):(G.acmon!=='ARS'?'Poné la cotización para ver cuántos '+G.acmon+' recibís.':'');
+      var meta=G.destino==='meta', suma=!meta&&ri, gan=r2(iva-costo), F=[];
+      F.push(fila('Le das',fmt(mf),'','factura A por '+fmt(mf)+', IVA 21% incluido'));
+      F.push(fila('Te acredita',fmt(acr)+(u!==null?(' · ≈ '+fmtQ(u,G.acmon)):''),''));
+      F.push(fila('Te cuesta la carga',fmt(costo)+' ('+pct(tp)+')','neg',pct(pi)+' de IVA'+(neto?' sobre el neto':'')+' + '+pct(pb)+' bancario'));
+      F.push(fila('IVA a favor',fmt(iva),suma?'pos':'off',meta?'ya contado en "IVA a favor automático"':(ri?'21% incluido en la factura':'no se puede tomar (antes de ser RI)')));
+      var nota, warn=false;
+      if(meta){ warn=true; nota="El IVA de la pauta en dólares YA se cuenta solo en 'IVA a favor automático' (desde el 22-10). Esta carga se guarda para que veas el costo, pero no suma IVA de nuevo. Tampoco suma el costo en 'Gastos extras': ese recargo ya está dentro del costo de la publicidad del Dashboard."; }
+      else if(!ri){ nota='La fecha es anterior a que pasaras a Responsable Inscripto'+rd+': el IVA de la factura no se puede tomar.'; }
+      else { nota='El IVA a favor baja tu IVA a pagar del mes. En "Gastos extras" cuenta solo el costo ('+fmt(costo)+'): los '+fmt(mf)+' no los gastaste, los cambiaste de moneda.'; }
+      // el número grande es la conclusión: lo que ganás con la factura (IVA a favor − costo) o,
+      // si el IVA no suma, lo que te cuesta la carga
+      if(suma) res('ok',gan>=0?'Ganás con la factura':'Te cuesta (el IVA no cubre el costo)','Factura con '+emma()+' · suma IVA',fmt(Math.abs(gan)),gan>=0,F,nota,warn);
+      else res(meta?'bl':'','Te cuesta la carga','Factura con '+emma()+' · '+(meta?'IVA ya contado':'no suma IVA'),fmt(costo),false,F,nota,warn);
+      return;
+    }
+    if(esSueldo()){
+      var vid=G.pago==='video', nv=num($('ix-m-vids').value), pv=num($('ix-m-pvid').value), sm=num($('ix-m-smonto').value), per=($('ix-m-per').value||'').trim();
+      if(isNaN(nv)||nv<0) nv=0; if(isNaN(pv)||pv<0) pv=0; if(isNaN(sm)||sm<0) sm=0;
+      var nvMal=vid&&nv!==Math.floor(nv); $('ix-m-vids').classList.toggle('bad',nvMal);
+      if(nvMal){ res('am','Te cuesta de verdad','Sueldo · sin factura',fmt(0),false,[fila('Videos',fmtIn(nv),'neg','tiene que ser un número entero')],'Los videos tienen que ser un número entero (sin coma).',true); return; }
+      var tot=vid?r2(nv*pv):sm, S=[];
+      S.push(fila('Persona / rol',per||'—',''));
+      if(vid) S.push(fila('Videos',fmtIn(nv)+' × '+fmt(pv),'','precio por video'));
+      S.push(fila('Pagás en total',fmt(tot),'','en pesos, sin factura'));
+      S.push(fila('IVA que recuperás',fmt(0),'off','sin factura'));
+      res('','Te cuesta de verdad','Sueldo · sin factura',fmt(tot),false,S,'Va como gasto del mes, en la tarjeta "Sueldos" de Gastos extras. Sin factura: no suma IVA.',false);
+      return;
+    }
+    var ars=arsDe(), noArs=G.moneda!=='ARS';
+    $('ix-m-ars').textContent=noArs?(ars>0?('≈ '+fmt(ars)):'—'):'';
+    var total=(esA()&&G.imodo==='suma')?ars+iva:ars, rec=0, cls='', chip, motivo='', G2=[];
+    if(esUE()){ var u=emmaUlt(), rcp=!!(u&&u.destino==='otro'&&Number(u.iva)>0&&esRI(u.fecha)), cmo='('+(noArs?G.moneda+' × cotización = pesos':'en pesos')+')';
+      // "ya recuperado" solo si la última carga para compras de verdad sumó IVA (RI y no para Meta)
+      cls='ok'; chip='Vía '+emma()+' · '+(rcp?'IVA ya recuperado':'no suma IVA');
+      motivo=rcp?('El IVA de esta compra ya lo recuperaste en la factura de '+emma()+' (última carga: '+dmy(u.fecha)+', factura '+fmt(u.monto)+', IVA '+fmt(u.iva)+'). Sumarlo acá sería contarlo dos veces: este pago va solo como gasto del mes '+cmo+'.')
+        :('Pagado con los USDT de '+emma()+': acá no suma IVA (va una sola vez, en la factura de '+emma()+'). '+(u?('Tu última carga ('+dmy(u.fecha)+') no sumó IVA a favor. '):('Todavía no cargaste ninguna factura con '+emma()+'. '))+'Este pago va solo como gasto del mes '+cmo+'.');
+      G2.push(fila('Pagás en total',fmt(total),'',(noArs&&ars>0?(fmtQ(num($('ix-m-monto').value),G.moneda)+' a '+fmtIn(num($('ix-m-tc').value))):'')));
+      G2.push(fila('IVA de esta compra',rcp?'ya recuperado':'no suma','via',rcp?('en la factura de '+emma()+' del '+dmy(u.fecha)):('va en la factura de '+emma())));
+      res(cls,'Te cuesta de verdad',(G.tipo==='suscripcion'?'Suscripción':'Gasto')+' · '+chip,fmt(total),false,G2,motivo,false);
+      return;
+    }
+    if(esA() && ri){ rec=iva; cls='ok'; chip='Suma a tu IVA a favor'; motivo='IVA de la factura '+(G.comp==='M'?'M':'A')+(G.ivaTocado?' (cargado a mano)':' al 21%')+'. Baja el IVA a pagar del mes.'+(noArs?' Va en pesos, tal cual figura en la factura.':''); }
+    else if(esA()){ chip='No suma (antes de ser RI)'; motivo='La fecha es anterior a que pasaras a Responsable Inscripto'+rd+': ese IVA no se puede tomar.'; }
+    else if(G.comp==='exterior'){ chip='No suma (exterior)'; motivo='Servicio del exterior: se guarda y se muestra aparte, a definir con la contadora. No baja el IVA a pagar.'; }
+    else if(G.comp==='B'||G.comp==='C'){ cls='am'; chip='No suma (factura '+G.comp+')'; motivo='Con factura '+G.comp+' el IVA no se puede tomar. Pedí factura A a tu CUIT.'; }
+    else { chip='No suma (sin factura)'; motivo='Se guarda como gasto del mes, sin IVA a favor.'; }
+    G2.push(fila('Pagás en total',fmt(total),'',(esA()&&G.imodo==='suma')?('neto '+fmt(ars)+' + IVA '+fmt(iva)):(noArs&&ars>0?(fmtQ(num($('ix-m-monto').value),G.moneda)+' a '+fmtIn(num($('ix-m-tc').value))):'')));
+    G2.push(fila('IVA que recuperás',rec>0?fmt(rec):fmt(0),rec>0?'pos':'off',(esA()&&ri)?(G.ivaTocado?'IVA de la factura (cargado a mano)':'21% de la factura'):chip.replace(/^No suma \(|\)$/g,'')));
+    res(cls,'Te cuesta de verdad',(G.tipo==='suscripcion'?'Suscripción':'Gasto común')+' · '+chip,fmt(total-rec),false,G2,motivo,false); };
   window.rpImpGasto=function(id){ var g=null;
     if(id!=null && D && D.gastos){ (D.gastos.rows||[]).forEach(function(r){ if(+r.id===+id) g=r; }); }
-    G={id:g?g.id:null, tipo:g?g.tipo:'gasto', moneda:g?g.moneda:'ARS', comp:g?g.comp:'A', alic:(g&&g.alic)?Number(g.alic):21, ivaTocado:!!(g&&Number(g.iva_monto)>0)};
-    $('ix-m-tit').textContent=g?'Editar gasto':'Cargar gasto';
-    $('ix-m-con').value=g?g.concepto:'';
-    $('ix-m-monto').value=g?fmtIn(g.monto_orig):'';
-    $('ix-m-tc').value=(g&&g.tc)?fmtIn(g.tc):((D&&D.dolar)?fmtIn(D.dolar):'');
+    var cd=cargaDef(), carga=g?(g.clase==='carga'):true;
+    G={id:g?g.id:null, clase:carga?'carga':'gasto', tipo:(g&&g.tipo)||'gasto', moneda:(g&&!carga&&g.moneda)||'ARS', comp:(g&&!carga&&g.comp)||'A',
+       imodo:(g&&g.iva_modo==='suma')?'suma':'incluido', acmon:(g&&carga&&g.acredita_moneda)||cd.moneda, destino:(g&&carga&&g.destino)||'otro',
+       pbase:(g&&carga)?(g.desc_iva_base==='total'?'total':'neto'):cd.base, pago:(g&&g.pago==='video')?'video':'fijo',
+       ivaTocado:false, conTocado:!!g && !(!carga && g.tipo==='sueldo' && String(g.concepto||'')==='Sueldo'+(g.persona?(' · '+g.persona):'')), tcTocado:!!(g&&!carga&&g.tc)};
+    var gs0=!!(g&&!carga&&g.tipo==='sueldo');
+    $('ix-m-per').value=gs0?(g.persona||''):'';
+    $('ix-m-smonto').value=(gs0&&g.pago!=='video')?fmtIn(g.monto_orig):'';
+    $('ix-m-vids').value=(gs0&&g.pago==='video'&&g.videos!=null)?String(g.videos):'';
+    $('ix-m-pvid').value=(gs0&&g.pago==='video'&&g.precio_video!=null)?fmtIn(g.precio_video):'';
+    $('ix-m-tit').textContent=g?(carga?'Editar carga':(g.tipo==='sueldo'?'Editar sueldo':'Editar gasto')):'Cargar gasto';
+    $('ix-m-con').value=g?g.concepto:conDef();
     $('ix-m-fecha').value=g?g.fecha:fechaDef();
-    $('ix-m-iva').value=(g&&g.iva_monto)?fmtIn(g.iva_monto):'';
+    var dol=(D&&D.dolar)?fmtIn(D.dolar):'';
+    $('ix-m-mf').value=(g&&carga)?fmtIn(g.monto_orig):'';
+    $('ix-m-pi').value=fmtIn((g&&carga&&g.desc_iva_pct!=null)?g.desc_iva_pct:cd.iva);
+    $('ix-m-pb').value=fmtIn((g&&carga&&g.desc_banco_pct!=null)?g.desc_banco_pct:cd.banco);
+    $('ix-m-tcc').value=(g&&carga&&g.tc)?fmtIn(g.tc):dol;
+    $('ix-m-monto').value=(g&&!carga&&!gs0)?fmtIn(g.monto_orig):'';
+    $('ix-m-tc').value=(g&&!carga&&g.tc)?fmtIn(g.tc):dol;
+    $('ix-m-iva').value='';
     $('ix-m-piva').value=(g&&g.percep_iva)?fmtIn(g.percep_iva):''; $('ix-m-piibb').value=(g&&g.percep_iibb)?fmtIn(g.percep_iibb):'';
     $('ix-m-det').open=!!(g&&(g.percep_iva||g.percep_iibb));
+    // IVA guardado distinto del que sale solo = lo escribiste a mano: se respeta
+    // (también si es 0: una factura A con IVA pisado a 0 no tiene que volver al 21% al editarla)
+    if(g && conIva() && g.iva_monto!=null && isFinite(Number(g.iva_monto))){ var ia=ivaAuto(); if(Math.abs(Number(g.iva_monto)-ia)>0.5){ G.ivaTocado=true; $('ix-m-iva').value=fmtIn(g.iva_monto); } }
     var e=$('ix-m-err'); e.style.display='none'; e.textContent='';
     var ins=document.querySelectorAll('#ix-modal .ix-inp'); for(var i=0;i<ins.length;i++) ins[i].classList.remove('bad');
-    segs(); rpImpCalc(); $('ix-modal').style.display='flex'; setTimeout(function(){ try{ $('ix-m-con').focus(); }catch(x){} },30); };
+    segs(); rpImpCalc(); $('ix-modal').style.display='flex'; var bx=document.querySelector('#ix-modal .ix-box'); if(bx) bx.scrollTop=0;
+    setTimeout(function(){ try{ $(carga?'ix-m-mf':'ix-m-con').focus(); }catch(x){} },30); };
   window.rpImpGCerrar=function(){ var m=$('ix-modal'); if(m) m.style.display='none'; };
+  window.rpImpEmmaNom=function(){ var v=prompt('¿Cómo se llama tu contador? (se usa en "Factura con …")', emma()); if(v===null) return;
+    v=v.replace(/\s+/g,' ').trim().slice(0,30); if(!v){ alert('Poné un nombre.'); return; }
+    var ci=$('ix-m-con'), viejo=conDef();
+    postJ('/pf-impuestos-conf',{emma_nombre:v}).then(function(j){ if(!j.ok){ alert('No se pudo guardar el nombre: '+errTxt(j)); return; }
+      if(D){ D.conf=D.conf||{}; D.conf.emma_nombre=v; } if(ci && ci.value===viejo) ci.value=conDef();
+      segs(); rpImpCalc(); recargar(); })
+     .catch(function(x){ alert('Error de conexión: '+x.message); }); };
   window.rpImpGGuardar=function(btn){ var e=$('ix-m-err'); e.style.display='none';
     var ins=document.querySelectorAll('#ix-modal .ix-inp'); for(var i=0;i<ins.length;i++) ins[i].classList.remove('bad');
     function bad(id,msg){ var el=$(id); if(el){ el.classList.add('bad'); try{el.focus();}catch(x){} } e.textContent=msg; e.style.display='block'; }
-    var con=($('ix-m-con').value||'').trim(), m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value), f=$('ix-m-fecha').value;
+    var con=($('ix-m-con').value||'').trim(), f=$('ix-m-fecha').value;
+    if(!con && esSueldo()){ con=conSueldo(); $('ix-m-con').value=con; }
     if(!con) return bad('ix-m-con','Poné un concepto (ej: Contadora, Packaging).');
-    if(isNaN(m)||m<=0) return bad('ix-m-monto','Poné el monto total pagado.');
-    if(G.moneda==='USD'&&(isNaN(tc)||tc<=0)) return bad('ix-m-tc','Poné el tipo de cambio.');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(f||'')) return bad('ix-m-fecha','Poné la fecha del comprobante.');
-    var iv=($('ix-m-iva').value||'').trim(), iva=iv===''?null:num(iv);
+    var iv=($('ix-m-iva').value||'').trim(), iva=(iv===''||!G.ivaTocado)?null:num(iv);
     if(conIva() && iva!==null && (isNaN(iva)||iva<0)) return bad('ix-m-iva','El IVA tiene que ser un número (0 o más).');
     function perc(id){ var t=($(id).value||'').trim(); if(t==='') return 0; var v=num(t); return (isNaN(v)||v<0)?NaN:v; }
-    var piva=perc('ix-m-piva'), piibb=perc('ix-m-piibb');
+    var sinPerc=esSueldo()||esUE(), piva=sinPerc?0:perc('ix-m-piva'), piibb=sinPerc?0:perc('ix-m-piibb');   // ocultas: sin percepciones
     if(isNaN(piva)){ $('ix-m-det').open=true; return bad('ix-m-piva','La percepción tiene que ser un número (0 o más).'); }
     if(isNaN(piibb)){ $('ix-m-det').open=true; return bad('ix-m-piibb','La percepción tiene que ser un número (0 o más).'); }
-    var body={id:G.id, fecha:f, concepto:con, tipo:G.tipo, moneda:G.moneda, monto_orig:m, tc:(G.moneda==='USD'?tc:null),
-              comp:G.comp, alic:G.alic, iva_monto:(conIva()?iva:null), percep_iva:piva, percep_iibb:piibb};
+    var body={id:G.id, clase:G.clase, fecha:f, concepto:con, percep_iva:piva, percep_iibb:piibb};
+    if(esCarga()){
+      var mf=num($('ix-m-mf').value), pi=num($('ix-m-pi').value), pb=num($('ix-m-pb').value), tcc=num($('ix-m-tcc').value);
+      if(isNaN(mf)||mf<=0) return bad('ix-m-mf','Poné el monto de la factura.');
+      if(isNaN(pi)||pi<0||pi>50) return bad('ix-m-pi','El % de IVA tiene que estar entre 0 y 50.');
+      if(isNaN(pb)||pb<0||pb>50) return bad('ix-m-pb','El % bancario tiene que estar entre 0 y 50.');
+      if(G.acmon!=='ARS'&&(isNaN(tcc)||tcc<=0)) return bad('ix-m-tcc','Poné la cotización para pasar a '+G.acmon+'.');
+      body.monto_factura=mf; body.desc_iva_pct=pi; body.desc_banco_pct=pb; body.desc_iva_base=G.pbase; body.acredita_moneda=G.acmon;
+      body.tc=(G.acmon!=='ARS'?tcc:null); body.destino=G.destino; body.iva_monto=iva;
+    } else if(esSueldo()){
+      var per=($('ix-m-per').value||'').replace(/\s+/g,' ').trim();
+      if(!per) return bad('ix-m-per','Poné la persona o el rol (ej: ATT, Socio, Editor Juan).');
+      body.tipo='sueldo'; body.persona=per; body.pago=G.pago; body.moneda='ARS'; body.comp='sin'; body.tc=null; body.iva_monto=null;
+      if(G.pago==='video'){ var nv=num($('ix-m-vids').value), pv=num($('ix-m-pvid').value);
+        if(isNaN(nv)||nv<0||nv!==Math.floor(nv)) return bad('ix-m-vids','Los videos tienen que ser un número entero.');
+        if(isNaN(pv)||pv<0) return bad('ix-m-pvid','Poné el precio por video.');
+        if(nv*pv<=0) return bad(nv<=0?'ix-m-vids':'ix-m-pvid','El total da $0: poné cuántos videos y el precio por video.');
+        body.videos=nv; body.precio_video=pv; }
+      else { var sm=num($('ix-m-smonto').value); if(isNaN(sm)||sm<=0) return bad('ix-m-smonto','Poné el monto del sueldo.'); body.monto_orig=sm; }
+    } else {
+      var m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value);
+      if(isNaN(m)||m<=0) return bad('ix-m-monto',(esA()&&G.imodo==='suma')?'Poné el neto de la factura.':'Poné el monto total pagado.');
+      if(G.moneda!=='ARS'&&(isNaN(tc)||tc<=0)) return bad('ix-m-tc','Poné la cotización.');
+      body.tipo=G.tipo; body.moneda=G.moneda; body.monto_orig=m; body.tc=(G.moneda!=='ARS'?tc:null); body.comp=G.comp;
+      body.iva_modo=esA()?G.imodo:'incluido'; body.iva_monto=(conIva()?iva:null);
+    }
     if(btn){ btn.disabled=true; }
     postJ('/pf-impuestos-gasto',body).then(function(j){ if(btn) btn.disabled=false;
       if(!j.ok){ e.textContent='No se pudo guardar: '+errTxt(j); e.style.display='block'; return; }
       rpImpGCerrar(); var gm=f.slice(0,7);
-      recargar(gm!==MES?('Gasto guardado en '+mesTxt(gm)+' '+gm.slice(0,4)+' (no es el mes que estás viendo).'):''); })
+      recargar(gm!==MES?((esCarga()?'Carga guardada':(esSueldo()?'Sueldo guardado':'Gasto guardado'))+' en '+mesTxt(gm)+' '+gm.slice(0,4)+' (no es el mes que estás viendo).'):''); })
      .catch(function(x){ if(btn) btn.disabled=false; e.textContent='Error de conexión: '+x.message; e.style.display='block'; }); };
   window.rpImpGBorrar=function(id){ if(!confirm('¿Borrar este gasto?')) return;
     postJ('/pf-impuestos-gasto-del',{id:id}).then(function(j){ if(!j.ok){ alert('No se pudo borrar: '+errTxt(j)); return; } recargar(); })
@@ -3559,10 +4018,21 @@ _SOLO_DASH = r"""
     // van restadas aca (antes quedaban afuera y el neto salia mas alto de lo que se cobra).
     var _retmp=_raw.retenciones_mp||0;
     var neto=(_raw.facturado||0)-(_raw.mp_costo_real||0)-_retmp-(_raw.tienda_monto||0);
-    var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment $1000/pedido
+    var envfull=(_raw.envio_monto||0)+(_raw.oper_monto||0);   // envío zonal + fulfillment por pedido
+    // Fulfillment por pedido del periodo que se ve: $877,60 antes de ful_negro_desde y $800 (en
+    // negro) desde ahi. Lo manda el server; sin los campos (blob viejo) queda el texto sin monto.
+    var _fulTxt=(function(r){ try{
+      var fd=r.ful_negro_desde, a=r.ful_orden_antes, n=r.ful_orden_negro;
+      if(!fd||a==null||n==null) return 'Envío + fulfillment';
+      var f=function(v){ v=Number(v)||0; return '$'+v.toLocaleString('es-AR',{minimumFractionDigits:(v%1?2:0),maximumFractionDigits:2}); };
+      var d=String(r.desde||''), h=String(r.hasta||'');
+      if(h && h<fd) return 'Envío + fulfillment ('+f(a)+'/pedido)';
+      if(d && d>=fd) return 'Envío + fulfillment ('+f(n)+'/pedido)';
+      return 'Envío + fulfillment ('+f(n)+'/pedido desde el '+fd.slice(8,10)+'/'+fd.slice(5,7)+', antes '+f(a)+')';
+    }catch(e){ return 'Envío + fulfillment'; } })(_raw);
     var slots=[
       [['Costo producto','Productos'],'Productos',_raw.costo_prod,'Costo de los productos vendidos'],
-      [['Comisiones','Envíos'],'Envíos',envfull,'Envío + fulfillment ($877,60/pedido)'],
+      [['Comisiones','Envíos'],'Envíos',envfull,_fulTxt],
       [['Costo envíos','IIBB'],'IIBB',_raw.iibb_monto,'Lo que se transfiere por mes (3%)'],
       [['Logística','Neto por venta'],'Neto por venta',neto,'Lo que te queda tras MercadoPago + 1% tienda']
     ];
@@ -5415,6 +5885,186 @@ if not (0 <= FULFILLMENT_RECARGO_PCT <= 50):
 OPER_ORDEN = round((FULFILLMENT_ORDEN + INSUMOS_ORDEN) * (1 + FULFILLMENT_RECARGO_PCT / 100.0), 2)
 # 877,60/pedido (aparte del envio). Los dias ya CERRADOS no se recalculan: salen del cache de
 # dias, asi que esto rige de hoy en adelante y no reescribe el historico.
+# OJO: desde FULFILLMENT_SIN_IVA_DESDE el armado se paga en negro y cuesta $800 justos (ver
+# FULFILLMENT EN NEGRO mas abajo). OPER_ORDEN queda como la tarifa de los dias ANTERIORES: por
+# pedido se usa _oper_orden(dia), nunca OPER_ORDEN suelto.
+
+
+# FULFILLMENT SIN IVA: Cristian, 02-11-2026: "los 800 de fulfillment ahora no tienen IVA, son 800
+# sin IVA". Hasta el dia anterior a esta fecha los $800 del armado venian facturados con el IVA
+# adentro y daban credito; desde esta fecha NO dan credito. Se decide DIA POR DIA por la fecha del
+# dia, asi un periodo que cruza la fecha toma credito solo por los dias anteriores. Fecha
+# provisoria ("ahora"); por env para corregirla sin tocar codigo.
+# Y desde la MISMA fecha tambien cambia el COSTO: "es en negro", "800 pesos por pedido es"
+# (02-11-2026). Ya no pasa por la cambiaria, asi que son $800 justos y no $877,60. Ver
+# FULFILLMENT EN NEGRO abajo.
+def _ful_sin_iva_desde_env() -> str:
+    v = str(_os.getenv("FULFILLMENT_SIN_IVA_DESDE", "") or "").strip()[:10]
+    try:
+        _dt.datetime.strptime(v, "%Y-%m-%d")
+        return v
+    except Exception:
+        return "2026-11-01"
+
+
+FULFILLMENT_SIN_IVA_DESDE = _ful_sin_iva_desde_env()
+
+
+def _ful_sin_iva(dia) -> bool:
+    """¿El fulfillment de este dia ('YYYY-MM-DD') ya NO da credito de IVA?"""
+    return bool(dia) and str(dia)[:10] >= FULFILLMENT_SIN_IVA_DESDE
+
+
+def _ful_sin_iva_dia(raw, dia):
+    """(oper_monto_sin_iva, oper_w_sin_iva, oper_w_n_sin_iva) de UN dia: todo su fulfillment si el
+    dia es desde FULFILLMENT_SIN_IVA_DESDE, 0 si es anterior. _w = la parte de la TIENDA (sin MELI,
+    con los pedidos en $0), la misma que usa el break even; _n = cuantos pedidos de la tienda son.
+    Sale de la FECHA del dia y no de un campo guardado: los dias cerrados de pf_dias.json se
+    guardaron antes de esto y no lo traen.
+    La parte de la tienda se PRORRATEA del oper_monto del dia (en un dia todos los pedidos pagan la
+    misma tarifa), asi no depende de con que tarifa se guardo el dia ($877,60 o los $800 en negro)."""
+    if not isinstance(raw, dict) or not _ful_sin_iva(dia):
+        return 0.0, 0.0, 0
+    om = max(float(raw.get("oper_monto", 0) or 0), 0.0)
+    tot = int(raw.get("ordenes", 0) or 0) + int(raw.get("ordenes_cero", 0) or 0)
+    nw = (int(raw.get("ordenes", 0) or 0) - int(raw.get("meli_ventas", 0) or 0)
+          + int(raw.get("ordenes_cero", 0) or 0))
+    nw = min(max(nw, 0), max(tot, 0))
+    ow = om * nw / tot if tot > 0 else 0.0
+    return om, max(min(ow, om), 0.0), nw
+
+
+def _ful_marcar(blob, om_si, ow_si, nw_si=0):
+    """Deja en el raw del periodo cuanto fulfillment es de dias SIN IVA (lo lee el credito) y
+    cuantos pedidos de la tienda son (lo lee el costo de la tienda en el break even)."""
+    if blob and isinstance(blob.get("raw"), dict):
+        blob["raw"]["oper_monto_sin_iva"] = round(om_si, 2)
+        blob["raw"]["oper_w_sin_iva"] = round(ow_si, 2)
+        blob["raw"]["oper_w_n_sin_iva"] = int(nw_si or 0)
+    return blob
+
+
+def _oper_cred_iva(r) -> float:
+    """Base del credito de IVA por el fulfillment de un raw: SOLO los $800 facturados (sin el 9,7%
+    de la cambiaria, que se paga aparte) y SOLO de los dias anteriores a FULFILLMENT_SIN_IVA_DESDE.
+    Un raw sin oper_monto_sin_iva = todo con credito, salvo que su periodo ('desde') arranque en
+    FULFILLMENT_SIN_IVA_DESDE o despues (blob de antes del deploy: entero sin IVA)."""
+    om = max(float(r.get("oper_monto", 0) or 0), 0.0)
+    if "oper_monto_sin_iva" not in r and _ful_sin_iva(r.get("desde")):
+        return 0.0
+    si = min(max(float(r.get("oper_monto_sin_iva", 0) or 0), 0.0), om)
+    return (om - si) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+
+
+def _oper_cred_iva_w(r, ord_w) -> float:
+    """Lo mismo para el break even de la TIENDA: el fulfillment de la tienda (pedidos web + pedidos
+    en $0, cada dia con su tarifa: _oper_w_total), menos lo de los dias sin IVA (oper_w_sin_iva)."""
+    ow = max(_oper_w_total(r, ord_w), 0.0)
+    if "oper_w_sin_iva" not in r and _ful_sin_iva(r.get("desde")):
+        return 0.0
+    si = min(max(float(r.get("oper_w_sin_iva", 0) or 0), 0.0), ow)
+    return (ow - si) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+
+
+# FULFILLMENT EN NEGRO: Cristian, 02-11-2026: "esos 800 de fulfillment no tienen IVA, es en negro"
+# y "800 pesos por pedido es". Desde la MISMA fecha que el credito (FULFILLMENT_SIN_IVA_DESDE) el
+# armado se paga en pesos, sin factura y sin pasar por la cambiaria: cuesta $800 JUSTOS por
+# pedido, sin el 9,7%. Antes de esa fecha sigue OPER_ORDEN ($877,60): el historico NO cambia.
+# Se decide POR LA FECHA DE CADA PEDIDO (hora argentina), asi un resumen por rango que cruza la
+# fecha cobra cada pedido con su tarifa. Por env (FULFILLMENT_ORDEN_NEGRO) por si cambia el precio
+# del armado; al cambiarlo, los dias desde la fecha se recalculan solos (_pf_dia_clave).
+def _ful_negro_env():
+    try:
+        v = float(_os.getenv("FULFILLMENT_ORDEN_NEGRO", "800") or 800)
+    except Exception:
+        v = 800.0
+    if not (0 <= v <= 20000):            # tambien descarta nan/inf
+        v = 800.0
+    return int(v) if v == int(v) else round(v, 2)
+
+
+FULFILLMENT_ORDEN_NEGRO = _ful_negro_env()
+
+
+def _oper_orden(dia) -> float:
+    """Fulfillment por pedido de ese dia ('YYYY-MM-DD'): $800 justos (en negro) desde
+    FULFILLMENT_SIN_IVA_DESDE, OPER_ORDEN ($877,60, con la cambiaria) antes."""
+    return FULFILLMENT_ORDEN_NEGRO if _ful_sin_iva(dia) else OPER_ORDEN
+
+
+def _dia_ar(fecha) -> str:
+    """'YYYY-MM-DD' en hora ARGENTINA (UTC-3) de un timestamp ISO de Shopify (-03:00), Tiendanube
+    (+0000) o MercadoLibre (-04:00). Sin zona horaria se toma como ya local. '' si no se entiende."""
+    s = str(fecha or "").strip()
+    if len(s) < 10:
+        return ""
+    import re as _re_f
+    m = _re_f.match(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*"
+                    r"(Z|[+-]\d{2}:?\d{2})?)?", s)
+    if not m:
+        return ""
+    y, mo, d, hh, mi, ss, tz = m.groups()
+    try:
+        base = _dt.datetime(int(y), int(mo), int(d), int(hh or 0), int(mi or 0), int(ss or 0))
+    except Exception:
+        return ""
+    if not hh or not tz:
+        return base.date().isoformat()
+    if tz == "Z":
+        off = 0
+    else:
+        t = tz[1:].replace(":", "")
+        off = (-1 if tz[0] == "-" else 1) * (int(t[:2]) * 60 + int(t[2:4]))
+    return (base - _dt.timedelta(minutes=off + 180)).date().isoformat()
+
+
+def _oper_dia_pedido(fecha, desde, hasta) -> str:
+    """El dia que decide la tarifa de UN pedido de un resumen pedido por desde..hasta. Si todo el
+    resumen cae del mismo lado de la fecha (un dia suelto, octubre entero, noviembre entero) es
+    'desde' y ni se mira el pedido: asi octubre da exactamente lo mismo que antes. Solo si el
+    rango cruza la fecha se usa la fecha del pedido en hora argentina (los resumenes filtran por
+    dia argentino: -03:00)."""
+    d = str(desde or "")[:10]
+    if _ful_sin_iva(d) == _ful_sin_iva(str(hasta or "")[:10]):
+        return d
+    return _dia_ar(fecha) or d
+
+
+def _oper_monto_n(n_antes, n_negro) -> float:
+    """Fulfillment de n_antes pedidos a la tarifa vieja + n_negro a la de $800. Con n_negro = 0 da
+    EXACTAMENTE OPER_ORDEN x n_antes (el mismo float de antes: octubre no se mueve un centavo)."""
+    return OPER_ORDEN * n_antes + FULFILLMENT_ORDEN_NEGRO * n_negro
+
+
+def _oper_w_total(r, ord_w) -> float:
+    """Fulfillment de la TIENDA del periodo (pedidos web + pedidos en $0, sin MELI), cada dia con
+    su tarifa: OPER_ORDEN por los pedidos de los dias anteriores a la fecha + lo que costaron los
+    de los dias desde la fecha (oper_w_sin_iva, ya a $800; oper_w_n_sin_iva = cuantos son). Sin
+    dias nuevos da OPER_ORDEN x pedidos, igual que siempre. Un raw sin los campos (no paso por
+    _pf_canales_periodo) toma la tarifa de su 'desde'."""
+    n = max(int(ord_w or 0) + int(r.get("ordenes_cero", 0) or 0), 0)
+    if "oper_w_n_sin_iva" not in r:
+        return _oper_orden(r.get("desde")) * n
+    n_si = min(max(int(r.get("oper_w_n_sin_iva", 0) or 0), 0), n)
+    return OPER_ORDEN * (n - n_si) + max(float(r.get("oper_w_sin_iva", 0) or 0), 0.0)
+
+
+def _ful_fmt(v) -> str:
+    """$ argentino para los textos: 800 -> '800', 877.6 -> '877,60'."""
+    v = float(v or 0)
+    if v == int(v):
+        return "{:,}".format(int(v)).replace(",", ".")
+    return "{:,.2f}".format(v).replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _ful_txt_html() -> str:
+    """Texto de la tarjeta Envio de Comisiones: el fulfillment VIGENTE (sale de las constantes)."""
+    fd = FULFILLMENT_SIN_IVA_DESDE
+    return ("<b style=\"color:#cbd5e1\">$%s/pedido</b> de fulfillment desde el %s/%s (en negro: sin "
+            "factura, sin IVA y sin la cambiaria; antes $%s = armado $%s + %s%% de la cambiaria). Los "
+            "insumos se cargan aparte como gasto mensual." % (
+                _ful_fmt(FULFILLMENT_ORDEN_NEGRO), fd[8:10], fd[5:7], _ful_fmt(OPER_ORDEN),
+                _ful_fmt(FULFILLMENT_ORDEN), ("%g" % FULFILLMENT_RECARGO_PCT).replace(".", ",")))
 
 # === Costo de envío REAL por zona (Andreani, cuenta VisionPure, origen Suc. Merlo, CON descuento) ===
 # Cotizado 2026-08-15 en pymes.andreani.com. 4 zonas de tarifa. sucursal / domicilio en $.
@@ -6275,6 +6925,7 @@ def pf_pedidos_cero():
         env_fuente = "real"
         if env is None:
             env = _envio_costo(o); env_fuente = "promedio"
+        _ful_o = _oper_orden(_oper_dia_pedido(o.get("created_at"), desde, hasta))   # tarifa de SU fecha
         cust = o.get("customer") or {}
         nota = (o.get("note") or "").strip()
         for na in (o.get("note_attributes") or []):
@@ -6286,8 +6937,8 @@ def pf_pedidos_cero():
                     "estado": o.get("financial_status") or "",
                     "unidades": un, "costo_prod": round(cp, 2),
                     "envio": round(float(env or 0), 2), "envio_fuente": env_fuente,
-                    "fulfillment": OPER_ORDEN,
-                    "perdida": round(cp + float(env or 0) + OPER_ORDEN, 2),
+                    "fulfillment": _ful_o,
+                    "perdida": round(cp + float(env or 0) + _ful_o, 2),
                     "tags": o.get("tags") or "", "nota": nota[:400],
                     "productos": ", ".join(prods)[:200]})
     out.sort(key=lambda x: x["fecha"], reverse=True)
@@ -6480,18 +7131,24 @@ def pf_debug_ordenes():
         mp_lib = (pago.get("lib") or "") if pago else ""       # cuando se libera la plata
         iibb = tot * IIBB_PCT / 100.0
         tienda = tot * TIENDA_PCT / 100.0
-        gan = tot - cp - mp_fee - mp_ret - env - iibb - tienda - OPER_ORDEN
+        # fulfillment con la tarifa de SU fecha: $877,60 antes del corte, $800 en negro desde ahi
+        _ful_o = _oper_orden(_oper_dia_pedido(o.get("created_at"), desde, hasta))
+        gan = tot - cp - mp_fee - mp_ret - env - iibb - tienda - _ful_o
         # IVA DE ESTA VENTA, con los numeros de ESTA venta (nada de promedios del periodo).
         # Debito: el 10,5% contenido en lo que cobraste (alicuota reducida). Credito: el 21%
         # contenido en producto, envio y comision de MercadoPago — esa tasa la pone quien
         # factura. El 0,6% de Shopify y el fulfillment NO dan credito.
+        # DIFERENCIA CONOCIDA (02-11-2026): el Dashboard SI toma de credito los $800 facturados del
+        # fulfillment en los dias ANTERIORES a FULFILLMENT_SIN_IVA_DESDE (_oper_cred_iva); aca no, y
+        # por eso en octubre el break even de cada venta queda ~$138,84 abajo del promedio. Se deja
+        # asi a proposito para no mover el detalle de octubre. Desde la fecha cuadran (credito 0).
         iva_deb = tot * _IVA_F_VTA                       # lo que el COBRA: 10,5%
         iva_cred = (cp + env + mp_fee) * _IVA_F_CMP      # lo que le COBRAN: 21%
         iva_pag = iva_deb - iva_cred
         # BREAK EVEN DE ESTA VENTA: lo maximo que se puede pagar de publicidad por traerla.
         # Pagando exactamente esto, esta venta da CERO. Un pack de 3 deja mas que uno de 1, por
         # eso el numero es POR VENTA y no un promedio del dia.
-        be = tot - cp - mp_fee - mp_ret - env - iibb - tienda - OPER_ORDEN - iva_pag
+        be = tot - cp - mp_fee - mp_ret - env - iibb - tienda - _ful_o - iva_pag
         out.append({"pedido": num, "total": round(tot, 2), "unidades": u,
                     "costo_prod": round(cp, 2), "mp_fee": round(mp_fee, 2),
                     "mp_neto_recibido": (round(mp_neto, 2) if mp_neto is not None else None),
@@ -6503,7 +7160,7 @@ def pf_debug_ordenes():
                     "mp_cuotas": ((pago or {}).get("inst") or 0),
                     "mp_medio": ((pago or {}).get("medio") or ""),
                     "envio": round(env, 2), "envio_fuente": env_fuente,
-                    "oper": OPER_ORDEN,
+                    "oper": _ful_o,
                     "iibb": round(iibb, 2), "tienda": round(tienda, 2),
                     "potes_nad": _nad, "oxido": _oxi, "digital": _dig, "detalle": _det,
                     "iva_debito": round(iva_deb, 2), "iva_favor": round(iva_cred, 2),
@@ -7494,7 +8151,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-01-impuestos"})
+    return jsonify({"ok": True, "v": "2026-11-02-gastos-v3-ful800"})
 
 
 _KPI_DBG = {}
@@ -7696,9 +8353,10 @@ def pf_orden():
     envio = _real_env if _real_env is not None else _envio_costo(o)
     # MP ya descuenta sus comisiones en pago["net"]; si no hay pago, lo estimamos.
     net_mp = pago["net"] if pago else round(tot - fee_mp - fee_cuotas, 2)
-    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto, envío,
-    # fulfillment ($700) e insumos ($200) por pedido.
-    neto = net_mp - tienda - iibb - costo_prod - envio - OPER_ORDEN
+    # NETO REAL de la venta: lo que entra por MP menos fee tienda, IIBB, costo de producto, envío
+    # y fulfillment con la tarifa de SU fecha ($877,60 antes del corte, $800 en negro desde ahi).
+    _ful_o = _oper_orden(_dia_ar(o.get("created_at")) or fecha)
+    neto = net_mp - tienda - iibb - costo_prod - envio - _ful_o
     cust = o.get("customer") or {}
     medio = "Mercado Pago" if pago else (", ".join(o.get("payment_gateway_names") or []) or o.get("gateway") or "—")
     return jsonify({"ok": True, "orden": {
@@ -7710,7 +8368,7 @@ def pf_orden():
         "total": round(tot, 2), "descuento": round(desc, 2),
         "fee_mp": round(fee_mp, 2), "fee_cuotas": round(fee_cuotas, 2), "cuotas": inst,
         "fee_tienda": round(tienda, 2), "iibb": round(iibb, 2), "envio": round(envio, 2),
-        "fulfillment": FULFILLMENT_ORDEN, "insumos": INSUMOS_ORDEN, "oper": OPER_ORDEN,
+        "fulfillment": FULFILLMENT_ORDEN, "insumos": INSUMOS_ORDEN, "oper": _ful_o,
         "envio_real": _real_env is not None,
         "costo_prod": round(costo_prod, 2), "neto": round(neto, 2)}})
 
@@ -16497,6 +17155,7 @@ def _shopify_resumen(email, desde, hasta):
     envio_zona = 0.0   # suma de la tabla Andreani por zona (con descuento)
     unidades = ordenes = reemb_cant = envio_real = 0
     ordenes_cero = 0   # pedidos en $0: no son ventas, pero su producto y envio si cuestan
+    oper_negro = 0     # pedidos con el fulfillment en negro ($800 justos, por su fecha)
     prodmap = {}
     ords_list = []
     # Solo cuentan las órdenes YA COBRADAS. Efectivo/transferencia pendiente, autorizado sin capturar o
@@ -16510,15 +17169,18 @@ def _shopify_resumen(email, desde, hasta):
             continue
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
         # Una orden en $0 (reposicion / reenvio sin cargo) NO es una venta: no factura, asi que
-        # no genera IVA, ni IIBB, ni comision, ni el 0,6% de tienda, y tampoco lleva el
-        # fulfillment de $800. Lo UNICO que cuesta es el producto que se regalo y el envio, y
-        # eso se sigue sumando abajo como siempre. Contarla como venta metia un pedido en el
+        # no genera IVA, ni IIBB, ni comision, ni el 0,6% de tienda. Lo que SI cuesta es el producto
+        # que se regalo, el envio y el fulfillment (se arma y se despacha igual: a la tarifa de SU
+        # fecha, $877,60 antes del corte y $800 en negro desde ahi),
+        # y eso se sigue sumando abajo. Contarla como venta metia un pedido en el
         # divisor sin aportar un peso: el 29-09-2026 el ticket salia $68.374 en vez de $75.269
         # y el Break Even CPA $26.631 en vez de $29.317 (12 de 131 pedidos estaban en $0).
         if tot > 0:
             ordenes += 1
         else:
             ordenes_cero += 1
+        if _ful_sin_iva(_oper_dia_pedido(o.get("created_at"), desde, hasta)):
+            oper_negro += 1
         fact += tot
         # Envío: costo REAL de Envialo si el pedido ya está ahí; si no, promedio domicilio/sucursal.
         _num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
@@ -16604,8 +17266,11 @@ def _shopify_resumen(email, desde, hasta):
     # fulfillment $800 por PAQUETE, incluidos los pedidos en $0: la reposicion se arma y se
     # despacha igual, asi que ese trabajo se paga. Lo que NO cuentan es como venta (no van al
     # divisor del ticket ni del CPA). Insumos van aparte, como gasto mensual.
-    oper_monto = OPER_ORDEN * (ordenes + ordenes_cero)
+    # Cada pedido con la tarifa de SU fecha: $877,60 antes de FULFILLMENT_SIN_IVA_DESDE y $800
+    # justos (en negro) desde esa fecha (_oper_orden).
+    oper_monto = _oper_monto_n(ordenes + ordenes_cero - oper_negro, oper_negro)
     r["oper_monto"] = round(oper_monto, 2)
+    r["oper_negro"] = oper_negro
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     # Break-even: contribución ANTES de ads (lo que queda para pagar publicidad).
     _pre_ads = fact - costo_prod - comision_monto - envio_monto - oper_monto
@@ -16689,7 +17354,7 @@ def _meli_resumen(email, desde, hasta):
       - comision: sale_fee que ML informa en CADA item (ej 12.297,95 sobre 59.990 = 20,5%).
         No se estima con un porcentaje: sale por venta.
       - envio: NO se suma (decision de Cristian).
-      - fulfillment: OPER_ORDEN por pedido, igual que los otros canales.
+      - fulfillment: _oper_orden(fecha del pedido), igual que los otros canales.
       - IIBB 3,5%. El 1% de tienda NO aplica: ese es de la tienda propia.
       - costo de producto: por SKU (meli:X2-POTE). Si no esta cargado queda en 0 y se cuenta
         en meli_sin_costo, en vez de inventar un numero."""
@@ -16756,11 +17421,14 @@ def _meli_resumen(email, desde, hasta):
     envio_ml = ret_ml = 0.0
     envio_real = 0
     unidades = ordenes = sin_costo = 0
+    oper_negro = 0     # ventas con el fulfillment en negro ($800 justos, por su fecha)
     prodmap, ords_list = {}, []
     for o in ordenes_ml:
         if (o.get("status") or "").lower() != "paid":
             continue
         ordenes += 1
+        if _ful_sin_iva(_oper_dia_pedido(o.get("date_created"), desde, hasta)):
+            oper_negro += 1
         tot = float(o.get("total_amount") or 0)
         fact += tot
         com_orden = 0.0
@@ -16811,7 +17479,7 @@ def _meli_resumen(email, desde, hasta):
                           "total": round(tot, 2),
                           "neto": round(tot - com_orden - _env_o - _ret_o, 2)})
     iibb_monto = fact * IIBB_PCT / 100.0
-    oper_monto = OPER_ORDEN * ordenes
+    oper_monto = _oper_monto_n(ordenes - oper_negro, oper_negro)   # tarifa por fecha (_oper_orden)
     # Misma bolsa que en la tienda: comision del canal + retenciones + IIBB. Sin 1% de tienda,
     # que ese es de la tienda propia.
     # El CARGO POR ENVIO de ML entra ACA, no en envios: no es un envio que se pague aparte (la
@@ -16845,6 +17513,7 @@ def _meli_resumen(email, desde, hasta):
     r["envio_real"] = 0
     r["retenciones_mp"] = r["iibb_retenido"] = r["meli_retenciones"] = round(ret_ml, 2)
     r["oper_monto"] = round(oper_monto, 2)
+    r["oper_negro"] = oper_negro
     _pre = fact - costo_prod - comision_monto - oper_monto - adelanto_monto
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
@@ -16898,21 +17567,25 @@ def _tn_resumen(email, desde, hasta):
     perc_iva = 0.0     # PERCEPCION de IVA (mismo trato que en Shopify)
     unidades = ordenes = mp_match = 0
     ordenes_cero = 0   # pedidos en $0: no son ventas (ver la nota en _shopify_resumen)
+    oper_negro = 0     # pedidos con el fulfillment en negro ($800 justos, por su fecha)
     prodmap, ords_list = {}, []
     for o in orders:
         if (o.get("payment_status") or "").lower() != "paid":
             continue
         tot = float(o.get("total") or 0)
         # Una orden en $0 (reposicion / reenvio sin cargo) NO es una venta: no factura, asi que
-        # no genera IVA, ni IIBB, ni comision, ni el 0,6% de tienda, y tampoco lleva el
-        # fulfillment de $800. Lo UNICO que cuesta es el producto que se regalo y el envio, y
-        # eso se sigue sumando abajo como siempre. Contarla como venta metia un pedido en el
+        # no genera IVA, ni IIBB, ni comision, ni el 0,6% de tienda. Lo que SI cuesta es el producto
+        # que se regalo, el envio y el fulfillment (se arma y se despacha igual: a la tarifa de SU
+        # fecha, $877,60 antes del corte y $800 en negro desde ahi),
+        # y eso se sigue sumando abajo. Contarla como venta metia un pedido en el
         # divisor sin aportar un peso: el 29-09-2026 el ticket salia $68.374 en vez de $75.269
         # y el Break Even CPA $26.631 en vez de $29.317 (12 de 131 pedidos estaban en $0).
         if tot > 0:
             ordenes += 1
         else:
             ordenes_cero += 1
+        if _ful_sin_iva(_oper_dia_pedido(o.get("created_at"), desde, hasta)):
+            oper_negro += 1
         fact += tot; cobr += tot
         _ez = ENVIO_ZONAS.get(_envio_zona(o)) or {"sucursal": ENVIO_SUCURSAL, "domicilio": ENVIO_DOMICILIO}
         _es_suc = _tn_shipping(o).get("type") == "pickup" or _envio_suc(o)
@@ -16941,7 +17614,7 @@ def _tn_resumen(email, desde, hasta):
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
     comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + tienda_monto
-    oper_monto = OPER_ORDEN * (ordenes + ordenes_cero)   # ver la nota en _shopify_resumen
+    oper_monto = _oper_monto_n(ordenes + ordenes_cero - oper_negro, oper_negro)   # ver _shopify_resumen
     ganancia = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
@@ -16950,6 +17623,7 @@ def _tn_resumen(email, desde, hasta):
     r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = round(tienda_monto, 2)
     r["envio_monto"] = round(envio_monto, 2); r["envio_real"] = 0
     r["oper_monto"] = round(oper_monto, 2)
+    r["oper_negro"] = oper_negro
     _pre = fact - costo_prod - comision_monto - envio_monto - oper_monto
     r["be_roas"] = r["breakeven_roas"] = round(fact / _pre, 2) if _pre > 0 else 0.0
     r["be_cpa"] = r["breakeven_cpa"] = round(_pre / ordenes, 2) if ordenes else 0.0
@@ -16981,7 +17655,7 @@ def _combinar_resumen(a, b):
     r["fecha"] = ra.get("fecha"); r["desde"] = ra.get("desde"); r["hasta"] = ra.get("hasta")
     r["actualizado"] = ra.get("actualizado")
     SUM = ["mp_costo_real", "mp_match", "iibb_monto", "tienda_monto", "envio_monto", "envio_real",
-           "oper_monto", "ordenes", "ordenes_cero", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
+           "oper_monto", "oper_negro", "ordenes", "ordenes_cero", "ventas_periodo", "unidades", "facturado", "cobrado", "costo_prod",
            "comision", "ganancia", "reemb_cantidad", "reemb_monto", "iibb_retenido", "retenciones_mp", "percep_iva",
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
@@ -21154,7 +21828,8 @@ def home():
                '</span><span class="rp-lbl"><span class="em">WhatsApp</span></span></a>')
     # Dejar solo Dashboard + Integraciones, sacar el logo, botón MP y caja de usuario.
     # (El link de WhatsApp ahora es un ítem del menú, se agrega en el JS de _SOLO_DASH.)
-    extra = _SOLO_DASH + userbox + _BOTIFY_WIDGET + _RP_GLASS   # rp-glass
+    # __RP_FUL_TXT__: el fulfillment vigente sale de las constantes (no queda un $877,60 viejo)
+    extra = _SOLO_DASH.replace("__RP_FUL_TXT__", _ful_txt_html()) + userbox + _BOTIFY_WIDGET + _RP_GLASS   # rp-glass
     if "</body>" in html:
         html = html.replace("</body>", extra + "</body>", 1)
     else:
@@ -21878,6 +22553,20 @@ def _pf_costos_ver() -> str:
     return _hl.md5(v.encode()).hexdigest()[:8]
 
 
+def _pf_dia_clave(email, dia) -> str:
+    """Clave de UN dia en pf_dias.json: email|dia|_pf_costos_ver().
+    FULFILLMENT EN NEGRO (02-11-2026): los dias DESDE FULFILLMENT_SIN_IVA_DESDE llevan ademas la
+    tarifa del armado ('|ful800'). El 01-11 ya estaba guardado con $877,60/pedido; con la clave
+    nueva no se encuentra y se recalcula UNA vez con $800. Los dias anteriores conservan su clave
+    de siempre, asi NO se invalida el historico (serian meses de pedidos a las APIs). Si se cambia
+    FULFILLMENT_ORDEN_NEGRO, los dias desde la fecha vuelven a recalcularse solos. Las claves
+    viejas quedan huerfanas y se van con el tope de 800 de _pf_dias_guardar."""
+    ck = "%s|%s|%s" % (email, dia, _pf_costos_ver())
+    if _ful_sin_iva(dia):
+        ck += "|ful%s" % FULFILLMENT_ORDEN_NEGRO
+    return ck
+
+
 def _pf_dias_cache() -> dict:
     try:
         return _json.loads(PF_DIAS.read_text(encoding="utf-8"))
@@ -21935,7 +22624,7 @@ def _pf_canales_dia(email, dia):
     """Un DIA suelto, cacheado en disco si ya cerro. Un dia pasado no cambia nunca, asi que se
     calcula UNA vez y despues sale de disco."""
     cerrado = _pf_cerrado(dia)
-    ck = "%s|%s|%s" % (email, dia, _pf_costos_ver())
+    ck = _pf_dia_clave(email, dia)
     if cerrado:
         g = _pf_dias_cache().get(ck)
         if g:
@@ -21951,26 +22640,51 @@ def _pf_canales_periodo(email, desde, hasta):
     dias ya cerrados salen de disco y solo el de hoy se recalcula: "ultimos 30 dias" pasa de
     ~50 s a ~1 s despues de la primera vez. Los numeros son los MISMOS: cada dia se calcula con
     su propio detalle real (medido 30-09-2026, el rango entero tardaba 50,5 s)."""
+    # FULFILLMENT SIN IVA: cada camino deja en el raw cuanto fulfillment es de dias desde
+    # FULFILLMENT_SIN_IVA_DESDE (oper_monto_sin_iva / oper_w_sin_iva), decidido por la FECHA de
+    # cada dia. Lo usa el credito de IVA (_oper_cred_iva) en _pf_periodo_calcular.
     if desde == hasta:
-        return _pf_canales_dia(email, desde)
+        b, s1, t1 = _pf_canales_dia(email, desde)
+        return _ful_marcar(b, *_ful_sin_iva_dia((b or {}).get("raw"), desde)), s1, t1
     try:
         d1 = _dt.datetime.strptime(desde, "%Y-%m-%d").date()
         d2 = _dt.datetime.strptime(hasta, "%Y-%m-%d").date()
     except Exception:
         return _pf_canales(email, desde, hasta)
     if (d2 - d1).days > 120:                 # rangos gigantes: como antes, de una
-        return _pf_canales(email, desde, hasta)
+        b, s1, t1 = _pf_canales(email, desde, hasta)
+        om_si = ow_si = 0.0
+        nw_si = 0
+        corte = FULFILLMENT_SIN_IVA_DESDE
+        if desde >= corte:                   # todo el rango es sin IVA
+            om_si, ow_si, nw_si = _ful_sin_iva_dia((b or {}).get("raw"), desde)
+        elif hasta >= corte:                 # cruza la fecha: la parte nueva, sumada por dia
+            try:
+                b2 = _pf_canales_periodo(email, corte, hasta)[0]
+                r2 = (b2 or {}).get("raw") or {}
+                om_si = float(r2.get("oper_monto_sin_iva", 0) or 0)
+                ow_si = float(r2.get("oper_w_sin_iva", 0) or 0)
+                nw_si = int(r2.get("oper_w_n_sin_iva", 0) or 0)
+            except Exception:
+                pass
+        return _ful_marcar(b, om_si, ow_si, nw_si), s1, t1
     blob = None
     sh_n = tn_n = 0
     f = d1
     ml_ok_todos = True        # _combinar_resumen solo copia la lista SUM: meli_ok se perderia
+    om_si = ow_si = 0.0       # fulfillment de los dias sin IVA (tampoco esta en la lista SUM)
+    nw_si = 0                 # pedidos de la tienda de esos dias (costo de la tienda en el break even)
     while f <= d2:
         try:
             b, s1, t1 = _pf_canales_dia(email, f.isoformat())
             if b:
                 if (b.get("raw") or {}).get("meli_ok") is False:
                     ml_ok_todos = False
+                a1, a2, a3 = _ful_sin_iva_dia(b.get("raw"), f.isoformat())
                 blob = _combinar_resumen(blob, b)
+                om_si += a1
+                ow_si += a2
+                nw_si += a3
                 sh_n += s1
                 tn_n += t1
         except Exception:
@@ -21978,6 +22692,7 @@ def _pf_canales_periodo(email, desde, hasta):
         f += _dt.timedelta(days=1)
     if blob and isinstance(blob.get("raw"), dict):
         blob["raw"]["meli_ok"] = ml_ok_todos
+        _ful_marcar(blob, om_si, ow_si, nw_si)
     if blob:
         blob["raw"]["desde"] = desde
         blob["raw"]["hasta"] = hasta
@@ -22009,6 +22724,12 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         pass
     try:
         blob["raw"]["ri"] = _comis_ri(email)   # flag Responsable Inscripto → KPIs de IVA
+    except Exception:
+        pass
+    try:   # fulfillment por pedido: la tarjeta Envios muestra el vigente del periodo que se ve
+        blob["raw"]["ful_negro_desde"] = FULFILLMENT_SIN_IVA_DESDE
+        blob["raw"]["ful_orden_antes"] = OPER_ORDEN
+        blob["raw"]["ful_orden_negro"] = FULFILLMENT_ORDEN_NEGRO
     except Exception:
         pass
     try:
@@ -22148,7 +22869,9 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # el 22-10-2026: la factura es por los $800 del armado; el 9,7% de la cambiaria lo paga
     # aparte y por eso no genera credito. Si algun dia facturan el total, alcanza con usar
     # oper_monto entero aca.
-    _oper_cred = (r.get("oper_monto", 0) or 0) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+    # Y desde FULFILLMENT_SIN_IVA_DESDE (02-11-2026: "los 800 ahora no tienen IVA") esos $800
+    # tampoco dan credito: solo cuentan los dias anteriores (_oper_cred_iva, por dia).
+    _oper_cred = _oper_cred_iva(r)
     _base_cred = (r.get("costo_prod", 0) or 0) + (r.get("envio_monto", 0) or 0) \
                  + _oper_cred \
                  + (r.get("mp_costo_real", 0) or 0) \
@@ -22285,8 +23008,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # El FULFILLMENT tambien da credito, por los $800 facturados del armado (el 9,7% de la
         # cambiaria se paga aparte y no factura). Estaba contado en la ganancia pero NO aca, asi
         # que el break even salia mas alto que el real (22-10-2026).
-        _oper_cred_w = (OPER_ORDEN * (_ord_w + int(r.get("ordenes_cero", 0) or 0))
-                        ) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+        # Desde FULFILLMENT_SIN_IVA_DESDE ya no: solo los dias anteriores (misma regla que arriba).
+        _oper_cred_w = _oper_cred_iva_w(r, _ord_w)
         _iva_w = _fact_w * _IVA_F_VTA - (_prod_w + _com_w + _env_w + _oper_cred_w) * _IVA_F_CMP
         # La comision de la agencia (10% de la pauta de CP3) NO entra en el break even.
         # Decision de Cristian (05-10-2026): "sin agregarlo al cpa breakeven, pero restalo como
@@ -22300,8 +23023,10 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # Los pedidos en $0 (reposiciones) no son ventas pero SI se despachan, y ese
         # fulfillment lo paga la tienda. La ganancia ya lo cobraba; la contribucion no, asi que
         # el tope de CPA salia mas alto del real (29-09-2026: $ 77 por venta, 12 pedidos).
-        _cero_w = int(r.get("ordenes_cero", 0) or 0)
-        _pre_w = (_fact_w - _prod_w - _com_w - _ret_w - _env_w - OPER_ORDEN * (_ord_w + _cero_w)
+        # El fulfillment de la tienda va con la tarifa de CADA DIA: $877,60 antes de la fecha y
+        # $800 en negro desde ahi (_oper_w_total, que ya suma los pedidos en $0 de ordenes_cero).
+        # Sin dias nuevos es OPER_ORDEN x (pedidos web + en $0), igual que antes.
+        _pre_w = (_fact_w - _prod_w - _com_w - _ret_w - _env_w - _oper_w_total(r, _ord_w)
                   - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w)
         # LA PAUTA TAMBIEN DA CREDITO FISCAL. En las cuentas en dolares la cambiaria factura el
         # bruto transferido con el IVA adentro, asi que cada peso de pauta cuesta de verdad
@@ -22384,10 +23109,29 @@ def pf_periodo():
 # suma ENCIMA lo que se carga aca (gastos con factura A, percepciones de proveedores, saldo
 # tecnico del mes anterior). Los gastos van en un archivo PROPIO y no en movimientos.json: ese se
 # resetea entero si cambia MOV_SEED_VERSION y guarda la fecha 'dd/mm' sin anio.
-_IMP_FILE = DATA_DIR / "impuestos_gastos.json"   # {email: {seq, rows:[...], conf:{iibb_base, computa_ext, st_anterior:{"YYYY-MM": monto}}}}
+_IMP_FILE = DATA_DIR / "impuestos_gastos.json"   # {email: {seq, rows:[...], conf:{iibb_base, computa_ext, st_anterior:{"YYYY-MM": monto}, emma_nombre, carga:{iva, banco, moneda, base}}}}
 _IMP_LOCK = DATA_DIR / "impuestos_gastos.lock"   # flock entre los 2 workers (leer-cambiar-escribir)
-_IMP_COMPS = ("A", "M", "B", "C", "sin", "exterior")
-_IMP_ALICS = (21.0, 10.5, 27.0)
+_IMP_COMPS = ("A", "M", "B", "C", "sin", "exterior", "emma_usdt")
+# 'emma_usdt' = "Pagado con USDT de Emma": una suscripcion/compra que Cristian paga con los USDT
+# que le acredito Emma en una 'Factura con Emma' para "Suscripciones y otras compras". Es GASTO
+# (USDT x cotizacion = pesos) pero NO suma IVA: ese IVA ya entro UNA vez, en la factura de la
+# carga; sumarlo aca lo contaria dos veces.
+# Tipo 'sueldo' (gasto comun): ATT, el de Cristian, el del socio, los editores (por video). Se
+# pagan en pesos y sin factura: gasto del mes, nunca IVA. Comprobante siempre 'sin'.
+_IMP_TIPOS = ("gasto", "suscripcion", "sueldo")
+# Factura A (o M) SIEMPRE al 21%: lo dijo Cristian. Si el front manda otra alicuota se ignora.
+# Los gastos viejos guardados con 10,5/27 se leen y suman igual (su iva_monto ya esta guardado).
+_IMP_ALIC_A = 21.0
+# "Factura con Emma" (clase 'carga'): Cristian le pide al contador que le cargue, por ej.,
+# $2.000.000; ella le hace factura A por los 2 millones (IVA 21% ADENTRO) y le acredita en USDT
+# lo que queda despues de sacarle 8,5% + 1,2% bancario. Es la misma cambiaria de
+# FULFILLMENT_RECARGO_PCT (9,7). Estos son los % precargados; cada cuenta guarda los suyos en
+# conf['carga'] la primera vez que guarda una carga.
+# 'base' = sobre que va el % de IVA: 'total' (el monto de la factura, como lo conto Cristian) o
+# 'neto' (sin el IVA, como la liquidacion real del 22-10 que usa _factor_ads_usd). El bancario va
+# siempre sobre el total. Default 'neto': es como cobra de verdad (liquidacion del 22-10).
+_IMP_CARGA_DEF = {"iva": 8.5, "banco": 1.2, "moneda": "USDT", "base": "neto"}
+_IMP_MONEDAS = ("ARS", "USD", "USDT")
 _IMP_SERIE_CACHE = {}   # (email, desde, hasta) -> (momento, serie): los dias cerrados no cambian
 
 
@@ -22493,12 +23237,27 @@ def _imp_dmy(iso) -> str:
     return "%s/%s/%s" % (s[8:10], s[5:7], s[0:4]) if len(s) >= 10 else s
 
 
-def _imp_gasto_estado(g, conf_ri):
+def _imp_gasto_estado(g, conf_ri, emma="Emma"):
     """(suma_credito, estado, motivo) de un gasto. suma_credito se CALCULA aca y nunca se le cree
     al cliente: factura A o M y fecha desde que es Responsable Inscripto. El exterior se guarda
-    pero no suma nunca (a definir con la contadora)."""
+    pero no suma nunca (a definir con la contadora). Una carga con Emma para la pauta de Meta en
+    dolares tampoco: ese IVA ya entra solo en 'IVA a favor automatico' (iva_ads_usd, desde
+    ADS_USD_DESDE) y sumarlo aca lo contaria dos veces. Lo pagado con USDT de Emma tampoco (su IVA
+    ya entro en la factura de la carga) ni los sueldos (sin factura). 'emma' = el nombre del
+    contador que se ve en pantalla (conf.emma_nombre)."""
     comp = g.get("comp")
     f = _imp_fecha(g.get("fecha"))
+    if g.get("clase") != "carga" and g.get("tipo") == "sueldo":
+        return False, "no", "Sueldo: se paga sin factura, va como gasto del mes (no suma IVA)"
+    if g.get("clase") != "carga" and comp == "emma_usdt":
+        return False, "via_emma", ("Pagado con USDT de %s: no suma IVA (el IVA va una sola vez, en la "
+                                   "factura de %s). Acá cuenta solo como gasto" % (emma, emma))
+    if g.get("clase") == "carga":
+        if g.get("destino") == "meta":
+            return False, "auto", ("Carga para la pauta de Meta en dólares: ese IVA ya se cuenta "
+                                   "solo en 'IVA a favor automático'. Se guarda para ver el costo")
+        if _imp_es_ri(conf_ri, f):
+            return True, "suma", "Carga con factura A: el IVA de la factura suma a tu IVA a favor"
     if comp == "exterior":
         return False, "revisar", "Servicio del exterior: a definir con la contadora, no baja el IVA"
     if comp in ("A", "M"):
@@ -22512,11 +23271,125 @@ def _imp_gasto_estado(g, conf_ri):
     return False, "no", "Sin factura: no hay IVA para tomar"
 
 
+def _imp_gasto_cuentas(g, suma) -> dict:
+    """Lo que el gasto pesa en 'Gastos extras del mes' (calculado, no se guarda):
+    extra = lo que se fue de verdad. En una carga con Emma es SOLO el costo de la cambiaria (los
+    2 millones no se gastaron, se cambiaron de moneda); en el resto, monto_ars (total pagado,
+    igual que siempre: los gastos viejos sin 'clase' entran por aca sin cambios).
+    iva_recupera = el IVA que baja el IVA a pagar (solo si suma). costo_real = extra - iva_recupera
+    (negativo = la factura te deja plata, como en la carga con Emma).
+    en_pauta = el costo de una carga para la pauta de Meta en dolares: ese recargo YA esta adentro
+    del costo de la publicidad del Dashboard (_dolar_ads = cotizacion / _factor_ads_usd), asi que
+    NO entra en extra (igual que su IVA, que ya esta en el automatico). Se muestra como dato."""
+    en_pauta = 0.0
+    if g.get("clase") == "carga":
+        extra = _imp_num(g.get("costo"))
+        if extra is None:          # carga a medias: se reconstruye con sus %
+            mf = float(g.get("monto_ars", 0) or 0)
+            pi = _imp_num(g.get("desc_iva_pct")) or 0.0
+            pb = _imp_num(g.get("desc_banco_pct")) or 0.0
+            extra = _imp_carga_costo(mf, pi, pb, g.get("desc_iva_base"))
+        if g.get("destino") == "meta":
+            en_pauta, extra = extra, 0.0
+    else:
+        extra = float(g.get("monto_ars", 0) or 0)
+    iva_r = float(g.get("iva_monto", 0) or 0) if suma else 0.0
+    return {"extra": round(extra, 2), "iva_recupera": round(iva_r, 2),
+            "costo_real": round(extra - iva_r, 2), "en_pauta": round(en_pauta, 2)}
+
+
+def _imp_carga_costo(mf, pi, pb, base) -> float:
+    """Lo que se queda Emma de una factura de mf pesos: pb% bancario sobre el total y pi% de IVA
+    sobre el total (base 'total', lo de siempre) o sobre el neto sin IVA (base 'neto', como la
+    liquidacion del 22-10: 2.000.000 -> 24.000 + 140.495,87 = 164.495,87)."""
+    b_iva = mf / (1.0 + _IMP_ALIC_A / 100.0) if base == "neto" else mf
+    return mf * pb / 100.0 + b_iva * pi / 100.0
+
+
+def _imp_carga_conf(conf) -> dict:
+    """Los % y la moneda que se precargan en 'Factura con Emma' (los ultimos que uso la cuenta)."""
+    c = conf.get("carga") if isinstance(conf.get("carga"), dict) else {}
+    out = dict(_IMP_CARGA_DEF)
+    for k in ("iva", "banco"):
+        v = _imp_num(c.get(k))
+        if v is not None and 0 <= v <= 50:
+            out[k] = v
+    if c.get("moneda") in _IMP_MONEDAS:
+        out["moneda"] = c.get("moneda")
+    if c.get("base") in ("total", "neto"):
+        out["base"] = c.get("base")
+    return out
+
+
+def _imp_validar_carga(data, f, concepto) -> dict:
+    """'Factura con Emma': factura A en pesos por monto_factura con el IVA 21% ADENTRO; Emma se
+    queda con desc_iva_pct + desc_banco_pct de ese monto y acredita el resto en acredita_moneda.
+    Ejemplo de Cristian: 2.000.000 con 8,5 + 1,2 -> costo 194.000, acredita 1.806.000, IVA a favor
+    2.000.000 x 21/121 = 347.107, ganancia con la factura 153.107. Con desc_iva_base 'neto' el
+    8,5% va sobre el neto sin IVA (liquidacion del 22-10): costo 164.495,87. Todo se calcula ACA."""
+    mf = _imp_num(data.get("monto_factura") if data.get("monto_factura") is not None
+                  else data.get("monto_orig"))
+    if mf is None or mf <= 0:
+        raise _ImpErr("Falta el monto de la factura (tiene que ser mayor a 0).")
+    pcts = {}
+    for k, nom, dfl in (("desc_iva_pct", "IVA", _IMP_CARGA_DEF["iva"]),
+                        ("desc_banco_pct", "impuestos bancarios", _IMP_CARGA_DEF["banco"])):
+        v = data.get(k)
+        v = dfl if v is None or (isinstance(v, str) and not v.strip()) else _imp_num(v)
+        if v is None or v < 0 or v > 50:
+            raise _ImpErr("El descuento de %s tiene que ser un %% entre 0 y 50." % nom)
+        pcts[k] = round(v, 4)
+    tot = pcts["desc_iva_pct"] + pcts["desc_banco_pct"]
+    base = data.get("desc_iva_base")
+    base = "neto" if base is None else (base.strip().lower() if isinstance(base, str) else repr(base))
+    base = base or "neto"            # sin el campo = sobre el neto, como la liquidacion real del 22-10
+    if base not in ("total", "neto"):
+        raise _ImpErr("Sobre qué va el %% de IVA inválido: '%s' (total o neto)." % base[:12])
+    if tot >= 100:
+        raise _ImpErr("Los descuentos suman %s%%: tienen que ser menos de 100%%." % ("%g" % tot).replace(".", ","))
+    acm = data.get("acredita_moneda")
+    acm = _IMP_CARGA_DEF["moneda"] if acm is None else (acm.strip().upper() if isinstance(acm, str) else repr(acm))
+    if acm not in _IMP_MONEDAS:
+        raise _ImpErr("Moneda en que te acredita inválida: '%s' (USDT, USD o ARS)." % acm[:10])
+    tc = None
+    if acm != "ARS":
+        tc = _imp_num(data.get("tc"))
+        if tc is None or tc <= 0:
+            raise _ImpErr("Falta la cotización para pasar a %s." % acm)
+    destino = data.get("destino")
+    destino = str(destino if isinstance(destino, str) else "").strip().lower()
+    if destino not in ("meta", "otro"):
+        raise _ImpErr("Elegí para qué es la plata: Publicidad de Meta en dólares o Suscripciones y otras compras.")
+    costo = round(_imp_carga_costo(mf, pcts["desc_iva_pct"], pcts["desc_banco_pct"], base), 2)
+    acred = round(mf - costo, 2)
+    iva = _imp_num(data.get("iva_monto"))
+    if iva is None:                # no vino: el 21% que va ADENTRO de la factura (pisable)
+        iva = mf * _IMP_ALIC_A / (100.0 + _IMP_ALIC_A)
+    if iva < 0:
+        raise _ImpErr("El IVA no puede ser negativo.")
+    if iva > mf + 0.01:
+        raise _ImpErr("El IVA (%s) no puede ser mayor que el monto de la factura (%s)."
+                      % (round(iva, 2), round(mf, 2)))
+    return {"clase": "carga", "fecha": f.isoformat(), "concepto": concepto, "tipo": "gasto",
+            "moneda": "ARS", "monto_orig": round(mf, 2), "tc": (round(tc, 4) if tc else None),
+            "monto_ars": round(mf, 2), "comp": "A", "alic": int(_IMP_ALIC_A),
+            "iva_monto": round(iva, 2),
+            "desc_iva_pct": pcts["desc_iva_pct"], "desc_banco_pct": pcts["desc_banco_pct"],
+            "desc_iva_base": base, "acredita_moneda": acm, "destino": destino, "costo": costo, "acreditado": acred,
+            "acreditado_orig": (round(acred / tc, 2) if tc else acred)}
+
+
 def _imp_validar_gasto(data) -> dict:
     """Arma el gasto a guardar con lo que manda el front. Todo se valida aca: montos >= 0, fecha
-    real, strings recortados. monto_ars es SIEMPRE el total pagado en pesos."""
+    real, strings recortados. monto_ars es SIEMPRE el total pagado en pesos (en una carga con
+    Emma, el monto de la factura; lo que cuenta como gasto es su 'costo')."""
     if not isinstance(data, dict):
         raise _ImpErr("Datos inválidos: tiene que venir un objeto con el gasto.")
+    clase = data.get("clase")
+    clase = "gasto" if clase is None else (clase.strip().lower() if isinstance(clase, str) else repr(clase))
+    clase = clase or "gasto"          # sin clase = gasto comun (asi vienen los gastos viejos)
+    if clase not in ("gasto", "carga"):
+        raise _ImpErr("Tipo de carga inválido: '%s' (Factura con Emma o Gasto común)." % clase[:20])
     f = _imp_fecha(data.get("fecha"))
     if not f:
         raise _ImpErr("Fecha inválida: tiene que ser AAAA-MM-DD.")
@@ -22524,46 +23397,14 @@ def _imp_validar_gasto(data) -> dict:
     if f.year < 2020 or (hoy and f > hoy + _dt.timedelta(days=366)):
         raise _ImpErr("Fecha fuera de rango: %s." % _imp_dmy(f.isoformat()))
     concepto = str(data.get("concepto") or "").strip()[:120]
+    tipo = data.get("tipo")
+    tipo = (tipo if isinstance(tipo, str) else ("gasto" if tipo is None else repr(tipo)))
+    tipo = tipo.strip().lower().replace("ó", "o") or "gasto"
+    persona = " ".join(str(data.get("persona") if isinstance(data.get("persona"), str) else "").split())[:40]
+    if not concepto and clase == "gasto" and tipo == "sueldo" and persona:
+        concepto = "Sueldo · " + persona          # el sueldo trae su concepto solo
     if not concepto:
         raise _ImpErr("Falta el concepto (ej: Contadora, Packaging).")
-    tipo = str(data.get("tipo") or "gasto").strip().lower().replace("ó", "o")
-    if tipo not in ("gasto", "suscripcion"):
-        raise _ImpErr("Tipo inválido: '%s' (gasto o suscripción)." % tipo[:20])
-    moneda = str(data.get("moneda") or "ARS").strip().upper()
-    if moneda not in ("ARS", "USD"):
-        raise _ImpErr("Moneda inválida: '%s' (ARS o USD)." % moneda[:10])
-    monto = _imp_num(data.get("monto_orig") if data.get("monto_orig") is not None else data.get("monto"))
-    if monto is None or monto <= 0:
-        raise _ImpErr("Falta el monto total pagado (tiene que ser mayor a 0).")
-    tc = None
-    if moneda == "USD":
-        tc = _imp_num(data.get("tc"))
-        if tc is None or tc <= 0:
-            raise _ImpErr("Falta el tipo de cambio del gasto en dólares.")
-        monto_ars = round(monto * tc, 2)
-    else:
-        monto_ars = round(monto, 2)
-    comp = str(data.get("comp") or "sin").strip()
-    comp = {"a": "A", "m": "M", "b": "B", "c": "C", "-": "sin", "sin factura": "sin",
-            "ninguno": "sin", "ext": "exterior"}.get(comp.lower(), comp)
-    if comp not in _IMP_COMPS:
-        raise _ImpErr("Comprobante inválido: '%s'." % comp[:20])
-    alic = None
-    iva = 0.0
-    if comp in ("A", "M", "exterior"):
-        alic = _imp_num(data.get("alic"))
-        if comp == "exterior" or alic is None:
-            alic = 21.0
-        if alic not in _IMP_ALICS:
-            raise _ImpErr("Alícuota inválida: %s (21, 10,5 o 27)." % str(alic).replace(".", ","))
-        iva = _imp_num(data.get("iva_monto"))
-        if iva is None:            # no vino: se precalcula como IVA contenido en el total (pisable)
-            iva = monto_ars * alic / (100.0 + alic)
-        if iva < 0:
-            raise _ImpErr("El IVA no puede ser negativo.")
-        if iva > monto_ars + 0.01:
-            raise _ImpErr("El IVA (%s) no puede ser mayor que el total pagado en pesos (%s)."
-                          % (round(iva, 2), monto_ars))
     percs = {}
     for k, nom in (("percep_iva", "percepción de IVA"), ("percep_iibb", "percepción de IIBB")):
         v = _imp_num(data.get(k))
@@ -22572,12 +23413,106 @@ def _imp_validar_gasto(data) -> dict:
         if v < 0:
             raise _ImpErr("La %s no puede ser negativa." % nom)
         percs[k] = round(v, 2)
-    return {"fecha": f.isoformat(), "concepto": concepto, "tipo": tipo, "moneda": moneda,
-            "monto_orig": round(monto, 2), "tc": (round(tc, 4) if tc else None),
-            "monto_ars": monto_ars, "comp": comp,
+    if clase == "carga":
+        return dict(_imp_validar_carga(data, f, concepto), **percs)
+    if tipo not in _IMP_TIPOS:
+        raise _ImpErr("Tipo inválido: '%s' (gasto, suscripción o sueldo)." % tipo[:20])
+    if tipo == "sueldo":
+        return _imp_validar_sueldo(data, f, concepto, persona)
+    moneda = str(data.get("moneda") or "ARS").strip().upper()
+    if moneda not in _IMP_MONEDAS:
+        raise _ImpErr("Moneda inválida: '%s' (ARS, USD o USDT)." % moneda[:10])
+    monto = _imp_num(data.get("monto_orig") if data.get("monto_orig") is not None else data.get("monto"))
+    if monto is None or monto <= 0:
+        raise _ImpErr("Falta el monto total pagado (tiene que ser mayor a 0).")
+    tc = None
+    if moneda != "ARS":
+        tc = _imp_num(data.get("tc"))
+        if tc is None or tc <= 0:
+            raise _ImpErr("Falta el tipo de cambio del gasto en %s."
+                          % ("dólares" if moneda == "USD" else moneda))
+        monto_ars = round(monto * tc, 2)
+    else:
+        monto_ars = round(monto, 2)
+    comp = str(data.get("comp") or "sin").strip()
+    comp = {"a": "A", "m": "M", "b": "B", "c": "C", "-": "sin", "sin factura": "sin",
+            "ninguno": "sin", "ext": "exterior", "emma": "emma_usdt", "via_emma": "emma_usdt",
+            "usdt_emma": "emma_usdt"}.get(comp.lower(), comp)
+    if comp not in _IMP_COMPS:
+        raise _ImpErr("Comprobante inválido: '%s'." % comp[:20])
+    # Como viene el IVA en la factura A: 'incluido' (el total ya lo trae adentro, lo de siempre)
+    # o 'suma' (la factura dice neto + IVA aparte: el monto es el NETO y el total pagado es
+    # neto + IVA). Los gastos viejos no tienen el campo y son 'incluido'.
+    iva_modo = str(data.get("iva_modo") or "incluido").strip().lower()
+    if iva_modo not in ("incluido", "suma"):
+        raise _ImpErr("Cómo viene el IVA inválido: '%s' (incluido o neto + IVA)." % iva_modo[:12])
+    if comp not in ("A", "M"):
+        iva_modo = "incluido"
+    alic = None
+    iva = 0.0
+    if comp in ("A", "M", "exterior"):
+        alic = _IMP_ALIC_A                 # factura A siempre 21%: otra alicuota se ignora
+        iva = _imp_num(data.get("iva_monto"))
+        if iva is None:            # no vino: se precalcula (pisable)
+            iva = (monto_ars * alic / 100.0 if iva_modo == "suma"
+                   else monto_ars * alic / (100.0 + alic))
+        if iva < 0:
+            raise _ImpErr("El IVA no puede ser negativo.")
+        if iva_modo == "suma":
+            # el tope va contra el NETO: contra el total ya sumado no cortaba nunca (neto 1.000
+            # con IVA pisado 50.000 pasaba y daba 50.000 de credito)
+            if iva > monto_ars + 0.01:
+                raise _ImpErr("El IVA (%s) no puede ser mayor que el neto de la factura en pesos (%s)."
+                              % (round(iva, 2), monto_ars))
+            monto_ars = round(monto_ars + iva, 2)
+        if iva > monto_ars + 0.01:
+            raise _ImpErr("El IVA (%s) no puede ser mayor que el total pagado en pesos (%s)."
+                          % (round(iva, 2), monto_ars))
+    if comp == "emma_usdt":
+        # pagado con los USDT de Emma: no hay percepcion posible (un POST directo o un front
+        # viejo cacheado no puede bajar el IVA con una percepcion que no existe)
+        percs = {"percep_iva": 0.0, "percep_iibb": 0.0}
+    return {"clase": "gasto", "fecha": f.isoformat(), "concepto": concepto, "tipo": tipo,
+            "moneda": moneda, "monto_orig": round(monto, 2), "tc": (round(tc, 4) if tc else None),
+            "monto_ars": monto_ars, "comp": comp, "iva_modo": iva_modo,
             "alic": (int(alic) if alic is not None and alic == int(alic) else alic),
             "iva_monto": round(iva, 2), "percep_iva": percs["percep_iva"],
             "percep_iibb": percs["percep_iibb"]}
+
+
+def _imp_validar_sueldo(data, f, concepto, persona) -> dict:
+    """Tipo 'sueldo': persona/rol (texto libre, obligatorio), en pesos y sin factura. pago 'fijo'
+    (monto_orig) o 'video' (videos x precio_video, los editores). El total se calcula ACA: lo que
+    mande el front como monto en un sueldo por video se ignora."""
+    if not persona:
+        raise _ImpErr("Falta la persona o el rol del sueldo (ej: ATT, Socio, Editor Juan).")
+    pago = data.get("pago")
+    pago = "fijo" if pago is None else (pago.strip().lower() if isinstance(pago, str) else repr(pago))
+    pago = pago or "fijo"
+    if pago not in ("fijo", "video"):
+        raise _ImpErr("Cómo se paga el sueldo inválido: '%s' (monto fijo o por video)." % pago[:12])
+    extra = {}
+    if pago == "video":
+        vv = data.get("videos")
+        nv = None if isinstance(vv, bool) else _imp_num(vv)
+        if nv is None or nv < 0 or nv != int(nv):
+            raise _ImpErr("Los videos tienen que ser un número entero (0 o más).")
+        pv = _imp_num(data.get("precio_video"))
+        if pv is None or pv < 0:
+            raise _ImpErr("El precio por video tiene que ser un monto (0 o más).")
+        monto = round(int(nv) * pv, 2)
+        if monto <= 0:
+            raise _ImpErr("El sueldo por video da $0: poné cuántos videos y el precio por video.")
+        extra = {"videos": int(nv), "precio_video": round(pv, 2)}
+    else:
+        monto = _imp_num(data.get("monto_orig") if data.get("monto_orig") is not None else data.get("monto"))
+        if monto is None or monto <= 0:
+            raise _ImpErr("Falta el monto del sueldo (tiene que ser mayor a 0).")
+        monto = round(monto, 2)
+    return dict({"clase": "gasto", "fecha": f.isoformat(), "concepto": concepto, "tipo": "sueldo",
+                 "persona": persona, "pago": pago, "moneda": "ARS", "monto_orig": monto, "tc": None,
+                 "monto_ars": monto, "comp": "sin", "iva_modo": "incluido", "alic": None,
+                 "iva_monto": 0.0, "percep_iva": 0.0, "percep_iibb": 0.0}, **extra)
 
 
 def _imp_mes_rango(mes):
@@ -22620,8 +23555,10 @@ def _imp_cred_oper(r) -> float:
     (no hay gasto de Meta por dia). Replica a mano el _base_cred del bloque IVA de
     _pf_periodo_calcular (app.py L21382-21390 antes de esta seccion): si alla cambia que entra al
     credito, hay que cambiarlo ACA tambien o el grafico deja de cerrar contra el total. No se saco
-    un helper comun a proposito: tocar _pf_periodo_calcular mueve la ganancia del Dashboard."""
-    _oper_cred = float(r.get("oper_monto", 0) or 0) / (1.0 + FULFILLMENT_RECARGO_PCT / 100.0)
+    un helper comun a proposito: tocar _pf_periodo_calcular mueve la ganancia del Dashboard.
+    El fulfillment SI va por el helper comun _oper_cred_iva: desde FULFILLMENT_SIN_IVA_DESDE no da
+    credito (la serie le pone a cada dia su oper_monto_sin_iva por la fecha)."""
+    _oper_cred = _oper_cred_iva(r)
     _base = (float(r.get("costo_prod", 0) or 0) + float(r.get("envio_monto", 0) or 0)
              + _oper_cred
              + float(r.get("mp_costo_real", 0) or 0)
@@ -22632,7 +23569,7 @@ def _imp_cred_oper(r) -> float:
 
 
 _IMP_SERIE_CAMPOS = ("facturado", "ordenes", "costo_prod", "envio_monto", "oper_monto",
-                     "mp_costo_real", "meli_comision", "meli_adelanto")
+                     "mp_costo_real", "meli_comision", "meli_adelanto", "oper_monto_sin_iva")
 
 
 def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
@@ -22648,7 +23585,8 @@ def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
            str(conf_ri.get("ri_desde") or "")[:10], str(conf_ri.get("regimen") or ""),
            round(float(raw_tot.get("facturado", 0) or 0), 2),
            round(float(raw_tot.get("costo_prod", 0) or 0), 2),
-           round(float(raw_tot.get("envio_monto", 0) or 0), 2))
+           round(float(raw_tot.get("envio_monto", 0) or 0), 2),
+           round(float(raw_tot.get("oper_monto", 0) or 0), 2))
     now = _dt.datetime.utcnow()
     c = _IMP_SERIE_CACHE.get(key)
     if c and (now - c[0]).total_seconds() < _pf_ttl(hasta.isoformat()):
@@ -22660,19 +23598,20 @@ def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
     # ords) en cada llamada, y eran ~30 por request. Misma clave que usa _pf_canales_dia; si el
     # dia no esta en disco, va por _pf_canales_dia como siempre (lo calcula y lo guarda).
     dias_disco = _pf_dias_cache()
-    ver = _pf_costos_ver()
     f = d1
     while f < hasta:
         fi = f.isoformat()
         vals = dict.fromkeys(_IMP_SERIE_CAMPOS, 0.0)
         try:
-            g = dias_disco.get("%s|%s|%s" % (email, fi, ver)) if _pf_cerrado(fi) else None
+            g = dias_disco.get(_pf_dia_clave(email, fi)) if _pf_cerrado(fi) else None
             b = g.get("blob") if isinstance(g, dict) else None
             if not b:
                 b, _s, _t = _pf_canales_dia(email, fi)
             r = (b or {}).get("raw") or {}
             for k in _IMP_SERIE_CAMPOS:
                 vals[k] = float(r.get(k, 0) or 0)
+            # el dia guardado no trae el campo: sale de SU fecha (fulfillment sin IVA)
+            vals["oper_monto_sin_iva"] = _ful_sin_iva_dia(r, fi)[0]
         except Exception:
             pass                       # el dia que falla lo absorbe la diferencia del ultimo
         try:
@@ -22684,6 +23623,9 @@ def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
         dias.append((f, vals))
         f += _dt.timedelta(days=1)
     ult = {k: float(raw_tot.get(k, 0) or 0) - acum[k] for k in acum}
+    # el ultimo dia es UN dia: su fulfillment sin IVA sale de su fecha y no de la diferencia (un
+    # total viejo sin el campo daria negativo y ese dia tomaria credito completo)
+    ult["oper_monto_sin_iva"] = max(ult["oper_monto"], 0.0) if _ful_sin_iva(hasta.isoformat()) else 0.0
     dias.append((hasta, ult))
     out = []
     fa = da = ca = 0.0
@@ -22743,13 +23685,57 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
     cur = _imp_cuenta(_imp_all(estricto=True, cola="No muestro el mes para no darte un IVA "
                                "sin tus gastos."), email)
     conf = cur["conf"]
+    emma_nom = str(conf.get("emma_nombre") or "").strip()[:30] or "Emma"
     rows = []
     cred_g = pac_g = perc_iibb_g = ext_iva = total_ars = 0.0
     n_suman = n_ext = 0
+    # Gastos extras del mes: lo que se fue de verdad (en las cargas con Emma, solo el costo de la
+    # cambiaria), el IVA que vuelve y el corte por tipo. 'suscripciones' se superpone con los
+    # otros tres (es un tipo, no un comprobante).
+    # Las cargas para la pauta de Meta no suman su costo (ya esta en la publicidad del Dashboard):
+    # van aparte en en_pauta / n_auto, solo como dato.
+    # Cada gasto va a UNA sola de emma / emma_usdt / factura_a / sin_factura / sueldos (sumadas
+    # dan total_pagado); 'sin_factura' ya NO lleva lo pagado con USDT de Emma ni los sueldos.
+    gx = {"total_pagado": 0.0, "iva_recupera": 0.0, "costo_real": 0.0, "en_pauta": 0.0}
+    cortes = {k: {"n": 0, "total": 0.0, "iva": 0.0, "en_pauta": 0.0, "n_auto": 0}
+              for k in ("emma", "factura_a", "sin_factura", "suscripciones", "emma_usdt", "sueldos")}
+    usdt_acred = usdt_usado = 0.0      # USDT de cargas "para compras" vs USDT gastados via Emma
+    sld_per = {}                       # persona -> [total, pagos, videos]
+    sld_videos = sld_n_video = 0
     for g in cur["rows"]:
         if not isinstance(g, dict) or not str(g.get("fecha") or "").startswith(mes):
             continue
-        suma, estado, motivo = _imp_gasto_estado(g, conf_ri)
+        suma, estado, motivo = _imp_gasto_estado(g, conf_ri, emma_nom)
+        cta = _imp_gasto_cuentas(g, suma)
+        gx["total_pagado"] += cta["extra"]
+        gx["iva_recupera"] += cta["iva_recupera"]
+        gx["costo_real"] += cta["costo_real"]
+        gx["en_pauta"] += cta["en_pauta"]
+        es_carga = g.get("clase") == "carga"
+        ck = ("emma" if es_carga
+              else "sueldos" if g.get("tipo") == "sueldo"
+              else "emma_usdt" if g.get("comp") == "emma_usdt"
+              else "factura_a" if g.get("comp") in ("A", "M") else "sin_factura")
+        for k2 in ((ck, "suscripciones") if g.get("tipo") == "suscripcion" and ck != "emma" else (ck,)):
+            cortes[k2]["n"] += 1
+            cortes[k2]["total"] += cta["extra"]
+            cortes[k2]["iva"] += cta["iva_recupera"]
+            cortes[k2]["en_pauta"] += cta["en_pauta"]
+            cortes[k2]["n_auto"] += 1 if estado == "auto" else 0
+        if es_carga and g.get("destino") == "otro" and g.get("acredita_moneda") in ("USDT", "USD"):
+            usdt_acred += float(g.get("acreditado_orig", 0) or 0)
+        if ck == "emma_usdt" and g.get("moneda") in ("USDT", "USD"):
+            usdt_usado += float(g.get("monto_orig", 0) or 0)   # USD y USDT van 1 a 1
+        if ck == "sueldos":
+            pk = " ".join(str(g.get("persona") or "").split()) or "Sin nombre"
+            acc = sld_per.setdefault(pk, [0.0, 0, 0])
+            acc[0] += cta["extra"]
+            acc[1] += 1
+            if g.get("pago") == "video":
+                nv = int(g.get("videos", 0) or 0)
+                acc[2] += nv
+                sld_videos += nv
+                sld_n_video += 1
         iva_m = float(g.get("iva_monto", 0) or 0)
         if suma:
             cred_g += iva_m
@@ -22761,8 +23747,46 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
             ext_iva += iva_m
             n_ext += 1
         total_ars += float(g.get("monto_ars", 0) or 0)
-        rows.append(dict(g, suma_credito=suma, estado=estado, motivo=motivo))
+        rows.append(dict(g, suma_credito=suma, estado=estado, motivo=motivo, **cta))
     rows.sort(key=lambda x: (str(x.get("fecha") or ""), int(x.get("id") or 0)))
+    # sueldos por persona: las 4 que mas cobraron y el resto junto en "otros"
+    per = sorted(sld_per.items(), key=lambda kv: (-kv[1][0], kv[0].lower()))
+    per_out = [{"persona": k, "total": round(v[0], 2), "n": v[1], "videos": v[2]} for k, v in per[:4]]
+    if len(per) > 4:
+        per_out.append({"persona": "otros", "otros": len(per) - 4,
+                        "total": round(sum(v[0] for _k, v in per[4:]), 2),
+                        "n": sum(v[1] for _k, v in per[4:]), "videos": sum(v[2] for _k, v in per[4:])})
+    # de TODOS los meses: la ultima carga con Emma (su cotizacion se precarga en lo pagado con sus
+    # USDT) y las personas de los sueldos ya cargados (chips rapidos del modal). Manda la ultima
+    # carga "para compras" (de esa salen los USDT de las suscripciones); si no hay, cualquiera.
+    ult = None
+    cnt_per = {}
+    for g in cur["rows"]:
+        if not isinstance(g, dict):
+            continue
+        if g.get("clase") == "carga":
+            # entre las "para compras", manda la que tiene cotizacion (una carga en ARS no trae tc
+            # y dejaria la precarga en el dolar del dia aunque haya una anterior en USDT)
+            k = (g.get("destino") == "otro", bool(_imp_num(g.get("tc"))), str(g.get("fecha") or ""),
+                 int(g.get("id") or 0))
+            if ult is None or k > ult[0]:
+                ult = (k, g)
+        elif g.get("tipo") == "sueldo":
+            pk = " ".join(str(g.get("persona") or "").split())
+            if pk:
+                c0 = cnt_per.get(pk.lower()) or [pk, 0, ""]
+                c0[1] += 1
+                c0[2] = max(c0[2], str(g.get("fecha") or ""))
+                cnt_per[pk.lower()] = c0
+    emma_ult = None
+    if ult:
+        ug = ult[1]
+        emma_ult = {"id": int(ug.get("id") or 0), "fecha": str(ug.get("fecha") or ""),
+                    "monto": round(float(ug.get("monto_ars", 0) or 0), 2),
+                    "iva": round(float(ug.get("iva_monto", 0) or 0), 2),
+                    "tc": (round(float(ug.get("tc")), 4) if _imp_num(ug.get("tc")) else None),
+                    "moneda": ug.get("acredita_moneda") or "ARS", "destino": ug.get("destino")}
+    sld_sug = [v[0] for v in sorted(cnt_per.values(), key=lambda v: (v[1], v[2]), reverse=True)][:10]   # las mas usadas, y entre iguales la mas reciente
     # ---- IVA del mes (sin tocar raw) ----
     # saldo tecnico = debito - credito de compras - saldo tecnico a favor del mes anterior.
     # Las percepciones NO son credito: son pagos a cuenta y se restan DESPUES; si dan vuelta el
@@ -22819,6 +23843,13 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
     iibb = {"base": base, "pct": IIBB_PCT, "devengado": round(dev, 2), "retenido_mp": round(ret_mp, 2),
             "percep_gastos": round(perc_iibb_g, 2), "retenido": round(ret, 2),
             "a_pagar": round(dev - ret, 2), "label": lab_iibb}
+    # Todo junto: lo que sale este mes = IVA a pagar + IIBB a pagar + gastos extras. Un saldo a
+    # favor no resta aca (pasa al mes siguiente, no es plata que entra).
+    t_iva = max(float(iva.get("a_pagar", 0) or 0), 0.0) if not iva.get("no_aplica") else 0.0
+    t_iibb = max(dev - ret, 0.0)
+    total_mes = {"iva": round(t_iva, 2), "iibb": round(t_iibb, 2),
+                 "gastos": round(gx["total_pagado"], 2),
+                 "total": round(t_iva + t_iibb + gx["total_pagado"], 2)}
     out = {"ok": True, "mes": mes, "desde": desde_s, "hasta": hasta_s, "hoy": _hoy(),
            "dias_mes": fin.day, "dia_n": (hasta - d1).days + 1,
            "ri": {"es_ri": es_ri_fin, "ri_desde": ri_desde,
@@ -22827,11 +23858,26 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
            "iva_cmp_pct": raw.get("iva_cmp_pct", IVA_COMPRAS_PCT),
            "iibb_pct": IIBB_PCT, "facturado": round(fact, 2),
            "ventas": int(raw.get("ordenes", 0) or 0), "dolar": raw.get("dolar"),
-           "iva": iva, "iibb": iibb,
+           "iva": iva, "iibb": iibb, "total_mes": total_mes,
            "gastos": {"rows": rows, "n": len(rows), "n_suman": n_suman,
-                      "total_ars": round(total_ars, 2)},
+                      "total_ars": round(total_ars, 2),
+                      "total_pagado": round(gx["total_pagado"], 2),
+                      "iva_recupera": round(gx["iva_recupera"], 2),
+                      "costo_real": round(gx["costo_real"], 2),
+                      "en_pauta": round(gx["en_pauta"], 2),
+                      "cortes": {k: {"n": v["n"], "total": round(v["total"], 2), "iva": round(v["iva"], 2),
+                                     "en_pauta": round(v["en_pauta"], 2), "n_auto": v["n_auto"]}
+                                 for k, v in cortes.items()}},
+           "ful_sin_iva_desde": FULFILLMENT_SIN_IVA_DESDE,
            "conf": {"iibb_base": base, "computa_ext": bool(conf.get("computa_ext")),
-                    "st_anterior": round(st_ant, 2)}}
+                    "st_anterior": round(st_ant, 2),
+                    "emma_nombre": emma_nom,
+                    "carga": _imp_carga_conf(conf), "emma_ult": emma_ult,
+                    "sueldo_personas": sld_sug}}
+    co = out["gastos"]["cortes"]
+    co["emma"]["usdt_acred"] = round(usdt_acred, 2)
+    co["emma_usdt"]["usdt"] = round(usdt_usado, 2)
+    co["sueldos"].update({"personas": per_out, "videos": sld_videos, "n_video": sld_n_video})
     if con_serie:
         out["serie"] = _imp_serie(email, d1, hasta, raw, conf_ri)
     return out
@@ -22886,10 +23932,15 @@ def pf_impuestos_gasto():
                 g["id"] = cur["seq"]
                 g["creado"] = ahora
                 cur["rows"].append(g)
+            if g.get("clase") == "carga":    # la proxima carga arranca con estos % y esta moneda
+                cur["conf"]["carga"] = {"iva": g["desc_iva_pct"], "banco": g["desc_banco_pct"],
+                                        "moneda": g["acredita_moneda"], "base": g["desc_iva_base"]}
             d[email] = cur
             _imp_write(d)
-        suma, estado, motivo = _imp_gasto_estado(g, _imp_ri_conf(email))
-        return jsonify({"ok": True, "row": dict(g, suma_credito=suma, estado=estado, motivo=motivo)})
+        suma, estado, motivo = _imp_gasto_estado(g, _imp_ri_conf(email),
+                                                 str(cur["conf"].get("emma_nombre") or "").strip()[:30] or "Emma")
+        return jsonify({"ok": True, "row": dict(g, suma_credito=suma, estado=estado, motivo=motivo,
+                                                **_imp_gasto_cuentas(g, suma))})
     except _ImpErr as e:
         return jsonify({"ok": False, "msg": str(e)}), 400
     except Exception as e:
@@ -22928,8 +23979,9 @@ def pf_impuestos_gasto_del():
 
 @app.post("/pf-impuestos-conf")
 def pf_impuestos_conf():
-    """Ajustes de la seccion: iibb_base ('neto'|'bruto'), computa_ext (bool, informativo) y el
-    saldo tecnico a favor del mes anterior por mes ({mes, st_anterior}; vacio = se borra)."""
+    """Ajustes de la seccion: iibb_base ('neto'|'bruto'), computa_ext (bool, informativo), el
+    saldo tecnico a favor del mes anterior por mes ({mes, st_anterior}; vacio = se borra) y
+    emma_nombre (como se llama en pantalla el contador de 'Factura con Emma')."""
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "msg": "Tu sesión venció: volvé a entrar a RealProfit."}), 401
@@ -22945,6 +23997,12 @@ def pf_impuestos_conf():
             cambios["iibb_base"] = b
         if "computa_ext" in data:
             cambios["computa_ext"] = bool(data.get("computa_ext") is True)
+        if "emma_nombre" in data:
+            nom = data.get("emma_nombre")
+            nom = " ".join(str(nom if isinstance(nom, str) else "").split())[:30]
+            if not nom:
+                raise _ImpErr("Poné un nombre para el contador (ej: Emma).")
+            cambios["emma_nombre"] = nom
         st = None
         if "st_anterior" in data:
             mes = _imp_mes_rango(data.get("mes"))[0].isoformat()[:7]
