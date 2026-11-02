@@ -373,7 +373,7 @@ SOLO_ADMIN = [
     "/pf-comisiones", "/pf-cambiar-mp", "/pf-congelar-mp", "/pf-congelado-estado",
     "/pf-cambio-mp-estado",
     "/pf-movimientos",
-    "/pf-impuestos",
+    "/pf-impuestos", "/pf-imp-dolar-emma",
     "/clientes", "/pf-clientes",
     "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-",
     "/envialo",
@@ -1374,16 +1374,8 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-heros1{padding:2px 0 4px}
   #rp-imp-ov .ix-hero.x .ix-skin{border-color:rgba(110,231,183,.26);background:linear-gradient(160deg,rgba(16,150,110,.28),rgba(11,17,30,.72) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(16,185,129,.42),0 18px 40px -20px rgba(0,0,0,.8)}
   #rp-imp-ov .ix-hero.x .ix-hlab{color:#a7f3d0}
-  /* --- hero BILLETERA USDT DE EMMA: misma cadena 3D, en verde agua (USDT) --- */
-  #rp-imp-ov .ix-hero.w .ix-skin{border-color:rgba(94,234,212,.28);background:linear-gradient(160deg,rgba(13,148,136,.30),rgba(11,17,30,.72) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(20,184,166,.45),0 18px 40px -20px rgba(0,0,0,.8)}
-  #rp-imp-ov .ix-hero.w .ix-hlab{color:#99f6e4}
-  #rp-imp-ov .ix-hnum.neg{color:#fca5a5}
-  #rp-imp-ov .ix-hcta b.u{color:#5eead4}
-  #rp-imp-ov .ix-gxk.z{opacity:.6}
   #rp-imp-ov .ix-inp:disabled{opacity:.72;cursor:not-allowed}
   #rp-imp-ov .ix-gxk.u b{color:#ccfbf1}
-  #rp-imp-ov .ix-bwn{margin-top:10px;font-size:12.5px;line-height:1.45;color:#fde68a;background:rgba(245,158,11,.12);border:1px solid rgba(251,191,36,.4);border-radius:12px;padding:9px 12px}
-  #rp-imp-ov .ix-bwn:empty{display:none}
   #rp-imp-ov .ix-gxg{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:18px 28px;align-items:start;transform-style:preserve-3d}
   #rp-imp-ov .ix-gxg>div{min-width:0;transform-style:preserve-3d}
   #rp-imp-ov .ix-gxc{margin-top:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -1453,7 +1445,6 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-sc.revisar{color:#fde68a;background:rgba(245,158,11,.14);border:1px solid rgba(251,191,36,.35)}
   #rp-imp-ov .ix-sc.auto{color:#bfdbfe;background:rgba(59,130,246,.14);border:1px solid rgba(96,165,250,.35)}
   #rp-imp-ov .ix-sc.emma{color:#a7f3d0;background:rgba(16,185,129,.12);border:1px solid rgba(52,211,153,.3);max-width:100%;overflow:hidden;text-overflow:ellipsis}
-  #rp-imp-ov .ix-sc.via_emma{color:#99f6e4;background:rgba(20,184,166,.12);border:1px solid rgba(45,212,191,.32)}
   #rp-imp-ov .ix-del{font:inherit;background:none;border:0;color:#fb7185;cursor:pointer;font-weight:800;padding:4px 8px;border-radius:7px;opacity:.5}
   #rp-imp-ov .ix-tr.g:hover .ix-del,#rp-imp-ov .ix-del:focus{opacity:1}
   #rp-imp-ov .ix-del:hover{background:rgba(251,113,133,.12)}
@@ -1483,6 +1474,9 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-seg button:hover:not(.on){color:#e2e8f0;background:rgba(255,255,255,.04)}
   #rp-imp-ov .ix-seg button.on{color:#fff;background:linear-gradient(180deg,#3b82f6,#2563eb);font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 3px 0 #1e3a8a,0 8px 16px -8px rgba(37,99,235,.9)}
   #rp-imp-ov .ix-seg button:active{transform:translateY(2px)}
+  /* comprobante "Con Emma": renglón propio y verde al elegirlo */
+  #rp-imp-ov .ix-seg button.wide{flex-basis:100%}
+  #rp-imp-ov .ix-seg button.wide.on{background:linear-gradient(180deg,#10b981,#059669);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 3px 0 #065f46,0 8px 16px -8px rgba(16,185,129,.9)}
   #rp-imp-ov .ix-seg.sm button{font-size:12px;padding:8px 6px}
   #rp-imp-ov .ix-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   #rp-imp-ov .ix-det summary{cursor:pointer;font-size:12.5px;color:#93c5fd;font-weight:600}
@@ -1515,9 +1509,6 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-fxw{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
   #rp-imp-ov .ix-fxw .ix-seg{flex:1;min-width:220px}
   #rp-imp-ov .ix-fx.gr{color:#cbd5e1;background:rgba(148,163,184,.12);border-color:rgba(148,163,184,.3);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 3px 0 rgba(2,6,16,.8)}
-  /* comprobante "Pagado con USDT de Emma": renglón propio y verde al elegirlo */
-  #rp-imp-ov .ix-seg button.wide{flex-basis:100%}
-  #rp-imp-ov .ix-seg button.wide.on{background:linear-gradient(180deg,#10b981,#059669);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 3px 0 #065f46,0 8px 16px -8px rgba(16,185,129,.9)}
   /* aviso de la carga para Meta: bien a la vista, debajo de la opción */
   #rp-imp-ov .ix-mwarn{font-size:12.5px;line-height:1.5;color:#fde68a;background:rgba(245,158,11,.12);border:1px solid rgba(251,191,36,.4);border-radius:12px;padding:10px 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 3px 0 rgba(120,53,15,.55)}
   #rp-imp-ov .ix-mwarn b{color:#fef3c7}
@@ -1571,8 +1562,8 @@ _SOLO_DASH = r"""
    #rp-imp-ov .ix-k{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
    #rp-imp-ov .ix-k:hover{transform:translateY(-3px)}
    #rp-imp-ov .ix-bar i{transition:width .8s cubic-bezier(.2,.75,.2,1)}
-   #rp-imp-ov .ix-hero.x .ix-tilt,#rp-imp-ov .ix-hero.w .ix-tilt{transform:rotateX(7deg)}
-   #rp-imp-ov .ix-hero.x:hover .ix-tilt,#rp-imp-ov .ix-hero.w:hover .ix-tilt{transform:rotateX(0deg) translateY(-6px)}
+   #rp-imp-ov .ix-hero.x .ix-tilt{transform:rotateX(7deg)}
+   #rp-imp-ov .ix-hero.x:hover .ix-tilt{transform:rotateX(0deg) translateY(-6px)}
    #rp-imp-ov .ix-gxk{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
    #rp-imp-ov .ix-gxk:hover{transform:translateZ(16px) translateY(-2px)}
    /* modal: entra girando desde abajo; el brillo cruza UNA vez (es un formulario, no distrae) */
@@ -1661,9 +1652,8 @@ _SOLO_DASH = r"""
    @container ixw (min-width:420px) and (max-width:899.98px){#rp-imp-ov .ix-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
    @container ixw (max-width:419.98px){#rp-imp-ov .ix-kpis{grid-template-columns:1fr}}
    /* en el hero de gastos el número va en la columna izquierda (~45% del ancho): letra más chica */
-   @container ixw (min-width:700px){#rp-imp-ov .ix-gxg{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}#rp-imp-ov .ix-hero.x .ix-hnum:not(.na),#rp-imp-ov .ix-hero.w .ix-hnum:not(.na){font-size:clamp(28px,5.4cqw,60px)}}
+   @container ixw (min-width:700px){#rp-imp-ov .ix-gxg{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}#rp-imp-ov .ix-hero.x .ix-hnum:not(.na){font-size:clamp(28px,5.4cqw,60px)}}
    @container ixw (max-width:699.98px){#rp-imp-ov .ix-gxg{grid-template-columns:1fr}}
-   @container ixw (max-width:419.98px){#rp-imp-ov #ix-bw-lotes{grid-template-columns:1fr}}
    /* la tabla pasa a tarjeta cuando el CONTENIDO no llega a sus 1000px (ej. con la barra
       abierta), no solo en celu: así el ¿Suma? nunca queda tapado por el scroll de costado */
    @container ixw (max-width:999.98px){
@@ -1733,15 +1723,6 @@ _SOLO_DASH = r"""
      <div class="ix-gxt" id="ix-gx-tot"></div>
     </div></div></div>
    </div>
-   <div class="ix-heros1">
-    <div class="ix-hero w" id="ix-h-bw"><div class="ix-tilt"><div class="ix-skin"><div class="ix-shine"></div></div><div class="ix-in">
-     <div class="ix-hl"><span class="ix-hlab">Billetera USDT de <span class="ix-emma">Emma</span></span><span class="ix-hchip" id="ix-bw-chip">&nbsp;</span></div>
-     <div class="ix-gxg">
-      <div><div class="ix-hnum ld" id="ix-bw-num">…</div><div class="ix-hcta" id="ix-bw-cta"></div><div class="ix-hnote" id="ix-bw-note"></div><div class="ix-bwn" id="ix-bw-warn" role="note"></div></div>
-      <div class="ix-gxc" id="ix-bw-lotes"></div>
-     </div>
-    </div></div></div>
-   </div>
    <div class="ix-kpis">
     <div class="ix-k"><div class="ix-kl">Facturado acumulado</div><div class="ix-kn" id="ix-k-fact">—</div><div class="ix-bar"><i id="ix-k-bar"></i></div><div class="ix-ks" id="ix-k-fact-s">&nbsp;</div></div>
     <div class="ix-k"><div class="ix-kl" id="ix-k-deb-l">IVA débito (ventas)</div><div class="ix-kn" id="ix-k-deb">—</div><div class="ix-ks">Tienda + MercadoLibre</div></div>
@@ -1763,7 +1744,7 @@ _SOLO_DASH = r"""
    </div>
    <div class="ix-pn">
     <div class="ix-ph">
-     <div><h2>Gastos del mes</h2><p class="ix-pp">Solo suman al IVA a favor los que tienen factura A a tu CUIT (también las cargas <span class="ix-emma-con">con Emma</span> que no son para la pauta de Meta). Sin factura, con factura B o del exterior, no suman. Lo pagado con USDT de <span class="ix-emma">Emma</span> y los sueldos van como gasto, sin IVA.</p></div>
+     <div><h2>Gastos del mes</h2><p class="ix-pp">Solo suman al IVA a favor los que tienen factura A a tu CUIT (también lo pagado con <span class="ix-emma">Emma</span>, en dólares o en pesos: te factura A con el IVA adentro). Sin factura, con factura B o del exterior, no suman. Los sueldos van como gasto, sin IVA.</p></div>
      <button class="ix-btn" onclick="rpImpGasto()">+ Cargar gasto</button>
     </div>
     <div class="ix-scroll"><div class="ix-tbl">
@@ -1780,10 +1761,10 @@ _SOLO_DASH = r"""
    <div class="ix-box">
    <div class="ix-mh">
     <div class="ix-mi"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></div>
-    <div style="flex:1;min-width:0"><div id="ix-m-tit" style="font-size:18px;font-weight:800;color:#f4f7fb">Cargar gasto</div><div style="color:#94a3b8;font-size:12.5px">Elegí qué estás cargando. Abajo ves en vivo cuánto te cuesta y cuánto IVA recuperás.</div></div>
+    <div style="flex:1;min-width:0"><div id="ix-m-tit" style="font-size:18px;font-weight:800;color:#f4f7fb">Cargar gasto</div><div style="color:#94a3b8;font-size:12.5px">Poné cuánto pagaste. Abajo ves en vivo cuánto te cuesta y cuánto IVA recuperás.</div></div>
     <button class="ix-x" onclick="rpImpGCerrar()" title="Cerrar" aria-label="Cerrar">&#10005;</button>
    </div>
-   <div class="ix-clsw" role="group" aria-label="Tipo de carga">
+   <div class="ix-clsw" id="ix-m-clsw" role="group" aria-label="Tipo de carga">
     <button type="button" class="ix-cls e" id="ix-m-cls-c" onclick="rpImpClase('carga')" aria-pressed="false">
      <span class="ck" aria-hidden="true">&#10003;</span>
      <span class="ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg></span>
@@ -1844,17 +1825,22 @@ _SOLO_DASH = r"""
      <div class="ix-fxw"><span class="ix-fx gr">Sin factura · en pesos · no suma IVA</span></div>
     </div>
     <div class="ix-blk" id="ix-m-gcom">
+    <div class="ix-f" id="ix-m-compw"><span class="ix-lb">¿Cómo lo pagaste?</span>
+     <div class="ix-seg" data-k="comp"><button type="button" data-v="A" onclick="rpImpSeg(this)">Factura A</button><button type="button" data-v="B" onclick="rpImpSeg(this)">Factura B</button><button type="button" data-v="sin" onclick="rpImpSeg(this)">Sin factura</button><button type="button" data-v="exterior" onclick="rpImpSeg(this)">Exterior</button><button type="button" class="wide" data-v="emma_usdt" onclick="rpImpSeg(this)">Con <span class="ix-emma">Emma</span></button></div></div>
+    <!-- con Emma: factura A de Emma por el total; en dólares el dólar lo pone el server, en pesos va su comisión encima -->
+    <div class="ix-f" id="ix-m-ue" style="display:none"><div class="ix-fxw"><span class="ix-fx">Con <span class="ix-emma">Emma</span> · factura A · IVA 21% a favor</span></div><span class="ix-help" id="ix-m-ue-h"></span></div>
     <div class="ix-g2">
      <div class="ix-f"><span class="ix-lb">Moneda</span>
-      <div class="ix-seg" data-k="moneda"><button type="button" data-v="ARS" onclick="rpImpSeg(this)">ARS</button><button type="button" data-v="USD" onclick="rpImpSeg(this)">USD</button><button type="button" data-v="USDT" onclick="rpImpSeg(this)">USDT</button></div></div>
+      <div class="ix-seg" data-k="moneda"><button type="button" data-v="ARS" onclick="rpImpSeg(this)">Pesos</button><button type="button" data-v="USD" onclick="rpImpSeg(this)">Dólares</button></div></div>
      <div class="ix-f"><label class="ix-lb" for="ix-m-monto" id="ix-m-monto-l">Monto total pagado</label><input id="ix-m-monto" class="ix-inp" inputmode="decimal" placeholder="350.000" oninput="rpImpCalc()"></div>
     </div>
+    <div class="ix-f" id="ix-m-epw" style="display:none"><label class="ix-lb" for="ix-m-epct">Comisión de <span class="ix-emma">Emma</span> (de lo que le pasás)</label>
+     <div class="ix-suf"><input id="ix-m-epct" class="ix-inp" inputmode="decimal" oninput="rpImpCalc()"><i>%</i></div>
+     <span class="ix-help">La misma de los dólares: 1,2% de lo que le pasás + 8,5% del neto sin IVA = 8,22%. Si te cobra otra, cambiala: queda guardada para la próxima.</span></div>
     <div class="ix-g2" id="ix-m-usd" style="display:none">
      <div class="ix-f"><label class="ix-lb" for="ix-m-tc" id="ix-m-tc-l">Cotización</label><input id="ix-m-tc" class="ix-inp" inputmode="decimal" oninput="rpImpTcTocado()"><span class="ix-help" id="ix-m-tc-h"></span></div>
      <div class="ix-f"><span class="ix-lb">En pesos</span><div class="ix-help" id="ix-m-ars" style="padding:13px 2px;font-size:13px;color:#cbd5e1"></div></div>
     </div>
-    <div class="ix-f"><span class="ix-lb">Comprobante</span>
-     <div class="ix-seg" data-k="comp"><button type="button" data-v="A" onclick="rpImpSeg(this)">Factura A</button><button type="button" data-v="B" onclick="rpImpSeg(this)">Factura B</button><button type="button" data-v="sin" onclick="rpImpSeg(this)">Sin factura</button><button type="button" data-v="exterior" onclick="rpImpSeg(this)">Exterior</button><button type="button" class="wide" data-v="emma_usdt" onclick="rpImpSeg(this)">Pagado con USDT de <span class="ix-emma">Emma</span></button></div></div>
     <div class="ix-f" id="ix-m-fa"><span class="ix-lb">La factura dice</span>
      <div class="ix-fxw"><span class="ix-fx" id="ix-m-fx">Factura A · IVA 21%</span>
       <div class="ix-seg sm" data-k="imodo"><button type="button" data-v="incluido" onclick="rpImpSeg(this)">Total con IVA adentro</button><button type="button" data-v="suma" onclick="rpImpSeg(this)">Neto + IVA aparte</button></div></div></div>
@@ -1884,7 +1870,7 @@ _SOLO_DASH = r"""
   // ===================== IMPUESTOS =====================
   var MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   var D=null, SERIE=null, MES=null, _tok=0, _okTk=0, _tries=0, _triesS=0, _tmr=null, _tmrS=null, _ts=0, _msg='';
-  var G={id:null,clase:'carga',tipo:'gasto',moneda:'ARS',comp:'A',imodo:'incluido',acmon:'USDT',destino:'otro',pbase:'neto',pago:'fijo',ivaTocado:false,conTocado:false,tcTocado:false,tccPrev:null};
+  var G={id:null,clase:'gasto',tipo:'gasto',moneda:'ARS',comp:'A',imodo:'incluido',acmon:'USDT',destino:'otro',pbase:'neto',pago:'fijo',editCarga:false,ivaTocado:false,conTocado:false,tcTocado:false,tccPrev:null};
   function $(id){return document.getElementById(id);}
   function fmt(n){ n=Number(n)||0; var s=Math.round(Math.abs(n)).toLocaleString('es-AR'); return (n<=-0.5?'−':'')+'$'+s; }
   function fmtU(n){ return 'US$ '+(Number(n)||0).toLocaleString('es-AR',{maximumFractionDigits:2}); }
@@ -1960,8 +1946,6 @@ _SOLO_DASH = r"""
     $('ix-g-body').innerHTML='<div class="ix-empty">Cargando…</div>'; $('ix-g-foot').textContent='';
     var gn=$('ix-gx-num'); gn.className='ix-hnum ld'; gn.textContent='$ …';
     ['ix-gx-cta','ix-gx-note','ix-gx-cortes','ix-gx-tot'].forEach(function(id){ $(id).innerHTML=''; }); $('ix-gx-chip').innerHTML='&nbsp;';
-    var bn=$('ix-bw-num'); bn.className='ix-hnum ld'; bn.textContent='…';
-    ['ix-bw-cta','ix-bw-note','ix-bw-warn','ix-bw-lotes'].forEach(function(id){ $(id).innerHTML=''; }); $('ix-bw-chip').innerHTML='&nbsp;';
     chartMsg('Cargando el gráfico…'); estado('Calculando '+mesTxt(m)+'…'); }
   function pintar(){ var j=D; if(!j)return;
     var nx=mesAdd(j.mes,1), iv=j.iva||{}, ib=j.iibb||{}, na=!!iv.no_aplica;
@@ -2021,11 +2005,9 @@ _SOLO_DASH = r"""
     $('ix-gx-cta').innerHTML='<span>IVA que recuperás <b class="g">'+fmt(ir)+'</b></span>'
       +(cr<0?('<span>Te dejan a favor <b class="g">'+fmt(-cr)+'</b></span>'):('<span>Costo real <b>'+fmt(cr)+'</b></span>'));
     var ep=Number(gs.en_pauta)||0, gnt=[];
-    var eb=Number(gs.en_billetera)||0;
-    if(gs.n){ gnt.push('Total pagado: el monto de las facturas con '+emma()+' no es gasto (esa plata no se gastó, cambió de moneda). Costo real = total pagado − IVA que recuperás.');
-      if(eb>0) gnt.push('El costo de las cargas para compras ('+fmt(eb)+') no se suma de una: va adentro del dólar de '+emma()+' y entra de a poco, con cada pago con esos USDT.');
+    if(gs.n){ gnt.push(((gs.cortes&&gs.cortes.emma&&gs.cortes.emma.n)?('Total pagado: el monto de las facturas con '+emma()+' no es gasto (esa plata no se gastó, cambió de moneda). '):'')+'Costo real = total pagado − IVA que recuperás.');
       if(ep>0) gnt.push('Las cargas para la pauta de Meta costaron '+fmt(ep)+' y no se suman acá: ese recargo ya está dentro del costo de la publicidad del Dashboard (igual que su IVA, que ya está en el automático).');
-      if(gs.cortes&&gs.cortes.emma_usdt&&gs.cortes.emma_usdt.n) gnt.push('Lo pagado con USDT de '+emma()+' cuenta al dólar de '+emma()+' (USDT × el dólar de la carga de donde salen, la más vieja primero) y sin IVA: el IVA va una sola vez, en la factura de '+emma()+' (sumarlo acá sería contarlo dos veces).');
+      if(gs.cortes&&gs.cortes.emma_usdt&&gs.cortes.emma_usdt.n) gnt.push('Lo pagado con '+emma()+' va como factura A suya y suma el IVA 21%: en dólares, al dólar de '+emma()+' de su fecha (la cotización del USDT de ese día + lo que se queda '+emma()+'); en pesos, lo que le pasás a '+emma()+' (lo del proveedor + lo que se queda).');
       if(gs.cortes&&gs.cortes.sueldos&&gs.cortes.sueldos.n) gnt.push('Los sueldos van en pesos y sin factura: gasto del mes, sin IVA.');
       if(!na && ir>0 && (Number(iv.saldo_tecnico_favor)||0)>0) gnt.push('Ojo: este mes el IVA ya te da saldo a favor, así que parte de este IVA no baja nada ahora; queda como saldo para el mes que viene.'); }
     else gnt.push('Todavía no cargaste gastos este mes. Tocá "+ Cargar gasto" abajo.');
@@ -2038,16 +2020,14 @@ _SOLO_DASH = r"""
     function ivaTxt(o,t){ return (Number(o.iva)||0)>0?(t+' <em>'+esc(fmt(o.iva))+'</em>'):'sin IVA a favor'; }
     function card(cls,tit,big,lin,tt){ return '<div class="ix-gxk'+(cls?(' '+cls):'')+'" title="'+esc(tt)+'"><span>'+esc(tit)+'</span><b>'+fmt(big)+'</b><i>'+lin+'</i></div>'; }
     var ce=cOf('emma'), cu=cOf('emma_usdt'), ca=cOf('factura_a'), cn=cOf('sin_factura'), cs=cOf('sueldos'), cq=cOf('suscripciones');
-    var oep=Number(ce.en_pauta)||0, ceb=Number(ce.en_billetera)||0, ua=Number(ce.usdt_acred)||0, uu=Number(cu.usdt)||0, BW=j.billetera||null;
+    var oep=Number(ce.en_pauta)||0, uu=Number(cu.usd)||0, np=Number(cu.n_pesos)||0;
     var l1=(Number(ce.iva)||0)>0?ivaTxt(ce,'IVA que te dieron'):((Number(ce.n_auto)||0)>0?'IVA ya contado en el automático':'sin IVA a favor');
-    if(ceb>0) l1+=' · costo '+esc(fmt(ceb))+' en el dólar de '+esc(en);
     if(oep>0) l1+=' · '+esc(fmt(oep))+' para Meta, ya en la pauta';
     l1+=' · '+(Number(ce.n)||0);
-    if(ua>0||uu>0){ l1+='<br>USDT para compras este mes: cargaste <em>'+esc(fmtQ(ua,'USDT'))+'</em> · usaste '+esc(fmtQ(uu,'USDT'))+(BW?(' · saldo de la billetera '+esc(fmtQ(BW.saldo,'USDT'))):''); }
-    cards.push(card('e','Factura con '+en,ce.total,l1,'Factura con '+en+': '+fmt(ce.total)+' en gastos extras'+(ceb>0?(' · el costo de las cargas para compras ('+fmt(ceb)+') va adentro del dólar de '+en+' y entra con cada pago'):'')+(oep>0?(' · más '+fmt(oep)+' de cargas para Meta que no se suman (ya están en la pauta)'):'')));
-    var ceIva=(Number(ce.iva)||0)>0;
-    cards.push(card('u','Pagado con USDT de '+en,cu.total,(uu>0?('≈ '+esc(fmtQ(uu,'USDT'))+' al dólar de '+esc(en)+' · '):'')+(ceIva?'IVA ya recuperado en la factura':'no suma IVA (va en la factura)')+' · '+(Number(cu.n)||0),
-      'Pagado con USDT de '+en+': '+fmt(cu.total)+'. Cada USDT va al dólar de '+en+' de la carga de donde sale (ya trae lo que se queda '+en+'). Cuenta como gasto pero no suma IVA: el IVA va una sola vez, en la factura de '+en+'.'));
+    // las Facturas con Emma ya no se cargan: la tarjeta queda solo en un mes que tenga alguna vieja
+    if((Number(ce.n)||0)>0) cards.push(card('e','Factura con '+en,ce.total,l1,'Factura con '+en+': '+fmt(ce.total)+' en gastos extras'+(oep>0?(' · más '+fmt(oep)+' de cargas para Meta que no se suman (ya están en la pauta)'):'')));
+    cards.push(card('u','Con '+en,cu.total,(uu>0?('≈ '+esc(fmtU(uu))+' · '):'')+(np>0?(esc(nTxt(np,'en pesos','en pesos'))+' · '):'')+ivaTxt(cu,'IVA recuperado')+' · '+(Number(cu.n)||0),
+      'Con '+en+': '+fmt(cu.total)+(uu>0?(' (≈ '+fmtU(uu)+' al dólar de '+en+' de cada fecha)'):'')+(np>0?(' · '+nTxt(np,'pago','pagos')+' en pesos con su comisión'):'')+' · IVA recuperado '+fmt(cu.iva)+'. Va como factura A de '+en+': el IVA 21% suma a tu IVA a favor.'));
     cards.push(card('','Con factura A',ca.total,ivaTxt(ca,'IVA que recuperás')+' · '+(Number(ca.n)||0),'Con factura A: pagado '+fmt(ca.total)));
     cards.push(card('','Sin factura A',cn.total,'B, sin factura o exterior: sin IVA · '+(Number(cn.n)||0),'Sin factura A: pagado '+fmt(cn.total)+' (B, sin factura o exterior)'));
     var pers=(cs.personas||[]).map(function(p){ return '<span class="pp">'+esc(p.persona==='otros'?('otros ('+p.otros+')'):p.persona)+' <em>'+esc(fmtM(p.total))+'</em></span>'; });
@@ -2058,92 +2038,40 @@ _SOLO_DASH = r"""
     cards.push(card('','De eso, suscripciones',cq.total,ivaTxt(cq,'IVA que recuperás')+' · '+(Number(cq.n)||0)+' · ya incluidas arriba','De eso, suscripciones: pagado '+fmt(cq.total)+' (ya están sumadas en las otras tarjetas según su comprobante)'));
     $('ix-gx-cortes').innerHTML=cards.join('');
     var TM=j.total_mes;
-    pintaBill(j);
     $('ix-gx-tot').innerHTML=TM?('Todo junto este mes: IVA a pagar <b>'+fmt(TM.iva)+'</b> + IIBB a pagar <b>'+fmt(TM.iibb)+'</b> + gastos extras <b>'+fmt(TM.gastos)+'</b> = <b class="t">'+fmt(TM.total)+'</b>'):'';
     // ---- tabla de gastos ----
-    var CT={A:'Factura A',M:'Factura M',B:'Factura B',C:'Factura C',sin:'Sin factura',exterior:'Exterior',emma_usdt:'USDT de '+emma()};
+    var CT={A:'Factura A',M:'Factura M',B:'Factura B',C:'Factura C',sin:'Sin factura',exterior:'Exterior',emma_usdt:'Con '+emma()};
     var SUB='<div class="ix-sub2">';
     $('ix-g-body').innerHTML=(gs.rows||[]).map(function(g){
       var carga=g.clase==='carga', monto;
       if(carga) monto=fmt(g.monto_orig)+SUB+'factura'+((g.acredita_moneda&&g.acredita_moneda!=='ARS'&&g.acreditado_orig)?((g.usdt_entregados?' · ':' · ≈ ')+esc(fmtQ(g.acreditado_orig,g.acredita_moneda))+(Number(g.monto_orig)>0?(' · dólar '+esc(fmtD(Number(g.monto_orig)/Number(g.acreditado_orig)))):'')):'')+'</div>';
       else if(g.tipo==='sueldo'&&g.pago==='video') monto=fmt(g.monto_ars)+SUB+esc((parseInt(g.videos,10)||0)+' video'+((parseInt(g.videos,10)||0)===1?'':'s')+' × '+fmt(g.precio_video))+'</div>';
-      else if(g.bill) monto=esc(fmtQ(g.monto_orig,g.moneda))+SUB+(g.bill.dolar?('× '+esc(fmtD(g.bill.dolar))+((g.bill.tramos||[]).length>1?' prom.':'')+' dólar de '+esc(emma())):'sin dólar todavía')+'</div>';
+      else if(g.comp==='emma_usdt'&&(g.moneda==='USD'||g.moneda==='USDT')) monto=fmt(g.monto_ars)+SUB+esc(fmtU(g.monto_orig)+(Number(g.tc)>0?(' × '+fmtD(g.tc)):''))+'</div>';
+      else if(g.comp==='emma_usdt') monto=fmt(g.monto_ars)+SUB+esc(fmt(g.monto_orig)+' + '+pct(r2(Number(g.emma_pct)||0)))+'</div>';
       else if(g.moneda==='USD'||g.moneda==='USDT') monto=esc(fmtQ(g.monto_orig,g.moneda))+SUB+fmt(g.monto_ars)+'</div>';
       else monto=fmt(g.monto_orig||g.monto_ars)+(g.iva_modo==='suma'?(SUB+'neto + IVA = '+fmt(g.monto_ars)+'</div>'):'');
       var sld=!carga&&g.tipo==='sueldo';
-      var chip=g.estado==='suma'?'Suma':(g.estado==='auto'?'Ya contado':(g.estado==='via_emma'?('Vía '+emma()):(sld?'Sin IVA':(g.comp==='exterior'?'A definir':'No suma'))));
+      var chip=g.estado==='suma'?'Suma':(g.estado==='auto'?'Ya contado':(sld?'Sin IVA':(g.comp==='exterior'?'A definir':'No suma')));
       var id=parseInt(g.id,10)||0, f=String(g.fecha||''), ext=Number(g.extra), ivr=Number(g.iva_recupera)||0, cre=Number(g.costo_real);
       if(!isFinite(ext)) ext=Number(g.monto_ars)||0; if(!isFinite(cre)) cre=ext-ivr;
       var tipo=carga?('<span class="ix-sc emma" title="'+esc('Factura con '+emma()+(g.destino==='meta'?' · para la pauta de Meta':' · suscripciones y otras compras'))+'">'+esc(emma())+' · '+(g.destino==='meta'?'Meta':'compras')+'</span>'):('<span style="color:#cbd5e1">'+(sld?'Sueldo':(g.tipo==='suscripcion'?'Suscripción':'Gasto'))+'</span>');
       // concepto: [principal, detalle]; en un sueldo, "Sueldo · persona" (el por video va debajo del monto)
       var cp=sld?['Sueldo · '+(g.persona||'—'),(g.concepto&&g.concepto!=='Sueldo · '+(g.persona||''))?g.concepto:(g.pago==='video'?'por video':'sin factura')]
-                :[String(g.concepto||''),carga?(g.destino==='meta'?'para Meta':'suscripciones y compras'):(CT[g.comp]||g.comp)];
+                :[String(g.concepto||''),carga?(g.destino==='meta'?'para Meta':'suscripciones y compras'):((CT[g.comp]||g.comp)+(g.comp==='emma_usdt'?(g.moneda==='ARS'?' ($)':' (US$)'):''))];
       var cc=esc(cp[0])+' <span class="ix-mut" style="font-weight:400">· '+esc(cp[1])+'</span>';
-      return '<div class="ix-tr g" onclick="rpImpGasto('+id+')" title="'+esc(g.motivo+(g.bill?(' · '+billTxt(g)):''))+'">'
+      return '<div class="ix-tr g" onclick="rpImpGasto('+id+')" title="'+esc(g.motivo)+'">'
         +'<span class="ix-mut" style="font-variant-numeric:tabular-nums">'+esc(f.slice(8,10)+'/'+f.slice(5,7))+'</span>'
         +'<span class="ix-cc" title="'+esc(cp[0]+' · '+cp[1])+'">'+cc+'</span>'
         +'<span style="min-width:0">'+tipo+'</span>'
         +'<span class="ix-r" style="color:#cbd5e1">'+monto+'</span>'
-        +'<span class="ix-r" style="font-weight:700">'+fmt(ext)+(carga?(SUB+(Number(g.en_pauta)>0?('costo '+fmt(g.en_pauta)+', ya en la pauta'):(Number(g.en_billetera)>0?('costo '+fmt(g.en_billetera)+' ('+esc(pct(cargaPct(g)))+'), en el dólar de '+esc(emma())):('costo '+esc(pct(cargaPct(g))))))+'</div>'):(g.bill?(SUB+esc(billCargas(g))+'</div>'):''))+'</span>'
-        +'<span class="ix-r'+(ivr>0?' ix-neg':' ix-mut')+'">'+(ivr>0?fmt(ivr):'—')+((g.bill&&Number(g.bill.iva)>0)?(SUB+'en la factura: '+fmt(g.bill.iva)+'</div>'):'')+'</span>'
+        +'<span class="ix-r" style="font-weight:700">'+fmt(ext)+(carga?(SUB+(Number(g.en_pauta)>0?('costo '+fmt(g.en_pauta)+', ya en la pauta'):('costo '+esc(pct(cargaPct(g)))))+'</div>'):'')+'</span>'
+        +'<span class="ix-r'+(ivr>0?' ix-neg':' ix-mut')+'">'+(ivr>0?fmt(ivr):'—')+'</span>'
         +'<span class="ix-r'+(cre<0?' ix-neg':'')+'" style="font-weight:600">'+fmt(cre)+'</span>'
         +'<span class="ix-r"><span class="ix-sc '+(g.comp==='exterior'?'no':esc(g.estado))+'">'+esc(chip)+'</span></span>'
         +'<span class="ix-r"><button class="ix-del" title="Borrar" aria-label="Borrar gasto" onclick="event.stopPropagation();rpImpGBorrar('+id+')">&#10005;</button></span></div>';
     }).join('')||'<div class="ix-empty">Todavía no hay gastos cargados en '+esc(mesTxt(j.mes))+'.</div>';
     $('ix-g-foot').textContent=gs.n?(gs.n+' gasto'+(gs.n===1?'':'s')+' · total pagado '+fmt(tp)+' · IVA recuperado '+fmt(ir)+' · costo real '+fmt(cr)+' · tocá un gasto para editarlo'):'';
   }
-  // ---- billetera USDT de Emma ----
-  // cargas de donde salió un pago ('carga del 28/10' / 'cargas del 28/10 y 02/11') y si quedó en negativo
-  function billCargas(g){ var b=g.bill||{}, fs=[], neg=false; (b.tramos||[]).forEach(function(t){ if(t.falta){ neg=true; return; } var f=dmy(t.fecha).slice(0,5); if(fs.indexOf(f)<0) fs.push(f); });
-    var s=fs.length?((fs.length>1?'cargas del ':'carga del ')+fs.join(' y ')):''; if(neg) s+=(s?' · ':'')+(b.fuente==='dia'?'sin cargas: dólar del día':(b.fuente==='tc_guardada'?'sin cargas: su cotización guardada':(b.fuente==='sin'?'sin dólar todavía':'billetera en negativo')));
-    if(b.antes_carga) s+=(s?' · ':'')+'pagado antes de esa carga';
-    return s; }
-  // "US$ 100 × $1.814,45 (dólar de Emma, carga del 28/10) = $181.445" por tramo + el IVA como dato
-  function billTxt(g){ var b=g.bill||{}, en=emma(), mon=g.moneda||'USDT';
-    var p=(b.tramos||[]).map(function(t){ return fmtQ(t.usdt,mon)+' × '+(t.dolar?fmtD(t.dolar):'$?')+' ('+(t.falta?(b.fuente==='dia'?'dólar del día, no hay cargas':(b.fuente==='tc_guardada'?'su cotización guardada, no hay cargas':(b.fuente==='sin'?'sin dólar':'billetera en negativo: dólar de la última carga'+(t.fecha?(', '+dmy(t.fecha).slice(0,5)):'')))):('dólar de '+en+', carga del '+dmy(t.fecha).slice(0,5)+(t.antes?', posterior al pago':'')))+') = '+fmt(t.ars); });
-    return p.join(' + ')+((b.tramos||[]).length>1?(' = '+fmt(b.ars)):'')+(Number(b.iva)>0?(' · IVA incluido en la factura de '+en+': '+fmt(b.iva)+' (dato: ya contó en la carga, no suma de nuevo)'):''); }
-  function pintaBill(j){ var B=j.billetera, n=$('ix-bw-num'), en=emma(); if(!n) return;
-    var h=$('ix-h-bw'); if(!B){ h.style.display='none'; return; } h.style.display='';
-    var sal=Number(B.saldo)||0, M=B.mes||{}, L=B.lotes||[];
-    function pl(k,a,b){ k=Number(k)||0; return k.toLocaleString('es-AR')+' '+(k===1?a:b); }
-    n.className='ix-hnum'+(sal<0?' neg':''); n.textContent=fmtQ(sal,'USDT');
-    $('ix-bw-chip').textContent=L.length?('saldo actual · '+pl(L.length,'carga','cargas')):'sin cargas para compras';
-    $('ix-bw-cta').innerHTML='<span>Cargados en total <b class="u">'+esc(fmtQ(B.cargado,'USDT'))+'</b></span><span>− Gastados en total <b>'+esc(fmtQ(B.gastado,'USDT'))+'</b></span>'
-      +(B.dolar_saldo?('<span>Dólar de '+esc(en)+' del saldo <b class="u">'+esc(fmtD(B.dolar_saldo))+'</b></span>'):'');
-    var nt=[];
-    if(L.length||Number(B.gastado)>0){
-      nt.push('En '+mesTxt(j.mes)+': cargaste '+fmtQ(M.cargado,'USDT')+' y gastaste '+fmtQ(M.gastado,'USDT')+(Number(M.gastado_ars)>0?(' ('+fmt(M.gastado_ars)+' al dólar de '+en+')'):'')+'.');
-      nt.push('Cada pago con USDT de '+en+' sale de la carga más vieja con saldo y pasa a pesos a su dólar de '+en+' (monto de la factura ÷ USDT que te entregó: ya trae adentro lo que se queda '+en+').');
-    } else nt.push('Todavía no cargaste USDT para compras. Cargá una "Factura con '+en+'" para "Suscripciones y otras compras" y después cada pago (Flow, Shopify, Claude…) como "Pagado con USDT de '+en+'", en USD.');
-    $('ix-bw-note').textContent=nt.join(' ');
-    $('ix-bw-warn').textContent=B.negativo?('Billetera en negativo: gastaste '+fmtQ(B.falta,'USDT')+' más de lo que cargaste. Eso se valúa '+(B.dolar_ult?('al dólar de '+en+' de la última carga ('+fmtD(B.dolar_ult)+')'):'al dólar del día')+' hasta que cargues la próxima factura.'):'';
-    // las cargas con saldo y las del mes, la más nueva primero (hasta 6)
-    var vis=L.filter(function(l){ return Number(l.quedan)>0 || String(l.fecha||'').slice(0,7)===j.mes; }).slice().reverse().slice(0,6);
-    $('ix-bw-lotes').innerHTML=vis.map(function(l){ var q=Number(l.quedan)||0;
-      return '<div class="ix-gxk '+(q>0?'u':'z')+'" title="'+esc('Carga del '+dmy(l.fecha)+': factura '+fmt(l.monto)+' · '+fmtQ(l.usdt,'USDT')+(l.real?' (de la liquidación)':' (acreditado ÷ cotización)')+' · dólar de '+en+' '+fmtD(l.dolar)+' · quedan '+fmtQ(q,'USDT'))+'">'
-        +'<span>Carga del '+esc(dmy(l.fecha).slice(0,5))+'</span><b>'+esc(q>0?(fmtQ(q,'USDT')+' quedan'):'usada entera')+'</b>'
-        +'<i>de '+esc(fmtQ(l.usdt,'USDT'))+' · dólar <em>'+esc(fmtD(l.dolar))+'</em> · factura '+esc(fmtM(l.monto))+(l.real?'':' · USDT con la cotización')+'</i></div>'; }).join('')
-      ||'<div class="ix-gxk z"><span>Sin cargas con saldo</span><b>'+esc(fmtQ(0,'USDT'))+'</b><i>las cargas para compras aparecen acá</i></div>'; }
-  // vista previa del FIFO para el pago que se está cargando: lo que queda en cada carga (si se
-  // edita un pago, lo que ya usaba vuelve a su carga). El server recalcula todo al guardar.
-  function billSim(u){ var B=(D&&D.billetera)||null; if(!B) return null;
-    var f=$('ix-m-fecha').value||'', own=0, r=null;
-    if(G.id!=null && D.gastos) (D.gastos.rows||[]).forEach(function(x){ if(+x.id===+G.id) r=x; });
-    // editando sin tocar monto ni fecha: el desglose EXACTO que calculó el server (tocar la fila en el celu lo muestra)
-    if(r && r.bill && Math.abs((Number(r.bill.usdt)||0)-u)<0.005 && String(r.fecha||'')===f){ var rb=r.bill;
-      return {tramos:(rb.tramos||[]).map(function(t){ return {fecha:t.fecha, usdt:Number(t.usdt)||0, dolar:Number(t.dolar)||0, ars:Number(t.ars)||0, iva:Number(t.iva)||0, falta:!!t.falta, antes:!!t.antes}; }),
-              ars:Number(rb.ars)||0, iva:Number(rb.iva)||0, falta:Number(rb.falta)||0, saldo:r2(Number(B.saldo)||0), sinLotes:!(B.lotes||[]).length, fuente:rb.fuente, est:false}; }
-    var L=(B.lotes||[]).map(function(l){ var us=Number(l.usdt)||0; return {id:l.id, fecha:l.fecha, dolar:Number(l.dolar)||0, iu:us>0?(Number(l.iva)||0)/us:0, q:Number(l.quedan)||0}; });
-    // es una estimación si hay pagos con fecha posterior (el server los reordena por fecha e id): ahí
-    // tampoco se puede saber de qué carga sale, así que no se marca 'antes de la carga'
-    var est=(!!f && f.slice(0,7)<String(D.mes||'')) || !!(D.gastos&&(D.gastos.rows||[]).some(function(x){ return x.bill && +x.id!==+G.id && String(x.fecha||'')>f; }));
-    if(r && r.bill){ own=Number(r.bill.usdt)||0; (r.bill.tramos||[]).forEach(function(t){ if(t.falta) return; L.forEach(function(l){ if(l.id===t.carga_id) l.q+=Number(t.usdt)||0; }); }); }
-    var need=u, T=[];
-    for(var i=0;i<L.length && need>0.005;i++){ if(L[i].q<=0.005) continue; var t=Math.min(need,L[i].q); L[i].q-=t; need-=t; T.push({fecha:L[i].fecha, usdt:t, dolar:L[i].dolar, ars:t*L[i].dolar, iva:t*L[i].iu, antes:!est&&!!(f&&String(L[i].fecha||'')>f)}); }
-    var tg=(r&&Number(r.tc_guardada)>0)?Number(r.tc_guardada):0, dl=L.length?L[L.length-1].dolar:(tg||Number(D.dolar)||0);
-    if(need>0.005) T.push({fecha:L.length?L[L.length-1].fecha:null, usdt:need, dolar:dl, ars:need*dl, iva:0, falta:true});
-    return {tramos:T, ars:T.reduce(function(a,t){return a+t.ars;},0), iva:T.reduce(function(a,t){return a+t.iva;},0),
-            falta:need>0.005?need:0, saldo:r2((Number(B.saldo)||0)+own-u), sinLotes:!L.length, fuente:L.length?'carga':(tg?'tc_guardada':'dia'), est:est}; }
   function pintarChart(){ var el=$('ix-chart'); if(!el||!D)return;
     if(SERIE===null){ chartMsg('Cargando el gráfico…'); return; }
     if(!el.clientWidth) return;   // sección cerrada: sin ancho real el viewBox sale de escritorio; rpImp(true) lo redibuja
@@ -2196,10 +2124,18 @@ _SOLO_DASH = r"""
   function cargaPct(g){ var mf=Number(g.monto_orig)||0, c=Number(g.costo); if(mf>0&&isFinite(c)) return r2(c/mf*100); return r2((Number(g.desc_iva_pct)||0)+(Number(g.desc_banco_pct)||0)); }
   function conDef(){ return 'Factura con '+emma(); }
   function esCarga(){ return G.clase==='carga'; }
-  // Sueldo (ATT, socios, editores): en pesos y sin factura. 'emma_usdt' = pagado con los USDT que
-  // te acreditó Emma: gasto, pero su IVA ya entró en la factura de la carga (no se suma otra vez).
+  // Sueldo (ATT, socios, editores): en pesos y sin factura. "Con Emma" (esUE, comprobante 'emma_usdt'):
+  // factura A de Emma por el total, suma el IVA 21%. En dólares (esUEd) el server lo pasa a pesos al
+  // dólar de Emma de la fecha; en pesos (esUEp) le pasás a Emma lo del proveedor / (1 − su %).
+  // Sin Emma, Dólares es un gasto común con su cotización a mano (como siempre).
   function esSueldo(){ return !esCarga() && G.tipo==='sueldo'; }
   function esUE(){ return !esCarga() && !esSueldo() && G.comp==='emma_usdt'; }
+  function esUEd(){ return esUE() && G.moneda!=='ARS'; }
+  function esUEp(){ return esUE() && G.moneda==='ARS'; }
+  // % que se queda Emma en pesos: el de la cuenta (el server manda su regla, 8,22%, si no hay otro).
+  // En pantalla va con 2 decimales; si no lo tocaste se usa el exacto (si no, 1.000.000 daría $56 menos)
+  function epDef(){ var c=D&&D.conf&&D.conf.emma_pesos_pct; return (c!=null&&isFinite(Number(c)))?Number(c):8.224793; }
+  function epVal(){ var t=$('ix-m-epct').value; return (G.epRaw!=null && t===fmtIn(G.epRaw))?G.epRaw:num(t); }
   function esA(){ return !esCarga() && !esSueldo() && (G.comp==='A'||G.comp==='M'); }
   function conIva(){ return esCarga()||(!esSueldo()&&(G.comp==='A'||G.comp==='M'||G.comp==='exterior')); }
   // ¿el mes que se ve tiene días desde que el fulfillment ya no tiene IVA?
@@ -2219,22 +2155,26 @@ _SOLO_DASH = r"""
       // gastos viejos con factura C o M: se marca el botón que se comporta igual (B / A) sin cambiar el dato
       if(k==='comp' && ((G.comp==='C'&&v==='B')||(G.comp==='M'&&v==='A'))) on=true;
       bs[i].classList.toggle('on',on); bs[i].setAttribute('aria-pressed',on?'true':'false'); }
+    $('ix-m-clsw').style.display=G.editCarga?'':'none';   // Factura con Emma: solo para editar una carga vieja
     var cc=$('ix-m-cls-c'), cg=$('ix-m-cls-g'); cc.classList.toggle('on',esCarga()); cg.classList.toggle('on',!esCarga());
     cc.setAttribute('aria-pressed',esCarga()?'true':'false'); cg.setAttribute('aria-pressed',esCarga()?'false':'true');
     $('ix-m-carga').style.display=esCarga()?'':'none'; $('ix-m-gasto').style.display=esCarga()?'none':'';
     $('ix-m-tccw').style.display=G.acmon==='ARS'?'none':'';
     $('ix-m-tcc-l').textContent='Cotización (pesos por 1 '+G.acmon+')';
     $('ix-m-usdt-l').textContent=G.acmon+' que te entregó';
-    // pagado con USDT de Emma: en USD/USDT y SIN cotización (va al dólar de Emma de la billetera)
-    $('ix-m-usd').style.display=(G.moneda==='ARS'||esUE())?'none':'';
-    var bArs=document.querySelector('#ix-modal .ix-seg[data-k="moneda"] button[data-v="ARS"]'); if(bArs) bArs.style.display=(esUE()&&!G.arsViejo)?'none':'';
+    // con Emma no hay cotización a mano ni IVA a mano: los pone el server
+    var ue=esUE(), uep=esUEp();
+    $('ix-m-usd').style.display=(G.moneda!=='ARS'&&!ue)?'':'none';
+    $('ix-m-ue').style.display=ue?'':'none'; $('ix-m-epw').style.display=uep?'':'none';
+    if(!esUEd()) $('ix-m-ue-h').textContent='';
     $('ix-m-tc-l').textContent='Cotización (pesos por 1 '+G.moneda+')';
     $('ix-m-fa').style.display=esA()?'':'none';
     $('ix-m-fx').textContent='Factura '+(G.comp==='M'?'M':'A')+' · IVA 21%';
     $('ix-m-iva-w').style.display=conIva()?'':'none';
     $('ix-m-iva-l').textContent=esCarga()?'IVA de la factura (21% incluido, en pesos)':(G.comp==='exterior'?'IVA del resumen (en pesos, informativo)':(G.imodo==='suma'?'IVA 21% de la factura (en pesos)':'IVA de la factura (en pesos)'));
-    var mon=G.moneda==='USD'?' en dólares':(G.moneda==='USDT'?' en USDT':''), sld=esSueldo(), ue=esUE();
-    $('ix-m-monto-l').textContent=(esA()&&G.imodo==='suma')?('Neto de la factura (sin IVA)'+mon):((ue?(G.moneda==='ARS'?'Lo que pagaste en pesos (pago viejo)':'Lo que te cobraron'):'Monto total pagado')+mon);
+    var mon=G.moneda!=='ARS'?' en dólares':'', sld=esSueldo();
+    $('ix-m-monto-l').textContent=ue?(uep?'Le pagás al proveedor (en pesos)':'Monto en dólares (US$)'):((esA()&&G.imodo==='suma')?('Neto de la factura (sin IVA)'+mon):('Monto total pagado'+mon));
+    $('ix-m-monto').placeholder=(ue&&!uep)?'100':(uep?'1.000.000':'350.000');
     $('ix-m-sueldo').style.display=sld?'':'none'; $('ix-m-gcom').style.display=sld?'none':'';
     $('ix-m-sfijo').style.display=G.pago==='video'?'none':''; $('ix-m-svid').style.display=G.pago==='video'?'':'none';
     $('ix-m-metaw').style.display=(esCarga()&&G.destino==='meta')?'':'none';
@@ -2261,11 +2201,10 @@ _SOLO_DASH = r"""
   window.rpImpSeg=function(el){ var k=el.parentNode.getAttribute('data-k'), v=el.getAttribute('data-v'), prev=G[k]; G[k]=v;
     if((k==='comp'||k==='imodo') && !G.ivaTocado) $('ix-m-iva').value='';
     if(k==='comp' && conIva() && !($('ix-m-iva').value||'').trim()) G.ivaTocado=false;   // vacío = lo precalcula (como el server)
-    // pagado con USDT de Emma: arranca en USDT y sin cotización (va al dólar de Emma de la billetera)
-    if(k==='comp' && v!==prev && v==='emma_usdt' && G.moneda==='ARS' && !G.arsViejo) G.moneda='USDT';
-    // pago viejo en pesos: pasarlo a USD/USDT vacía el monto (los pesos no son USDT); volver a Pesos lo repone
-    if(k==='moneda' && G.arsViejo && v!==prev){ var mi=$('ix-m-monto');
-      if(prev==='ARS'){ G.montoArs=mi.value; mi.value=''; } else if(v==='ARS' && G.montoArs!=null){ mi.value=G.montoArs; } }
+    // "Con Emma" arranca en dólares; ahí cambiar de moneda vacía el monto (lo del proveedor en pesos no son dólares)
+    if(k==='comp' && v!==prev && v==='emma_usdt' && G.moneda!=='USD'){ G.moneda='USD'; $('ix-m-monto').value=''; }
+    if(k==='moneda' && v!==prev){ if(esUE()) $('ix-m-monto').value=''; if(!G.ivaTocado) $('ix-m-iva').value='';
+      if(v!=='ARS' && !($('ix-m-tc').value||'').trim() && D && D.dolar) $('ix-m-tc').value=fmtIn(D.dolar); }
     // el concepto del sueldo se pone/saca solo mientras no lo hayas escrito vos
     if(k==='tipo' && v!==prev && !G.conTocado){ var ci=$('ix-m-con');
       if(v==='sueldo') ci.value=conSueldo(); else if(prev==='sueldo' && /^Sueldo/.test(ci.value||'')) ci.value=''; }
@@ -2293,16 +2232,15 @@ _SOLO_DASH = r"""
       $('ix-m-ptot').textContent=(neto?'≈ ':'= ')+pct(tp);
       $('ix-m-pbase-h').textContent=neto?('El '+pct(pi)+' va sobre el neto sin IVA ('+fmt(mf/1.21)+'), como la liquidación del 22-10. El bancario va siempre sobre el total. Quedan guardados para la próxima carga.'):'El bancario va siempre sobre el total. Quedan guardados para la próxima carga.';
       $('ix-m-tcc-h').textContent=uok?('Sale sola de la liquidación: '+fmt(acr)+' ÷ '+fmtQ(ue0,G.acmon)+'.'):((u!==null&&mf>0)?('Te llegan ≈ '+fmtQ(u,G.acmon)+' ('+fmt(acr)+' ÷ '+fmtIn(tc)+')'):(G.acmon!=='ARS'?'Poné los '+G.acmon+' que te entregó o la cotización.':''));
-      var meta=G.destino==='meta', suma=!meta&&ri, gan=r2(iva-costo), bw=!meta&&G.acmon!=='ARS', F=[];
+      var meta=G.destino==='meta', suma=!meta&&ri, gan=r2(iva-costo), F=[];
       F.push(fila('Le das',fmt(mf),'','factura A por '+fmt(mf)+', IVA 21% incluido'));
       F.push(fila('Te acredita',fmt(acr)+(u!==null?((uok?' · ':' · ≈ ')+fmtQ(u,G.acmon)):''),''));
-      F.push(fila('Te cuesta la carga',fmt(costo)+' ('+pct(tp)+')','neg',pct(pi)+' de IVA'+(neto?' sobre el neto':'')+' + '+pct(pb)+' bancario'+(bw?' · va adentro del dólar de '+emma():'')));
-      if(dE) F.push(fila('Dólar de '+emma(),fmtD(dE)+' por '+G.acmon,bw?'via':'','ya incluye lo que se queda '+emma()+(bw?' · así se pasan a pesos tus pagos con estos '+G.acmon:'')));
+      F.push(fila('Te cuesta la carga',fmt(costo)+' ('+pct(tp)+')','neg',pct(pi)+' de IVA'+(neto?' sobre el neto':'')+' + '+pct(pb)+' bancario'));
+      if(dE) F.push(fila('Dólar de '+emma(),fmtD(dE)+' por '+G.acmon,'','ya incluye lo que se queda '+emma()));
       F.push(fila('IVA a favor',fmt(iva),suma?'pos':'off',meta?'ya contado en "IVA a favor automático"':(ri?'21% incluido en la factura':'no se puede tomar (antes de ser RI)')));
       var nota, warn=false;
       if(meta){ warn=true; nota="El IVA de la pauta en dólares YA se cuenta solo en 'IVA a favor automático' (desde el 22-10). Esta carga se guarda para que veas el costo, pero no suma IVA de nuevo. Tampoco suma el costo en 'Gastos extras': ese recargo ya está dentro del costo de la publicidad del Dashboard."; }
       else if(!ri){ nota='La fecha es anterior a que pasaras a Responsable Inscripto'+rd+': el IVA de la factura no se puede tomar.'; }
-      else if(bw){ nota='El IVA a favor baja tu IVA a pagar de este mes, entero (como en la DDJJ). Los '+fmt(mf)+' no los gastaste, los cambiaste de moneda; y el costo ('+fmt(costo)+') no va a "Gastos extras" de una: queda adentro del dólar de '+emma()+' y entra con cada pago con estos '+G.acmon+'.'; }
       else { nota='El IVA a favor baja tu IVA a pagar del mes. En "Gastos extras" cuenta solo el costo ('+fmt(costo)+'): los '+fmt(mf)+' no los gastaste, los cambiaste de moneda.'; }
       // el número grande es la conclusión: lo que ganás con la factura (IVA a favor − costo) o,
       // si el IVA no suma, lo que te cuesta la carga
@@ -2326,31 +2264,41 @@ _SOLO_DASH = r"""
     var ars=arsDe(), noArs=G.moneda!=='ARS';
     $('ix-m-ars').textContent=noArs?(ars>0?('≈ '+fmt(ars)):'—'):'';
     var total=(esA()&&G.imodo==='suma')?ars+iva:ars, rec=0, cls='', chip, motivo='', G2=[];
-    if(esUE()&&G.moneda==='ARS'){ var mp=num($('ix-m-monto').value); if(isNaN(mp)||mp<0) mp=0;
-      G2.push(fila('Pagaste (pago viejo en pesos)',fmt(mp),'','queda con su monto: no sale de la billetera'));
-      G2.push(fila('IVA que recuperás',fmt(0),'off','va una sola vez, en la factura de '+emma()));
-      res('','Te cuesta de verdad',(G.tipo==='suscripcion'?'Suscripción':'Gasto')+' · pago viejo en pesos',fmt(mp),false,G2,
-        'Pago viejo cargado en pesos: se guarda con su monto y no toca la billetera. Para que salga de la billetera al dólar de '+emma()+', elegí USD o USDT y poné cuánto te cobraron.',false);
+    if(esUEp()){ var enp=emma(), mp=num($('ix-m-monto').value), ep=epVal(), P=[];
+      if(isNaN(mp)||mp<0) mp=0; var epBad=isNaN(ep)||ep<0||ep>50; if(epBad) ep=0;
+      $('ix-m-epct').classList.toggle('bad',epBad);
+      // igual que el server: para que al proveedor le lleguen M, le pasás M / (1 − %)
+      var tp=r2(mp/(1-ep/100)), ivp=r2(tp*21/121), rcp=ri?ivp:0;
+      P.push(fila(fmt(mp)+' → le pasás '+fmt(tp)+' a '+enp,fmt(tp),'','factura A de '+enp+' · se queda '+fmt(tp-mp)+' ('+pct(r2(ep))+' de lo que le pasás)'));
+      P.push(fila('IVA a favor',fmt(ivp),ri?'pos':'off',ri?'21% adentro de la factura A de '+enp+' por el total':'no se puede tomar (antes de ser RI)'));
+      res(epBad?'am':(ri?'ok':''),'Te cuesta de verdad',(G.tipo==='suscripcion'?'Suscripción':'Gasto')+' · con '+enp+' en pesos · factura A'+(ri?' · suma IVA':''),fmt(tp-rcp),false,P,
+        epBad?('La comisión de '+enp+' tiene que ser un % entre 0 y 50.')
+          :(ri?('El gasto es el total ('+fmt(tp)+'): la factura A de '+enp+' lo cubre entero y su IVA ('+fmt(ivp)+') baja tu IVA a pagar del mes.')
+              :('La fecha es anterior a que pasaras a Responsable Inscripto'+rd+': va como gasto por el total, sin IVA a favor.')),epBad);
       return; }
-    if(esUE()){ var en=emma(), mu=num($('ix-m-monto').value), sim=(mu>0)?billSim(mu):null, warn=false, tot=0;
-      cls='ok'; chip='Vía '+en+' · al dólar de '+en;
-      if(!D||!D.billetera){ G2.push(fila('Lo que te cobraron',mu>0?fmtQ(mu,G.moneda):'—','','se pasa a pesos al guardar, con tu billetera'));
-        motivo='Va al dólar de '+en+' de tu billetera (se calcula al guardar). No suma IVA: va una sola vez, en la factura de '+en+'.'; }
-      else if(!sim){ var B0=D.billetera; G2.push(fila('Tenés en la billetera',fmtQ(B0.saldo,'USDT'),(Number(B0.saldo)<0)?'neg':'',B0.dolar_saldo?('al dólar de '+en+' '+fmtD(B0.dolar_saldo)):''));
-        motivo='Poné cuánto te cobraron en '+(G.moneda==='USD'?'dólares':G.moneda)+': se descuenta de la carga más vieja con saldo y pasa a pesos a su dólar de '+en+'. No hace falta la cotización.'; }
-      else { tot=sim.ars;
-        sim.tramos.forEach(function(t){ G2.push(fila(fmtQ(t.usdt,G.moneda)+' × '+(t.dolar?fmtD(t.dolar):'$?'),fmt(t.ars),t.falta?'neg':'',
-          t.falta?(sim.sinLotes?(sim.fuente==='tc_guardada'?'no hay cargas: tu cotización guardada':'no hay cargas todavía: dólar del día'):('billetera en negativo: al dólar de la última carga'+(t.fecha?(' ('+dmy(t.fecha).slice(0,5)+')'):'')))
-            :('dólar de '+en+', carga del '+dmy(t.fecha).slice(0,5)+(t.antes?' (posterior a la fecha del pago)':'')))); });
-        G2.push(fila('IVA incluido en la factura de '+en,fmt(sim.iva),'via','dato: ya contó en la carga, no suma de nuevo'));
-        G2.push(fila('Te quedan en la billetera',fmtQ(sim.saldo,'USDT'),sim.saldo<0?'neg':'',''));
-        if(sim.falta>0){ warn=true; motivo='Billetera en negativo: te faltan '+fmtQ(sim.falta,'USDT')+'. '+(sim.sinLotes?(sim.fuente==='tc_guardada'?'Como no hay ninguna carga para compras, va a la cotización que tenía guardada.':'Como no hay ninguna carga para compras, va al dólar del día.'):'Lo que falta va al dólar de '+en+' de la última carga hasta que cargues la próxima factura.')+' No suma IVA.'; }
-        else motivo='Sale de la carga más vieja con saldo y pasa a pesos a su dólar de '+en+' (ya trae adentro lo que se queda '+en+'). No suma IVA: va una sola vez, en la factura de '+en+'.';
-        if(sim.tramos.some(function(t){ return t.antes; })){ warn=true; motivo+=' Ojo: sale de una carga con fecha posterior al pago (ese día no tenías saldo): ¿falta cargar una factura?'; }
-        if(sim.est) motivo+=' Estimado: hay pagos con fecha posterior; al guardar se reordena por fecha y puede salir de otra carga.'; }
-      res(warn?'am':cls,'Te cuesta de verdad',(G.tipo==='suscripcion'?'Suscripción':'Gasto')+' · '+chip,fmt(tot),false,G2,motivo,warn);
-      return;
-    }
+    if(esUE()){ var en=emma(), mu=num($('ix-m-monto').value), de=DOLE[f]||null, fd=dmy(f).slice(0,5), U=[], uh=$('ix-m-ue-h');
+      if(isNaN(mu)||mu<0) mu=0;
+      // editando sin tocar monto ni fecha queda el dólar guardado (el server hace lo mismo)
+      var r0=null; if(G.id!=null && D && D.gastos) (D.gastos.rows||[]).forEach(function(x){ if(+x.id===+G.id) r0=x; });
+      if(r0 && r0.comp==='emma_usdt' && r0.moneda!=='ARS' && Number(r0.tc)>0 && r0.fecha===f && Math.abs((Number(r0.monto_orig)||0)-mu)<0.005)
+        de={ok:true, dolar:Number(r0.tc), base:Number(r0.dolar_base)||0, comision_pct:Number(r0.emma_comision_pct)||0, guardado:true};
+      else { pedirDolE(f); de=DOLE[f]||null; }
+      var ch=(G.tipo==='suscripcion'?'Suscripción':'Gasto')+' · con '+en+' en dólares · factura A';
+      if(de&&de.ok){ var pe=r2(mu*de.dolar), iv=r2(pe*21/121), rc=ri?iv:0;
+        uh.textContent=de.guardado?('Dólar de '+en+' del '+fd+': '+fmtD(de.dolar)+', el que quedó guardado (cambiá el monto o la fecha y se vuelve a calcular).')
+          :('Dólar de '+en+' del '+fd+': '+fmtD(de.dolar)+' (cotización '+fmtD(de.base)+' + lo que se queda '+en+', '+pct(de.comision_pct)+'). Lo pone el sistema al guardar.');
+        U.push(fila(fmtU(mu)+' × dólar de '+en+' del '+fd+' '+fmtD(de.dolar),fmt(pe),'','en pesos, con lo que se queda '+en+' adentro'));
+        U.push(fila('IVA a favor',fmt(iv),ri?'pos':'off',ri?'21% adentro de la factura A de '+en:'no se puede tomar (antes de ser RI)'));
+        res(ri?'ok':'','Te cuesta de verdad',ch+(ri?' · suma IVA':''),fmt(pe-rc),false,U,
+          ri?('Pagás '+fmt(pe)+' al dólar de '+en+' del '+fd+' y el IVA de su factura A ('+fmt(iv)+') baja tu IVA a pagar del mes. No hace falta saber cuánto está el dólar.')
+            :('La fecha es anterior a que pasaras a Responsable Inscripto'+rd+': va como gasto al dólar de '+en+', sin IVA a favor.'),false); }
+      else if(de&&de.err){ uh.innerHTML=esc('No pude traer el dólar de '+en+' del '+fd+' ('+de.err+').')+' <button type="button" class="ix-lnk" onclick="rpImpDolE()">Reintentar</button>';
+        U.push(fila(mu>0?fmtU(mu):'Monto en dólares','—','','sin el dólar de '+en+' del '+fd));
+        res('am','Te cuesta de verdad',ch,'—',false,U,'No pude traer el dólar de '+en+' del '+fd+'. Al guardar el sistema lo vuelve a buscar; si sigue sin responder, probá en un rato.',true); }
+      else { uh.textContent='Buscando el dólar de '+en+' del '+fd+'…';
+        U.push(fila(mu>0?fmtU(mu):'Monto en dólares','…','','buscando el dólar de '+en+' del '+fd));
+        res('','Te cuesta de verdad',ch,'$ …',false,U,'Buscando el dólar de '+en+' del '+fd+'…',false); }
+      return; }
     if(esA() && ri){ rec=iva; cls='ok'; chip='Suma a tu IVA a favor'; motivo='IVA de la factura '+(G.comp==='M'?'M':'A')+(G.ivaTocado?' (cargado a mano)':' al 21%')+'. Baja el IVA a pagar del mes.'+(noArs?' Va en pesos, tal cual figura en la factura.':''); }
     else if(esA()){ chip='No suma (antes de ser RI)'; motivo='La fecha es anterior a que pasaras a Responsable Inscripto'+rd+': ese IVA no se puede tomar.'; }
     else if(G.comp==='exterior'){ chip='No suma (exterior)'; motivo='Servicio del exterior: se guarda y se muestra aparte, a definir con la contadora. No baja el IVA a pagar.'; }
@@ -2359,13 +2307,29 @@ _SOLO_DASH = r"""
     G2.push(fila('Pagás en total',fmt(total),'',(esA()&&G.imodo==='suma')?('neto '+fmt(ars)+' + IVA '+fmt(iva)):(noArs&&ars>0?(fmtQ(num($('ix-m-monto').value),G.moneda)+' a '+fmtIn(num($('ix-m-tc').value))):'')));
     G2.push(fila('IVA que recuperás',rec>0?fmt(rec):fmt(0),rec>0?'pos':'off',(esA()&&ri)?(G.ivaTocado?'IVA de la factura (cargado a mano)':'21% de la factura'):chip.replace(/^No suma \(|\)$/g,'')));
     res(cls,'Te cuesta de verdad',(G.tipo==='suscripcion'?'Suscripción':'Gasto común')+' · '+chip,fmt(total-rec),false,G2,motivo,false); };
+  // ---- dólar de Emma por fecha (gastos en dólares): lo da el server, el MISMO con el que guarda.
+  // Cache por fecha mientras el modal está abierto; una respuesta de otra fecha (o de otra apertura
+  // del modal) no repinta. Un error se reintenta solo a los 8 s o con "Reintentar".
+  var DOLE={}, _dSes=0;
+  function pedirDolE(f){ if(!/^\d{4}-\d{2}-\d{2}$/.test(f||'')) return; var d=DOLE[f], ses=_dSes;
+    if(d&&(d.ok||d.pend||(d.err&&Date.now()-d.ts<8000))) return;
+    DOLE[f]={pend:true};
+    function fin(x){ if(ses!==_dSes) return; DOLE[f]=x; var m=$('ix-modal'); if(m&&m.style.display==='flex'&&$('ix-m-fecha').value===f&&esUEd()) rpImpCalc(); }
+    getJ('/pf-imp-dolar-emma?fecha='+encodeURIComponent(f)).then(function(j){
+      fin((j&&j.ok&&Number(j.dolar)>0)?{ok:true,dolar:Number(j.dolar),base:Number(j.base)||0,comision_pct:Number(j.comision_pct)||0}:{err:errTxt(j)||'vino vacío',ts:Date.now()}); })
+     .catch(function(e){ fin({err:'error de conexión: '+e.message,ts:Date.now()}); }); }
+  window.rpImpDolE=function(){ delete DOLE[$('ix-m-fecha').value]; rpImpCalc(); };
   window.rpImpGasto=function(id){ var g=null;
     if(id!=null && D && D.gastos){ (D.gastos.rows||[]).forEach(function(r){ if(+r.id===+id) g=r; }); }
-    var cd=cargaDef(), carga=g?(g.clase==='carga'):true;
-    G={id:g?g.id:null, clase:carga?'carga':'gasto', tipo:(g&&g.tipo)||'gasto', moneda:(g&&!carga&&g.moneda)||'ARS', comp:(g&&!carga&&g.comp)||'A',
+    // un gasto nuevo arranca en "Gasto común"; la Factura con Emma queda solo para editar una carga vieja
+    var cd=cargaDef(), carga=g?(g.clase==='carga'):false;
+    var gc=!!(g&&!carga&&g.tipo!=='sueldo'), mon0=(gc&&g.moneda)||'ARS'; if(mon0==='USDT') mon0='USD';   // USDT = dólares, 1 a 1
+    var ep0=!!(gc&&g.comp==='emma_usdt'&&mon0==='ARS');   // con Emma en pesos (uno viejo sin % = 0%)
+    _dSes++; DOLE={};
+    G={id:g?g.id:null, clase:carga?'carga':'gasto', tipo:(g&&g.tipo)||'gasto', moneda:mon0, comp:(g&&!carga&&g.comp)||'A',
+       editCarga:carga,
        imodo:(g&&g.iva_modo==='suma')?'suma':'incluido', acmon:(g&&carga&&g.acredita_moneda)||cd.moneda, destino:(g&&carga&&g.destino)||'otro',
        pbase:(g&&carga)?(g.desc_iva_base==='total'?'total':'neto'):cd.base, pago:(g&&g.pago==='video')?'video':'fijo',
-       arsViejo:!!(g&&!carga&&g.comp==='emma_usdt'&&g.moneda==='ARS'), montoArs:null,
        ivaTocado:false, conTocado:!!g && !(!carga && g.tipo==='sueldo' && String(g.concepto||'')==='Sueldo'+(g.persona?(' · '+g.persona):'')), tcTocado:!!(g&&!carga&&g.tc)};
     var gs0=!!(g&&!carga&&g.tipo==='sueldo');
     $('ix-m-per').value=gs0?(g.persona||''):'';
@@ -2373,7 +2337,7 @@ _SOLO_DASH = r"""
     $('ix-m-vids').value=(gs0&&g.pago==='video'&&g.videos!=null)?String(g.videos):'';
     $('ix-m-pvid').value=(gs0&&g.pago==='video'&&g.precio_video!=null)?fmtIn(g.precio_video):'';
     $('ix-m-tit').textContent=g?(carga?'Editar carga':(g.tipo==='sueldo'?'Editar sueldo':'Editar gasto')):'Cargar gasto';
-    $('ix-m-con').value=g?g.concepto:conDef();
+    $('ix-m-con').value=g?g.concepto:'';
     $('ix-m-fecha').value=g?g.fecha:fechaDef();
     var dol=(D&&D.dolar)?fmtIn(D.dolar):'';
     $('ix-m-mf').value=(g&&carga)?fmtIn(g.monto_orig):'';
@@ -2383,7 +2347,8 @@ _SOLO_DASH = r"""
     ti0.value=(g&&carga&&g.tc)?fmtIn(g.tc):dol;
     $('ix-m-usdt').value=(g&&carga&&g.usdt_entregados)?fmtIn(g.usdt_entregados):'';
     $('ix-m-monto').value=(g&&!carga&&!gs0)?fmtIn(g.monto_orig):'';
-    $('ix-m-tc').value=(g&&!carga&&g.tc)?fmtIn(g.tc):dol;
+    $('ix-m-tc').value=(g&&!carga&&g.tc&&g.comp!=='emma_usdt')?fmtIn(g.tc):dol;
+    G.epRaw=ep0?(Number(g.emma_pct)||0):epDef(); $('ix-m-epct').value=fmtIn(G.epRaw);
     $('ix-m-iva').value='';
     $('ix-m-piva').value=(g&&g.percep_iva)?fmtIn(g.percep_iva):''; $('ix-m-piibb').value=(g&&g.percep_iibb)?fmtIn(g.percep_iibb):'';
     $('ix-m-det').open=!!(g&&(g.percep_iva||g.percep_iibb));
@@ -2438,11 +2403,14 @@ _SOLO_DASH = r"""
       else { var sm=num($('ix-m-smonto').value); if(isNaN(sm)||sm<=0) return bad('ix-m-smonto','Poné el monto del sueldo.'); body.monto_orig=sm; }
     } else {
       var m=num($('ix-m-monto').value), tc=num($('ix-m-tc').value);
-      if(isNaN(m)||m<=0) return bad('ix-m-monto',(esA()&&G.imodo==='suma')?'Poné el neto de la factura.':'Poné el monto total pagado.');
-      if(esUE()&&G.moneda==='ARS'&&!G.arsViejo) return bad('ix-m-monto','Lo pagado con USDT de '+emma()+' va en USD o USDT: elegí la moneda arriba.');
+      if(isNaN(m)||m<=0) return bad('ix-m-monto',esUEd()?'Poné cuántos dólares pagaste.':(esUEp()?'Poné cuánto le pagás al proveedor.':((esA()&&G.imodo==='suma')?'Poné el neto de la factura.':'Poné el monto total pagado.')));
       if(G.moneda!=='ARS'&&!esUE()&&(isNaN(tc)||tc<=0)) return bad('ix-m-tc','Poné la cotización.');
-      body.tipo=G.tipo; body.moneda=G.moneda; body.monto_orig=m; body.tc=(G.moneda!=='ARS'&&!esUE()?tc:null); body.comp=G.comp;
-      body.iva_modo=esA()?G.imodo:'incluido'; body.iva_monto=(conIva()?iva:null);
+      body.tipo=G.tipo; body.monto_orig=m;
+      // con Emma el server pone el dólar, los pesos y el IVA: van el monto y, en pesos, la comisión
+      if(esUE()){ body.moneda=esUEp()?'ARS':'USD'; body.comp='emma_usdt'; body.tc=null; body.iva_modo='incluido'; body.iva_monto=null;
+        if(esUEp()){ var ep=epVal(); if(isNaN(ep)||ep<0||ep>50) return bad('ix-m-epct','La comisión de '+emma()+' tiene que ser un % entre 0 y 50.'); body.emma_pct=ep; } }
+      else { body.moneda=G.moneda; body.tc=(G.moneda!=='ARS'?tc:null); body.comp=G.comp;
+        body.iva_modo=esA()?G.imodo:'incluido'; body.iva_monto=(conIva()?iva:null); }
     }
     if(btn){ btn.disabled=true; }
     postJ('/pf-impuestos-gasto',body).then(function(j){ if(btn) btn.disabled=false;
@@ -8435,7 +8403,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-02-billetera"})
+    return jsonify({"ok": True, "v": "2026-11-02-gastousd"})
 
 
 _KPI_DBG = {}
@@ -18987,6 +18955,23 @@ def _dolar_pauta_dia(email, dia) -> float:
     return base / _factor_ads_usd()
 
 
+def _dolar_emma_dia(dia):
+    """Pesos que cuesta UN dolar pagado con Emma ese dia (gastos en dolares de Impuestos): la
+    cotizacion cripto de ESE dia / _factor_ads_usd. SIEMPRE con la comision: Emma cobra siempre (no
+    va la puerta de ADS_USD_DESDE, que es solo para no inflar pauta vieja). None si no hay un dolar
+    de verdad (el piso 1000 de emergencia con la API caida y sin ultimo bueno): no se inventa."""
+    base = float(_dolar_base_dia(dia) or 0)
+    if base <= 0:
+        return None
+    try:
+        float((_os.getenv("DOLAR_ARS") or "").strip())       # fijo a mano en Render: vale
+    except ValueError:
+        c = globals().get("_dolar_cache") or {}
+        if base == 1000.0 and (c.get("emergencia") or not c.get("val")):
+            return None
+    return base / _factor_ads_usd()
+
+
 def _dolar_pauta_periodo(email, desde, hasta) -> float:
     """Dolar de pauta PROMEDIO del periodo, pesado por lo que se gasto cada dia (pesos / dolares de
     _meta_spend). Para pantallas que piden a Meta el periodo entero (MCP). 0 si no hay datos."""
@@ -23943,15 +23928,15 @@ def pf_periodo():
 _IMP_FILE = DATA_DIR / "impuestos_gastos.json"   # {email: {seq, rows:[...], conf:{iibb_base, computa_ext, st_anterior:{"YYYY-MM": monto}, emma_nombre, carga:{iva, banco, moneda, base}}}}
 _IMP_LOCK = DATA_DIR / "impuestos_gastos.lock"   # flock entre los 2 workers (leer-cambiar-escribir)
 _IMP_COMPS = ("A", "M", "B", "C", "sin", "exterior", "emma_usdt")
-# 'emma_usdt' = "Pagado con USDT de Emma": una suscripcion/compra que Cristian paga con los USDT
-# que le acredito Emma en una 'Factura con Emma' para "Suscripciones y otras compras". Es GASTO
-# pero NO suma IVA: ese IVA ya entro UNA vez, en la factura de la carga; sumarlo aca lo contaria
-# dos veces. BILLETERA (2026-11-02, pedido de Cristian): se carga en USD/USDT SIN cotizacion y se
-# valua al "dolar de Emma" de la carga de donde salen esos USDT (monto de la factura / USDT
-# entregados: ya trae adentro lo que se queda Emma), FIFO por fecha sobre las cargas para
-# compras. La asignacion se calcula AL LEER (_imp_billetera), no se guarda: editar o borrar
-# cualquier carga o pago recalcula todo. Los 'emma_usdt' viejos que tenian cotizacion propia se
-# revaluan igual con la billetera; los viejos en pesos (moneda ARS) quedan con su monto_ars.
+# 'emma_usdt' = "Con Emma" (2026-11-02, pedido de Cristian: "quiero poner los gastos y que salga
+# como que tienen factura, pero con el dolar a lo que me cobra Emma"). Dos monedas:
+#  - Dolares (moneda USD; USDT va 1 a 1): el server lo pasa a pesos con el dolar de Emma de la
+#    fecha (_dolar_emma_dia = cotizacion de ese dia / _factor_ads_usd) y lo guarda (tc, monto_ars).
+#  - Pesos (moneda ARS): le paga a un proveedor en pesos por Emma, que se queda emma_pct (8,22%):
+#    monto_orig = lo del proveedor, monto_ars = monto_orig / (1 - emma_pct/100).
+# En los dos suma el IVA 21% que trae adentro la factura A de Emma por el total. Sin billetera: ya
+# no se juntan las cargas de USDT (se mezclaban con lo que gasta Meta). Los 'emma_usdt' viejos en
+# pesos sin emma_pct valen como pesos con Emma al 0%.
 # Tipo 'sueldo' (gasto comun): ATT, el de Cristian, el del socio, los editores (por video). Se
 # pagan en pesos y sin factura: gasto del mes, nunca IVA. Comprobante siempre 'sin'.
 _IMP_TIPOS = ("gasto", "suscripcion", "sueldo")
@@ -23967,6 +23952,12 @@ _IMP_ALIC_A = 21.0
 # 'neto' (sin el IVA, como la liquidacion real del 22-10 que usa _factor_ads_usd). El bancario va
 # siempre sobre el total. Default 'neto': es como cobra de verdad (liquidacion del 22-10).
 _IMP_CARGA_DEF = {"iva": 8.5, "banco": 1.2, "moneda": "USDT", "base": "neto"}
+# "Con Emma" en PESOS: Cristian le paga a un proveedor en pesos a traves de Emma, con la MISMA regla
+# que los dolares: Emma se queda 1,2% de lo que le pasas + 8,5% del neto sin IVA = 8,22% de la
+# factura (1 - _factor_ads_usd()). Para que al proveedor le lleguen M, le pasas M / (1 - pct/100)
+# (1.000.000 -> 1.089.618,90): ese total es el gasto y la factura A de Emma lo cubre entero (IVA 21%
+# adentro). El % se puede pisar: al dar de alta uno con un % distinto del de la regla queda guardado
+# por cuenta (conf['emma_pesos_pct']); con el de la regla se borra y vuelve a seguir a _factor_ads_usd().
 _IMP_MONEDAS = ("ARS", "USD", "USDT")
 _IMP_SERIE_CACHE = {}   # (email, desde, hasta) -> (momento, serie): los dias cerrados no cambian
 
@@ -24099,11 +24090,13 @@ def _imp_gasto_estado(g, conf_ri, emma="Emma"):
     al cliente: factura A o M y fecha desde que es Responsable Inscripto. El exterior se guarda
     pero no suma nunca (a definir con la contadora). Una carga con Emma para la pauta de Meta en
     dolares tampoco: ese IVA ya entra solo en 'IVA a favor automatico' (iva_ads_usd, desde
-    ADS_USD_DESDE) y sumarlo aca lo contaria dos veces. Lo pagado con USDT de Emma tampoco (su IVA
-    ya entro en la factura de la carga) ni los sueldos (sin factura). 'emma' = el nombre del
-    contador que se ve en pantalla (conf.emma_nombre)."""
+    ADS_USD_DESDE) y sumarlo aca lo contaria dos veces. Lo pagado en dolares con Emma SI suma,
+    como una factura A (su factura trae el IVA 21% adentro); los sueldos no (sin factura). 'emma' =
+    el nombre del contador que se ve en pantalla (conf.emma_nombre)."""
     comp = g.get("comp")
     f = _imp_fecha(g.get("fecha"))
+    rd = str(conf_ri.get("ri_desde") or "")[:10]
+    antes_ri = "Fecha anterior a ser Responsable Inscripto" + (" (desde %s)" % _imp_dmy(rd) if rd else "")
     if g.get("clase") != "carga" and g.get("tipo") == "sueldo":
         return False, "no", "Sueldo: se paga sin factura, va como gasto del mes (no suma IVA)"
     if _imp_ya_automatico(g):
@@ -24111,9 +24104,16 @@ def _imp_gasto_estado(g, conf_ri, emma="Emma"):
                                "fulfillment se restan pedido por pedido y su IVA ya está en 'IVA a favor "
                                "automático'. Cargado acá se contaría dos veces: queda guardado sin sumar")
     if g.get("clase") != "carga" and comp == "emma_usdt":
-        return False, "via_emma", ("Pagado con USDT de %s: va al dólar de %s (ya trae lo que se queda %s) y "
-                                   "no suma IVA (el IVA va una sola vez, en la factura de %s). Acá cuenta "
-                                   "solo como gasto" % (emma, emma, emma, emma))
+        if _imp_es_ri(conf_ri, f) and not (_imp_num(g.get("iva_monto")) or 0) and float(g.get("monto_ars", 0) or 0) > 0:
+            # cargado antes de esta version (billetera / v3): no trae el IVA de la factura de Emma.
+            # No se muestra "Suma" con IVA 0: guardarlo de nuevo le calcula el 21%
+            return False, "no", ("Cargado antes del cambio, sin el IVA de la factura de %s: abrilo y "
+                                 "guardalo para que sume el IVA" % emma)
+        if _imp_es_ri(conf_ri, f):
+            return True, "suma", ("Pagado %s con %s: la factura A de %s trae el IVA 21%% adentro, "
+                                  "suma a tu IVA a favor" % ("en pesos" if g.get("moneda") == "ARS" else "en dólares",
+                                                             emma, emma))
+        return False, "no", antes_ri
     if g.get("clase") == "carga":
         if g.get("destino") == "meta":
             return False, "auto", ("Carga para la pauta de Meta en dólares: ese IVA ya se cuenta "
@@ -24125,9 +24125,7 @@ def _imp_gasto_estado(g, conf_ri, emma="Emma"):
     if comp in ("A", "M"):
         if _imp_es_ri(conf_ri, f):
             return True, "suma", "Factura %s: el IVA suma a tu IVA a favor" % comp
-        rd = str(conf_ri.get("ri_desde") or "")[:10]
-        return False, "no", ("Fecha anterior a ser Responsable Inscripto"
-                             + (" (desde %s)" % _imp_dmy(rd) if rd else ""))
+        return False, "no", antes_ri
     if comp in ("B", "C"):
         return False, "revisar", "Factura %s: el IVA no se puede tomar (pedí factura A)" % comp
     return False, "no", "Sin factura: no hay IVA para tomar"
@@ -24142,11 +24140,9 @@ def _imp_gasto_cuentas(g, suma) -> dict:
     (negativo = la factura te deja plata, como en la carga con Emma).
     en_pauta = el costo de una carga para la pauta de Meta en dolares: ese recargo YA esta adentro
     del costo de la publicidad del Dashboard (_dolar_ads = cotizacion / _factor_ads_usd), asi que
-    NO entra en extra (igual que su IVA, que ya esta en el automatico). Se muestra como dato.
-    en_billetera = el costo de una carga para compras que deja USDT en la billetera: ese costo va
-    ADENTRO del dolar de Emma y se gasta con cada pago (sumarlo aca tambien lo contaria dos veces).
-    Una carga para compras acreditada en pesos no tiene billetera: su costo sigue en extra."""
-    en_pauta = en_bill = 0.0
+    NO entra en extra (igual que su IVA, que ya esta en el automatico). Se muestra como dato. Una
+    carga para compras (cargas viejas: ya no se cargan) va a extra, como siempre."""
+    en_pauta = 0.0
     if g.get("clase") == "carga":
         extra = _imp_num(g.get("costo"))
         if extra is None:          # carga a medias: se reconstruye con sus %
@@ -24156,16 +24152,13 @@ def _imp_gasto_cuentas(g, suma) -> dict:
             extra = _imp_carga_costo(mf, pi, pb, g.get("desc_iva_base"))
         if g.get("destino") == "meta":
             en_pauta, extra = extra, 0.0
-        elif _imp_es_lote(g):
-            en_bill, extra = extra, 0.0
     elif _imp_ya_automatico(g):
         extra = 0.0                # ya esta restado en el Dashboard (ver _IMP_YA_AUTO_RE)
     else:
         extra = float(g.get("monto_ars", 0) or 0)
     iva_r = float(g.get("iva_monto", 0) or 0) if suma else 0.0
     return {"extra": round(extra, 2), "iva_recupera": round(iva_r, 2),
-            "costo_real": round(extra - iva_r, 2), "en_pauta": round(en_pauta, 2),
-            "en_billetera": round(en_bill, 2)}
+            "costo_real": round(extra - iva_r, 2), "en_pauta": round(en_pauta, 2)}
 
 
 def _imp_carga_costo(mf, pi, pb, base) -> float:
@@ -24191,6 +24184,13 @@ def _imp_carga_conf(conf) -> dict:
     return out
 
 
+def _imp_emma_pct(conf) -> float:
+    """El % que se queda Emma en un pago en pesos: el que guardo la cuenta, si no el de su regla
+    (1,2% + 8,5% del neto = 1 - _factor_ads_usd(), 8,22%), igual que en los dolares."""
+    v = _imp_num((conf or {}).get("emma_pesos_pct"))
+    return v if v is not None and 0 <= v <= 50 else round((1.0 - _factor_ads_usd()) * 100.0, 6)
+
+
 def _imp_carga_usdt(g) -> float:
     """USDT (o USD, van 1 a 1) que dejo una carga con Emma: los de la liquidacion si se cargaron
     (usdt_entregados); si no, acreditado / cotizacion (cargas viejas, acreditado_orig). 0 si no es
@@ -24205,158 +24205,27 @@ def _imp_carga_usdt(g) -> float:
     return float(ac / tc) if tc and tc > 0 and ac and ac > 0 else 0.0
 
 
-def _imp_es_lote(g) -> bool:
-    """Una carga que entra a la billetera: para "Suscripciones y otras compras" y con USDT/USD.
-    Las de Meta no (sus USDT se van en la pauta) ni las acreditadas en pesos."""
-    return (isinstance(g, dict) and g.get("clase") == "carga" and g.get("destino") == "otro"
-            and _imp_carga_usdt(g) > 0)
-
-
-def _imp_es_pago_usdt(g) -> bool:
-    """Un pago que sale de la billetera: 'emma_usdt' en USD/USDT (los viejos en pesos no)."""
-    return (isinstance(g, dict) and g.get("clase") != "carga" and g.get("tipo") != "sueldo"
-            and g.get("comp") == "emma_usdt" and g.get("moneda") in ("USDT", "USD")
-            and (_imp_num(g.get("monto_orig")) or 0) > 0)
-
-
-def _imp_dolar_vivo():
-    """Dolar del dia del backend (_dolar_ars_vivo, cache 10 min). UNA sola fuente para el alta y
-    para el resumen (antes el resumen usaba el del blob y el mismo pago valia distinto en cada
-    lado). Solo se llama si la billetera esta en negativo y no hay NINGUNA carga para compras.
-    Con la API caida y sin ultimo bueno, _dolar_ars_vivo devuelve el piso 1000: eso no es un
-    dolar real, va None (fuente 'sin': el front lo dice, no inventa)."""
-    f = globals().get("_dolar_ars_vivo")
-    try:
-        v = float(f()) if callable(f) else 0.0
-    except Exception:
-        return None
-    c = globals().get("_dolar_cache")
-    if isinstance(c, dict) and not c.get("val") and v == 1000.0:
-        try:
-            float((_os.getenv("DOLAR_ARS") or "").strip())     # fijo a mano en Render: vale
-        except ValueError:
-            return None
-    return v if v > 0 else None
-
-
-_IMP_U_EPS = 0.005   # medio centavo de USDT: menos que eso es redondeo, no saldo
-
-
-def _imp_billetera(rows, dolar_dia=None, mes=None) -> dict:
-    """BILLETERA USDT DE EMMA de una cuenta (todas las fechas). Lotes = cargas para compras con
-    USDT (_imp_es_lote) a su dolar de Emma = monto de la factura / USDT; pagos = 'emma_usdt' en
-    USD/USDT. FIFO: los pagos (por fecha y id) consumen la carga mas vieja (por fecha y id) con
-    saldo; si un pago cruza dos cargas se prorratea. Si no alcanza, lo que falta se valua con el
-    dolar de Emma de la ULTIMA carga (o, sin ninguna, con dolar_dia: numero o funcion, que se
-    llama solo si hace falta) y queda marcado. Devuelve el resumen + '_asig' {id(fila): valuacion}
-    (claves por identidad de la fila: es para el que llama, no viaja al front)."""
-    rows = [g for g in (rows or []) if isinstance(g, dict)]
-    orden = lambda g: (str(g.get("fecha") or ""), int(g.get("id") or 0))
-    L = []
-    for g in sorted([g for g in rows if _imp_es_lote(g)], key=orden):
-        u = _imp_carga_usdt(g)
-        mf = float(g.get("monto_ars", 0) or 0)
-        iva = float(g.get("iva_monto", 0) or 0)
-        L.append({"id": int(g.get("id") or 0), "fecha": str(g.get("fecha") or ""),
-                  "concepto": str(g.get("concepto") or ""), "moneda": g.get("acredita_moneda"),
-                  "usdt": u, "monto": mf, "iva": iva, "dolar": mf / u, "iva_u": iva / u,
-                  "quedan": u, "real": (_imp_num(g.get("usdt_entregados")) or 0) > 0})
-    dd = [None, False]
-
-    def _dia():
-        if not dd[1]:
-            dd[1] = True
-            try:
-                v = dolar_dia() if callable(dolar_dia) else dolar_dia
-                v = float(v) if v is not None else None
-                dd[0] = v if v and v > 0 else None
-            except Exception:
-                dd[0] = None
-        return dd[0]
-
-    asig = {}
-    i = 0
-    gastado = falta_tot = 0.0
-    mes_c = mes_g = mes_ars = 0.0
-    n_mes_c = n_mes_g = 0
-    for g in sorted([g for g in rows if _imp_es_pago_usdt(g)], key=orden):
-        need = float(_imp_num(g.get("monto_orig")) or 0)
-        f_pago = str(g.get("fecha") or "")
-        gastado += need
-        tramos = []
-        while need > _IMP_U_EPS and i < len(L):
-            lt = L[i]
-            if lt["quedan"] <= _IMP_U_EPS:
-                i += 1
-                continue
-            t = min(need, lt["quedan"])
-            lt["quedan"] -= t
-            need -= t
-            # 'antes': el pago tiene fecha ANTERIOR a esa carga (ese dia no habia saldo). Cuadra
-            # igual (FIFO por fecha e id), pero se avisa: puede faltar cargar una factura.
-            tramos.append({"carga_id": lt["id"], "fecha": lt["fecha"], "usdt": t, "dolar": lt["dolar"],
-                           "ars": t * lt["dolar"], "iva": t * lt["iva_u"], "falta": False,
-                           "antes": bool(f_pago and lt["fecha"] > f_pago)})
-        fuente = "carga"
-        if need > _IMP_U_EPS:
-            falta_tot += need
-            tg = _imp_num(g.get("tc"))
-            if L:
-                dol, ref, fuente = L[-1]["dolar"], L[-1]["fecha"], "ultima"
-            elif tg and tg > 0:
-                # pago v3 con su cotizacion real y NINGUNA carga para compras (las de Cristian eran
-                # para Meta o en pesos): vale su tc, no el dolar de hoy (no cambia sin dato nuevo)
-                dol, ref, fuente = tg, None, "tc_guardada"
-            else:
-                dol, ref = _dia(), None
-                fuente = "dia" if dol else "sin"
-            tramos.append({"carga_id": (L[-1]["id"] if L else None), "fecha": ref, "usdt": need,
-                           "dolar": dol, "ars": need * (dol or 0.0), "iva": 0.0, "falta": True, "antes": False})
-        u_tot = sum(t["usdt"] for t in tramos)
-        ars = sum(t["ars"] for t in tramos)
-        falta = sum(t["usdt"] for t in tramos if t["falta"])
-        a = {"usdt": round(u_tot, 2), "ars": round(ars, 2),
-             "dolar": (round(ars / u_tot, 4) if u_tot > 0 and fuente != "sin" else None),
-             "iva": round(sum(t["iva"] for t in tramos), 2), "falta": round(falta, 2),
-             "negativo": falta > _IMP_U_EPS, "fuente": fuente,
-             "antes_carga": next((t["fecha"] for t in tramos if t["antes"]), None),
-             "tramos": [dict(t, usdt=round(t["usdt"], 2), ars=round(t["ars"], 2), iva=round(t["iva"], 2),
-                             dolar=(round(t["dolar"], 4) if t["dolar"] else None)) for t in tramos]}
-        asig[id(g)] = a
-        if mes and str(g.get("fecha") or "").startswith(mes):
-            mes_g += u_tot
-            mes_ars += ars
-            n_mes_g += 1
-    cargado = sum(lt["usdt"] for lt in L)
-    rest = sum(max(lt["quedan"], 0.0) for lt in L if lt["quedan"] > _IMP_U_EPS)
-    val_rest = sum(lt["quedan"] * lt["dolar"] for lt in L if lt["quedan"] > _IMP_U_EPS)
-    if mes:
-        for lt in L:
-            if lt["fecha"].startswith(mes):
-                mes_c += lt["usdt"]
-                n_mes_c += 1
-    saldo = cargado - gastado
-    return {"cargado": round(cargado, 2), "gastado": round(gastado, 2),
-            "saldo": round(saldo, 2) if abs(saldo) > _IMP_U_EPS else 0.0,
-            "negativo": falta_tot > _IMP_U_EPS, "falta": round(falta_tot, 2),
-            "dolar_saldo": (round(val_rest / rest, 4) if rest > _IMP_U_EPS else None),
-            "valor_saldo": round(val_rest, 2),
-            "dolar_ult": (round(L[-1]["dolar"], 4) if L else None), "fecha_ult": (L[-1]["fecha"] if L else None),
-            "mes": {"cargado": round(mes_c, 2), "n_cargas": n_mes_c, "gastado": round(mes_g, 2),
-                    "gastado_ars": round(mes_ars, 2), "n_pagos": n_mes_g},
-            "lotes": [{"id": lt["id"], "fecha": lt["fecha"], "concepto": lt["concepto"], "moneda": lt["moneda"],
-                       "usdt": round(lt["usdt"], 2), "dolar": round(lt["dolar"], 4), "monto": round(lt["monto"], 2),
-                       "iva": round(lt["iva"], 2), "real": lt["real"],
-                       "quedan": (round(lt["quedan"], 2) if lt["quedan"] > _IMP_U_EPS else 0.0)} for lt in L],
-            "_asig": asig}
-
-
-def _imp_valuar(g, a) -> dict:
-    """Copia de un pago con USDT de Emma valuado con la billetera: monto_ars = USDT al dolar de
-    Emma (FIFO). La cotizacion vieja que pudiera tener ya no cuenta (tc_guardada, como dato)."""
-    if not a:
-        return g
-    return dict(g, monto_ars=a["ars"], tc=None, tc_guardada=g.get("tc"), bill=a)
+def _imp_pesos_emma(monto, f, viejo=None, dolar_emma=None, emma_nom="Emma"):
+    """(monto_ars, tc, extra) de un gasto pagado en dolares con Emma. Editando sin tocar el monto
+    ni la fecha queda con la cotizacion guardada (que el dolar se haya movido no cambia un gasto ya
+    cargado); si no, el dolar de Emma de la fecha (dolar_emma(fecha), o _dolar_emma_dia) a 2
+    decimales: el mismo que muestra la vista previa (/pf-imp-dolar-emma)."""
+    v = viejo if isinstance(viejo, dict) else {}
+    vt = _imp_num(v.get("tc"))
+    if (vt and vt > 0 and v.get("clase") != "carga" and v.get("comp") == "emma_usdt"
+            and v.get("moneda") in ("USD", "USDT") and str(v.get("fecha") or "") == f.isoformat()
+            and abs((_imp_num(v.get("monto_orig")) or 0) - round(monto, 2)) < 0.005):
+        ars = _imp_num(v.get("monto_ars"))
+        extra = {k: v[k] for k in ("dolar_base", "emma_comision_pct") if v.get(k) is not None}
+        return (round(ars, 2) if ars and ars > 0 else round(monto * vt, 2)), vt, extra
+    tc = (dolar_emma or _dolar_emma_dia)(f.isoformat())
+    tc = round(float(tc), 2) if tc else None
+    if not tc or tc <= 0:
+        raise _ImpErr("No pude traer el dólar de %s del %s (la cotización del USDT no responde). No "
+                      "guardé nada: probá de nuevo en un rato." % (emma_nom, _imp_dmy(f.isoformat())))
+    fa = _factor_ads_usd()
+    return round(monto * tc, 2), tc, {"dolar_base": round(tc * fa, 2),
+                                      "emma_comision_pct": round((1.0 - fa) * 100.0, 2)}
 
 
 def _imp_validar_carga(data, f, concepto) -> dict:
@@ -24437,12 +24306,16 @@ def _imp_validar_carga(data, f, concepto) -> dict:
             "dolar_emma": (round(mf / u_fin, 4) if u_fin else None)}
 
 
-def _imp_validar_gasto(data, ars_viejo=False, emma_nom="Emma") -> dict:
+def _imp_validar_gasto(data, emma_nom="Emma", viejo=None, dolar_emma=None, emma_pct_def=None) -> dict:
     """Arma el gasto a guardar con lo que manda el front. Todo se valida aca: montos >= 0, fecha
     real, strings recortados. monto_ars es SIEMPRE el total pagado en pesos (en una carga con
     Emma, el monto de la factura; lo que cuenta como gasto es su 'costo').
-    ars_viejo: se esta editando un pago 'emma_usdt' que ya estaba en PESOS (v3 lo dejaba): puede
-    seguir en pesos, con su monto y fuera de la billetera. Uno nuevo en pesos no."""
+    'emma_usdt' = "Con Emma", en dos monedas. Dolares (USD; USDT va 1 a 1): los pesos los calcula
+    el server con el dolar de Emma de la fecha (_imp_pesos_emma). Pesos (ARS): monto_orig = lo que
+    recibe el proveedor y monto_ars = monto / (1 - emma_pct/100) (emma_pct del front, si no vino el
+    de la fila que se edita, si no emma_pct_def = el de la cuenta o el 8,22% de Emma). En los dos el IVA es el 21% que trae adentro la
+    factura A de Emma; tc/IVA del front se ignoran. viejo = la fila que se edita; dolar_emma = de
+    donde sale el dolar (el endpoint lo trae antes de tomar el candado, sin red adentro)."""
     if not isinstance(data, dict):
         raise _ImpErr("Datos inválidos: tiene que venir un objeto con el gasto.")
     clase = data.get("clase")
@@ -24489,19 +24362,26 @@ def _imp_validar_gasto(data, ars_viejo=False, emma_nom="Emma") -> dict:
     if comp not in _IMP_COMPS:
         raise _ImpErr("Comprobante inválido: '%s'." % comp[:20])
     emma_nom = str(emma_nom or "").strip()[:30] or "Emma"
-    if comp == "emma_usdt" and moneda == "ARS" and not ars_viejo:
-        raise _ImpErr("Lo pagado con USDT de %s va en USD o USDT (lo que te cobraron). No hace falta "
-                      "la cotización: va al dólar de %s de tu billetera." % (emma_nom, emma_nom))
     monto = _imp_num(data.get("monto_orig") if data.get("monto_orig") is not None else data.get("monto"))
     if monto is None or monto <= 0:
         raise _ImpErr("Falta el monto total pagado (tiene que ser mayor a 0).")
     tc = None
+    extra = {}
     if comp == "emma_usdt" and moneda == "ARS":
-        monto_ars = round(monto, 2)    # pago viejo en pesos (ars_viejo): su monto, sin billetera
+        v = viejo if isinstance(viejo, dict) and viejo.get("comp") == "emma_usdt" and viejo.get("moneda") == "ARS" else None
+        pv = data.get("emma_pct")
+        if pv is None or (isinstance(pv, str) and not pv.strip()):
+            # sin el dato: el de la fila que se edita (una vieja sin % = 0: queda con su monto)
+            pv = (_imp_num(v.get("emma_pct")) or 0.0) if v else (_imp_emma_pct({}) if emma_pct_def is None else emma_pct_def)
+        pct = None if isinstance(pv, bool) else _imp_num(pv)
+        if pct is None or pct < 0 or pct > 50:
+            raise _ImpErr("La comisión de %s tiene que ser un %% entre 0 y 50." % emma_nom)
+        pct = round(pct, 6)
+        monto_ars = round(monto / (1.0 - pct / 100.0), 2)
+        extra = {"emma_pct": pct}
     elif comp == "emma_usdt":
-        # sin cotizacion: los pesos salen de la billetera (FIFO al dolar de Emma) AL LEER. 0 es
-        # un lugar: el alta le guarda la foto del momento, pero manda la cuenta al leer.
-        monto_ars = 0.0
+        moneda = "USD"                 # USDT y USD van 1 a 1
+        monto_ars, tc, extra = _imp_pesos_emma(monto, f, viejo, dolar_emma, emma_nom)
     elif moneda != "ARS":
         tc = _imp_num(data.get("tc"))
         if tc is None or tc <= 0:
@@ -24539,15 +24419,18 @@ def _imp_validar_gasto(data, ars_viejo=False, emma_nom="Emma") -> dict:
             raise _ImpErr("El IVA (%s) no puede ser mayor que el total pagado en pesos (%s)."
                           % (round(iva, 2), monto_ars))
     if comp == "emma_usdt":
-        # pagado con los USDT de Emma: no hay percepcion posible (un POST directo o un front
-        # viejo cacheado no puede bajar el IVA con una percepcion que no existe)
+        # con Emma (dolares o pesos): el IVA es el 21% que trae adentro su factura A por el total,
+        # calculado aca (el del front se ignora). Sin percepciones: un POST directo no puede bajar
+        # el IVA con una que no existe
+        alic = _IMP_ALIC_A
+        iva = monto_ars * _IMP_ALIC_A / (100.0 + _IMP_ALIC_A)
         percs = {"percep_iva": 0.0, "percep_iibb": 0.0}
-    return {"clase": "gasto", "fecha": f.isoformat(), "concepto": concepto, "tipo": tipo,
-            "moneda": moneda, "monto_orig": round(monto, 2), "tc": (round(tc, 4) if tc else None),
-            "monto_ars": monto_ars, "comp": comp, "iva_modo": iva_modo,
-            "alic": (int(alic) if alic is not None and alic == int(alic) else alic),
-            "iva_monto": round(iva, 2), "percep_iva": percs["percep_iva"],
-            "percep_iibb": percs["percep_iibb"]}
+    return dict({"clase": "gasto", "fecha": f.isoformat(), "concepto": concepto, "tipo": tipo,
+                 "moneda": moneda, "monto_orig": round(monto, 2), "tc": (round(tc, 4) if tc else None),
+                 "monto_ars": monto_ars, "comp": comp, "iva_modo": iva_modo,
+                 "alic": (int(alic) if alic is not None and alic == int(alic) else alic),
+                 "iva_monto": round(iva, 2), "percep_iva": percs["percep_iva"],
+                 "percep_iibb": percs["percep_iibb"]}, **extra)
 
 
 def _imp_validar_sueldo(data, f, concepto, persona) -> dict:
@@ -24765,30 +24648,24 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
     # Las cargas para la pauta de Meta no suman su costo (ya esta en la publicidad del Dashboard):
     # van aparte en en_pauta / n_auto, solo como dato.
     # Cada gasto va a UNA sola de emma / emma_usdt / factura_a / sin_factura / sueldos (sumadas
-    # dan total_pagado); 'sin_factura' ya NO lleva lo pagado con USDT de Emma ni los sueldos.
-    gx = {"total_pagado": 0.0, "iva_recupera": 0.0, "costo_real": 0.0, "en_pauta": 0.0, "en_billetera": 0.0}
-    cortes = {k: {"n": 0, "total": 0.0, "iva": 0.0, "en_pauta": 0.0, "n_auto": 0, "en_billetera": 0.0}
+    # dan total_pagado); 'sin_factura' ya NO lleva lo pagado en dolares con Emma ni los sueldos.
+    # Lo pagado en dolares con Emma vale su monto_ars guardado (dolar de Emma de su fecha).
+    gx = {"total_pagado": 0.0, "iva_recupera": 0.0, "costo_real": 0.0, "en_pauta": 0.0}
+    cortes = {k: {"n": 0, "total": 0.0, "iva": 0.0, "en_pauta": 0.0, "n_auto": 0}
               for k in ("emma", "factura_a", "sin_factura", "suscripciones", "emma_usdt", "sueldos")}
-    usdt_acred = usdt_usado = 0.0      # USDT de cargas "para compras" vs USDT gastados via Emma
+    usd_emma = 0.0                     # dolares pagados con Emma (USD y USDT van 1 a 1)
+    n_emma_usd = n_emma_ars = 0
     sld_per = {}                       # persona -> [total, pagos, videos]
     sld_videos = sld_n_video = 0
-    # la billetera mira TODAS las fechas (el FIFO arranca en la primera carga); cada pago con USDT
-    # de Emma del mes se valua con su asignacion. El dolar del dia (solo sin NINGUNA carga) es el
-    # mismo del alta (_imp_dolar_vivo, lazy: no se llama si no hace falta)
-    bill = _imp_billetera(cur["rows"], _imp_dolar_vivo, mes)
-    asig = bill.pop("_asig")
     for g in cur["rows"]:
         if not isinstance(g, dict) or not str(g.get("fecha") or "").startswith(mes):
             continue
-        if _imp_es_pago_usdt(g):
-            g = _imp_valuar(g, asig.get(id(g)))
         suma, estado, motivo = _imp_gasto_estado(g, conf_ri, emma_nom)
         cta = _imp_gasto_cuentas(g, suma)
         gx["total_pagado"] += cta["extra"]
         gx["iva_recupera"] += cta["iva_recupera"]
         gx["costo_real"] += cta["costo_real"]
         gx["en_pauta"] += cta["en_pauta"]
-        gx["en_billetera"] += cta["en_billetera"]
         es_carga = g.get("clase") == "carga"
         ck = ("emma" if es_carga
               else "sueldos" if g.get("tipo") == "sueldo"
@@ -24799,12 +24676,12 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
             cortes[k2]["total"] += cta["extra"]
             cortes[k2]["iva"] += cta["iva_recupera"]
             cortes[k2]["en_pauta"] += cta["en_pauta"]
-            cortes[k2]["en_billetera"] += cta["en_billetera"]
             cortes[k2]["n_auto"] += 1 if estado == "auto" else 0
-        if es_carga and g.get("destino") == "otro" and g.get("acredita_moneda") in ("USDT", "USD"):
-            usdt_acred += _imp_carga_usdt(g)
         if ck == "emma_usdt" and g.get("moneda") in ("USDT", "USD"):
-            usdt_usado += float(g.get("monto_orig", 0) or 0)   # USD y USDT van 1 a 1
+            usd_emma += float(g.get("monto_orig", 0) or 0)
+            n_emma_usd += 1
+        elif ck == "emma_usdt":
+            n_emma_ars += 1
         if ck == "sueldos":
             pk = " ".join(str(g.get("persona") or "").split()) or "Sin nombre"
             acc = sld_per.setdefault(pk, [0.0, 0, 0])
@@ -24947,21 +24824,18 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
                       "iva_recupera": round(gx["iva_recupera"], 2),
                       "costo_real": round(gx["costo_real"], 2),
                       "en_pauta": round(gx["en_pauta"], 2),
-                      "en_billetera": round(gx["en_billetera"], 2),
                       "cortes": {k: {"n": v["n"], "total": round(v["total"], 2), "iva": round(v["iva"], 2),
-                                     "en_pauta": round(v["en_pauta"], 2), "n_auto": v["n_auto"],
-                                     "en_billetera": round(v["en_billetera"], 2)}
+                                     "en_pauta": round(v["en_pauta"], 2), "n_auto": v["n_auto"]}
                                  for k, v in cortes.items()}},
-           "billetera": bill,
            "ful_sin_iva_desde": FULFILLMENT_SIN_IVA_DESDE,
            "conf": {"iibb_base": base, "computa_ext": bool(conf.get("computa_ext")),
                     "st_anterior": round(st_ant, 2),
                     "emma_nombre": emma_nom,
                     "carga": _imp_carga_conf(conf), "emma_ult": emma_ult,
+                    "emma_pesos_pct": _imp_emma_pct(conf),
                     "sueldo_personas": sld_sug}}
     co = out["gastos"]["cortes"]
-    co["emma"]["usdt_acred"] = round(usdt_acred, 2)
-    co["emma_usdt"]["usdt"] = round(usdt_usado, 2)
+    co["emma_usdt"].update({"usd": round(usd_emma, 2), "n_usd": n_emma_usd, "n_pesos": n_emma_ars})
     co["sueldos"].update({"personas": per_out, "videos": sld_videos, "n_video": sld_n_video})
     if con_serie:
         out["serie"] = _imp_serie(email, d1, hasta, raw, conf_ri)
@@ -24985,6 +24859,28 @@ def pf_impuestos():
         return jsonify({"ok": False, "msg": "No se pudo calcular el mes.", "err_detalle": _sege_err(e)}), 500
 
 
+@app.get("/pf-imp-dolar-emma")
+def pf_impuestos_dolar_emma():
+    """Dolar de Emma de UNA fecha (?fecha=YYYY-MM-DD) para la vista previa de un gasto en dolares:
+    el mismo numero (2 decimales) con el que el server lo pasa a pesos al guardar."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Tu sesión venció: volvé a entrar a RealProfit."}), 401
+    f = _imp_fecha(request.args.get("fecha") or _hoy())
+    if not f:
+        return jsonify({"ok": False, "msg": "Fecha inválida: tiene que ser AAAA-MM-DD."}), 400
+    try:
+        dol = _dolar_emma_dia(f.isoformat())
+        if not dol or dol <= 0:
+            return jsonify({"ok": False, "msg": "No pude traer el dólar de ese día (la cotización del USDT "
+                                                "no responde). Probá de nuevo en un rato."}), 503
+        fa = _factor_ads_usd()
+        return jsonify({"ok": True, "fecha": f.isoformat(), "dolar": round(dol, 2),
+                        "base": round(dol * fa, 2), "comision_pct": round((1.0 - fa) * 100.0, 2)})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude calcular el dólar de ese día.", "err_detalle": _sege_err(e)}), 500
+
+
 @app.post("/pf-impuestos-gasto")
 def pf_impuestos_gasto():
     """Alta (sin id) o edicion (con id) de un gasto. Leer-cambiar-escribir bajo flock."""
@@ -24997,6 +24893,13 @@ def pf_impuestos_gasto():
             raise _ImpErr("Datos inválidos: tiene que venir un objeto con el gasto.")
         gid = data.get("id")
         ahora = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
+        # gasto en dolares con Emma: el dolar de su fecha se trae ANTES del candado (la red nunca
+        # adentro: el otro worker esperaria); si al final no hace falta (edicion sin cambios), no se usa
+        dol = {}
+        f0 = _imp_fecha(data.get("fecha"))
+        if f0 and "emma" in str(data.get("comp") or "").lower() and str(data.get("moneda") or "").strip().upper() in ("USD", "USDT"):
+            dol[f0.isoformat()] = _dolar_emma_dia(f0.isoformat())
+        dolar_emma = lambda fi: dol[fi] if fi in dol else _dolar_emma_dia(fi)
         with _sege_flock(_IMP_LOCK):
             d = _imp_all(estricto=True)
             cur = _imp_cuenta(d, email)
@@ -25012,17 +24915,11 @@ def pf_impuestos_gasto():
                 if i is None:
                     raise _ImpErr("Ese gasto ya no existe (¿lo borraron desde otra pestaña?).")
                 viejo = cur["rows"][i]
-            # se valida adentro del candado: hace falta la fila vieja (un pago v3 'emma_usdt' en
-            # PESOS se puede editar en pesos, con su monto) y el nombre del contador del mensaje
-            ars_viejo = bool(isinstance(viejo, dict) and viejo.get("clase") != "carga"
-                             and viejo.get("comp") == "emma_usdt" and viejo.get("moneda") == "ARS")
-            g = _imp_validar_gasto(data, ars_viejo=ars_viejo, emma_nom=emma_nom)
+            # se valida adentro del candado: hace falta la fila vieja (con Emma, editar sin tocar
+            # monto ni fecha deja su cotizacion), el nombre del contador y el % de Emma en pesos
+            g = _imp_validar_gasto(data, emma_nom=emma_nom, viejo=viejo, dolar_emma=dolar_emma,
+                                   emma_pct_def=_imp_emma_pct(cur["conf"]))
             if i is not None:
-                # la cotizacion real de un pago v3 con USDT de Emma queda guardada al editarlo: es
-                # la que vale si no hay ninguna carga para compras (tc_guardada)
-                if (_imp_es_pago_usdt(g) and _imp_es_pago_usdt(viejo) and not g.get("tc")
-                        and (_imp_num(viejo.get("tc")) or 0) > 0):
-                    g["tc"] = viejo.get("tc")
                 g["id"] = gid
                 g["creado"] = cur["rows"][i].get("creado")
                 g["editado"] = ahora
@@ -25035,19 +24932,20 @@ def pf_impuestos_gasto():
             if g.get("clase") == "carga":    # la proxima carga arranca con estos % y esta moneda
                 cur["conf"]["carga"] = {"iva": g["desc_iva_pct"], "banco": g["desc_banco_pct"],
                                         "moneda": g["acredita_moneda"], "base": g["desc_iva_base"]}
-            # pago con USDT de Emma: se guarda la FOTO de su valuacion de hoy (sin red adentro del
-            # candado). La que cuenta se recalcula al leer (_imp_billetera).
-            a = _imp_billetera(cur["rows"])["_asig"].get(id(g)) if _imp_es_pago_usdt(g) else None
-            if a and a["fuente"] != "sin":
-                g["monto_ars"] = a["ars"]
+            elif g.get("comp") == "emma_usdt" and g.get("emma_pct") is not None and viejo is None:
+                # el proximo con Emma en pesos: se recuerda SOLO si lo pisaste (distinto del de la
+                # regla de Emma); igual al de la regla se borra, asi sigue a _factor_ads_usd() si
+                # cambia el env. Editar una fila vieja (otro %, o una sin % = 0) no toca el de la cuenta
+                dflt = round((1.0 - _factor_ads_usd()) * 100.0, 6)
+                if abs(float(g["emma_pct"]) - dflt) > 0.005:
+                    cur["conf"]["emma_pesos_pct"] = g["emma_pct"]
+                else:
+                    cur["conf"].pop("emma_pesos_pct", None)
             d[email] = cur
             _imp_write(d)
-        if a and a["fuente"] == "sin":     # sin ninguna carga: dolar del dia, ya fuera del candado
-            a = _imp_billetera(cur["rows"], _imp_dolar_vivo)["_asig"].get(id(g))
-        row = _imp_valuar(g, a)
-        suma, estado, motivo = _imp_gasto_estado(row, _imp_ri_conf(email), emma_nom)
-        return jsonify({"ok": True, "row": dict(row, suma_credito=suma, estado=estado, motivo=motivo,
-                                                **_imp_gasto_cuentas(row, suma))})
+        suma, estado, motivo = _imp_gasto_estado(g, _imp_ri_conf(email), emma_nom)
+        return jsonify({"ok": True, "row": dict(g, suma_credito=suma, estado=estado, motivo=motivo,
+                                                **_imp_gasto_cuentas(g, suma))})
     except _ImpErr as e:
         return jsonify({"ok": False, "msg": str(e)}), 400
     except Exception as e:
