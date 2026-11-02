@@ -5087,8 +5087,8 @@ _SOLO_DASH = r"""
   }catch(e){ ok(f); }
  }); }
  // Videos de mas de 25 MB: en pedazos de 8 MB a /pf-ads-subir-parte (el tope de 35 MB es por pedido).
- // El primero va solo (crea la tanda) y el resto de a 4 A LA VEZ: una sola conexion a Render no
- // llenaba la linea. Cada pedazo reintenta 3 veces. Al final, fin=1 arma el archivo. Devuelve el json final.
+ // El primero va solo (crea la tanda) y el resto de a 2 A LA VEZ (medido 02-11: 1 solo = 1,3-5,8 MB/s,
+ // 2 = 2,8, 4 = 0,6: con 4 se pisan). Cada pedazo reintenta 3 veces. Al final, fin=1 arma el archivo. Devuelve el json final.
  function rpaPartes(f, prog){ var CH=8*1024*1024, n=Math.ceil(f.size/CH), hechos=0, sig=1, error=null;
   function manda(k, intento){ var fd=new FormData();
    fd.append('parte', f.slice(k*CH, Math.min(f.size,(k+1)*CH)), f.name); fd.append('name', f.name);
@@ -5102,7 +5102,7 @@ _SOLO_DASH = r"""
   }
   function hilo(){ if(error||sig>=n) return Promise.resolve(); var k=sig++;
    return manda(k,0).then(hilo, function(e){ error=e; }); }
-  return manda(0,0).then(function(){ var hs=[]; for(var t=0;t<4;t++) hs.push(hilo()); return Promise.all(hs); })
+  return manda(0,0).then(function(){ var hs=[]; for(var t=0;t<2;t++) hs.push(hilo()); return Promise.all(hs); })
    .then(function(){ if(error) throw error; var fd=new FormData(); fd.append('name', f.name); fd.append('off', 0);
     fd.append('size', f.size); fd.append('fin', '1'); fd.append('upload_id', UPLOAD_ID);
     return fetch('/pf-ads-subir-parte',{method:'POST',body:fd}).then(function(r){return r.json();}); })
