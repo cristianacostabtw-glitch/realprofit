@@ -21,6 +21,8 @@ from __future__ import annotations
 import base64
 import json
 import random as _random
+import re
+import unicodedata
 import os
 
 MODELO = "claude-opus-5"
@@ -106,7 +108,9 @@ Todo lo que sabés sobre el producto, precios, links de compra, envíos, formas 
 6. Sé CAUTELOSO. En la duda, escalá. No inventes. Si te piden algo que requiere mirar el pedido puntual → escalá.
 6.b. ESCALAR NO ES QUEDARSE MUDO. Cuando pongas escalar=true, salvo que sea un cierre, escribí IGUAL en "mensaje" una o dos líneas cortas para el cliente: que eso puntual lo está mirando un compañero del equipo y que le responden por este mismo chat. Hablá de vos como Sofía (una más del equipo): NO te presentes ni digas que sos un asistente, un bot o algo automático. Nunca lo dejes sin ninguna respuesta. Solo dejá "mensaje" vacío si de verdad no corresponde contestar nada (un "gracias", un "ok").
 7. Tono: argentino, cálido, humano, breve. Emojis con moderación. Nunca sonar robot.
+7.a. LENGUAJE LIMPIO, SIEMPRE (regla dura). Nada de malas palabras ni expresiones groseras o vulgares: "cagada", "qué cagada", "quilombo", "mierda", "carajo", "joder", "boludo", "pelotudo", "forro", "cagar", "al pedo", "la puta", "bardo" y parecidas. Ni aunque el cliente las use, ni aunque aparezcan en los ejemplos aprendidos de charlas viejas: de esos ejemplos se copia la info y la calidez, nunca las malas palabras. Argentino y cercano sí; grosero nunca.
 7.b. NUNCA admitas ni inventes un error nuestro. Si alguien dice que le llegaron mensajes de más, avisos de otra gente, que le cobraron mal o que el sistema falló: NO lo des por cierto, NO pidas disculpas por algo que no te consta y NO digas "fue un error nuestro" ni "salió mal de nuestro lado". Tampoco le siembres dudas sobre su pedido ni sobre su seguimiento (jamás digas que un número de pedido o un tracking "puede no corresponder"). Decile que lo revisa un compañero del equipo y escalá (escalar=true). Si en el historial del chat ves un envío nuestro con SU nombre y SU número de pedido, eso ES suyo: podés confirmárselo con esos datos, nunca desmentirlo.
+7.c. CUANDO ALGO SALIÓ MAL (reclamo, pedido que no llegó, producto roto, demora, enojo): el cliente ya está molesto y la primera palabra lo calma o lo enfurece. Tono SERENO y respetuoso, que transmita que alguien se ocupa. NO dramatices ni lo conviertas en chiste: nada de "qué cagada", "qué macana", "qué desastre", "qué bajón", "uh, qué mal", "uy". Tampoco minimices ("no pasa nada", "tranqui"). Arrancá reconociendo lo que te dijo y pasá directo a lo que se hace (que lo revisa un compañero del equipo). La idea del tono es algo como "Entiendo, [nombre], gracias por avisarnos": es una IDEA, no una plantilla; redactalo distinto cada vez y con el nombre real del cliente (si no lo sabés, sin nombre). Igual que en la 7.b: no admitas un error que no te consta.
 8. NO CORTES LA VENTA si la persona NO PUEDE o NO QUIERE pagar por transferencia ("no puedo ir a depositar", "no tengo home banking", "no sé transferir", "no tengo cuenta"), si quiere COMPRAR EN PERSONA o RETIRAR ("puedo ir al depósito?", "dónde los venden", "quiero pasar a buscarlo", "no puedo ir hasta allá") o si DESCONFÍA ("¿es seguro?", "me da miedo que sea estafa", "ya me estafaron", "no confío en transferir"). Ofrecele en un mensaje corto las otras dos formas de comprar: (a) la WEB con tarjeta o débito, en cuotas sin interés, donde el pago lo procesa Mercado Pago y queda con el respaldo de su dinero; y (b) MERCADO LIBRE, con el link oficial del listado que figura en las INSTRUCCIONES DEL DUEÑO (compra protegida). Ofrecé SIEMPRE Mercado Libre en estos tres casos: desconfianza, no poder pagar por transferencia, y querer ir a comprar/retirar en persona — es el canal que más tranquiliza. No insistas con la transferencia ni lo des por perdido.
 
 # IMÁGENES Y AUDIOS: MIRÁ Y ENTENDÉ QUÉ ES CADA COSA
@@ -283,7 +287,10 @@ def decidir(mensajes, imagenes=None, canal="whatsapp", nombre="", extra_instr=""
         "Rotá también la ESTRUCTURA de la respuesta: a veces contestá derecho lo que preguntó y "
         "recién después la promo; a veces abrí con el precio; a veces con una línea sobre para qué "
         "sirve; a veces sin saludo, directo al grano. Dos respuestas seguidas no se pueden parecer "
-        "en el arranque." % _random.randint(1000, 9999)
+        "en el arranque.\n"
+        "Variar es cambiar la redacción, NUNCA el registro: nada de malas palabras ni expresiones "
+        "vulgares para sonar natural (regla 7.a), y si es un reclamo el arranque es sereno y "
+        "respetuoso (regla 7.c)." % _random.randint(1000, 9999)
     )
     contenido = _bloques_imagen(imagenes) + [{"type": "text", "text": prompt}]
 
@@ -308,6 +315,77 @@ def decidir(mensajes, imagenes=None, canal="whatsapp", nombre="", extra_instr=""
     # se manda igual (el cliente sabe que lo estan viendo) y el chat queda flagueado para el humano.
     # Si no escribio nada, se comporta como antes: no se manda nada.
     d.setdefault("mensaje", "")
+    # LENGUAJE LIMPIO (03-11-2026): el bot le contestó "Uy, qué cagada Matias" a un reclamo de entrega.
+    # El prompt ya lo prohíbe (7.a / 7.c), pero un insulto a un cliente enojado no se puede dejar al
+    # azar: si igual se cuela una mala palabra, se le pide UNA reescritura; si vuelve a fallar, no se
+    # manda nada y queda para un humano.
+    if _grosero(d.get("mensaje")):
+        if d.get("responder"):
+            d = _reescribir_limpio(d, system)
+        else:
+            d["mensaje"] = ""      # no se iba a mandar: alcanza con vaciarlo
     if d.get("escalar") and not (d.get("mensaje") or "").strip():
         d["responder"] = False
+    return d
+
+
+# Palabras que NUNCA salen hacia un cliente. Con \b para no pegarle a palabras sanas
+# ("cargada", "escarabajo", "computadora"): "cagada" no matchea "cargada" porque es otra palabra.
+_GROSERIAS = re.compile(
+    r"\b(?:"
+    r"cag(?:ad\w*|ar\w*|[oó]|u[eé]\w*|aste|ando|[aá]s|an|a|[oó]n|ones|ona)"   # cagada, cagadita, cagadón, cagué...
+    r"|mierd\w*|carajo\w*|quilomb\w*|bolud\w*|pelotud\w*"
+    r"|jod(?:er|id[ao]s?|[eé]s?|a|as|an|i[oó]|ieron|ete)"
+    r"|pijas?|chot[ao]s?|culos?|ortos?|ojete|garcha"
+    r"|(?:re)?put(?:[ao]s?|ad[ao]s?|amadre|[ií]sim[ao]s?)|hdp"
+    r"|bard(?:o|os|e[oó]|ear\w*)|(?:al|en)\s+pedo|la\s+concha|concha\s+de"
+    r"|chupa\s+un\s+huevo|hinchapelotas|(?:romp|hinch|llen)\w*\s+las\s+pelotas"
+    r"|qu[eé]\s+(?:macana|baj[oó]n|desastre|garr[oó]n|embole)"
+    r")\b",
+    re.IGNORECASE)
+# Los links se sacan antes de buscar: un slug de Mercado Libre o de la tienda puede traer "-culo" o
+# "-puta" partido por guiones y el mensaje con el link de compra no saldría nunca.
+_URL = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+
+
+def _grosero(texto) -> bool:
+    if not isinstance(texto, str):
+        return False
+    return bool(_GROSERIAS.search(_URL.sub(" ", unicodedata.normalize("NFC", texto))))
+
+
+_SCHEMA_TXT = {"type": "object", "properties": {"mensaje": {"type": "string"}},
+               "required": ["mensaje"], "additionalProperties": False}
+
+
+def _reescribir_limpio(d, system):
+    """Pide una sola reescritura del mensaje sin la expresión grosera. Si falla o sigue sucio → no se
+    manda nada (responder=False, escalar=True) y queda anotado en "motivo". Nunca lanza."""
+    sucio = d.get("mensaje") or ""
+    try:
+        resp = _cliente().messages.create(
+            model=MODELO, max_tokens=600, system=system,
+            # Con schema propio: sin esto el system (que pide la decisión entera en JSON) podía
+            # devolver JSON, ```json``` o un preámbulo, y eso le llegaba crudo al cliente.
+            output_config={"format": {"type": "json_schema", "schema": _SCHEMA_TXT}},
+            messages=[{"role": "user", "content": (
+                "Este mensaje para un cliente tiene una expresión grosera o fuera de lugar y NO se puede "
+                "mandar así:\n\n" + sucio + "\n\nReescribilo con la MISMA información, en el mismo largo, "
+                "cálido y argentino pero sin malas palabras ni expresiones vulgares (reglas 7.a y 7.c). Si es "
+                "un reclamo, arrancá sereno reconociendo lo que dijo. En \"mensaje\" va SOLO el texto nuevo.")}],
+        )
+        texto = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "{}")
+        j = json.loads(texto)
+        nuevo = j.get("mensaje") if isinstance(j, dict) else ""
+        nuevo = nuevo.strip() if isinstance(nuevo, str) else ""
+    except Exception as e:
+        nuevo = ""
+        d["motivo"] = ((d.get("motivo") or "") + " | reescritura falló: %s" % type(e).__name__).strip(" |")
+    if nuevo and not _grosero(nuevo):
+        d["mensaje"] = nuevo
+        return d
+    d["mensaje"] = ""
+    d["responder"] = False
+    d["escalar"] = True
+    d["motivo"] = ((d.get("motivo") or "") + " | NO se mandó: el texto tenía una mala palabra (" + sucio[:120] + ")").strip(" |")
     return d
