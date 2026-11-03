@@ -8403,7 +8403,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-02-gastousd"})
+    return jsonify({"ok": True, "v": "2026-11-03-sinreciclar"})
 
 
 _KPI_DBG = {}
@@ -21056,6 +21056,80 @@ def _ads_drive_bajar(link, dest_dir, on_prog=None):
     return [p for p in out if p]
 
 
+# ---------------- que gunicorn NO recicle el worker con un lanzamiento de ads en curso ----------------
+# 03-11 00:18: Cristian lanzó "4-11 UGC RENOVACION" en CP5 y a los 8 s el worker llegó a su cupo de
+# --max-requests ("Autorestarting worker after current request") y se llevó puesto el hilo: quedó la
+# campaña + el conjunto y CERO anuncios. Ya había pasado el 14-09 (a los 19 s). El poleo del progreso
+# cada 1 s es justamente lo que quema el cupo mientras se lanza.
+# gunicorn (gthread) decide el reciclado comparando worker.nr con worker.max_requests en CADA pedido:
+# mientras haya un lanzamiento vivo en ESTE proceso le subo el tope al infinito y al terminar se lo
+# devuelvo (si ya se pasó, se recicla en el pedido siguiente, como siempre). Un deploy sigue matándolo:
+# eso es SIGTERM, no el cupo.
+_GW = {"pid": None, "w": None, "activos": 0, "tope": None}
+_GW_LOCK = threading.Lock()
+
+
+def _gunicorn_worker():
+    """El objeto Worker de gunicorn de ESTE proceso (None fuera de gunicorn). Se busca por pid porque
+    con preload_app el hijo hereda del maestro las copias de los Worker de sus hermanos."""
+    pid = _os.getpid()
+    if _GW["pid"] == pid:
+        return _GW["w"]
+    w = None
+    try:
+        import gc
+        from gunicorn.workers.base import Worker as _GWorker
+        for o in gc.get_objects():
+            if isinstance(o, _GWorker) and getattr(o, "pid", None) == pid:
+                w = o
+                break
+    except Exception:
+        w = None
+    _GW.update(pid=pid, w=w, activos=0, tope=None)
+    return w
+
+
+def _sin_reciclar_on():
+    """Llamar en el PEDIDO que arranca el job (antes de soltar el hilo), no adentro del hilo: el
+    pedido siguiente ya podría disparar el reciclado."""
+    with _GW_LOCK:
+        w = _gunicorn_worker()
+        if w is None:
+            return
+        try:
+            if _GW["activos"] == 0:
+                _GW["tope"] = w.max_requests
+            _GW["activos"] += 1
+            import sys as _sysgw
+            w.max_requests = _sysgw.maxsize
+            # el MISMO pedido del lanzamiento pudo haber llenado el cupo (gunicorn cuenta antes de
+            # llamar a la app): lo vuelvo a la vida antes de que el loop principal lo vea.
+            if not w.alive and _GW["tope"] is not None and w.nr >= _GW["tope"]:
+                w.alive = True
+        except Exception:
+            pass
+
+
+def _sin_reciclar_off():
+    with _GW_LOCK:
+        w = _GW["w"] if _GW["pid"] == _os.getpid() else None
+        if w is None or _GW["activos"] <= 0:
+            return
+        _GW["activos"] -= 1
+        if _GW["activos"] == 0 and _GW["tope"] is not None:
+            try:
+                w.max_requests = _GW["tope"]
+            except Exception:
+                pass
+
+
+def _ads_run_sin_reciclar(job, params):
+    try:
+        _ads_run(job, params)
+    finally:
+        _sin_reciclar_off()
+
+
 def _ads_run(job, params):
     """Baja de Drive → sube videos → crea campaña + N conjuntos + ads. Con progreso."""
     _ads_local.token = params.get("_token") or None   # usar el token del usuario que lanzó (cuenta correcta)
@@ -22263,7 +22337,12 @@ def pf_ads_lanzar():
         _ads_lastcfg_set(_user_actual(), c, d)    # recordar la config para la próxima subida
         _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
         _job_put(job, _ADS_JOBS[job])   # a DISCO: si el worker se recicla, el progreso no se pierde
-        threading.Thread(target=_ads_run, args=(job, d), daemon=True).start()
+        _sin_reciclar_on()              # que --max-requests no mate el lanzamiento a mitad (03-11 CP5)
+        try:
+            threading.Thread(target=_ads_run_sin_reciclar, args=(job, d), daemon=True).start()
+        except Exception:
+            _sin_reciclar_off()
+            raise
         jobs.append({"job": job, "cuenta": c,
                      "nombre": (_ADS_CUENTAS.get(c) or {}).get("nombre", c)})
     return jsonify({"ok": True, "job": jobs[0]["job"], "jobs": jobs})
