@@ -1372,6 +1372,11 @@ _SOLO_DASH = r"""
   #rp-imp-ov .ix-hnote{margin-top:10px;font-size:12.5px;color:#cbd5e1;line-height:1.45}
   /* --- hero GASTOS EXTRAS (ancho entero, debajo de IVA e IIBB): misma cadena 3D que los otros --- */
   #rp-imp-ov .ix-heros1{padding:2px 0 4px}
+  #rp-imp-ov .ix-hero.p .ix-skin{border-color:rgba(253,224,71,.3);background:linear-gradient(160deg,rgba(202,138,4,.3),rgba(11,17,30,.72) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(234,179,8,.45),0 18px 40px -20px rgba(0,0,0,.8)}
+  #rp-imp-ov .ix-hero.p .ix-hlab{color:#fde68a}
+  #rp-imp-ov .ix-hero.p .ix-hnum{font-size:76px}
+  #rp-imp-ov .ix-hnum.neg{color:#fb7185}
+  @media(max-width:700px){#rp-imp-ov .ix-hero.p .ix-hnum{font-size:48px}}
   #rp-imp-ov .ix-hero.x .ix-skin{border-color:rgba(110,231,183,.26);background:linear-gradient(160deg,rgba(16,150,110,.28),rgba(11,17,30,.72) 55%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 80px -30px rgba(16,185,129,.42),0 18px 40px -20px rgba(0,0,0,.8)}
   #rp-imp-ov .ix-hero.x .ix-hlab{color:#a7f3d0}
   #rp-imp-ov .ix-inp:disabled{opacity:.72;cursor:not-allowed}
@@ -1562,8 +1567,8 @@ _SOLO_DASH = r"""
    #rp-imp-ov .ix-k{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
    #rp-imp-ov .ix-k:hover{transform:translateY(-3px)}
    #rp-imp-ov .ix-bar i{transition:width .8s cubic-bezier(.2,.75,.2,1)}
-   #rp-imp-ov .ix-hero.x .ix-tilt{transform:rotateX(7deg)}
-   #rp-imp-ov .ix-hero.x:hover .ix-tilt{transform:rotateX(0deg) translateY(-6px)}
+   #rp-imp-ov .ix-hero.x .ix-tilt,#rp-imp-ov .ix-hero.p .ix-tilt{transform:rotateX(7deg)}
+   #rp-imp-ov .ix-hero.x:hover .ix-tilt,#rp-imp-ov .ix-hero.p:hover .ix-tilt{transform:rotateX(0deg) translateY(-6px)}
    #rp-imp-ov .ix-gxk{transition:transform .35s cubic-bezier(.3,1.3,.4,1)}
    #rp-imp-ov .ix-gxk:hover{transform:translateZ(16px) translateY(-2px)}
    /* modal: entra girando desde abajo; el brillo cruza UNA vez (es un formulario, no distrae) */
@@ -1711,6 +1716,12 @@ _SOLO_DASH = r"""
      <div class="ix-hnum ld" id="ix-iibb-num">$ …</div>
      <div class="ix-hcta" id="ix-iibb-cta"></div>
      <div class="ix-hnote" id="ix-iibb-note"></div>
+    </div></div></div>
+   </div>
+   <div class="ix-heros1">
+    <div class="ix-hero p" id="ix-h-pr"><div class="ix-tilt"><div class="ix-skin"><div class="ix-shine"></div></div><div class="ix-in">
+     <div class="ix-hl"><span class="ix-hlab">Profit del mes</span><span class="ix-hchip" id="ix-pr-chip">&nbsp;</span></div>
+     <div class="ix-hnum ld" id="ix-pr-num">$ …</div><div class="ix-hcta" id="ix-pr-cta"></div><div class="ix-hnote" id="ix-pr-note"></div>
     </div></div></div>
    </div>
    <div class="ix-heros1">
@@ -1944,6 +1955,7 @@ _SOLO_DASH = r"""
     ['ix-k-fact','ix-k-deb','ix-k-auto','ix-k-gas'].forEach(function(id){ $(id).textContent='—'; });
     $('ix-k-bar').style.width='0'; $('ix-k-fact-s').innerHTML='&nbsp;'; $('ix-k-gas-s').innerHTML='&nbsp;';
     $('ix-g-body').innerHTML='<div class="ix-empty">Cargando…</div>'; $('ix-g-foot').textContent='';
+    var prn=$('ix-pr-num'); prn.className='ix-hnum ld'; prn.textContent='$ …'; $('ix-pr-cta').innerHTML=''; $('ix-pr-note').innerHTML=''; $('ix-pr-chip').innerHTML='&nbsp;';
     var gn=$('ix-gx-num'); gn.className='ix-hnum ld'; gn.textContent='$ …';
     ['ix-gx-cta','ix-gx-note','ix-gx-cortes','ix-gx-tot'].forEach(function(id){ $(id).innerHTML=''; }); $('ix-gx-chip').innerHTML='&nbsp;';
     chartMsg('Cargando el gráfico…'); estado('Calculando '+mesTxt(m)+'…'); }
@@ -1999,6 +2011,11 @@ _SOLO_DASH = r"""
     $('ix-adj').innerHTML=ah;
     // ---- gastos extras del mes (hero de ancho entero) ----
     pintaEmma();
+    var PR=j.profit||{}, prv=Number(PR.total)||0, prEl=$('ix-pr-num');
+    prEl.className='ix-hnum'+(prv<0?' neg':''); prEl.textContent=fmt(prv);
+    $('ix-pr-chip').textContent=((j.dia_n||0)>=(j.dias_mes||0)?'mes completo':'del 1 al '+j.dia_n+' de '+mesTxt(j.mes))+' · '+String(PR.margen||0).replace('.',',')+'% de lo facturado';
+    $('ix-pr-cta').innerHTML='<span>Ganancia antes de impuestos <b>'+fmt(PR.antes_impuestos)+'</b></span><span>− IVA a pagar <b>'+fmt(PR.iva)+'</b></span><span>− Ingresos Brutos <b>'+fmt(PR.iibb)+'</b></span><span>− Gastos extras <b>'+fmt(PR.gastos)+'</b></span>';
+    $('ix-pr-note').textContent='Sale de la ganancia del Dashboard, con costos y publicidad restados, cambiando sus impuestos por los de esta pantalla para que nada se cuente dos veces. El IVA a pagar ya descuenta lo que recuperás por los gastos: si da a favor, cuenta como cero y el saldo pasa al mes siguiente. Ingresos Brutos es lo que ya retuvo MercadoPago más lo que falta pagar.';
     var tp=Number(gs.total_pagado)||0, ir=Number(gs.iva_recupera)||0, cr=Number(gs.costo_real)||0, gxn=$('ix-gx-num');
     $('ix-gx-chip').textContent=(gs.n||0)+' gasto'+(gs.n===1?'':'s');
     gxn.className='ix-hnum'; gxn.textContent=fmt(tp);
@@ -8503,7 +8520,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-03-sinreciclar"})
+    return jsonify({"ok": True, "v": "2026-11-04-profit-mes"})
 
 
 _KPI_DBG = {}
@@ -25452,6 +25469,25 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
     total_mes = {"iva": round(t_iva, 2), "iibb": round(t_iibb, 2),
                  "gastos": round(gx["total_pagado"], 2),
                  "total": round(t_iva + t_iibb + gx["total_pagado"], 2)}
+    # Profit del mes: nada se cuenta dos veces. La ganancia del Dashboard ya resta IVA e IIBB a su
+    # manera, asi que primero se le devuelven los dos y despues se restan los de esta seccion:
+    #  - IVA: el a pagar de aca ya descuenta el credito de los gastos y las percepciones (la de MP
+    #    sigue restada como plata que no entro, y baja el a pagar: da neutro). Nunca baja de cero:
+    #    un saldo a favor pasa al mes siguiente.
+    #  - IIBB: el Dashboard resta el 3% sobre lo facturado CON IVA y ADEMAS las retenciones de MP,
+    #    que son pago a cuenta de ese mismo impuesto. Aca: lo retenido + lo que falta pagar.
+    #  - Gastos: lo PAGADO, no el costo real: el IVA que se recupera ya entro por el IVA a pagar.
+    gan_d = float(raw.get("ganancia", 0) or 0)
+    iva_d = float(raw.get("iva_pagar", 0) or 0) if raw.get("ri") else 0.0
+    iibb_d = float(raw.get("iibb_monto", 0) or 0) + ret_mp
+    antes_imp = gan_d + iva_d + iibb_d
+    iibb_real = ret_mp + t_iibb
+    v_profit = antes_imp - t_iva - iibb_real - gx["total_pagado"]
+    profit = {"total": round(v_profit, 2), "ganancia_dashboard": round(gan_d, 2),
+              "iva_dashboard": round(iva_d, 2), "iibb_dashboard": round(iibb_d, 2),
+              "antes_impuestos": round(antes_imp, 2), "iva": round(t_iva, 2),
+              "iibb": round(iibb_real, 2), "gastos": round(gx["total_pagado"], 2),
+              "margen": round(v_profit / fact * 100, 1) if fact else 0.0}
     out = {"ok": True, "mes": mes, "desde": desde_s, "hasta": hasta_s, "hoy": _hoy(),
            "dias_mes": fin.day, "dia_n": (hasta - d1).days + 1,
            "ri": {"es_ri": es_ri_fin, "ri_desde": ri_desde,
@@ -25460,7 +25496,7 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
            "iva_cmp_pct": raw.get("iva_cmp_pct", IVA_COMPRAS_PCT),
            "iibb_pct": IIBB_PCT, "facturado": round(fact, 2),
            "ventas": int(raw.get("ordenes", 0) or 0), "dolar": raw.get("dolar"),
-           "iva": iva, "iibb": iibb, "total_mes": total_mes,
+           "iva": iva, "iibb": iibb, "total_mes": total_mes, "profit": profit,
            "gastos": {"rows": rows, "n": len(rows), "n_suman": n_suman,
                       "total_ars": round(total_ars, 2),
                       "total_pagado": round(gx["total_pagado"], 2),
