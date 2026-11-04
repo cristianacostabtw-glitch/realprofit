@@ -2014,8 +2014,7 @@ _SOLO_DASH = r"""
     var PR=j.profit||{}, prv=Number(PR.total)||0, prEl=$('ix-pr-num');
     prEl.className='ix-hnum'+(prv<0?' neg':''); prEl.textContent=fmt(prv);
     $('ix-pr-chip').textContent=((j.dia_n||0)>=(j.dias_mes||0)?'mes completo':'del 1 al '+j.dia_n+' de '+mesTxt(j.mes))+' · '+String(PR.margen||0).replace('.',',')+'% de lo facturado';
-    $('ix-pr-cta').innerHTML='<span>Ganancia antes de impuestos <b>'+fmt(PR.antes_impuestos)+'</b></span><span>− IVA a pagar <b>'+fmt(PR.iva)+'</b></span><span>− Ingresos Brutos <b>'+fmt(PR.iibb)+'</b></span><span>− Gastos extras <b>'+fmt(PR.gastos)+'</b></span>';
-    $('ix-pr-note').textContent='Sale de la ganancia del Dashboard, con costos y publicidad restados, cambiando sus impuestos por los de esta pantalla para que nada se cuente dos veces. El IVA a pagar ya descuenta lo que recuperás por los gastos: si da a favor, cuenta como cero y el saldo pasa al mes siguiente. Ingresos Brutos es lo que ya retuvo MercadoPago más lo que falta pagar.';
+    $('ix-pr-note').textContent='Lo que te queda del mes: tus ventas menos costos y publicidad, y menos estas tres tarjetas: IVA a pagar, Ingresos Brutos y Gastos extras.';
     var tp=Number(gs.total_pagado)||0, ir=Number(gs.iva_recupera)||0, cr=Number(gs.costo_real)||0, gxn=$('ix-gx-num');
     $('ix-gx-chip').textContent=(gs.n||0)+' gasto'+(gs.n===1?'':'s');
     gxn.className='ix-hnum'; gxn.textContent=fmt(tp);
@@ -8520,7 +8519,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-04-profit-mes"})
+    return jsonify({"ok": True, "v": "2026-11-04-profit-mes3"})
 
 
 _KPI_DBG = {}
