@@ -5188,6 +5188,7 @@ _SOLO_DASH = r"""
  <div class="seg" id="rpa-modo" style="margin-bottom:18px">
   <div class="s on" id="rpa-mren" onclick="rpaModo('renovacion')">Renovaci&oacute;n<small>creativos nuevos</small></div>
   <div class="s" id="rpa-mesc" onclick="rpaModo('escala')">Escala<small>publicaciones que ya corren</small></div>
+  <div class="s" id="rpa-mdup" onclick="rpaModo('duplicar')">Duplicar<small>campa&ntilde;a a otra cuenta</small></div>
  </div>
  <div id="rpa-drivebanner" style="display:flex;align-items:center;gap:13px;background:linear-gradient(90deg,rgba(251,191,36,.09),rgba(19,127,236,.05));border:1px solid #4a3a1a;border-radius:14px;padding:13px 17px;margin-bottom:18px">
   <span style="font-size:20px;flex:none">&#128273;</span>
@@ -5195,7 +5196,40 @@ _SOLO_DASH = r"""
    <span style="color:#fbbf24;font-weight:700;font-family:ui-monospace,monospace;font-size:12px">bot-finanzas-sheets@bot-finanzas-499200.iam.gserviceaccount.com</span></div>
   <button onclick="navigator.clipboard.writeText('bot-finanzas-sheets@bot-finanzas-499200.iam.gserviceaccount.com');var b=this;b.innerHTML='&#10003; copiado';setTimeout(function(){b.innerHTML='Copiar mail';},1500)" style="flex:none;background:#241a10;border:1px solid #4a3a1a;color:#fbbf24;border-radius:9px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap">Copiar mail</button>
  </div>
- <div class="agrid" style="display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start">
+ <div id="rpa-dupbox" style="display:none">
+  <div class="agrid" style="display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start">
+   <div>
+    <div class="card">
+     <div class="ch"><div class="cn">1</div><div class="ct">Campa&ntilde;a a duplicar</div></div>
+     <div style="margin-bottom:12px"><span class="lb">Cuenta de origen</span><select class="in" id="rpa-dorig" onchange="rpaDupCamps()" style="font-weight:700"></select></div>
+     <span class="lb">Campa&ntilde;a</span><select class="in" id="rpa-dcamp" onchange="rpaDupCampChange()"></select>
+    </div>
+    <div class="card">
+     <div class="ch"><div class="cn">2</div><div class="ct">Cuenta destino</div></div>
+     <select class="in" id="rpa-ddest" onchange="rpaDupChk()" style="font-weight:700"></select>
+     <div id="rpa-dcotizw" style="display:none;margin-top:12px"><span class="lb" id="rpa-dcotizlb">Cotizaci&oacute;n</span><input class="in" id="rpa-dcotiz" inputmode="decimal" oninput="rpaDupChkLuego()">
+      <div class="hint">Las dos cuentas est&aacute;n en monedas distintas: el presupuesto y las pujas se convierten con esta cotizaci&oacute;n.</div></div>
+    </div>
+    <div class="card">
+     <div class="ch"><div class="cn">3</div><div class="ct">Anuncios</div></div>
+     <div class="seg"><div class="s on" id="rpa-dcon" onclick="rpaDupPost(true)">Con post ID<small>misma publicaci&oacute;n, con likes</small></div><div class="s" id="rpa-dsin" onclick="rpaDupPost(false)">Sin post ID<small>publicaci&oacute;n nueva, en cero</small></div></div>
+    </div>
+    <div class="card">
+     <div class="ch"><div class="cn">4</div><div class="ct">Horario de salida</div></div>
+     <div class="row"><div><span class="lb">D&iacute;a de salida</span><input class="in" type="date" id="rpa-dfecha"></div><div><span class="lb">Horario</span><input class="in" type="time" id="rpa-dhora" value="05:00"></div></div>
+     <div style="margin-top:12px"><span class="lb">Nombre en la cuenta destino</span><input class="in" id="rpa-dnom"></div>
+     <div class="hint">Presupuesto, conjuntos, p&uacute;blico, pixel, p&aacute;gina e Instagram quedan iguales.</div>
+    </div>
+   </div>
+   <div><div class="res">
+    <h3 style="margin:0 0 4px;font-size:15px;color:#e9e2ff">Resumen</h3><div style="font-size:12px;color:#8a7fb5;margin-bottom:14px">Lo que se va a crear</div>
+    <div id="rpa-dres" style="font-size:12.5px;color:#8a7fb5">Eleg&iacute; la campa&ntilde;a y la cuenta destino.</div>
+    <button class="go" id="rpa-dgo" onclick="rpaDupLanzar()" disabled style="margin-top:14px">&#128640; Duplicar campa&ntilde;a</button>
+    <div id="rpa-dprog" style="display:none"><div class="ptrack"><i id="rpa-dbar"></i></div><div id="rpa-dmsg" style="font-size:12px;color:#c4b5fd;font-weight:600;margin-top:8px;text-align:center"></div></div>
+   </div></div>
+  </div>
+ </div>
+ <div class="agrid" id="rpa-grid" style="display:grid;grid-template-columns:1fr 330px;gap:18px;align-items:start">
   <div>
    <div class="card">
     <div class="ch"><div class="cn">1</div><div class="ct">Cuenta e identidad</div></div>
@@ -5499,7 +5533,9 @@ _SOLO_DASH = r"""
  // ── MODO ── Renovacion = creativos nuevos (Drive/archivos). Escala = publicaciones que YA
  // corren, por post ID: no se sube nada y el anuncio se lleva los likes y comentarios del post.
  window.rpaModo=function(m){ MODO=m;
-  $('rpa-mren').classList.toggle('on',m=='renovacion'); $('rpa-mesc').classList.toggle('on',m=='escala');
+  $('rpa-mren').classList.toggle('on',m=='renovacion'); $('rpa-mesc').classList.toggle('on',m=='escala'); $('rpa-mdup').classList.toggle('on',m=='duplicar');
+  var dup=(m=='duplicar'); $('rpa-dupbox').style.display=dup?'block':'none'; $('rpa-grid').style.display=dup?'none':'grid';
+  if(dup){ var _b=$('rpa-drivebanner'); if(_b)_b.style.display='none'; rpaDupInit(); return; }
   var esc=(m=='escala');
   var o=function(id,v){ var e=$(id); if(e) e.style.display=v; };
   o('rpa-card-creativos', esc?'none':'block');
@@ -5700,6 +5736,70 @@ _SOLO_DASH = r"""
   if(CMP=='nueva'){var hi=$('rpa-cjhint');if(hi){if(rep){var cnt=[],k;for(k=1;k<=NCONJ;k++)cnt[k]=0;for(k=0;k<VLIST.length;k++){var cc=RMAP[k]||1;cnt[cc]=(cnt[cc]||0)+1;}var pp=[];for(k=1;k<=NCONJ;k++)pp.push('C'+k+': '+(cnt[k]||0));hi.innerHTML='Repartir — '+pp.join(' · ')+'  (elegí en cada video).';}else hi.innerHTML='Cada conjunto lleva 1 anuncio por video ('+(VIDS*NCONJ)+' ads).';}}
   $('rpa-adsx').textContent=rep?('~'+Math.ceil(VIDS/NCONJ)):VIDS;
   rpaEscalaCalc();};
+ // ── DUPLICAR ── recrea una campaña en otra cuenta, con las mismas publicaciones. Lo unico que
+ // se elige es el horario. El boton queda apagado hasta que el chequeo del servidor da ok.
+ var DUP_CTAS=null,DUP_SEQ=0,DUP_T=null,DUP_OK=false,DUP_CORRE=false,DUP_POST=true;
+ window.rpaDupPost=function(v){ DUP_POST=v; $('rpa-dcon').classList.toggle('on',v); $('rpa-dsin').classList.toggle('on',!v); rpaDupChk(); };
+ function _dE(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+ window.rpaDupInit=function(){
+  if(!$('rpa-dfecha').value){var d=new Date();d.setDate(d.getDate()+1);$('rpa-dfecha').value=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+  if(DUP_CTAS)return;
+  fetch('/pf-ads-cuentas').then(function(r){return r.json();}).then(function(j){
+   DUP_CTAS=(j&&j.cuentas)||[];
+   var h=DUP_CTAS.map(function(c){return '<option value="'+_dE(c.key)+'"'+(c.acceso?'':' disabled')+'>'+_dE(c.nombre)+(c.acceso?'':' (sin acceso)')+'</option>';}).join('');
+   $('rpa-dorig').innerHTML=h; $('rpa-ddest').innerHTML='<option value="">Elegí la cuenta destino</option>'+h;
+   var a=DUP_CTAS.filter(function(c){return c.acceso;})[0]; if(a)$('rpa-dorig').value=a.key;
+   rpaDupCamps();
+  });};
+ window.rpaDupCamps=function(){
+  var s=$('rpa-dcamp'); s.innerHTML='<option value="">Cargando…</option>'; rpaDupChk();
+  fetch('/pf-ads-dup-campanas?cuenta='+encodeURIComponent($('rpa-dorig').value)).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){s.innerHTML='<option value="">'+_dE((j&&j.msg)||'No pude leer las campañas')+'</option>';return;}
+   s.innerHTML='<option value="">Elegí la campaña</option>'+j.campanas.map(function(c){return '<option value="'+_dE(c.id)+'">'+(c.activa?'':'[pausada] ')+_dE(c.name)+'</option>';}).join('');
+   rpaDupChk();
+  }).catch(function(){s.innerHTML='<option value="">Error de conexión</option>';});};
+ window.rpaDupCampChange=function(){ var s=$('rpa-dcamp'),o=s.options[s.selectedIndex];
+  $('rpa-dnom').value=(s.value&&o)?o.textContent.replace(/^\[pausada\] /,''):''; rpaDupChk(); };
+ window.rpaDupChkLuego=function(){ clearTimeout(DUP_T); DUP_OK=false; $('rpa-dgo').disabled=true; DUP_T=setTimeout(rpaDupChk,500); };
+ window.rpaDupChk=function(){
+  var seq=++DUP_SEQ, res=$('rpa-dres'), go=$('rpa-dgo'), or=$('rpa-dorig').value, ca=$('rpa-dcamp').value, de=$('rpa-ddest').value;
+  DUP_OK=false; go.disabled=true;
+  if(!or||!ca||!de){res.innerHTML='Elegí la campaña y la cuenta destino.';$('rpa-dcotizw').style.display='none';return;}
+  if(or==de){res.innerHTML='<span style="color:#fb7185">La cuenta destino tiene que ser otra.</span>';$('rpa-dcotizw').style.display='none';return;}
+  res.innerHTML='Chequeando con Meta, sin crear nada…';
+  fetch('/pf-ads-dup-chequear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origen:or,campana:ca,destino:de,cotizacion:$('rpa-dcotiz').value,con_post:DUP_POST})}).then(function(r){return r.json();}).then(function(j){
+   if(seq!=DUP_SEQ)return;
+   var cw=$('rpa-dcotizw');
+   if(j.pide_cotizacion){cw.style.display='block';$('rpa-dcotizlb').textContent='Cotización: 1 USD en ARS';if(!$('rpa-dcotiz').value&&j.cotizacion_sugerida){$('rpa-dcotiz').value=j.cotizacion_sugerida;rpaDupChk();return;}}
+   else cw.style.display='none';
+   var fila=function(k,v){return '<div class="rl"><span class="k">'+k+'</span><span class="v">'+_dE(v)+'</span></div>';};
+   var h='';
+   if(j.nombre){
+    h+=fila('Tipo',j.tipo)+fila('Presupuesto',j.moneda_origen+' '+j.presupuesto+(j.tipo=='ABO'?' por conjunto':''));
+    if(j.pide_cotizacion&&j.presupuesto_destino!=null)h+=fila('En destino',j.moneda_destino+' '+j.presupuesto_destino);
+    h+=fila('Conjuntos',j.conjuntos)+fila('Anuncios',j.anuncios)+fila('Publicaciones',j.con_post?(j.publicaciones+' existentes'):(j.anuncios+' nuevas'));
+   }
+   (j.avisos||[]).forEach(function(a){h+='<div style="color:#fbbf24;margin-top:8px">'+_dE(a)+'</div>';});
+   (j.problemas||[]).forEach(function(a){h+='<div style="color:#fb7185;margin-top:8px">'+_dE(a)+'</div>';});
+   res.innerHTML=h||'Sin datos.';
+   DUP_OK=!!j.ok; go.disabled=!DUP_OK||DUP_CORRE;
+  }).catch(function(){if(seq==DUP_SEQ)res.innerHTML='<span style="color:#fb7185">Error de conexión al chequear.</span>';});};
+ window.rpaDupLanzar=function(){
+  if(!DUP_OK||DUP_CORRE)return;
+  DUP_CORRE=true; var go=$('rpa-dgo'),pr=$('rpa-dprog'),bar=$('rpa-dbar'),msg=$('rpa-dmsg');
+  go.disabled=true; go.textContent='Duplicando…'; pr.style.display='block'; msg.style.color='#c4b5fd'; msg.textContent='Arrancando…'; bar.style.width='3%';
+  var fin=function(color,txt){DUP_CORRE=false;msg.style.color=color;msg.textContent=txt;go.textContent='🚀 Duplicar campaña';rpaDupChk();};
+  fetch('/pf-ads-duplicar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origen:$('rpa-dorig').value,campana:$('rpa-dcamp').value,destino:$('rpa-ddest').value,cotizacion:$('rpa-dcotiz').value,con_post:DUP_POST,fecha:$('rpa-dfecha').value,hora:$('rpa-dhora').value,nombre:$('rpa-dnom').value})}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){fin('#fb7185',(j&&j.msg)||'error');return;}
+   var poll=setInterval(function(){
+    fetch('/pf-ads-progreso?job='+j.job).then(function(r){return r.json();}).then(function(p){
+     if(!p||!p.ok)return;
+     if(p.total){var pct=Math.round((p.done||0)/p.total*100);bar.style.width=Math.max(3,pct)+'%';}
+     msg.textContent=p.error||p.msg||'Procesando…';
+     if(p.listo){clearInterval(poll);if(p.error){fin('#fb7185',p.error);}else{bar.style.width='100%';fin('#34d399',p.msg);}}
+    }).catch(function(){});
+   },1200);
+  }).catch(function(){fin('#fb7185','Error de conexión: fijate en Meta antes de reintentar.');});};
  window.rpaLanzar=function(){
   if(MODO=='escala'){ if(!rpaPostIds().length){alert('Pegá al menos una publicación (post ID) para escalar.');return;} }
   else if(VIDS<1){alert('Primero cargá tus videos (Drive o Mis archivos).');return;}
@@ -19621,6 +19721,25 @@ _ADS_CUENTAS = {
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
+    "cp8": {
+        "portfolio": "CP2",
+        "nombre": "CP N", "ad_account": "1132697009246696", "token_env": "META_TOKEN",
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
+        # Portfolio CP2 (1102438762524836). Factura en USD, agregada el 03-11-2026. El gasto se suma
+        # solo si el id tambien esta en META_ACTS_EXTRA (Render): estar aca no alcanza.
+        "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
+        "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
+        "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
+                 "Si venís buscando:\n\n"
+                 "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
+                 "\U0001f4aa Sentirte más fuerte y seguro de vos mismo\n"
+                 "❤️ Apoyar una mejor circulación y vitalidad masculina\n\n"
+                 "...no sos el único.\n\n"
+                 "Miles de hombres ya están sumando NoxaLab a su rutina diaria.\n"
+                 "Solo 1 scoop al día, disuelto en agua.\n"
+                 "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
 }
 
 
@@ -22289,6 +22408,451 @@ def pf_ads_subir_parte():
         if _os.path.isfile(pth) and nm.lower().endswith(EXT) and not nm.startswith("_parte_"):
             vids.append({"name": nm, "mb": round(_os.path.getsize(pth) / 1048576)})
     return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
+
+
+# ── DUPLICAR ENTRE CUENTAS ───────────────────────────────────────────────────────────────
+# El /copies de Meta solo copia dentro de la MISMA cuenta, asi que la campaña se RECREA en la
+# cuenta destino, con dos opciones. CON post ID: los anuncios apuntan a la MISMA publicacion
+# (effective_object_story_id) y se llevan likes y comentarios. SIN post ID: se arma una
+# publicacion NUEVA con el mismo video/foto, copy y destino, y arranca en cero. Verificado el
+# 03-11-2026 con validate_only: el post y el video_id de CP PESOS los acepta CP5; las fotos NO
+# (el image_hash es por cuenta): hay que copiarlas antes con adimages + copy_from.
+# Lo unico que cambia es el horario de salida. El chequeo corre ANTES de crear nada: lo peor es
+# una campaña a medias en una cuenta con pauta prendida.
+_ADS_DUP_F_CAMP = ("name,objective,buying_type,special_ad_categories,special_ad_category_country,"
+                   "daily_budget,lifetime_budget,bid_strategy,spend_cap,"
+                   "is_adset_budget_sharing_enabled,status,effective_status")
+_ADS_DUP_F_SET = ("name,status,effective_status,daily_budget,lifetime_budget,start_time,end_time,"
+                  "bid_strategy,bid_amount,billing_event,optimization_goal,optimization_sub_event,"
+                  "promoted_object,targeting,attribution_spec,destination_type,pacing_type,"
+                  "daily_min_spend_target,daily_spend_cap,is_dynamic_creative,"
+                  "multi_optimization_goal_weight,dsa_beneficiary,dsa_payor")
+_ADS_DUP_F_AD = ("name,status,effective_status,adset_id,creative{id,name,object_story_id,"
+                 "effective_object_story_id,object_story_spec,asset_feed_spec,instagram_user_id,url_tags,"
+                 "degrees_of_freedom_spec}")
+_ADS_DUP_ACTIVOS = set()     # (origen, campaña, destino) corriendo: un doble click no crea dos
+
+
+def _ads_dup_todos(path, fields):
+    """Trae TODAS las paginas: una escala tiene mas conjuntos que el limite de una sola."""
+    out, despues = [], None
+    for _ in range(50):
+        p = {"fields": fields, "limit": 50}     # con el object_story_spec, 100 por pagina pesa de mas
+        if despues:
+            p["after"] = despues
+        r = _ads_call("GET", path, params=p)
+        out.extend(r.get("data") or [])
+        pg = r.get("paging") or {}
+        despues = (pg.get("cursors") or {}).get("after")
+        if not (pg.get("next") and despues):
+            break
+    return out
+
+
+def _ads_dup_factor(mon_o, mon_d, cotiz):
+    """Por cuanto multiplicar presupuestos y pujas. None = falta la cotizacion o no se convertir.
+    Mismo numero en otra moneda seria un desastre: US$35 no son $35 (ver moneda por cuenta)."""
+    if mon_o == mon_d:
+        return 1.0
+    c = _ads_num(cotiz) if cotiz not in (None, "") else 0
+    if c <= 0:
+        return None
+    if mon_o == "USD" and mon_d == "ARS":
+        return float(c)
+    if mon_o == "ARS" and mon_d == "USD":
+        return 1.0 / float(c)
+    return None
+
+
+def _ads_dup_plata(v, factor):
+    return int(round(int(v) * factor))
+
+
+def _ads_dup_tiene(v):
+    """Meta devuelve "0" en campos de plata que no aplican (ej: daily_budget de un conjunto CBO)."""
+    try:
+        return int(v or 0) > 0
+    except Exception:
+        return False
+
+
+def _ads_dup_camp_payload(c, factor, nombre=None):
+    p = {"name": nombre or c.get("name") or "Campaña", "objective": c.get("objective"),
+         "buying_type": c.get("buying_type") or "AUCTION",
+         "special_ad_categories": c.get("special_ad_categories") or [], "status": "ACTIVE"}
+    if c.get("special_ad_category_country"):
+        p["special_ad_category_country"] = c["special_ad_category_country"]
+    cbo = False
+    for k in ("daily_budget", "lifetime_budget"):
+        if _ads_dup_tiene(c.get(k)):
+            p[k] = _ads_dup_plata(c[k], factor)
+            cbo = True
+    if cbo:
+        p["bid_strategy"] = c.get("bid_strategy") or "LOWEST_COST_WITHOUT_CAP"
+    else:
+        p["is_adset_budget_sharing_enabled"] = bool(c.get("is_adset_budget_sharing_enabled"))
+    if _ads_dup_tiene(c.get("spend_cap")):
+        p["spend_cap"] = _ads_dup_plata(c["spend_cap"], factor)
+    return p, cbo
+
+
+def _ads_dup_fin(s, inicio):
+    """Si el conjunto tenia fecha de fin, mantiene la misma DURACION desde la salida nueva."""
+    if not s.get("end_time") or not s.get("start_time"):
+        return None
+    f = "%Y-%m-%dT%H:%M:%S%z"
+    try:
+        dur = (_dt.datetime.strptime(s["end_time"], f) - _dt.datetime.strptime(s["start_time"], f))
+        ini = _dt.datetime.strptime(inicio.replace("-03:00", "-0300"), f)
+        return (ini + dur).strftime(f)
+    except Exception:
+        return None
+
+
+def _ads_dup_set_payload(s, campaign_id, cbo, inicio, factor):
+    """Mismo conjunto, otra campaña y otro horario. Saca lo que Meta devuelve pero rechaza si se
+    lo mandan (UNDEFINED/NONE) y, en CBO, el bid_strategy: ahi va en la campaña."""
+    p = {"name": s.get("name") or "CONJUNTO", "campaign_id": campaign_id,
+         "status": s.get("status") or "ACTIVE", "start_time": inicio}
+    for k in ("billing_event", "optimization_goal", "promoted_object", "targeting",
+              "attribution_spec", "pacing_type", "dsa_beneficiary", "dsa_payor"):
+        if s.get(k):
+            p[k] = s[k]
+    for k, no in (("destination_type", ("UNDEFINED",)), ("optimization_sub_event", ("NONE",)),
+                  ("multi_optimization_goal_weight", ("UNDEFINED",))):
+        if s.get(k) and s[k] not in no:
+            p[k] = s[k]
+    if not cbo:
+        for k in ("daily_budget", "lifetime_budget"):
+            if _ads_dup_tiene(s.get(k)):
+                p[k] = _ads_dup_plata(s[k], factor)
+        if s.get("bid_strategy"):
+            p["bid_strategy"] = s["bid_strategy"]
+    for k in ("bid_amount", "daily_min_spend_target", "daily_spend_cap"):
+        if _ads_dup_tiene(s.get(k)):
+            p[k] = _ads_dup_plata(s[k], factor)
+    fin = _ads_dup_fin(s, inicio)
+    if fin:
+        p["end_time"] = fin
+    return p
+
+
+def _ads_dup_oss(cr):
+    """object_story_spec listo para otra cuenta. El IG va al nivel del creativo, y Meta devuelve
+    image_url + image_hash juntos en video_data pero rechaza si le mandan los dos."""
+    o = _json.loads(_json.dumps(cr.get("object_story_spec") or {}))
+    o.pop("instagram_user_id", None)
+    o.pop("instagram_actor_id", None)
+    v = o.get("video_data")
+    if v and v.get("image_url") and v.get("image_hash"):
+        v.pop("image_hash")
+    return o
+
+
+def _ads_dup_hashes(oss):
+    """Las fotos de una publicacion, incluidas las de un carrusel."""
+    ld = oss.get("link_data") or {}
+    hs = [ld.get("image_hash")] + [c.get("image_hash") for c in (ld.get("child_attachments") or [])]
+    v = oss.get("video_data") or {}
+    hs.append(v.get("image_hash"))
+    return {h for h in hs if h}
+
+
+def _ads_dup_creative_payload(ad, cfg_dest, minimo=False, con_post=True):
+    """CON post: apunta a la MISMA publicacion. SIN post: publicacion nueva con el mismo contenido.
+    De las mejoras copia solo las que maneja el subidor: Meta devuelve decenas de solo lectura y
+    mandarlas todas haria rechazar el anuncio."""
+    cr = ad.get("creative") or {}
+    orig = ((cr.get("degrees_of_freedom_spec") or {}).get("creative_features_spec") or {})
+    mej = {k: {"enroll_status": (orig.get(k) or {}).get("enroll_status") or "OPT_OUT"} for k in _ADS_MEJ}
+    p = {"name": cr.get("name") or ad.get("name") or "anuncio",
+         "contextual_multi_ads": {"enroll_status": "OPT_OUT"},
+         "degrees_of_freedom_spec": {"creative_features_spec": ADS_MEJORAS_MINIMO if minimo else mej}}
+    if con_post:
+        p["object_story_id"] = cr.get("effective_object_story_id") or cr.get("object_story_id")
+    else:
+        p["object_story_spec"] = _ads_dup_oss(cr)
+    ig = cr.get("instagram_user_id") or cfg_dest.get("ig")
+    if ig:
+        p["instagram_user_id"] = ig
+    if cr.get("url_tags"):
+        p["url_tags"] = cr["url_tags"]
+    return p
+
+
+def _ads_dup_leer(origen, campana):
+    """Lee la campaña con el token de la cuenta ORIGEN y confirma que sea de esa cuenta."""
+    cfg = _ADS_CUENTAS[origen]
+    _ads_local.token = _ads_token_para_cuenta(origen)
+    c = _ads_call("GET", str(campana), params={"fields": _ADS_DUP_F_CAMP + ",account_id"})
+    if str(c.get("account_id")) != str(cfg["ad_account"]):
+        raise RuntimeError("esa campaña no es de %s" % cfg["nombre"])
+    conjuntos = _ads_dup_todos("%s/adsets" % campana, _ADS_DUP_F_SET)
+    anuncios = _ads_dup_todos("%s/ads" % campana, _ADS_DUP_F_AD)
+    mon = (_ads_call("GET", "act_%s" % cfg["ad_account"], params={"fields": "currency"}) or {}).get("currency", "")
+    return c, conjuntos, anuncios, mon
+
+
+def _ads_dup_chequeo(origen, campana, destino, cotiz=None, con_post=True):
+    """Todo lo que se puede saber SIN crear nada. Devuelve el resumen y los problemas."""
+    if origen not in _ADS_CUENTAS or destino not in _ADS_CUENTAS:
+        return {"ok": False, "problemas": ["no reconocí la cuenta elegida"]}
+    if origen == destino:
+        return {"ok": False, "problemas": ["la cuenta destino tiene que ser otra"]}
+    c, conjuntos, anuncios, mon_o = _ads_dup_leer(origen, campana)
+    cfg_d = _ADS_CUENTAS[destino]
+    acct_d = cfg_d["ad_account"]
+    problemas, avisos = [], []
+    _ads_local.token = _ads_token_para_cuenta(destino)
+    try:
+        info_d = _ads_call("GET", "act_%s" % acct_d, params={"fields": "currency,account_status"})
+    except Exception as e:
+        return {"ok": False, "problemas": ["RealProfit no tiene acceso a %s: %s" % (cfg_d["nombre"], e)]}
+    mon_d = info_d.get("currency", "")
+    if info_d.get("account_status") not in (1, "1"):
+        problemas.append("%s no está activa en Meta (estado %s)" % (cfg_d["nombre"], info_d.get("account_status")))
+    factor = _ads_dup_factor(mon_o, mon_d, cotiz)
+    if not conjuntos:
+        problemas.append("la campaña no tiene conjuntos")
+    if not anuncios:
+        problemas.append("la campaña no tiene anuncios")
+    # Publicos y pixel viven en la cuenta: Meta los rechazaria a mitad de camino.
+    pixeles = set()
+    for s in conjuntos:
+        t = s.get("targeting") or {}
+        if t.get("custom_audiences") or t.get("excluded_custom_audiences"):
+            problemas.append("el conjunto \"%s\" usa públicos personalizados, y esos no pasan a otra cuenta" % s.get("name"))
+        if s.get("is_dynamic_creative"):
+            problemas.append("el conjunto \"%s\" usa creativo dinámico, no se puede duplicar así" % s.get("name"))
+        px = (s.get("promoted_object") or {}).get("pixel_id")
+        if px:
+            pixeles.add(str(px))
+    if pixeles:
+        vistos = {str(x.get("id")) for x in _ads_dup_todos("act_%s/adspixels" % acct_d, "id")}
+        for px in pixeles - vistos:
+            problemas.append("el pixel %s no está compartido con %s" % (px, cfg_d["nombre"]))
+    historias, sin_post = set(), []
+    for a in anuncios:
+        cr = a.get("creative") or {}
+        sid = cr.get("effective_object_story_id") or cr.get("object_story_id")
+        if sid:
+            historias.add((sid, cr.get("instagram_user_id") or cfg_d.get("ig") or ""))
+        else:
+            sin_post.append(a.get("name") or a.get("id"))
+    if con_post:
+        if sin_post:
+            problemas.append("%d anuncio(s) sin publicación todavía: %s" % (len(sin_post), ", ".join(map(str, sin_post[:5]))))
+        for sid, ig in sorted(historias):
+            d = {"object_story_id": sid, "name": "chequeo", "execution_options": _json.dumps(["validate_only"])}
+            if ig:
+                d["instagram_user_id"] = ig
+            try:
+                _ads_call("POST", "act_%s/adcreatives" % acct_d, data=d)
+            except Exception as e:
+                problemas.append("%s no puede usar la publicación %s: %s" % (cfg_d["nombre"], sid, e))
+    else:
+        # Una publicacion existente (la de una Escala) o con assets por ubicacion no trae de donde
+        # rearmarla: esos solo pueden ir con post ID. Las fotos recien se copian al duplicar, asi
+        # que este chequeo no valida las que llevan image_hash: el chequeo no crea nada.
+        vistos_oss = set()
+        for a in anuncios:
+            cr = a.get("creative") or {}
+            oss = _ads_dup_oss(cr)
+            if not oss or cr.get("asset_feed_spec"):
+                problemas.append("el anuncio \"%s\" no se puede rearmar sin post ID: duplicalo con post ID" % a.get("name"))
+                continue
+            if _ads_dup_hashes(oss):
+                continue
+            clave_oss = _json.dumps(oss, sort_keys=True)
+            if clave_oss in vistos_oss:
+                continue
+            vistos_oss.add(clave_oss)
+            d = {"object_story_spec": clave_oss, "name": "chequeo",
+                 "execution_options": _json.dumps(["validate_only"])}
+            ig = cr.get("instagram_user_id") or cfg_d.get("ig")
+            if ig:
+                d["instagram_user_id"] = ig
+            try:
+                _ads_call("POST", "act_%s/adcreatives" % acct_d, data=d)
+            except Exception as e:
+                problemas.append("%s no puede rearmar el anuncio \"%s\": %s" % (cfg_d["nombre"], a.get("name"), e))
+    activos = [s for s in conjuntos if s.get("status") == "ACTIVE"]
+    if conjuntos and not activos:
+        avisos.append("todos los conjuntos están pausados: quedan pausados igual que en el origen")
+    pausados = len(conjuntos) - len(activos)
+    if pausados and activos:
+        avisos.append("%d conjunto(s) pausados: quedan pausados igual que en el origen" % pausados)
+    ads_p = sum(1 for a in anuncios if a.get("status") != "ACTIVE")
+    if ads_p:
+        avisos.append("%d anuncio(s) pausados: quedan pausados igual que en el origen" % ads_p)
+    presup = c.get("daily_budget") if _ads_dup_tiene(c.get("daily_budget")) else c.get("lifetime_budget")
+    cbo = _ads_dup_tiene(presup)
+    if not cbo:
+        presup = next((s.get("daily_budget") or s.get("lifetime_budget") for s in conjuntos
+                       if _ads_dup_tiene(s.get("daily_budget")) or _ads_dup_tiene(s.get("lifetime_budget"))), 0)
+    return {"ok": not problemas and factor is not None, "problemas": problemas, "avisos": avisos,
+            "nombre": c.get("name", ""), "tipo": "CBO" if cbo else "ABO",
+            "conjuntos": len(conjuntos), "anuncios": len(anuncios), "publicaciones": len(historias),
+            "con_post": bool(con_post),
+            "moneda_origen": mon_o, "moneda_destino": mon_d,
+            "pide_cotizacion": mon_o != mon_d, "cotizacion_sugerida": round(_dolar_ads(), 2) if mon_o != mon_d else 0,
+            "presupuesto": (int(presup or 0) / 100.0),
+            "presupuesto_destino": (_ads_dup_plata(presup or 0, factor) / 100.0) if factor else None,
+            "_datos": (c, conjuntos, anuncios, mon_o)}   # el job no vuelve a leer: gasta el limite de llamadas de la cuenta
+
+
+def _ads_dup_run(job, d):
+    st = _ADS_JOBS[job]
+    origen, destino, campana = d["origen"], d["destino"], str(d["campana"])
+    clave = (origen, campana, destino)
+    nueva, hechos = None, {"sets": 0, "ads": 0}
+
+    def paso(msg, sumar=0):
+        st["msg"] = msg
+        st["done"] = st.get("done", 0) + sumar
+        _job_put(job, st)
+
+    try:
+        paso("Chequeando la campaña…")
+        con_post = d.get("con_post") is not False
+        chk = _ads_dup_chequeo(origen, campana, destino, d.get("cotizacion"), con_post)
+        if not chk.get("ok"):
+            raise RuntimeError("; ".join(chk.get("problemas") or ["falta la cotización para convertir la moneda"]))
+        c, conjuntos, anuncios, mon_o = chk["_datos"]
+        cfg_d = _ADS_CUENTAS[destino]
+        acct = cfg_d["ad_account"]
+        factor = _ads_dup_factor(mon_o, chk["moneda_destino"], d.get("cotizacion"))
+        inicio = _ads_sched(d)
+        st["total"] = 1 + len(conjuntos) + len(anuncios)
+        _ads_local.token = _ads_token_para_cuenta(destino)
+        paso("Creando la campaña en %s…" % cfg_d["nombre"])
+        pc, cbo = _ads_dup_camp_payload(c, factor, (d.get("nombre") or "").strip() or None)
+        nueva = _ads_crear(acct, "campaigns", pc)
+        st["done"] = 1
+        mapa = {}
+        for i, s in enumerate(conjuntos, 1):
+            paso("Creando conjunto %d de %d…" % (i, len(conjuntos)))
+            mapa[str(s["id"])] = _ads_crear(acct, "adsets", _ads_dup_set_payload(s, nueva, cbo, inicio, factor))
+            hechos["sets"] += 1
+            st["done"] += 1
+        minimo = False
+        if not con_post:
+            # Las fotos son por cuenta: sin copiarlas Meta contesta "imagen no disponible".
+            acct_o = _ADS_CUENTAS[origen]["ad_account"]
+            hashes = set()
+            for a in anuncios:
+                hashes |= _ads_dup_hashes(_ads_dup_oss(a.get("creative") or {}))
+            for i, h in enumerate(sorted(hashes), 1):
+                paso("Copiando foto %d de %d…" % (i, len(hashes)))
+                _ads_call("POST", "act_%s/adimages" % acct,
+                          data={"copy_from": _json.dumps({"source_account_id": acct_o, "hash": h})})
+        for i, a in enumerate(anuncios, 1):
+            paso("Creando anuncio %d de %d…" % (i, len(anuncios)))
+            try:
+                cid = _ads_crear(acct, "adcreatives", _ads_dup_creative_payload(a, cfg_d, con_post=con_post))
+            except Exception as e:
+                t = str(e).lower()
+                if not any(k in t for k in ("enroll", "creative_feature", "degrees_of_freedom")):
+                    raise
+                minimo = True
+                cid = _ads_crear(acct, "adcreatives", _ads_dup_creative_payload(a, cfg_d, minimo=True, con_post=con_post))
+            _ads_crear(acct, "ads", {"name": a.get("name") or str(i), "adset_id": mapa[str(a["adset_id"])],
+                                     "creative": {"creative_id": cid}, "status": a.get("status") or "ACTIVE"})
+            hechos["ads"] += 1
+            st["done"] += 1
+        fin = "Listo: \"%s\" en %s, %d conjunto(s) y %d anuncio(s). Sale %s." % (
+            pc["name"], cfg_d["nombre"], hechos["sets"], hechos["ads"], inicio[:16].replace("T", " "))
+        if minimo:
+            fin += " Ojo: Meta rechazó las mejoras y algunos anuncios salieron con la config mínima."
+        st["stats"] = {"campaign_id": nueva, "conjuntos": hechos["sets"], "anuncios": hechos["ads"]}
+        st["msg"] = fin
+        st["listo"] = True
+        _job_put(job, st)
+    except Exception as e:
+        msg = "No se pudo duplicar: %s" % e
+        if nueva:
+            # A medias no puede salir sola al horario programado: se pausa y se dice que quedo.
+            try:
+                _ads_call("POST", str(nueva), data={"status": "PAUSED"})
+                msg += (" Quedó creada y PAUSADA la campaña %s con %d conjunto(s) y %d anuncio(s): "
+                        "borrala en Meta antes de volver a duplicar." % (nueva, hechos["sets"], hechos["ads"]))
+            except Exception as e2:
+                msg += (" Quedó creada la campaña %s y NO pude pausarla (%s): pausala en Meta YA."
+                        % (nueva, e2))
+        st["error"] = msg
+        st["listo"] = True
+        _job_put(job, st)
+    finally:
+        _ads_local.token = None
+        _ADS_DUP_ACTIVOS.discard(clave)
+        _sin_reciclar_off()
+
+
+@app.get("/pf-ads-dup-campanas")
+def pf_ads_dup_campanas():
+    """Campañas para duplicar: activas Y pausadas (una vieja que funcionó tambien se puede copiar)."""
+    if not _user_actual():
+        return jsonify({"ok": False, "campanas": []})
+    k = request.args.get("cuenta") or ""
+    if k not in _ADS_CUENTAS:
+        return jsonify({"ok": False, "msg": "no reconocí la cuenta", "campanas": []})
+    try:
+        _ads_local.token = _ads_token_para_cuenta(k)
+        r = _ads_call("GET", "act_%s/campaigns" % _ADS_CUENTAS[k]["ad_account"],
+                      params={"fields": "name,effective_status,daily_budget", "limit": 200,
+                              "effective_status": _json.dumps(["ACTIVE", "PAUSED"])})
+        out = [{"id": c["id"], "name": c.get("name", ""), "activa": c.get("effective_status") == "ACTIVE",
+                "cbo": _ads_dup_tiene(c.get("daily_budget"))} for c in r.get("data", [])]
+        out.sort(key=lambda x: (not x["activa"], -int(x["id"]) if str(x["id"]).isdigit() else 0))
+        return jsonify({"ok": True, "campanas": out})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e), "campanas": []})
+    finally:
+        _ads_local.token = None
+
+
+@app.post("/pf-ads-dup-chequear")
+def pf_ads_dup_chequear():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    try:
+        r = _ads_dup_chequeo(d.get("origen"), d.get("campana"), d.get("destino"),
+                             d.get("cotizacion"), d.get("con_post") is not False)
+        r.pop("_datos", None)
+        return jsonify(r)
+    except Exception as e:
+        return jsonify({"ok": False, "problemas": [str(e)]})
+    finally:
+        _ads_local.token = None
+
+
+@app.post("/pf-ads-duplicar")
+def pf_ads_duplicar():
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    origen, destino, campana = d.get("origen"), d.get("destino"), str(d.get("campana") or "")
+    if origen not in _ADS_CUENTAS or destino not in _ADS_CUENTAS or not campana:
+        return jsonify({"ok": False, "msg": "elegí la cuenta de origen, la campaña y la cuenta destino"}), 400
+    if origen == destino:
+        return jsonify({"ok": False, "msg": "la cuenta destino tiene que ser otra"}), 400
+    clave = (origen, campana, destino)
+    if clave in _ADS_DUP_ACTIVOS:
+        return jsonify({"ok": False, "msg": "esa campaña ya se está duplicando en esa cuenta"}), 409
+    _ADS_DUP_ACTIVOS.add(clave)
+    import uuid
+    job = uuid.uuid4().hex[:12]
+    _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+    _job_put(job, _ADS_JOBS[job])
+    _sin_reciclar_on()              # que --max-requests no mate el duplicado a mitad
+    try:
+        threading.Thread(target=_ads_dup_run, args=(job, d), daemon=True).start()
+    except Exception:
+        _ADS_DUP_ACTIVOS.discard(clave)
+        _sin_reciclar_off()
+        raise
+    return jsonify({"ok": True, "job": job})
 
 
 @app.post("/pf-ads-lanzar")
