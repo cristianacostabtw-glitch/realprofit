@@ -19654,6 +19654,79 @@ def _ads_up_purga(borrar_id: str = "") -> None:
             idx.pop(k, None)
             _ADS_UPLOADS.pop(k, None)
     _ads_up_idx_save(idx)
+
+
+def _disco_limpieza(dias_jobs=3.0, horas_ads=6.0):
+    """Disco lleno el 10-11-2026 (1 GB): jobs/ (estados y PDFs de etiquetas que nunca se borraban,
+    462 MB) + subidas de ads fallidas (415 MB) -> 0 libre -> el webhook de WhatsApp tiraba 500 y no
+    entro ningun mensaje por 14 horas. Borra subidas de ads con mas de horas_ads y archivos de jobs/
+    con mas de dias_jobs. NUNCA toca el latido ni los .lock de lanzamientos, ni nada fuera de esas
+    dos carpetas."""
+    import shutil as _sh, time as _t
+    ahora = _t.time()
+    libero = 0
+    try:
+        upd = str(_ADS_UPDIR)
+        if _os.path.isdir(upd):
+            for n in _os.listdir(upd):
+                p = _os.path.join(upd, n)
+                try:
+                    if (ahora - _os.path.getmtime(p)) <= horas_ads * 3600:
+                        continue
+                    if _os.path.isdir(p):
+                        for r, _ds, fs in _os.walk(p):
+                            for f in fs:
+                                try:
+                                    libero += _os.path.getsize(_os.path.join(r, f))
+                                except Exception:
+                                    pass
+                        _sh.rmtree(p, ignore_errors=True)
+                    else:
+                        libero += _os.path.getsize(p)
+                        _os.remove(p)
+                except Exception:
+                    pass
+            try:
+                idx = _ads_up_idx_load()
+                for k in list(idx.keys()):
+                    if not _os.path.isdir((idx.get(k) or {}).get("dir") or ""):
+                        idx.pop(k, None)
+                        _ADS_UPLOADS.pop(k, None)
+                _ads_up_idx_save(idx)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        jd = str(DATA_DIR / "jobs")
+        if _os.path.isdir(jd):
+            for n in _os.listdir(jd):
+                if n == "_envio_latido" or n.endswith(".lock"):
+                    continue
+                p = _os.path.join(jd, n)
+                try:
+                    if _os.path.isfile(p) and (ahora - _os.path.getmtime(p)) > dias_jobs * 86400:
+                        libero += _os.path.getsize(p)
+                        _os.remove(p)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return libero
+
+
+def _disco_limpieza_loop():
+    import time as _t
+    _t.sleep(60)
+    while True:
+        try:
+            _disco_limpieza()
+        except Exception:
+            pass
+        _t.sleep(1800)
+
+
+threading.Thread(target=_disco_limpieza_loop, daemon=True).start()
 # Subida de video a Meta: cuanto se manda por vez. Meta suele pedir el archivo ENTERO de una;
 # leerlo entero y ademas armar el cuerpo multipart = 2/3 copias del video en RAM. Con 2 videos
 # a la vez eso volteaba el server (medido: 284MB -> 1267MB en 2 min -> SIGKILL).
@@ -22463,6 +22536,29 @@ def pf_disco():
             _ads_up_idx_save(idx)
         except Exception:
             pass
+    libero_mb = None
+    if request.args.get("limpiar") == "1":
+        try:
+            libero_mb = round(_disco_limpieza(float(request.args.get("dias") or 3),
+                                              float(request.args.get("horas") or 6)) / 1048576, 1)
+        except Exception as e:
+            libero_mb = "ERROR " + str(e)
+    jobs_res = {}
+    try:
+        jd = str(DATA_DIR / "jobs")
+        for n in (_os.listdir(jd) if _os.path.isdir(jd) else []):
+            p = _os.path.join(jd, n)
+            if not _os.path.isfile(p):
+                continue
+            dias = (_t.time() - _os.path.getmtime(p)) / 86400
+            b = "hoy" if dias < 1 else ("1-3d" if dias < 3 else ("3-7d" if dias < 7 else "+7d"))
+            ext = n.rsplit(".", 1)[-1] if "." in n else "-"
+            k = b + " ." + ext
+            r = jobs_res.setdefault(k, [0, 0.0])
+            r[0] += 1
+            r[1] = round(r[1] + _os.path.getsize(p) / 1048576, 1)
+    except Exception:
+        pass
     items = []
     try:
         for n in _os.listdir(base):
@@ -22485,7 +22581,8 @@ def pf_disco():
         sub.sort(key=lambda x: -x["mb"])
     return jsonify({"ok": True, "base": base, "total_mb": round(uso.total / 1048576),
                     "usado_mb": round(uso.used / 1048576), "libre_mb": round(uso.free / 1048576),
-                    "top": items[:40], "ads_uploads": sub[:40], "borrados": borrados})
+                    "top": items[:40], "ads_uploads": sub[:40], "borrados": borrados,
+                    "jobs": jobs_res, "limpieza_mb": libero_mb})
 
 
 @app.post("/pf-ads-subir-parte")
