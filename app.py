@@ -6608,6 +6608,71 @@ def _envio_rc3(o, suc) -> float:
                 return precio
     return 9153.41 if suc else 11685.07
 
+# ANDREANI DIRECTO (pymes.andreani.com, cuenta cristianacostabtw, origen Sucursal Merlo), cotizado
+# el 10-11-2026 CP POR CP por el mismo canal que usa la pantalla de Andreani (hubCotizacion):
+# los 3.514 CP de la plantilla y ademas todos los numeros 1000-9999 que no estan (de esos solo
+# cotizan 6730 y 8480). 3.351 CP dieron precio; 165 dan error en Andreani (no cotizan) y caen en el
+# tramo que los contiene o en el CP cotizado mas cercano. Verificado a mano en la pantalla: 28 CP al
+# centavo (incluye 1001 Retiro, que paga como el interior, y 2725 a domicilio).
+#   final = (tarifa + 1% del valor declarado) x 1,21 (IVA) x 0,75 (25% de descuento de la cuenta)
+# Medido con 1.000 g (lo que pone la planilla siempre); el valor declarado es el de la planilla:
+# total del pedido con piso de $40.000. Confirmado con $35.000, $40.000 y $73.980.
+# Flex NO pasa por aca: sigue con la tarifa de RedChat (_flex_rc2).
+ENVIO_AND3_DESDE = "2026-11-10T00:00"
+ENVIO_AND3_SUC = {"a": 6230.49, "b": 7735.31, "c": 8511.25, "d": 8534.44}
+ENVIO_AND3_DOM = {"a": 8749.96, "b": 10061.71, "c": 10991.79, "d": 11536.87,
+                  "e": 11570.97, "f": 12640.56}
+# Tramos "CP-CP letras": 1ra letra = escalon de sucursal, 2da = de domicilio. Cada tramo abarca
+# solo CP cotizados con el mismo precio, en orden.
+ENVIO_AND3_TRAMOS_TXT = """
+1001 bb; 1002-1163 aa; 1164 bb; 1165-1292 aa; 1293 bb; 1294-1613 aa; 1614 bb; 1615-1814 aa; 1815 bb; 1816-1879 aa; 1880 bb; 1881-1986 aa; 1987-2015 bb; 2020-2032 bf; 2100-2115 bb; 2117 be; 2118-2151 bb; 2152 be; 2153-2206 bb; 2208-2209 be; 2212-2258 bb; 2261 aa; 2282-2307 bb; 2308 be; 2309-2339 bb; 2340 be; 2341-2352 bb; 2354-2355 ce; 2356-2357 cc; 2400-2563 bb; 2564 cc; 2566-2607 bb; 2609 be; 2611-2643 bb; 2644 be; 2645-2721 bb; 2722 be; 2723-2724 bb; 2725 be; 2726-2732 bb; 2740-2741 be; 2743-2808 bb; 2812-2814 aa; 2816 bf; 2820-2828 bb; 2840 be; 2841-2946 bb; 2953 bf; 3000-3044 bb; 3045 be; 3046-3049 bb; 3050 be; 3051 bb; 3052 be; 3053 bb; 3054-3057 be; 3058 bb; 3060-3061 be; 3062-3064 cc; 3066 be
+3067-3082 bb; 3083 be; 3085 ce; 3087-3088 be; 3089-3102 bb; 3103 be; 3104-3109 bb; 3110 be; 3111-3126 bb; 3127 be; 3128 bb; 3129 be; 3130-3133 bb; 3134 be; 3135-3145 bb; 3150 be; 3151-3162 bb; 3163-3164 be; 3165 cc; 3166-3175 bb; 3176-3177 be; 3178-3184 bb; 3185 cc; 3187-3192 bb; 3194 cc; 3196 ce; 3197-3199 cc; 3200-3208 bb; 3212-3213 be; 3214-3218 bb; 3220-3226 cc; 3228-3229 bb; 3230-3232 cc; 3233 be; 3234 cc; 3235-3271 bb; 3272 be; 3275-3287 bb; 3300-3341 cc; 3342 ce; 3343-3346 cc; 3349 ce; 3350-3357 cc; 3358 ce; 3359-3360 cc; 3361 ce; 3362-3548 cc; 3550 be; 3551-3596 bb; 3600-4010 cc; 4011 ce; 4065-4122 cc; 4123 dd; 4124-4125 cc; 4126 dd; 4127-4138 cc; 4139 ce; 4140-4171 cc; 4172 dd; 4173-4189 cc
+4190-4195 dd; 4197 cc; 4198 dd; 4200-4212 cc; 4220-4225 ce; 4226-4283 cc; 4296 be; 4300-4304 cc; 4306 ce; 4308-4335 cc; 4336 ce; 4338-4356 cc; 4357-4423 dd; 4424 cc; 4425-4430 dd; 4431 de; 4432-4523 dd; 4525 be; 4530-4612 dd; 4613 cc; 4616-4656 dd; 4686 be; 4700-4708 cc; 4709 ce; 4710-4732 cc; 4735 ce; 4740-4755 cc; 4800-4966 be; 5000-5024 bb; 5029 be; 5100-5110 bb; 5111 be; 5112 bb; 5113 be; 5114 bb; 5115-5117 be; 5118 bb; 5119 be; 5120-5156 bb; 5157 cc; 5158-5159 bb; 5160 be; 5161-5192 bb; 5193 be; 5194-5238 bb; 5239 ce; 5242-5249 bb; 5250-5253 cc; 5255 bb; 5257-5258 cc; 5260 ce; 5261-5266 cc; 5270-5272 bb; 5274-5277 cc; 5278-5286 bb; 5287 be; 5289-5299 bb; 5300-5353 cc; 5354 ce; 5355-5471 cc; 5472 ce; 5473-5517 cc; 5518 ce; 5519-5609 cc; 5610 ce; 5611-5620 cc; 5621 bb; 5622-5641 cc; 5642 ce; 5644-5672 cc; 5673 ce; 5674-5682 cc; 5683 ce; 5684-5686 cc; 5689 bb; 5700-5711 cc; 5712 ce; 5713-5736 cc; 5738 bb; 5741-5780 cc
+5800-5833 bb; 5835 cc; 5837-5862 bb; 5863 ce; 5864 bb; 5865 be; 5867 cc; 5870-5871 be; 5872 cc; 5873 bb; 5874 cc; 5875-5879 be; 5880-5884 cc; 5885 be; 5886 cc; 5887 bb; 5888 cc; 5889-5936 bb; 5939 ce; 5940-5982 bb; 5983 ce; 5984-6201 bb; 6202 be; 6203-6215 bb; 6216 ce; 6217-6218 bb; 6219 cc; 6220-6223 bb; 6224 bf; 6225-6228 bb; 6230 be; 6231-6235 bb; 6237 be; 6239 bb; 6241 be; 6242-6249 bb; 6269 cc; 6270 bb; 6271-6272 be; 6273-6275 bb; 6277 ce; 6278 bb; 6279 be; 6300-6331 bb; 6332 be; 6333-6388 bb; 6389 ce; 6400-6417 bb; 6420 bf; 6422-6559 bb; 6560 bf; 6561 bb; 6593 bf; 6600-6621 bb; 6622 bf; 6623-6700 bb; 6701-6712 aa; 6720-6723 bb; 6725 be; 6727-6748 bb; 6753 aa; 6999 bf; 7000-7162 bb; 7163 be; 7164 bb; 7165 be; 7166-7176 bb; 7200 be; 7201 bb; 7203 be; 7205-7215 bb; 7220-7221 aa; 7223-7225 bb; 7226-7228 aa; 7240-7420 bb; 7421-7429 bf; 7436-7519 bb; 7520 bf; 7521-7548 bb; 7569 bf
+7570-7619 bb; 7620 be; 7621 bb; 7623 be; 7630-7641 bb; 7750-7807 bf; 8000-8017 bb; 8049 bf; 8050-8200 bb; 8201 bf; 8202 cc; 8203-8208 bb; 8211 dd; 8212 bb; 8213 be; 8214 bb; 8215 be; 8225-8255 bb; 8300-8306 cc; 8307 bb; 8308-8309 cc; 8310 cf; 8311-8313 cc; 8314 cf; 8315-8316 cc; 8317 cf; 8318-8324 cc; 8325 bb; 8326-8328 cc; 8330-8331 cf; 8332-8334 cc; 8335 bb; 8336-8337 cc; 8338 bb; 8340-8341 cc; 8342 cf; 8344-8349 cc; 8350 cf; 8351 cc; 8352 cf; 8353-8357 cc; 8358-8359 cf; 8360-8366 cc; 8368 bb; 8369-8412 cc; 8415 dd; 8416-8424 cc; 8430-8431 dd; 8480-8501 cc; 8503 cf; 8504-8506 bb; 8507 cc; 8508 bf; 8512 bb; 8514-8521 cf; 8532 cc; 8534-8536 cf; 8994-8999 bb; 9000-9211 dd; 9212 df; 9213-9403 dd; 9404 df; 9405-9421 dd; 9900-9999 bb
+"""
+_ENVIO_AND3_TRAMOS = []
+for _tok in ENVIO_AND3_TRAMOS_TXT.replace("\n", ";").split(";"):
+    _tok = _tok.strip()
+    if not _tok:
+        continue
+    _r, _cod = _tok.split()
+    _a, _b = _r.split("-") if "-" in _r else (_r, _r)
+    _ENVIO_AND3_TRAMOS.append((int(_a), int(_b), _cod))
+_ENVIO_AND3_TRAMOS.sort()
+
+
+def _envio_and3_cod(cp) -> str:
+    """Escalones (sucursal, domicilio) del CP. Sin CP legible: 'bb', el mas frecuente."""
+    try:
+        n = int(cp)
+    except Exception:
+        return "bb"
+    mejor, dist = "bb", None
+    for a, b, cod in _ENVIO_AND3_TRAMOS:
+        if a <= n <= b:
+            return cod
+        d = min(abs(n - a), abs(n - b))
+        if dist is None or d < dist:
+            mejor, dist = cod, d
+    return mejor
+
+
+def _envio_and3(o, suc) -> float:
+    """Lo que se paga por un envio de Andreani directo (tarifa del 10-11-2026)."""
+    cod = _envio_and3_cod(_rc2_cp4(o))
+    t = ENVIO_AND3_SUC[cod[0]] if suc else ENVIO_AND3_DOM[cod[1]]
+    _val = 0.0
+    for _k in ("total_price", "current_total_price", "total", "total_amount"):
+        try:
+            _val = float(o.get(_k) or 0)
+        except Exception:
+            _val = 0.0
+        if _val:
+            break
+    _val = max(_val, 40000.0)
+    return round((t + _val * ENVIO_SEGURO_PCT / 100.0) * 1.21 * 0.75, 2)
+
 
 # TARIFA DE ENVIALO FLEX POR REDCHAT, medida el 24-10-2026 sobre los mismos 2.142 envios.
 # Aumento el 14-10 ($5.600/$6.200/$6.300/$8.200 -> $5.900/$6.500/$6.600/$8.500). Son 4 anillos y
@@ -6856,6 +6921,9 @@ def _envio_costo(o) -> int:
     z = _envio_zona(o)
     fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
     _hora = _envio_hora_ar(o)
+    if _hora and _hora >= ENVIO_AND3_DESDE:
+        # Vuelta a Andreani directo con su tarifa por CP del 10-11-2026: ver ENVIO_AND3_*.
+        return _envio_and3(o, suc)
     if _hora and _hora >= ENVIO_RC3_DESDE:
         # Aumento de RedChat/Andreani (~11%), mismas zonas: ver ENVIO_RC3_*.
         return _envio_rc3(o, suc)
@@ -23884,6 +23952,9 @@ def _pf_dia_clave(email, dia) -> str:
     # tarifa vieja; con '|rc3' se recalculan UNA vez. Los anteriores conservan su clave.
     if str(dia)[:10] >= ENVIO_RC3_DESDE[:10]:
         ck += "|rc3"
+    # ANDREANI DIRECTO (ENVIO_AND3_DESDE): desde ese dia se costea con la tarifa por CP de Andreani.
+    if str(dia)[:10] >= ENVIO_AND3_DESDE[:10]:
+        ck += "|and3"
     # AUDITORIA 02-11-2026 (pago de MP contado dos veces, envio de Flex/unificados/digitales):
     # los dias desde PF_DIAS_MP2_DESDE se recalculan una vez. Los anteriores no se tocan.
     if str(dia)[:10] >= PF_DIAS_MP2_DESDE:
