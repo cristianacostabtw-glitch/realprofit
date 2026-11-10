@@ -689,7 +689,7 @@ _SOLO_DASH = r"""
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>Norte, Cuyo y Comahue (NEA, Tucum&aacute;n, Sgo. del Estero, Catamarca, La Rioja, San Juan, Mendoza, San Luis, Neuqu&eacute;n, R&iacute;o Negro)</span><span style="text-align:right">$8.087</span><span style="text-align:right">$10.338</span></div>
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>Extremos (Salta, Jujuy, Chubut, Santa Cruz, Tierra del Fuego)</span><span style="text-align:right">$8.108</span><span style="text-align:right">$10.833</span></div>
      <div style="display:grid;grid-template-columns:1.6fr 1fr 1fr;padding:7px 12px;border-top:1px solid #16202e;color:#cbd5e1"><span>Pueblos con recargo a domicilio (161 CP)</span><span style="text-align:right">el de su zona</span><span style="text-align:right">$10.864 a $11.834</span></div>
-     <div style="padding:7px 12px;border-top:1px solid #16202e;color:#64748b;font-size:11px">Andreani directo desde el 10-11-2026, cotizado CP por CP (3.351 CP). Precio final con IVA y 25% de descuento, con valor declarado de $40.000; si el pedido vale m&aacute;s, se suma el 1% de seguro sobre el total. Flex sigue con la tarifa de RedChat.</div>
+     <div style="padding:7px 12px;border-top:1px solid #16202e;color:#64748b;font-size:11px">Andreani directo desde el 10-11-2026 (en NoxaLab desde el pedido #11093 del 06-11, el primero que no se pag&oacute; por RedChat), cotizado CP por CP (3.351 CP). Precio final con IVA y 25% de descuento, con valor declarado de $40.000; si el pedido vale m&aacute;s, se suma el 1% de seguro sobre el total. Flex sigue con la tarifa de RedChat.</div>
     </div>
    </div>
   </div>
@@ -6621,6 +6621,28 @@ def _envio_rc3(o, suc) -> float:
 # total del pedido con piso de $40.000. Confirmado con $35.000, $40.000 y $73.980.
 # Flex NO pasa por aca: sigue con la tarifa de RedChat (_flex_rc2).
 ENVIO_AND3_DESDE = "2026-11-10T00:00"
+# NOXALAB: Cristian (10-11-2026, mirando RedChat > Ordenes > Por empaquetar): hasta el #11092 todo
+# quedo despachado y pago por RedChat; los 364 envios de Andreani pendientes arrancan en el #11093
+# (06-11 21:24) y se pagan con la tarifa nueva. Por eso en esa tienda el corte es por NUMERO DE
+# PEDIDO y no por fecha. La hora minima evita que una tienda con numeracion mas alta caiga sola
+# (VisionPure va por el #1066, la 2da tienda de NoxaLab por el #1100).
+ENVIO_AND3_DESDE_PEDIDO = 11093
+ENVIO_AND3_DESDE_PEDIDO_HORA = "2026-11-06T21:00"
+
+
+def _envio_and3_aplica(o, hora) -> bool:
+    """True si el pedido se costea con la tarifa de Andreani directo (ENVIO_AND3_*)."""
+    if not hora:
+        return False
+    if hora >= ENVIO_AND3_DESDE:
+        return True
+    if hora < ENVIO_AND3_DESDE_PEDIDO_HORA:
+        return False
+    try:
+        n = int(str(o.get("order_number") or o.get("name") or "").replace("#", "").strip())
+    except Exception:
+        return False
+    return n >= ENVIO_AND3_DESDE_PEDIDO
 ENVIO_AND3_SUC = {"a": 6230.49, "b": 7735.31, "c": 8511.25, "d": 8534.44}
 ENVIO_AND3_DOM = {"a": 8749.96, "b": 10061.71, "c": 10991.79, "d": 11536.87,
                   "e": 11570.97, "f": 12640.56}
@@ -6923,7 +6945,7 @@ def _envio_costo(o) -> int:
     z = _envio_zona(o)
     fecha = str(o.get("created_at") or o.get("completed_at") or "")[:10]
     _hora = _envio_hora_ar(o)
-    if _hora and _hora >= ENVIO_AND3_DESDE:
+    if _envio_and3_aplica(o, _hora):
         # Vuelta a Andreani directo con su tarifa por CP del 10-11-2026: ver ENVIO_AND3_*.
         return _envio_and3(o, suc)
     if _hora and _hora >= ENVIO_RC3_DESDE:
@@ -24137,8 +24159,9 @@ def _pf_dia_clave(email, dia) -> str:
     if str(dia)[:10] >= ENVIO_RC3_DESDE[:10]:
         ck += "|rc3"
     # ANDREANI DIRECTO (ENVIO_AND3_DESDE): desde ese dia se costea con la tarifa por CP de Andreani.
-    if str(dia)[:10] >= ENVIO_AND3_DESDE[:10]:
-        ck += "|and3"
+    # and3b: en NoxaLab el corte paso al pedido #11093 (06-11), asi que desde ese dia se recalcula.
+    if str(dia)[:10] >= ENVIO_AND3_DESDE_PEDIDO_HORA[:10]:
+        ck += "|and3b"
     # AUDITORIA 02-11-2026 (pago de MP contado dos veces, envio de Flex/unificados/digitales):
     # los dias desde PF_DIAS_MP2_DESDE se recalculan una vez. Los anteriores no se tocan.
     if str(dia)[:10] >= PF_DIAS_MP2_DESDE:
