@@ -22403,6 +22403,91 @@ def pf_ads_subir():
     return jsonify({"ok": True, "upload_id": up_id, "videos": vids})
 
 
+@app.get("/pf-disco")
+def pf_disco():
+    """Disco lleno (10-11-2026): el /var/data de 1 GB se lleno con subidas de videos de ads y se
+    cayo TODO lo que escribe (el webhook de WhatsApp devolvia 500 y no entraba ningun mensaje).
+    GET muestra que ocupa el disco. ?purgar=1 borra SOLO subidas de ads (ads_uploads) mas viejas
+    que ?horas= (2 por defecto); nunca toca chats, tokens ni usuarios."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    import shutil as _sh, time as _t
+    base = str(DATA_DIR)
+
+    def _peso(p):
+        if _os.path.isfile(p):
+            try:
+                return _os.path.getsize(p)
+            except Exception:
+                return 0
+        tot = 0
+        for r, _ds, fs in _os.walk(p):
+            for f in fs:
+                try:
+                    tot += _os.path.getsize(_os.path.join(r, f))
+                except Exception:
+                    pass
+        return tot
+
+    borrados = []
+    if request.args.get("purgar") == "1":
+        try:
+            horas = float(request.args.get("horas") or 2)
+        except ValueError:
+            horas = 2.0
+        ahora = _t.time()
+        upd = str(_ADS_UPDIR)
+        if _os.path.isdir(upd):
+            for n in _os.listdir(upd):
+                p = _os.path.join(upd, n)
+                try:
+                    viejo = (ahora - _os.path.getmtime(p)) > horas * 3600
+                except Exception:
+                    viejo = False
+                if viejo:
+                    mb = round(_peso(p) / 1048576, 1)
+                    if _os.path.isdir(p):
+                        _sh.rmtree(p, ignore_errors=True)
+                    else:
+                        try:
+                            _os.remove(p)
+                        except Exception:
+                            pass
+                    borrados.append({"item": n, "mb": mb})
+        try:
+            idx = _ads_up_idx_load()
+            for k in list(idx.keys()):
+                if not _os.path.isdir((idx.get(k) or {}).get("dir") or ""):
+                    idx.pop(k, None)
+                    _ADS_UPLOADS.pop(k, None)
+            _ads_up_idx_save(idx)
+        except Exception:
+            pass
+    items = []
+    try:
+        for n in _os.listdir(base):
+            p = _os.path.join(base, n)
+            items.append({"item": n, "mb": round(_peso(p) / 1048576, 1), "dir": _os.path.isdir(p)})
+    except Exception as e:
+        items.append({"item": "ERROR " + str(e), "mb": 0})
+    items.sort(key=lambda x: -x["mb"])
+    uso = _sh.disk_usage(base)
+    sub = []
+    upd = str(_ADS_UPDIR)
+    if _os.path.isdir(upd):
+        for n in _os.listdir(upd):
+            p = _os.path.join(upd, n)
+            try:
+                edad = round((_t.time() - _os.path.getmtime(p)) / 3600, 1)
+            except Exception:
+                edad = None
+            sub.append({"item": n, "mb": round(_peso(p) / 1048576, 1), "horas": edad})
+        sub.sort(key=lambda x: -x["mb"])
+    return jsonify({"ok": True, "base": base, "total_mb": round(uso.total / 1048576),
+                    "usado_mb": round(uso.used / 1048576), "libre_mb": round(uso.free / 1048576),
+                    "top": items[:40], "ads_uploads": sub[:40], "borrados": borrados})
+
+
 @app.post("/pf-ads-subir-parte")
 def pf_ads_subir_parte():
     """Un video de más de 35 MB no entraba nunca: Flask corta el pedido entero en ese tope
