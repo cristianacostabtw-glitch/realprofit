@@ -18391,6 +18391,24 @@ def _impul_email_de_token(tok) -> str:
     return ""
 
 
+def _impul_pub_id(email) -> str:
+    """Identificador PUBLICO de la cuenta para la URL del webhook. No es una clave: lo que hace
+    confiable a una venta es que su pago este en el MercadoPago conectado (ver _impul_resumen).
+    Asi la URL se puede cargar en Impultienda sin manejar ningun secreto (11-11-2026)."""
+    import hashlib as _hl
+    return _hl.sha256(("impul|" + str(email or "").strip().lower()).encode()).hexdigest()[:16]
+
+
+def _impul_email_de_pub(pid) -> str:
+    pid = str(pid or "")
+    if len(pid) != 16:
+        return ""
+    for em in list(_users().keys()):
+        if _impul_pub_id(em) == pid:
+            return em
+    return ""
+
+
 def _impul_ordenes(email) -> dict:
     return _impul_leer(IMPUL_ORDERS).get(email) or {}
 
@@ -18437,6 +18455,7 @@ def _impul_resumen(email, desde, hasta):
     fact = 0.0; mp_costo = iibb_ret = perc_iva = 0.0
     ordenes = upsells = unidades = mp_match = 0
     reemb_n = 0; reemb_m = 0.0
+    sin_verif = 0
     prodmap, ords_list = {}, []
     lst = sorted(ords.values(), key=lambda x: str(x.get("aprobado_at") or x.get("order_created_at") or ""))
     for o in lst:
@@ -18450,19 +18469,23 @@ def _impul_resumen(email, desde, hasta):
             continue
         if est != "approved":
             continue
+        pago = None
+        if mp_conectado and str(o.get("payment_method") or "").lower() in ("mercadopago", ""):
+            ol = {"id": o.get("order_id"), "order_number": o.get("order_number"),
+                  "created_at": o.get("aprobado_at") or o.get("order_created_at"), "gateway": "mercadopago"}
+            pago = _mp_match_pedido(ol, str(o.get("order_number") or ""), tot, by_ref, by_amt)[0]
+        if o.get("verificar") and pago is None:
+            sin_verif += 1                   # llego por la URL publica y su pago no esta en MP
+            continue
         if o.get("is_post_purchase"):
             upsells += 1
         elif tot > 0:
             ordenes += 1
         fact += tot
-        if mp_conectado and str(o.get("payment_method") or "").lower() in ("mercadopago", ""):
-            ol = {"id": o.get("order_id"), "order_number": o.get("order_number"),
-                  "created_at": o.get("aprobado_at") or o.get("order_created_at"), "gateway": "mercadopago"}
-            pago = _mp_match_pedido(ol, str(o.get("order_number") or ""), tot, by_ref, by_amt)[0]
-            if pago is not None:
-                mp_costo += pago["fee"]; mp_match += 1
-                iibb_ret += float(pago.get("ret") or 0)
-                perc_iva += float(pago.get("perc_iva") or 0)
+        if pago is not None:
+            mp_costo += pago["fee"]; mp_match += 1
+            iibb_ret += float(pago.get("ret") or 0)
+            perc_iva += float(pago.get("perc_iva") or 0)
         for it in (o.get("items") or []):
             q = int(it.get("quantity") or 1); unidades += q
             nm = it.get("name") or "?"
@@ -18485,6 +18508,7 @@ def _impul_resumen(email, desde, hasta):
     r["be_cpa"] = r["breakeven_cpa"] = round(ganancia / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
     r["impul_upsells"] = upsells
+    r["impul_sin_verificar"] = sin_verif
     r["unidades"] = unidades
     r["facturado"] = r["tot_facturado"] = round(fact, 2)
     r["cobrado"] = round(fact, 2)
@@ -18501,6 +18525,16 @@ def _impul_resumen(email, desde, hasta):
     return {"raw": r, "prod": prod, "ords": ords_list}
 
 
+@app.post("/impultienda/hook/<pid>")
+def impultienda_hook_publico(pid):
+    """Misma recepcion que el webhook con token, pero con URL PUBLICA: las ventas que entran por
+    aca quedan 'a verificar' y solo cuentan si su pago aparece en el MercadoPago de la cuenta."""
+    email = _impul_email_de_pub(pid)
+    if not email:
+        return jsonify({"ok": False, "reason": "cuenta"}), 404
+    return _impul_recibir(email, verificar=True)
+
+
 @app.post("/impultienda/webhook/<tok>")
 def impultienda_webhook(tok):
     """Recibe los avisos de Impultienda. Siempre contesta 2xx a lo que no sirve (si no, Impultienda
@@ -18508,6 +18542,10 @@ def impultienda_webhook(tok):
     email = _impul_email_de_token(tok)
     if not email:
         return jsonify({"ok": False, "reason": "token"}), 404
+    return _impul_recibir(email, verificar=False)
+
+
+def _impul_recibir(email, verificar):
     try:
         ev = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -18538,6 +18576,8 @@ def impultienda_webhook(tok):
         else:
             o["estado"] = "chargeback"; o["reembolso_at"] = ev.get("created_at")
         o.setdefault("aprobado_at", d.get("order_created_at"))
+        if verificar and not prev:
+            o["verificar"] = True            # llego por la URL publica: cuenta solo con pago en MP
         mias[oid] = o
         _impul_escribir(IMPUL_ORDERS, todo)
     try:
@@ -18588,8 +18628,7 @@ def impultienda_panel():
     email = _user_actual()
     if not email:
         return redirect("/")
-    tok = _impul_token(email, crear=True)
-    url = request.host_url.rstrip("/").replace("http://", "https://") + "/impultienda/webhook/" + tok
+    url = request.host_url.rstrip("/").replace("http://", "https://") + "/impultienda/hook/" + _impul_pub_id(email)
     ords = sorted(_impul_ordenes(email).values(), key=lambda x: str(x.get("aprobado_at") or ""), reverse=True)[:30]
     import html as _h
     filas = "".join(
@@ -18607,7 +18646,7 @@ def impultienda_panel():
             "<div style='display:flex;gap:8px;flex-wrap:wrap'><input id=u readonly value='%s' style='flex:1;min-width:260px;padding:10px;border-radius:8px;border:1px solid #1f2a3d;background:#111a2b;color:#e2e8f0'>"
             "<button onclick=\"navigator.clipboard.writeText(document.getElementById('u').value);this.textContent='Copiada ✓'\" "
             "style='padding:10px 16px;border-radius:8px;border:0;background:#22c55e;color:#04150a;font-weight:700'>Copiar</button></div>"
-            "<p style='color:#8493a8;font-size:13px'>Es secreta: no la compartas. Con ella cualquiera podría cargarte ventas.</p>"
+            "<p style='color:#8493a8;font-size:13px'>No es secreta: una venta que llega por acá solo cuenta si su pago aparece en tu MercadoPago conectado.</p>"
             "<h3>Últimas ventas recibidas</h3><table style='width:100%%;border-collapse:collapse;font-size:14px' cellpadding=6>"
             "<tr style='color:#8493a8;text-align:left'><th>Orden</th><th>Día</th><th>Producto</th><th>Total</th><th>Estado</th></tr>%s</table>"
             % (_h.escape(url), filas))
