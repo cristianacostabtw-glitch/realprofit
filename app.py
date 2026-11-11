@@ -367,7 +367,7 @@ SECCIONES = {
 # aunque escriba la URL. Va aparte de SECCIONES a proposito: si estuviera solo "fuera de la lista"
 # el guardia las dejaria pasar (las rutas sin seccion se permiten, porque son el armazon de la app).
 SOLO_ADMIN = [
-    "/pf-cps",
+    "/pf-cps", "/impultienda/importar",
     "/pf-periodo", "/pf-ventas", "/pf-ordenes", "/pf-orden", "/pf-recompras", "/pf-marketing",
     "/pf-mp-", "/pf-opciones", "/pf-cfg", "/pf-diag", "/pf-debug-ordenes", "/pf-debug-meli", "/pf-botify",
     "/pf-productos", "/pf-guardar-costo", "/pf-sku-set",
@@ -2476,7 +2476,7 @@ _SOLO_DASH = r"""
   PLAT.forEach(function(p){
    var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; var etiqCon=(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; var etiqCon=(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='meli'){ b='<a href="/conectar-meli" onclick="window.location.assign(\'/conectar-meli\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -2624,7 +2624,7 @@ _SOLO_DASH = r"""
   fetch('/tiktok/cuentas').then(function(r){return r.json();}).then(function(j){ window._rpTkCuentas={cuentas:(j&&j.cuentas)||[],elegida:j&&j.elegida}; rpTkRender(window._rpTkCuentas.cuentas, window._rpTkCuentas.elegida); }).catch(function(){ var e=document.getElementById('rp-tk-cuentas'); if(e)e.innerHTML='<span style="color:#f87171;font-size:12px">No se pudieron cargar las cuentas.</span>'; }); };
  window.rpTkSave=function(cid){ if(!cid)return; fetch('/tiktok/cuenta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:cid})}).then(function(r){return r.json();}).then(function(){ if(window._rpTkCuentas)window._rpTkCuentas.elegida=cid; rpTkRender((window._rpTkCuentas||{}).cuentas||[],cid); }).catch(function(){}); };
  function load(){ cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta);
-  fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/mp/estado').then(function(r){return r.json();}).then(function(j){ window._rpMp=!!(j&&j.conectado); window._rpMpNick=(j&&j.cuenta)||''; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/shopify/estado').then(function(r){return r.json();}).then(function(j){ window._rpShop=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meta/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeta=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
@@ -18547,6 +18547,40 @@ def impultienda_webhook(tok):
     return jsonify({"ok": True})
 
 
+@app.post("/impultienda/importar")
+def impultienda_importar():
+    """Carga ventas ANTERIORES al webhook (sacadas de Impultienda → Ventas realizadas), con el
+    mismo formato que trae cada aviso en 'data'. Idempotente por order_id: se puede repetir."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    lista = (request.get_json(silent=True) or {}).get("ordenes") or []
+    n = 0
+    with _IMPUL_LOCK:
+        todo = _impul_leer(IMPUL_ORDERS)
+        mias = todo.setdefault(email, {})
+        for d in lista:
+            oid = str((d or {}).get("order_id") or "")
+            if not oid:
+                continue
+            o = dict(mias.get(oid) or {})
+            for k in ("order_id", "order_number", "items", "total", "currency", "payment_method",
+                      "is_post_purchase", "parent_order_id", "order_created_at"):
+                if k in d:
+                    o[k] = d[k]
+            o["estado"] = str(d.get("estado") or "approved")
+            o["aprobado_at"] = d.get("aprobado_at") or d.get("order_created_at")
+            o["importada"] = True
+            mias[oid] = o
+            n += 1
+        _impul_escribir(IMPUL_ORDERS, todo)
+    try:
+        _pf_invalidar(email, dias=30)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "cargadas": n, "total": len(_impul_ordenes(email))})
+
+
 @app.get("/impultienda")
 def impultienda_panel():
     """Pantalla simple: la URL que se pega en Impultienda → Configuraciones → Webhooks, y las
@@ -26970,8 +27004,33 @@ def mp_callback():
 def mp_estado():
     """¿ESTE usuario (su email logueado) tiene su MercadoPago conectado? Cada uno ve SOLO lo suyo."""
     email = _user_actual()
-    conectado = bool(email and email in _mp_tokens())
-    return jsonify({"ok": True, "conectado": conectado})
+    tk = _mp_tokens().get(email) if email else None
+    conectado = bool(tk)
+    cuenta = ""
+    if tk:
+        # QUE MercadoPago quedo conectado: si el navegador ya tenia una sesion de MP abierta, el
+        # boton conecta esa sin preguntar (11-11-2026: la cuenta de ebooks no sabia cual era).
+        import time as _t
+        c = _MP_QUIEN.get(email)
+        if c and _t.time() - c[0] < 600:
+            cuenta = c[1]
+        else:
+            uid = str(tk.get("user_id") or "")
+            nick = ""
+            try:
+                r = requests.get("https://api.mercadopago.com/users/me",
+                                 headers={"Authorization": "Bearer " + str(tk.get("access_token") or "")}, timeout=15)
+                j = r.json() if r.status_code == 200 else {}
+                nick = str(j.get("nickname") or "")
+                uid = str(j.get("id") or uid)
+            except Exception:
+                pass
+            cuenta = (nick + " · ID " + uid) if nick else (("ID " + uid) if uid else "")
+            _MP_QUIEN[email] = (_t.time(), cuenta)
+    return jsonify({"ok": True, "conectado": conectado, "cuenta": cuenta})
+
+
+_MP_QUIEN = {}
 
 
 # ================= Mercado Libre — OAuth (multi-cuenta) =================
