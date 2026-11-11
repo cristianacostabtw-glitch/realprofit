@@ -367,6 +367,7 @@ SECCIONES = {
 # aunque escriba la URL. Va aparte de SECCIONES a proposito: si estuviera solo "fuera de la lista"
 # el guardia las dejaria pasar (las rutas sin seccion se permiten, porque son el armazon de la app).
 SOLO_ADMIN = [
+    "/pf-cps",
     "/pf-periodo", "/pf-ventas", "/pf-ordenes", "/pf-orden", "/pf-recompras", "/pf-marketing",
     "/pf-mp-", "/pf-opciones", "/pf-cfg", "/pf-diag", "/pf-debug-ordenes", "/pf-debug-meli", "/pf-botify",
     "/pf-productos", "/pf-guardar-costo", "/pf-sku-set",
@@ -611,6 +612,8 @@ _SOLO_DASH = r"""
   </div>
   <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:24px 0 13px;font-weight:700">Plataformas disponibles</div>
   <div id="rp-integ-cards"></div>
+  <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin:26px 0 13px;font-weight:700">Cuentas publicitarias conectadas</div>
+  <div id="rp-cps"><div style="color:#94a3b8;font-size:12.5px">Cargando...</div></div>
  </div>
 </div>
 <div id="rp-wa-ov" style="position:fixed;top:0;right:0;bottom:0;left:72px;z-index:100000;background:#0b141a;display:none;overflow:hidden;transition:left .18s ease"><iframe id="rp-wa-frame" title="WhatsApp" style="width:100%;height:100%;border:0;display:block"></iframe></div>
@@ -2528,6 +2531,41 @@ _SOLO_DASH = r"""
     setTimeout(function(){ cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); },800); }
    else { if(m){m.style.color='#fb7185';m.textContent=(j&&j.error)||'No se pudo conectar.';} }
   }).catch(function(){ if(btn){btn.disabled=false;} if(m){m.style.color='#fb7185';m.textContent='Error de red, reintent&aacute;.';} }); };
+ // ---- CPs conectadas: Emma / agencia / desconectar (11-11-2026) ----
+ function _cpEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+ function _cpSw(on,fn){ return '<span onclick="'+fn+'" style="cursor:pointer;display:inline-flex;align-items:center;width:40px;height:22px;border-radius:12px;padding:2px;box-sizing:border-box;background:'+(on?'#22c55e':'#334155')+';transition:background .15s"><span style="width:18px;height:18px;border-radius:50%;background:#fff;transform:translateX('+(on?'18px':'0')+');transition:transform .15s"></span></span>'; }
+ function _cpDmy(f){ var p=String(f||'').split('-'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):f; }
+ window.rpCpsLoad=function(){ var c=document.getElementById('rp-cps'); if(!c)return;
+  fetch('/pf-cps').then(function(r){return r.json();}).then(function(j){ window._rpCps=(j&&j.cps)||[]; rpCpsPintar(); })
+   .catch(function(){ c.innerHTML='<div style="color:#f87171;font-size:12.5px">No se pudieron cargar las cuentas publicitarias.</div>'; }); };
+ window.rpCpsPintar=function(){ var c=document.getElementById('rp-cps'); if(!c)return; var L=window._rpCps||[];
+  if(!L.length){ c.innerHTML='<div style="color:#94a3b8;font-size:12.5px;padding:14px;border:1px dashed #24354c;border-radius:12px">No hay cuentas publicitarias conectadas a esta cuenta.</div>'; return; }
+  var h='';
+  L.forEach(function(a,i){ var usd=a.moneda!=='ARS', baja=!!a.baja_desde;
+   var chips='<span style="background:#0d1b30;border:1px solid #1c3350;color:#7db3f5;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px">'+_cpEsc(a.moneda||'?')+'</span>'
+    +(a.portfolio?'<span style="background:#1a1533;border:1px solid #322a5a;color:#c4b5fd;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px">Portfolio: '+_cpEsc(a.portfolio)+'</span>':'')
+    +(a.desde?'<span style="background:#10233a;border:1px solid #1c3f63;color:#93c5fd;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px">suma desde '+_cpDmy(a.desde)+'</span>':'')
+    +(baja?'<span style="background:#3a1414;border:1px solid #7f1d1d;color:#fca5a5;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px">desconectada desde '+_cpDmy(a.baja_desde)+'</span>':'');
+   var opt;
+   if(baja){ opt='<a href="#" onclick="rpCpsSet('+i+',{baja:false});return false;" style="color:#34d399;font-size:12.5px;font-weight:700;text-decoration:none">&#8635; Volver a conectar</a>'; }
+   else if(usd){ opt='<div style="display:flex;align-items:center;gap:10px">'+_cpSw(a.emma,'rpCpsSet('+i+',{emma:'+(!a.emma)+'})')+'<div><div style="color:#f1f5f9;font-size:13px;font-weight:700">Pauta con Emma</div><div style="color:#94a3b8;font-size:11.5px">'+(a.emma?'D&oacute;lar cripto + comisi&oacute;n de Emma &middot; da cr&eacute;dito de IVA':'D&oacute;lar cripto P2P, sin comisi&oacute;n y sin IVA de pauta')+'</div></div></div>'; }
+   else { opt='<div style="display:flex;align-items:center;gap:10px">'+_cpSw(a.agencia,'rpCpsSet('+i+',{agencia:'+(!a.agencia)+'})')+'<div><div style="color:#f1f5f9;font-size:13px;font-weight:700">Por agencia</div><div style="color:#94a3b8;font-size:11.5px">'+(a.agencia?'Gasto + 10% de comisi&oacute;n + IVA':'En pesos, directo a Meta')+'</div></div></div>'; }
+   h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;padding:14px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;'+(baja?'opacity:.62':'')+'">'
+    +'<div style="flex:1;min-width:200px"><div style="font-weight:700;color:#f1f5f9;font-size:14.5px">'+_cpEsc(a.nombre)+'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+chips+'</div>'
+    +'<div style="color:#64748b;font-size:11px;margin-top:5px">act_'+_cpEsc(a.id)+(a.sin_acceso?' &middot; sin acceso con el token':'')+'</div></div>'
+    +'<div>'+opt+'</div>'
+    +(baja?'':'<button title="Desconectar esta CP" onclick="rpCpsBaja('+i+')" style="flex:none;background:#111c2b;border:1px solid #1e2b3d;color:#fca5a5;width:34px;height:34px;border-radius:9px;font-size:15px;cursor:pointer">&#10005;</button>')
+    +'</div>'; });
+  c.innerHTML=h+'<div id="rp-cps-st" style="font-size:12px;color:#94a3b8;margin-top:4px"></div>'; };
+ window.rpCpsSet=function(i,cambio){ var a=(window._rpCps||[])[i]; if(!a)return; var b={id:a.id}; for(var k in cambio) b[k]=cambio[k];
+  var st=document.getElementById('rp-cps-st'); if(st){ st.style.color='#38bdf8'; st.textContent='Guardando...'; }
+  fetch('/pf-cps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json();}).then(function(j){
+   if(!j||!j.ok){ if(st){ st.style.color='#f87171'; st.textContent='No se pudo guardar'+((j&&j.msg)?': '+j.msg:'')+'.'; } return; }
+   rpCpsLoad(); }).catch(function(){ if(st){ st.style.color='#f87171'; st.textContent='Error de conexi\u00f3n.'; } }); };
+ window.rpCpsBaja=function(i){ var a=(window._rpCps||[])[i]; if(!a)return;
+  if(!confirm('\u00bfDesconectar '+a.nombre+' de esta cuenta?\n\nDesde hoy su gasto deja de sumar ac\u00e1. Lo que gast\u00f3 antes queda como est\u00e1.')) return;
+  rpCpsSet(i,{baja:true}); };
  function rpMetaPanel(){ return '<div style="border-top:1px solid #1e2b3d;padding:14px 17px;background:#0c1521"><div style="font-weight:700;color:#e2e8f0;font-size:12.5px;margin-bottom:8px">Cuenta publicitaria <span style="color:#94a3b8;font-weight:400">(de ac&aacute; sale el gasto de ads)</span></div><div id="rp-meta-cuentas" style="color:#94a3b8;font-size:12.5px">Cargando cuentas...</div></div>'; }
  function rpMetaRender(cuentas,elegida){ var c=document.getElementById('rp-meta-cuentas'); if(!c)return;
   if(!cuentas.length){ c.innerHTML='<span style="color:#94a3b8;font-size:12px">No encontramos cuentas publicitarias en tu Meta (revis&aacute; permisos).</span>'; return; }
@@ -2667,7 +2705,7 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok&&j.url){ show('Redirigiendo a Shopify...',true); window.location.assign(j.url); } else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo iniciar la conexión.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión. Probá de nuevo.',false); }); };
- window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oix=document.getElementById('rp-imp-ov'); if(_oix)_oix.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open) load(); };
+ window.rpInteg=function(open){ var o=document.getElementById('rp-integ-ov'); if(!o)return; if(open){ var op=document.getElementById('rp-prod-ov'); if(op) op.style.display='none'; try{rpProdSetActive(false);}catch(e){} var oc=document.getElementById('rp-comis-ov'); if(oc) oc.style.display='none'; try{rpComisSetActive(false);}catch(e){} var od=document.getElementById('rp-desp-ov'); if(od)od.style.display='none'; var _of=document.getElementById('rp-fact-ov'); if(_of)_of.style.display='none'; var _om=document.getElementById('rp-mov-ov'); if(_om)_om.style.display='none'; var _oix=document.getElementById('rp-imp-ov'); if(_oix)_oix.style.display='none'; var _oa=document.getElementById('rp-ads-ov'); if(_oa)_oa.style.display='none'; var _osk=document.getElementById('rp-stock-ov'); if(_osk)_osk.style.display='none'; var _olk=document.getElementById('rpf-lock'); if(_olk)_olk.style.display='none'; } o.style.display=open?'block':'none'; var b=document.getElementById('rp-integ-btn'); if(b) b.classList.toggle('rp-active',!!open); if(open){ load(); try{ rpCpsLoad(); }catch(e){} } };
  window._rpNavActive=function(id){ try{
    var _wo=document.getElementById('rp-wa-ov'); if(_wo && id!=='rp-wa-nav') _wo.style.display='none';
    ['rp-prod-nav','rp-comis-nav','rp-desp-nav','rp-fact-nav','rp-mov-nav','rp-imp-nav','rp-ads-nav','rp-wa-nav','rp-stock-nav'].forEach(function(nid){ var a=document.querySelector('#'+nid+' a'); if(a){ a.classList.toggle('bg-white/[0.08]', nid===id); a.classList.toggle('text-primary', nid===id); } });
@@ -19106,6 +19144,84 @@ def meta_token_manual():
     return jsonify({"ok": True, "cuentas": cuentas, "elegida": tk.get("cuenta")})
 
 
+_ADS_CP_INFO = {}   # cuenta -> (ts, info de Meta)
+
+
+def _ads_cp_info(token, acc) -> dict:
+    import time as _t
+    c = _ADS_CP_INFO.get(acc)
+    if c and _t.time() - c[0] < 3600:
+        return c[1]
+    info = {}
+    try:
+        r = requests.get("https://graph.facebook.com/%s/act_%s" % (META_API, acc),
+                         params={"access_token": token,
+                                 "fields": "name,currency,account_status,business{name}"}, timeout=20)
+        j = r.json() or {}
+        if not j.get("error"):
+            info = {"nombre": j.get("name") or "", "moneda": (j.get("currency") or "").upper(),
+                    "portfolio": ((j.get("business") or {}).get("name") or ""),
+                    "estado_meta": j.get("account_status")}
+    except Exception:
+        info = {}
+    if info:
+        _ADS_CP_INFO[acc] = (_t.time(), info)
+    return info
+
+
+@app.get("/pf-cps")
+def pf_cps():
+    """Las CPs que suman en esta cuenta, con nombre/portfolio/moneda de Meta y sus ajustes."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    ctx = _meta_ctx(email)
+    out = []
+    for acc in ctx["cuentas"]:
+        info = _ads_cp_info(ctx["token"], acc) if ctx["token"] else {}
+        asig = ctx["asig"] if str(ctx["asig"].get("cuenta") or "") == acc else {}
+        out.append({"id": acc, "nombre": info.get("nombre") or ("act_" + acc),
+                    "portfolio": info.get("portfolio") or "", "moneda": info.get("moneda") or "",
+                    "emma": _ads_cp_emma(email, acc), "agencia": _ads_cp_agencia(email, acc),
+                    "baja_desde": _ads_cp_baja(email, acc),
+                    "desde": asig.get("desde") or "", "sin_acceso": not info})
+    return jsonify({"ok": True, "cps": out})
+
+
+@app.post("/pf-cps")
+def pf_cps_set():
+    """Cambia Emma / agencia de una CP, o la desconecta (desde hoy) / reconecta. El historico
+    anterior a la desconexion se mantiene."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    acc = str(d.get("id") or "").replace("act_", "").strip()
+    if acc not in _meta_ctx(email)["cuentas"]:
+        return jsonify({"ok": False, "msg": "esa CP no es de esta cuenta"}), 400
+    campos = {}
+    if "emma" in d:
+        campos["emma"] = bool(d["emma"])
+    if "agencia" in d:
+        campos["agencia"] = bool(d["agencia"])
+    if "baja" in d:
+        hoy = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3))).date().isoformat()
+        campos["baja_desde"] = hoy if d["baja"] else None
+    if not campos:
+        return jsonify({"ok": False, "msg": "nada para cambiar"}), 400
+    c = _ads_cp_set(email, acc, campos)
+    # Emma/agencia cambian el costo de TODOS los dias de esa CP; la baja solo de hoy en adelante.
+    try:
+        _pf_invalidar(email, dias=(2 if set(campos) == {"baja_desde"} else 400))
+    except Exception:
+        pass
+    try:
+        _ADS_USD_ARS.clear(); _ADS_USD_RAW.clear()
+    except Exception:
+        pass
+    return jsonify({"ok": True, "cfg": c})
+
+
 @app.get("/meta/estado")
 def meta_estado():
     email = _user_actual()
@@ -19173,34 +19289,87 @@ def _meta_act_fuera(acc):
     return m.get(acc, "")
 
 
-def _meta_spend(email, desde, hasta):
-    """Gasto en ads (USD/ARS) de la cuenta elegida, en el período. 0 si no hay cuenta/conexión.
+META_CUENTAS_ASIGNADAS["noxalaboficial@gmail.com"]["emma"] = False   # ebooks: P2P, sin Emma ni IVA
 
-    ATAJO DUEÑO: si el email logueado es el dueño (env META_OWNER_EMAIL), usa directo el
-    System User token de METAFY (env META_OWNER_TOKEN) + su cuenta (env META_OWNER_ACT),
-    sin OAuth ni App Review. Solo para tu propio usuario."""
-    import os
+ADS_CP_CFG = DATA_DIR / "ads_cp_cfg.json"   # {email: {cuenta: {"emma": bool, "agencia": bool, "baja_desde": "AAAA-MM-DD"}}}
+_ADS_CP_LOCK = threading.Lock()
+
+
+def _ads_cp_cfg(email) -> dict:
+    """Ajustes de cada CP de esta cuenta (los toca Cristian en Integraciones)."""
+    try:
+        d = _json.loads(ADS_CP_CFG.read_text(encoding="utf-8"))
+        return (d.get(str(email)) or {}) if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _ads_cp_set(email, acc, campos) -> dict:
+    with _ADS_CP_LOCK:
+        try:
+            d = _json.loads(ADS_CP_CFG.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                d = {}
+        except FileNotFoundError:
+            d = {}
+        mio = d.setdefault(str(email), {})
+        c = mio.setdefault(str(acc), {})
+        for k, v in campos.items():
+            if v is None:
+                c.pop(k, None)
+            else:
+                c[k] = v
+        tmp = ADS_CP_CFG.with_name("%s.tmp%d_%d" % (ADS_CP_CFG.name, _os.getpid(), threading.get_ident()))
+        tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        _os.replace(str(tmp), str(ADS_CP_CFG))
+        return dict(c)
+
+
+def _ads_cp_emma(email, acc) -> bool:
+    """Pauta con EMMA (casa de cambio): dolar cripto + su comision + credito de IVA por la factura.
+    Sin Emma = dolar cripto P2P pelado, sin comision y SIN IVA. Por defecto todas con Emma, salvo
+    la CP asignada a la cuenta de ebooks."""
+    c = _ads_cp_cfg(email).get(str(acc)) or {}
+    if "emma" in c:
+        return bool(c["emma"])
+    asig = META_CUENTAS_ASIGNADAS.get(str(email or "").strip().lower()) or {}
+    if asig and str(asig.get("cuenta")) == str(acc) and "emma" in asig:
+        return bool(asig["emma"])
+    return True
+
+
+def _ads_cp_agencia(email, acc) -> bool:
+    """Cuenta en pesos que se paga por AGENCIA (+comision +IVA). Por defecto, CP3."""
+    c = _ads_cp_cfg(email).get(str(acc)) or {}
+    if "agencia" in c:
+        return bool(c["agencia"])
+    return bool(_FIN_ACT_AGENCIA) and str(acc) == _FIN_ACT_AGENCIA
+
+
+def _ads_cp_baja(email, acc) -> str:
+    """Fecha desde la que esa CP se desconecto de esta cuenta ('' si sigue)."""
+    return str((_ads_cp_cfg(email).get(str(acc)) or {}).get("baja_desde") or "")[:10]
+
+
+def _meta_ctx(email) -> dict:
+    """Token y cuentas de Meta que suman en ESTA cuenta de RealProfit: la principal + las extra de
+    META_ACTS_EXTRA mapeadas a esa principal + la asignada por META_CUENTAS_ASIGNADAS."""
     tk = _meta_tokens().get(email)
     token = tk.get("access_token") if tk else None    # token PEGADO por el usuario (prioridad)
     cuenta = tk.get("cuenta") if tk else None
     es_owner = False
     if not token:                                      # fallback: System User token de env (atajo dueño)
-        owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
-        if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
-            token = os.getenv("META_OWNER_TOKEN")
-            cuenta = os.getenv("META_OWNER_ACT") or cuenta
+        owner = _os.getenv("META_OWNER_EMAIL", "").strip().lower()
+        if owner and email and email.strip().lower() == owner and _os.getenv("META_OWNER_TOKEN"):
+            token = _os.getenv("META_OWNER_TOKEN")
+            cuenta = _os.getenv("META_OWNER_ACT") or cuenta
             es_owner = True
-    _asig = META_CUENTAS_ASIGNADAS.get(str(email or "").strip().lower()) or {}
-    if not token and _asig and _os.getenv(_asig.get("token_env") or ""):
-        token = _os.getenv(_asig["token_env"])
-        cuenta = _asig["cuenta"]
-    if not token or not cuenta:
-        return 0.0
-    # Cuentas a SUMAR el gasto: la principal + las extra MAPEADAS a ESA principal (para NO mezclar tiendas).
-    # META_ACTS_EXTRA = "principal:extra1,extra2;principal2:extraA" → solo suma extras cuya cuenta principal
-    # coincide con la de esta tienda. Así la 2da cuenta de NoxaLab suma SOLO en NoxaLab, nunca en otra tienda.
+    asig = META_CUENTAS_ASIGNADAS.get(str(email or "").strip().lower()) or {}
+    if not token and asig and _os.getenv(asig.get("token_env") or ""):
+        token = _os.getenv(asig["token_env"])
+        cuenta = asig["cuenta"]
     cuentas = []
-    primaria = str(cuenta).replace("act_", "").strip()
+    primaria = str(cuenta or "").replace("act_", "").strip()
     if primaria:
         cuentas.append(primaria)
     for grupo in (_os.getenv("META_ACTS_EXTRA", "") or "").split(";"):
@@ -19213,6 +19382,21 @@ def _meta_spend(email, desde, hasta):
             ex = ex.strip().replace("act_", "")
             if ex and ex not in cuentas:
                 cuentas.append(ex)
+    return {"token": token, "cuentas": cuentas if token else [], "es_owner": es_owner, "asig": asig}
+
+
+def _meta_spend(email, desde, hasta):
+    """Gasto en ads (USD/ARS) de la cuenta elegida, en el período. 0 si no hay cuenta/conexión.
+
+    ATAJO DUEÑO: si el email logueado es el dueño (env META_OWNER_EMAIL), usa directo el
+    System User token de METAFY (env META_OWNER_TOKEN) + su cuenta (env META_OWNER_ACT),
+    sin OAuth ni App Review. Solo para tu propio usuario."""
+    # Cuentas a SUMAR el gasto: la principal + las extra MAPEADAS a ESA principal (para NO mezclar
+    # tiendas) + la asignada. Ver _meta_ctx. Cada CP con sus ajustes de Integraciones (Emma/agencia/baja).
+    _ctx = _meta_ctx(email)
+    token, cuentas, es_owner, _asig = _ctx["token"], _ctx["cuentas"], _ctx["es_owner"], _ctx["asig"]
+    if not token or not cuentas:
+        return 0.0
     total = 0.0
     hubo = False
     usd_ars = 0.0                 # lo que salio de cuentas en USD, ya en pesos (para el IVA)
@@ -19229,20 +19413,29 @@ def _meta_spend(email, desde, hasta):
                 hubo = True
             _fuera = _meta_act_fuera(acc)
             _es_asig = bool(_asig) and str(acc) == str(_asig.get("cuenta"))
+            _baja = _ads_cp_baja(email, acc)          # la X de Integraciones: desde ese dia no suma
+            _emma = _ads_cp_emma(email, acc)
+            _agen = _ads_cp_agencia(email, acc)
             for dia, spend, moneda in filas:
                 if _es_asig:
                     if str(dia)[:10] < str(_asig.get("desde") or ""):
                         continue              # antes de pasarse a esta cuenta era pauta de NoxaLab
                 elif _fuera and str(dia)[:10] >= _fuera:
                     continue                  # esa cuenta ya pauta otra cosa (ver META_ACTS_FUERA_DESDE)
-                if moneda == "USD" or es_owner:
-                    usd_raw += spend
-                    spend *= _dolar_pauta_dia(email, dia)
-                    usd_ars += spend
+                if _baja and str(dia)[:10] >= _baja:
+                    continue
+                if moneda == "USD" or (es_owner and not moneda):   # una cuenta en PESOS nunca va por el dolar
+                    if _emma:
+                        usd_raw += spend
+                        spend *= _dolar_pauta_dia(email, dia)
+                        usd_ars += spend      # da credito de IVA (Emma factura con IVA adentro)
+                    else:
+                        # P2P: dolar cripto del dia, sin la comision de Emma y sin factura (sin IVA)
+                        spend *= _dolar_base_dia(str(dia)[:10])
                 # La cuenta de AGENCIA (CP3) no se paga directo a Meta: la agencia factura el
                 # gasto + su comisión, así que lo que sale del bolsillo es ese total. Sin esto el
                 # dashboard muestra la pauta más barata de lo que realmente cuesta.
-                if _FIN_ACT_AGENCIA and str(acc) == _FIN_ACT_AGENCIA:
+                if _agen:
                     spend *= (1.0 + _FIN_AGENCIA_PCT / 100.0)
                 total += spend
         except Exception:
@@ -19331,34 +19524,34 @@ def _meta_insights_dias(token, acc, desde, hasta) -> list:
 def _meta_spend_agencia(email, desde, hasta) -> float:
     """Sólo la cuenta de AGENCIA (CP3), en ARS y CON la comisión sumada. Es el NETO que factura
     la agencia: el IVA va ENCIMA de este monto (×0,21), no adentro (no se divide por 1,21)."""
-    import os
-    if not _FIN_ACT_AGENCIA:
-        return 0.0
-    tk = _meta_tokens().get(email)
-    token = tk.get("access_token") if tk else None
-    es_owner = False
-    if not token:
-        owner = os.getenv("META_OWNER_EMAIL", "").strip().lower()
-        if owner and email and email.strip().lower() == owner and os.getenv("META_OWNER_TOKEN"):
-            token = os.getenv("META_OWNER_TOKEN")
-            es_owner = True
+    _ctx = _meta_ctx(email)
+    token, es_owner = _ctx["token"], _ctx["es_owner"]
     if not token:
         return 0.0
-    try:
-        r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, _FIN_ACT_AGENCIA),
-                         params={"access_token": token, "fields": "spend,account_currency",
-                                 "time_range": _json.dumps({"since": desde, "until": hasta}),
-                                 "level": "account"}, timeout=30)
-        data = r.json().get("data") or []
-        if not data:
-            return 0.0
-        spend = float(data[0].get("spend") or 0)
-        moneda = (data[0].get("account_currency") or "").upper()
-        if moneda == "USD" or es_owner:
-            spend *= _dolar_ars_vivo()
-        return round(spend * (1.0 + _FIN_AGENCIA_PCT / 100.0), 2)
-    except Exception:
-        return 0.0
+    tot = 0.0
+    for acc in [a for a in _ctx["cuentas"] if _ads_cp_agencia(email, a)]:
+        _h = str(hasta)[:10]
+        _b = _ads_cp_baja(email, acc)
+        if _b and _h >= _b:                       # desconectada: hasta el dia anterior
+            _h = (_dt.date.fromisoformat(_b) - _dt.timedelta(days=1)).isoformat()
+            if _h < str(desde)[:10]:
+                continue
+        try:
+            r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
+                             params={"access_token": token, "fields": "spend,account_currency",
+                                     "time_range": _json.dumps({"since": desde, "until": _h}),
+                                     "level": "account"}, timeout=30)
+            data = r.json().get("data") or []
+            if not data:
+                continue
+            spend = float(data[0].get("spend") or 0)
+            moneda = (data[0].get("account_currency") or "").upper()
+            if moneda == "USD" or (es_owner and not moneda):   # una cuenta en PESOS nunca va por el dolar
+                spend *= _dolar_ars_vivo()
+            tot += spend * (1.0 + _FIN_AGENCIA_PCT / 100.0)
+        except Exception:
+            pass
+    return round(tot, 2)
 
 
 _META_SPEND_FILE = DATA_DIR / "meta_spend_max.json"   # máximo por período, EN DISCO (compartido entre workers)
