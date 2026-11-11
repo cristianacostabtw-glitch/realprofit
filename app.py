@@ -2548,8 +2548,8 @@ _SOLO_DASH = r"""
     +(baja?'<span style="background:#3a1414;border:1px solid #7f1d1d;color:#fca5a5;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px">desconectada desde '+_cpDmy(a.baja_desde)+'</span>':'');
    var opt;
    if(baja){ opt='<a href="#" onclick="rpCpsSet('+i+',{baja:false});return false;" style="color:#34d399;font-size:12.5px;font-weight:700;text-decoration:none">&#8635; Volver a conectar</a>'; }
-   else if(usd){ opt='<div style="display:flex;align-items:center;gap:10px">'+_cpSw(a.emma,'rpCpsSet('+i+',{emma:'+(!a.emma)+'})')+'<div><div style="color:#f1f5f9;font-size:13px;font-weight:700">Pauta con Emma</div><div style="color:#94a3b8;font-size:11.5px">'+(a.emma?'D&oacute;lar cripto + comisi&oacute;n de Emma &middot; da cr&eacute;dito de IVA':'D&oacute;lar cripto P2P, sin comisi&oacute;n y sin IVA de pauta')+'</div></div></div>'; }
-   else { opt='<div style="display:flex;align-items:center;gap:10px">'+_cpSw(a.agencia,'rpCpsSet('+i+',{agencia:'+(!a.agencia)+'})')+'<div><div style="color:#f1f5f9;font-size:13px;font-weight:700">Por agencia</div><div style="color:#94a3b8;font-size:11.5px">'+(a.agencia?'Gasto + 10% de comisi&oacute;n + IVA':'En pesos, directo a Meta')+'</div></div></div>'; }
+   else if(usd){ opt='<div style="display:flex;align-items:center;gap:10px">'+_cpSw(a.emma,'rpCpsSet('+i+',{emma:'+(!a.emma)+'})')+'<div><div style="color:#f1f5f9;font-size:13px;font-weight:700">&iquest;La pauta tiene IVA? <span style="color:'+(a.emma?'#22c55e':'#f87171')+'">'+(a.emma?'S&Iacute;':'NO')+'</span></div><div style="color:#94a3b8;font-size:11.5px">'+(a.emma?'Pagada con Emma (Factura A): suma IVA a favor':'D&oacute;lar cripto P2P, sin factura: no suma IVA a favor')+'</div></div></div>'; }
+   else { opt='<div style="display:flex;align-items:center;gap:10px">'+_cpSw(a.agencia,'rpCpsSet('+i+',{agencia:'+(!a.agencia)+'})')+'<div><div style="color:#f1f5f9;font-size:13px;font-weight:700">&iquest;La pauta tiene IVA? <span style="color:'+(a.agencia?'#22c55e':'#f87171')+'">'+(a.agencia?'S&Iacute;':'NO')+'</span></div><div style="color:#94a3b8;font-size:11.5px">'+(a.agencia?'Por agencia: gasto + 10% + IVA, suma IVA a favor':'En pesos, directo a Meta: no suma IVA a favor')+'</div></div></div>'; }
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;padding:14px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;'+(baja?'opacity:.62':'')+'">'
     +'<div style="flex:1;min-width:200px"><div style="font-weight:700;color:#f1f5f9;font-size:14.5px">'+_cpEsc(a.nombre)+'</div>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+chips+'</div>'
@@ -8651,7 +8651,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-04-profit-mes3"})
+    return jsonify({"ok": True, "v": "2026-11-11-iva-ebook-cp"})
 
 
 _KPI_DBG = {}
@@ -18513,6 +18513,8 @@ def _impul_resumen(email, desde, hasta):
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
     r["impul_upsells"] = upsells
     r["iva_ebook"] = round(iva_deb, 2)
+    # Para el bloque de IVA del Dashboard: lo del ebook YA esta restado entero aca (sin credito).
+    r["mp_ebook"] = round(mp_costo, 2); r["perc_ebook"] = round(perc_iva, 2)
     r["impul_sin_verificar"] = sin_verif
     r["unidades"] = unidades
     r["facturado"] = r["tot_facturado"] = round(fact, 2)
@@ -18674,7 +18676,8 @@ def _combinar_resumen(a, b):
            "tot_ordenes", "tot_facturado", "tot_ganancia", "tot_costo",
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
-                   "meli_envio", "meli_retenciones", "meli_cargo_envio"]
+                   "meli_envio", "meli_retenciones", "meli_cargo_envio",
+           "iva_ebook", "mp_ebook", "perc_ebook"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
     fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
@@ -25332,7 +25335,15 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
             r["iva_ads"] = round(_pub_ag * 0.21, 2)
     except Exception:
         pass
+    # EBOOKS (11-11-2026): su IVA ya se resto ENTERO en la ganancia (_impul_resumen, sin credito:
+    # "de eso no hay nada a favor"). Aca se saca su credito (comision de MP + percepcion) y su IVA
+    # no se vuelve a restar con "Responsable Inscripto": antes se restaba dos veces (ej. 11-11:
+    # ganancia -$9.318 cuando era +$8.677) y el a favor mostraba $2.209 de la comision de MP.
+    _eb_iva = float(r.get("iva_ebook") or 0)
+    _iva_cred -= float(r.get("mp_ebook") or 0) * _F + float(r.get("perc_ebook") or 0)
     _iva_pag = _iva_deb - _iva_cred
+    _iva_resta = _iva_pag - _eb_iva      # lo que la ganancia todavia NO tiene restado
+    r["iva_pagar_resta"] = round(_iva_resta, 2)
     r["iva_total"] = round(_iva_deb, 2)
     r["iva_favor"] = round(_iva_cred, 2)
     r["iva_pagar"] = round(_iva_pag, 2)
@@ -25361,7 +25372,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         r["web_iva_pagar"] = round(_iva_pag - _ml_iva, 2)
         if r.get("ri"):
             r["ml_ganancia"] = round((r.get("ml_ganancia", 0) or 0) - _ml_iva, 2)
-            r["web_ganancia"] = round((r.get("web_ganancia", 0) or 0) - (_iva_pag - _ml_iva), 2)
+            r["web_ganancia"] = round((r.get("web_ganancia", 0) or 0) - (_iva_resta - _ml_iva), 2)
             _mf = r.get("ml_facturado", 0) or 0
             _wf = r.get("web_facturado", 0) or 0
             r["ml_margen"] = round(r["ml_ganancia"] / _mf * 100, 2) if _mf else 0.0
@@ -25374,7 +25385,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         pass
     if r.get("ri"):   # el IVA a pagar es un costo real → lo resto de la ganancia
         _ord = r.get("ordenes", 0) or 0
-        r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_pag, 2)
+        r["ganancia"] = round((r.get("ganancia", 0) or 0) - _iva_resta, 2)
         r["tot_ganancia"] = r["ganancia"]
         r["margen"] = round(r["ganancia"] / _fact * 100, 2) if _fact else 0.0
         r["tot_margen"] = r["margen"]
@@ -26413,7 +26424,9 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
     #    que son pago a cuenta de ese mismo impuesto. Aca: lo retenido + lo que falta pagar.
     #  - Gastos: lo PAGADO, no el costo real: el IVA que se recupera ya entro por el IVA a pagar.
     gan_d = float(raw.get("ganancia", 0) or 0)
-    iva_d = float(raw.get("iva_pagar", 0) or 0) if raw.get("ri") else 0.0
+    # El IVA del ebook esta restado en la ganancia siempre (con o sin RI): se devuelve igual.
+    iva_d = (float(raw.get("iva_pagar_resta", raw.get("iva_pagar", 0)) or 0) if raw.get("ri") else 0.0) \
+        + float(raw.get("iva_ebook", 0) or 0)
     iibb_d = float(raw.get("iibb_monto", 0) or 0) + ret_mp
     antes_imp = gan_d + iva_d + iibb_d
     iibb_real = ret_mp + t_iibb
