@@ -18303,6 +18303,245 @@ def _tn_resumen(email, desde, hasta):
     return {"raw": r, "prod": prod, "ords": ords_list}
 
 
+# ═════════════ IMPULTIENDA (ebooks) — canal de ventas por WEBHOOK ═════════════
+# Impultienda no tiene API para LEER ventas: avisa cada una por POST (Configuraciones → Webhooks,
+# plan Max). Doc: impultienda.ar/docs/webhooks. Cada cuenta de RealProfit tiene su URL secreta
+# (/impultienda/webhook/<token>, se ve en /impultienda). Se guardan las ordenes y entran al dashboard
+# como un canal mas (igual que Tiendanube). Armado el 11-11-2026 para la cuenta de ebooks
+# (noxalaboficial@gmail.com, El Secreto del Drenaje), con CP2 como su publicidad.
+IMPUL_CFG = DATA_DIR / "impul_cfg.json"        # {email: {"token": ...}}
+IMPUL_ORDERS = DATA_DIR / "impul_orders.json"  # {email: {order_id: {...}}}
+_IMPUL_LOCK = threading.Lock()
+
+
+def _impul_leer(path) -> dict:
+    try:
+        d = _json.loads(path.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _impul_escribir(path, d) -> None:
+    tmp = path.with_name("%s.tmp%d_%d" % (path.name, _os.getpid(), threading.get_ident()))
+    tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    _os.replace(str(tmp), str(path))
+
+
+def _impul_token(email, crear=False) -> str:
+    """Token de la URL secreta del webhook de esta cuenta (se crea la primera vez)."""
+    with _IMPUL_LOCK:
+        cfg = _impul_leer(IMPUL_CFG)
+        tok = ((cfg.get(email) or {}).get("token") or "").strip()
+        if not tok and crear:
+            import secrets as _sec
+            tok = _sec.token_urlsafe(24)
+            cfg.setdefault(email, {})["token"] = tok
+            _impul_escribir(IMPUL_CFG, cfg)
+        return tok
+
+
+def _impul_email_de_token(tok) -> str:
+    import hmac as _hm
+    tok = str(tok or "")
+    if len(tok) < 20:
+        return ""
+    for em, c in _impul_leer(IMPUL_CFG).items():
+        t = str((c or {}).get("token") or "")
+        if t and _hm.compare_digest(t, tok):
+            return em
+    return ""
+
+
+def _impul_ordenes(email) -> dict:
+    return _impul_leer(IMPUL_ORDERS).get(email) or {}
+
+
+def _impul_fecha_ar(iso) -> str:
+    """'2026-11-10T23:30:00.000Z' → dia en Argentina (UTC-3): '2026-11-10'."""
+    try:
+        t = _dt.datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_dt.timezone.utc)
+        return (t.astimezone(_dt.timezone(_dt.timedelta(hours=-3)))).strftime("%Y-%m-%d")
+    except Exception:
+        return str(iso or "")[:10]
+
+
+def _impul_total_ars(o) -> float:
+    """Lo que se cobro en pesos: total si la tienda cobra en ARS; si no, lo que pago el comprador
+    en ARS; si tampoco, el total al dolar del dia."""
+    try:
+        if str(o.get("currency") or "").upper() == "ARS":
+            return float(o.get("total") or 0)
+        if str(o.get("buyer_currency") or "").upper() == "ARS" and o.get("buyer_total") is not None:
+            return float(o.get("buyer_total") or 0)
+        return float(o.get("total") or 0) * float(_dolar_ars_vivo() or 0)
+    except Exception:
+        return 0.0
+
+
+def _impul_resumen(email, desde, hasta):
+    """Blob igual que _tn_resumen con las ventas de Impultienda (producto digital: sin costo de
+    producto, sin envio ni fulfillment). Venta = order.approved; un reembolso o contracargo la
+    saca. Los upsells post-compra suman facturacion pero NO cuentan como venta nueva (no son un
+    cliente nuevo que trajo la publicidad: si contaran, el CPA bajaria de mentira)."""
+    ords = _impul_ordenes(email)
+    if not ords and not _impul_token(email):
+        return None
+    pagos = _mp_pagos_lista(email, desde, hasta)
+    by_ref, by_amt = _mp_bolsas(pagos, []) if pagos is not None else ({}, {})
+    mp_conectado = pagos is not None
+    r = resumen_vacio()
+    r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
+    r["desde"] = desde; r["hasta"] = hasta
+    r["actualizado"] = (_dt.datetime.utcnow() - _dt.timedelta(hours=3)).strftime("%H:%M:%S")
+    fact = 0.0; mp_costo = iibb_ret = perc_iva = 0.0
+    ordenes = upsells = unidades = mp_match = 0
+    reemb_n = 0; reemb_m = 0.0
+    prodmap, ords_list = {}, []
+    lst = sorted(ords.values(), key=lambda x: str(x.get("aprobado_at") or x.get("order_created_at") or ""))
+    for o in lst:
+        dia = _impul_fecha_ar(o.get("aprobado_at") or o.get("order_created_at"))
+        if not (desde <= dia <= hasta):
+            continue
+        tot = _impul_total_ars(o)
+        est = str(o.get("estado") or "")
+        if est in ("refunded", "chargeback"):
+            reemb_n += 1; reemb_m += tot
+            continue
+        if est != "approved":
+            continue
+        if o.get("is_post_purchase"):
+            upsells += 1
+        elif tot > 0:
+            ordenes += 1
+        fact += tot
+        if mp_conectado and str(o.get("payment_method") or "").lower() in ("mercadopago", ""):
+            ol = {"id": o.get("order_id"), "order_number": o.get("order_number"),
+                  "created_at": o.get("aprobado_at") or o.get("order_created_at"), "gateway": "mercadopago"}
+            pago = _mp_match_pedido(ol, str(o.get("order_number") or ""), tot, by_ref, by_amt)[0]
+            if pago is not None:
+                mp_costo += pago["fee"]; mp_match += 1
+                iibb_ret += float(pago.get("ret") or 0)
+                perc_iva += float(pago.get("perc_iva") or 0)
+        for it in (o.get("items") or []):
+            q = int(it.get("quantity") or 1); unidades += q
+            nm = it.get("name") or "?"
+            prodmap[nm] = prodmap.get(nm, 0) + q
+        ords_list.append({"num": str(o.get("order_number") or ""), "origen": "Impultienda" + (" (upsell)" if o.get("is_post_purchase") else ""),
+                          "estado": "Pagado", "fecha": o.get("aprobado_at") or o.get("order_created_at") or "",
+                          "total": round(tot, 2), "neto": round(tot, 2)})
+    iibb_monto = fact * IIBB_PCT / 100.0
+    if not mp_conectado:
+        cu = _comis_user(email)
+        mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
+    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto
+    ganancia = fact - comision_monto
+    r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
+    r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
+    r["percep_iva"] = round(perc_iva, 2)
+    r["iibb_monto"] = round(iibb_monto, 2); r["tienda_monto"] = 0.0
+    r["envio_monto"] = 0.0; r["envio_real"] = 0; r["oper_monto"] = 0.0; r["oper_negro"] = 0
+    r["be_roas"] = r["breakeven_roas"] = round(fact / ganancia, 2) if ganancia > 0 else 0.0
+    r["be_cpa"] = r["breakeven_cpa"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
+    r["impul_upsells"] = upsells
+    r["unidades"] = unidades
+    r["facturado"] = r["tot_facturado"] = round(fact, 2)
+    r["cobrado"] = round(fact, 2)
+    r["costo_prod"] = r["tot_costo"] = 0.0
+    r["comision"] = round(comision_monto, 2)
+    r["ganancia"] = r["tot_ganancia"] = round(ganancia, 2)
+    r["margen"] = r["tot_margen"] = round(ganancia / fact * 100, 2) if fact else 0.0
+    r["ticket"] = r["tot_aov"] = round(fact / ordenes, 2) if ordenes else 0.0
+    r["gan_por_venta"] = r["tot_gan_por_venta"] = round(ganancia / ordenes, 2) if ordenes else 0.0
+    r["reemb_cantidad"] = reemb_n; r["reemb_monto"] = round(reemb_m, 2)
+    prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
+            for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
+    ords_list.sort(key=lambda x: x.get("fecha") or "", reverse=True)
+    return {"raw": r, "prod": prod, "ords": ords_list}
+
+
+@app.post("/impultienda/webhook/<tok>")
+def impultienda_webhook(tok):
+    """Recibe los avisos de Impultienda. Siempre contesta 2xx a lo que no sirve (si no, Impultienda
+    reintenta 32 h). La URL lleva un token secreto que solo conoce esta cuenta."""
+    email = _impul_email_de_token(tok)
+    if not email:
+        return jsonify({"ok": False, "reason": "token"}), 404
+    try:
+        ev = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        ev = {}
+    if ev.get("test"):
+        return jsonify({"ok": True, "test": True})
+    tipo = str(ev.get("event") or request.headers.get("X-Impultienda-Event") or "")
+    d = ev.get("data") or {}
+    oid = str(d.get("order_id") or "")
+    if not oid or tipo not in ("order.approved", "order.refunded", "order.chargeback"):
+        return jsonify({"ok": True, "ignorado": tipo})
+    with _IMPUL_LOCK:
+        todo = _impul_leer(IMPUL_ORDERS)
+        mias = todo.setdefault(email, {})
+        prev = mias.get(oid) or {}
+        o = dict(prev)
+        for k in ("order_id", "order_number", "items", "total", "subtotal", "currency", "buyer_total",
+                  "buyer_currency", "buyer_country", "payment_method", "is_post_purchase",
+                  "parent_order_id", "order_created_at", "tracking", "store"):
+            if k in d:
+                o[k] = d.get(k)
+        if tipo == "order.approved":
+            if o.get("estado") not in ("refunded", "chargeback"):
+                o["estado"] = "approved"
+            o.setdefault("aprobado_at", ev.get("created_at") or d.get("order_created_at"))
+        elif tipo == "order.refunded":
+            o["estado"] = "refunded"; o["reembolso_at"] = ev.get("created_at")
+        else:
+            o["estado"] = "chargeback"; o["reembolso_at"] = ev.get("created_at")
+        o.setdefault("aprobado_at", d.get("order_created_at"))
+        mias[oid] = o
+        _impul_escribir(IMPUL_ORDERS, todo)
+    try:
+        _pf_invalidar(email, dias=3)
+    except Exception:
+        pass
+    return jsonify({"ok": True})
+
+
+@app.get("/impultienda")
+def impultienda_panel():
+    """Pantalla simple: la URL que se pega en Impultienda → Configuraciones → Webhooks, y las
+    ultimas ventas que llegaron."""
+    email = _user_actual()
+    if not email:
+        return redirect("/")
+    tok = _impul_token(email, crear=True)
+    url = request.host_url.rstrip("/").replace("http://", "https://") + "/impultienda/webhook/" + tok
+    ords = sorted(_impul_ordenes(email).values(), key=lambda x: str(x.get("aprobado_at") or ""), reverse=True)[:30]
+    import html as _h
+    filas = "".join(
+        "<tr><td>#%s</td><td>%s</td><td>%s</td><td>$%s</td><td>%s</td></tr>" % (
+            _h.escape(str(o.get("order_number") or "")), _h.escape(_impul_fecha_ar(o.get("aprobado_at"))),
+            _h.escape(", ".join(str(i.get("name") or "") for i in (o.get("items") or []))),
+            "{:,.0f}".format(_impul_total_ars(o)).replace(",", "."),
+            _h.escape(str(o.get("estado") or "")) + (" · upsell" if o.get("is_post_purchase") else ""))
+        for o in ords) or "<tr><td colspan=5 style='color:#8493a8'>Todavía no llegó ninguna venta.</td></tr>"
+    return ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+            "<title>Impultienda · RealProfit</title><body style='font-family:system-ui;background:#0b1220;color:#e2e8f0;padding:24px;max-width:860px;margin:auto'>"
+            "<h2>Impultienda → RealProfit</h2>"
+            "<p>Pegá esta URL en Impultienda → Configuraciones → <b>Webhooks</b> → Agregar endpoint, con los eventos "
+            "<b>Pago confirmado, Reembolso y Contracargo</b>:</p>"
+            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input id=u readonly value='%s' style='flex:1;min-width:260px;padding:10px;border-radius:8px;border:1px solid #1f2a3d;background:#111a2b;color:#e2e8f0'>"
+            "<button onclick=\"navigator.clipboard.writeText(document.getElementById('u').value);this.textContent='Copiada ✓'\" "
+            "style='padding:10px 16px;border-radius:8px;border:0;background:#22c55e;color:#04150a;font-weight:700'>Copiar</button></div>"
+            "<p style='color:#8493a8;font-size:13px'>Es secreta: no la compartas. Con ella cualquiera podría cargarte ventas.</p>"
+            "<h3>Últimas ventas recibidas</h3><table style='width:100%%;border-collapse:collapse;font-size:14px' cellpadding=6>"
+            "<tr style='color:#8493a8;text-align:left'><th>Orden</th><th>Día</th><th>Producto</th><th>Total</th><th>Estado</th></tr>%s</table>"
+            % (_h.escape(url), filas))
+
+
+
 def _combinar_resumen(a, b):
     """Suma dos blobs de resumen (Shopify + Tiendanube) y recalcula los ratios."""
     if not a:
@@ -18916,6 +19155,10 @@ def meta_elegir_cuenta():
 # todo su gasto es la campaña "EBOOK (no soy gay)". Pedido de Cristian, 11-11-2026.
 # Se pueden sumar mas por env sin deploy: META_ACTS_FUERA="id:AAAA-MM-DD,id2:AAAA-MM-DD".
 META_ACTS_FUERA_DESDE = {"1779069840175413": "2026-11-10"}
+# ...y esa misma CP2 pasa a ser la publicidad de la cuenta de ebooks, SOLO desde esa fecha (lo de
+# antes era de NoxaLab). Usa el token del servidor (META_TOKEN), sin conectar Meta a mano.
+META_CUENTAS_ASIGNADAS = {"noxalaboficial@gmail.com": {"cuenta": "1779069840175413",
+                                                       "token_env": "META_TOKEN", "desde": "2026-11-10"}}
 
 
 def _meta_act_fuera(acc):
@@ -18947,6 +19190,10 @@ def _meta_spend(email, desde, hasta):
             token = os.getenv("META_OWNER_TOKEN")
             cuenta = os.getenv("META_OWNER_ACT") or cuenta
             es_owner = True
+    _asig = META_CUENTAS_ASIGNADAS.get(str(email or "").strip().lower()) or {}
+    if not token and _asig and _os.getenv(_asig.get("token_env") or ""):
+        token = _os.getenv(_asig["token_env"])
+        cuenta = _asig["cuenta"]
     if not token or not cuenta:
         return 0.0
     # Cuentas a SUMAR el gasto: la principal + las extra MAPEADAS a ESA principal (para NO mezclar tiendas).
@@ -18981,8 +19228,12 @@ def _meta_spend(email, desde, hasta):
             if filas:
                 hubo = True
             _fuera = _meta_act_fuera(acc)
+            _es_asig = bool(_asig) and str(acc) == str(_asig.get("cuenta"))
             for dia, spend, moneda in filas:
-                if _fuera and str(dia)[:10] >= _fuera:
+                if _es_asig:
+                    if str(dia)[:10] < str(_asig.get("desde") or ""):
+                        continue              # antes de pasarse a esta cuenta era pauta de NoxaLab
+                elif _fuera and str(dia)[:10] >= _fuera:
                     continue                  # esa cuenta ya pauta otra cosa (ver META_ACTS_FUERA_DESDE)
                 if moneda == "USD" or es_owner:
                     usd_raw += spend
@@ -24389,6 +24640,13 @@ def _pf_canales(email, desde, hasta):
     if tn:
         tn_n = int((tn.get("raw") or {}).get("ordenes", 0) or 0)
         blob = _combinar_resumen(blob, tn)
+    try:   # Impultienda (ebooks, por webhook). NUNCA puede romper el dashboard.
+        im = _impul_resumen(email, desde, hasta)
+        if im:
+            tn_n += int((im.get("raw") or {}).get("ordenes", 0) or 0)
+            blob = _combinar_resumen(blob, im)
+    except Exception:
+        pass
     # meli_ok marca que MELI se LEYO, aunque haya vendido cero. Sin esto la pantalla no podia
     # distinguir "todavia no cargo" de "no vendio nada hoy", y en un dia sin ventas de MELI se
     # quedaba mostrando el periodo anterior (22-10-2026: a las 01:04 mostraba las 114 ventas
