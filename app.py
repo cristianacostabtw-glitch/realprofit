@@ -9308,10 +9308,10 @@ def _es_sucursal_ship(o) -> bool:
 
 
 def _solo_dig(v) -> str:
-    # NFKC + solo 0-9: str.isdigit() da True para '⁸', '²', '٣'... y ese DNI con un '⁸'
-    # rebotó la planilla ENTERA de 363 envíos en Andreani (10-11-2026, pedido #11266).
-    import unicodedata as _ud
-    return "".join(ch for ch in _ud.normalize("NFKC", str(v or "")) if ch in "0123456789")
+    # SOLO 0-9 de verdad: str.isdigit() da True para '⁸', '²', '٣'... El DNI del #11266 vino
+    # '12205807⁸' (un '⁸' tipeado de más) y rebotó la planilla ENTERA de 363 envíos en Andreani
+    # (10-11-2026). Ese '⁸' se DESCARTA (no se convierte en 8: daría un DNI de 9 cifras).
+    return "".join(ch for ch in str(v or "") if ch in "0123456789")
 
 
 def _dni_de(o) -> str:
