@@ -2885,12 +2885,13 @@ _SOLO_DASH = r"""
     .catch(function(){ _dStat('Error de conexión.', '#fb7185'); }); };
  window.rpDExcel=function(){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá los pedidos para el Excel.', '#fb7185'); return; }
    _dStat('⏳ Generando Excel Andreani…','#a78bfa');
-   var _dFlexOut=[],_dSinSuc=[];
+   var _dFlexOut=[],_dSinSuc=[],_dCorr=[];
    fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,tienda:_dTienda})})
     .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';});
       // los que ya tienen etiqueta Flex quedan afuera del Excel: hay que DECIRLO, no callarlo
       _dFlexOut=(r.headers.get('X-Flex-Excluidos')||'').split(',').filter(function(x){return x;});
       _dSinSuc=(r.headers.get('X-Sin-Sucursal')||'').split(',').filter(function(x){return x;});
+      _dCorr=(r.headers.get('X-Corregidos')||'').split(',').filter(function(x){return x;});
       return r.blob(); })
     .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Andreani.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
       // al exportar, los pasa a "Exportadas"
@@ -2902,7 +2903,8 @@ _SOLO_DASH = r"""
       var _n=(_dFlexOut||[]).length, _s=(_dSinSuc||[]).length;
       _dStat('✅ Excel descargado ('+_ok.length+' pedidos) → Exportadas. Subílo a Andreani.'
         +(_n?('  ⚠️ '+_n+' afuera porque ya van por Flex: '+_dFlexOut.map(function(x){return '#'+x;}).join(', ')):'')
-        +(_s?('  ⚠️ '+_s+' afuera: no pude resolver su SUCURSAL de Andreani (quedan sin exportar para que los revises): '+_dSinSuc.map(function(x){return '#'+x;}).join(', ')):'')); })
+        +(_s?('  ⚠️ '+_s+' afuera: no pude resolver su SUCURSAL de Andreani (quedan sin exportar para que los revises): '+_dSinSuc.map(function(x){return '#'+x;}).join(', ')):'')
+        +(_dCorr.length?('  🔧 Corregí solo '+_dCorr.length+' dato'+(_dCorr.length>1?'s':'')+' para que Andreani no rebote: '+_dCorr.map(function(x){ var p=x.split(':'), m={sin_mail:'sin mail → mail de la tienda',mail_malo:'mail inválido → mail de la tienda',mail:'mail mal escrito',sin_dni:'sin DNI → 00000000',dni_malo:'DNI inválido → 00000000',cuit:'CUIT → DNI',dni:'DNI con signos raros',nombre:'nombre con mail/teléfono pegado'}; return '#'+p[0]+' '+(m[p[1]]||p[1]); }).join(' · ')):'')); })
     .catch(function(e){ _dStat('No se pudo generar el Excel'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
  window.rpDEnvialo=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; inp.value='';
    _dStat('⏳ Leyendo el Excel de Envialo…','#38bdf8');
@@ -9306,7 +9308,10 @@ def _es_sucursal_ship(o) -> bool:
 
 
 def _solo_dig(v) -> str:
-    return "".join(ch for ch in str(v or "") if ch.isdigit())
+    # NFKC + solo 0-9: str.isdigit() da True para '⁸', '²', '٣'... y ese DNI con un '⁸'
+    # rebotó la planilla ENTERA de 363 envíos en Andreani (10-11-2026, pedido #11266).
+    import unicodedata as _ud
+    return "".join(ch for ch in _ud.normalize("NFKC", str(v or "")) if ch in "0123456789")
 
 
 def _dni_de(o) -> str:
@@ -11513,6 +11518,90 @@ def _and_cp4(x):
     return m.group(1) if m else ""
 
 
+# ===== Autocorrección de filas para Andreani =====
+# Andreani rechaza el archivo ENTERO por UNA fila mala (10-11-2026: un pedido sin mail y un DNI
+# con '⁸' frenaron 363 envíos). Cristian: "sin preguntarme lo corregís". Acá se arregla todo lo
+# que se puede arreglar SIN inventar datos del cliente, y cada arreglo se informa en pantalla.
+_AND_MAIL_TIENDA = {}
+_AND_MAIL_RE = _re_and.compile(r"^[a-z0-9._%+\-]+@[a-z0-9\-]+(\.[a-z0-9\-]+)*\.[a-z]{2,}$")
+_AND_MAIL_TYPO = {"gmail.con": "gmail.com", "gmail.co": "gmail.com", "gmail.cm": "gmail.com",
+                  "gmail.comm": "gmail.com", "gmail.om": "gmail.com", "gmial.com": "gmail.com",
+                  "gmai.com": "gmail.com", "gamil.com": "gmail.com", "gmil.com": "gmail.com",
+                  "gmail.com.ar": "gmail.com", "hotmail.con": "hotmail.com", "hotmial.com": "hotmail.com",
+                  "hotmal.com": "hotmail.com", "hotmail.co": "hotmail.com", "hotmail.cm": "hotmail.com",
+                  "yahoo.con": "yahoo.com", "yahoo.com.ar.": "yahoo.com.ar", "outlook.con": "outlook.com",
+                  "outlok.com": "outlook.com", "live.con": "live.com"}
+
+
+def _and_mail_tienda(user):
+    """Mail de ATENCIÓN AL CLIENTE de la tienda (Shopify customer_email = 'Correo del remitente
+    para clientes'). Nunca el mail del dueño de la cuenta (shop.email): ese no tiene que salir."""
+    if user in _AND_MAIL_TIENDA:
+        return _AND_MAIL_TIENDA[user]
+    m = ""
+    try:
+        tk = _shop_tokens().get(user) or {}
+        if tk.get("shop") and tk.get("access_token"):
+            rr = requests.get("https://" + tk["shop"] + "/admin/api/2026-07/shop.json",
+                              headers={"X-Shopify-Access-Token": tk["access_token"]}, timeout=15)
+            if rr.status_code == 200:
+                m = (((rr.json() or {}).get("shop") or {}).get("customer_email") or "").strip().lower()
+    except Exception:
+        m = ""
+    if m and _AND_MAIL_RE.match(m):
+        _AND_MAIL_TIENDA[user] = m
+        return m
+    return ""
+
+
+def _and_mail(v, tienda):
+    """(mail, nota). Limpia espacios/mayúsculas, arregla dominios mal tipeados (gmail.con) y si
+    igual no es un mail válido (o viene vacío) pone el mail de atención de la tienda."""
+    orig = str(v or "")
+    s = _ud_and.normalize("NFKC", orig).strip().lower().replace(" ", "").strip(".,;:")
+    if s.count("@") == 1:
+        u, d = s.split("@")
+        d = _AND_MAIL_TYPO.get(d, d)
+        s = u + "@" + d
+    if _AND_MAIL_RE.match(s):
+        return s, (None if s == orig.strip() else "mail")
+    if tienda:
+        return tienda, ("sin_mail" if not orig.strip() else "mail_malo")
+    return s, None
+
+
+def _and_dni(v):
+    """(dni, nota). Solo dígitos 0-9 (fuera '⁸', puntos, espacios); CUIT/CUIL de 11 → el DNI del
+    medio; vacío o con un largo que Andreani no acepta → 00000000 (lo exige y no se inventa)."""
+    orig = str(v or "").strip()
+    s = _solo_dig(orig)
+    nota = None
+    if len(s) == 11 and s[:2] in ("20", "23", "24", "27", "30", "33", "34"):
+        s, nota = s[2:10], "cuit"
+    if not s:
+        return "00000000", ("sin_dni" if not orig else "dni_malo")
+    if not (7 <= len(s) <= 8):
+        return "00000000", "dni_malo"
+    if nota is None and s != orig:
+        nota = "dni"
+    return s, nota
+
+
+def _and_nombre(nm):
+    """(nombre, apellido, nota). Saca mails y teléfonos pegados al nombre ('Aguilar3834535495',
+    'juan@gmail.com Juan Perez') y símbolos que Andreani rechaza; nunca deja Nombre/Apellido vacíos."""
+    orig = str(nm or "")
+    t = _re_and.sub(r"\S+@\S+", " ", orig)
+    t = _re_and.sub(r"\d{3,}", " ", t)
+    nom, ape = _split_nombre(t)
+    nom, ape = _and_txt(nom), _and_txt(ape)
+    if not nom and not ape:
+        nom = ape = "Cliente"
+    nom, ape = nom or ape, ape or nom
+    nota = "nombre" if (t != orig) else None
+    return nom, ape, nota
+
+
 def _and_split_tel(p):
     d = _re_and.sub(r"\D", "", str(p or ""))
     d = _re_and.sub(r"^0", "", d)
@@ -11846,6 +11935,8 @@ def pf_despachos_excel():
     except Exception:
         _flex_ya = set()
     por_flex = []
+    mail_tienda = _and_mail_tienda(_user_actual())
+    corregidos = []              # arreglos automáticos (num:motivo) → se muestran en pantalla
     r_dom = r_suc = 3
     faltantes = []               # domicilios sin número de calle → NO inventamos, avisamos
     revisar = []                 # sucursales que no pudimos mapear con confianza → NO inventamos
@@ -11864,15 +11955,17 @@ def pf_despachos_excel():
         if not _envio_unificado_paga(r["num"]):
             unificados.append(str(r["num"]))
             continue
-        nom, ape = _split_nombre(r["nombre"])
-        nom, ape = _and_txt(nom), _and_txt(ape)               # Andreani rechaza símbolos en nombre/apellido
+        nom, ape, _n1 = _and_nombre(r["nombre"])               # sin mails/teléfonos pegados ni símbolos
         # Piso 40.000: por debajo Andreani rechaza la fila con "El valor declarado es menor
         # al minimo permitido". Con 30.000 volvian 11 errores (planilla del 23-10-2026).
         valor = max(int(round(r.get("total") or 0)), 40000)
         peso = PESO
-        dni = str(r.get("dni") or "").strip() or "00000000"   # Andreani exige DNI
+        dni, _n2 = _and_dni(r.get("dni"))                      # Andreani exige DNI y solo dígitos
         tel_cod, tel_num = _and_split_tel(r.get("tel"))        # teléfono partido en código/número
-        email = r.get("email") or ""
+        email, _n3 = _and_mail(r.get("email"), mail_tienda)    # sin mail → mail de atención de la tienda
+        for _nn in (_n1, _n2, _n3):
+            if _nn:
+                corregidos.append(str(r["num"]) + ":" + _nn)
         if r["tipo"] == "sucursal":
             # Sucursal: la manda Envialo (1=1) o el resolvedor (exacto→coord→vivo). PERO la carga masiva
             # de Andreani SOLO acepta valores del desplegable → validamos: si el punto NO está en el
@@ -11935,6 +12028,9 @@ def pf_despachos_excel():
     if revisar:
         resp.headers["X-Sin-Sucursal"] = ",".join(revisar)
         _exp.append("X-Sin-Sucursal")
+    if corregidos:
+        resp.headers["X-Corregidos"] = ",".join(corregidos)
+        _exp.append("X-Corregidos")
     if _flex:
         # Que se vea cuales quedaron afuera por ser Flex, no que desaparezcan en silencio.
         resp.headers["X-Flex-Salteados"] = ",".join(str(r["num"]) for r in _flex)
@@ -34167,12 +34263,12 @@ def pf_diag_excel():
     cpidx, sucs = _and_cfg(wb)
     r_dom = r_suc = 3; faltantes = []; revisar = []; dudosos = []; via = {"exacto": 0, "fuzzy": 0, "live": 0}
     for r in sel:
-        nom, ape = _split_nombre(r["nombre"]); nom, ape = _and_txt(nom), _and_txt(ape)
+        nom, ape, _n1 = _and_nombre(r["nombre"])
         # MINIMO 40.000: Andreani rechaza la fila con "El valor declarado es menor al minimo
         # permitido" por debajo de eso. Con 30.000 volvian 11 errores en la planilla del
         # 23-10-2026 y habia que corregirlos a mano uno por uno.
-        valor = max(int(round(r.get("total") or 0)), 40000); dni = str(r.get("dni") or "").strip() or "00000000"
-        tel_cod, tel_num = _and_split_tel(r.get("tel")); email = r.get("email") or ""
+        valor = max(int(round(r.get("total") or 0)), 40000); dni, _n2 = _and_dni(r.get("dni"))
+        tel_cod, tel_num = _and_split_tel(r.get("tel")); email, _n3 = _and_mail(r.get("email"), _and_mail_tienda(_user_actual()))
         if r["tipo"] == "sucursal":
             suc_raw = r.get("suc_nombre") or ""
             of = _and_suc_exacto(suc_raw); conf = bool(of)
