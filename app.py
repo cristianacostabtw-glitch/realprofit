@@ -18910,6 +18910,26 @@ def meta_elegir_cuenta():
     return jsonify({"ok": True})
 
 
+# Cuentas de Meta que DEJAN de ser de esta tienda desde una fecha: su gasto de ese dia en adelante
+# no se suma (lo de antes si, porque era pauta de la tienda). CP2 "SEGUNDA NOXALAB NX" (portfolio
+# CP1) paso a pautar el ebook El Secreto del Drenaje: no gasto nada del 01 al 09-11 y desde el 10-11
+# todo su gasto es la campaña "EBOOK (no soy gay)". Pedido de Cristian, 11-11-2026.
+# Se pueden sumar mas por env sin deploy: META_ACTS_FUERA="id:AAAA-MM-DD,id2:AAAA-MM-DD".
+META_ACTS_FUERA_DESDE = {"1779069840175413": "2026-11-10"}
+
+
+def _meta_act_fuera(acc):
+    """Fecha desde la que la cuenta 'acc' ya no suma (o '' si siempre suma)."""
+    acc = str(acc or "").replace("act_", "").strip()
+    m = dict(META_ACTS_FUERA_DESDE)
+    for par in (_os.getenv("META_ACTS_FUERA", "") or "").split(","):
+        if ":" in par:
+            a, f = par.split(":", 1)
+            if a.strip() and f.strip():
+                m[a.strip().replace("act_", "")] = f.strip()[:10]
+    return m.get(acc, "")
+
+
 def _meta_spend(email, desde, hasta):
     """Gasto en ads (USD/ARS) de la cuenta elegida, en el período. 0 si no hay cuenta/conexión.
 
@@ -18960,7 +18980,10 @@ def _meta_spend(email, desde, hasta):
             filas = _meta_dias_estable(acc, desde, hasta, _meta_insights_dias(token, acc, desde, hasta))
             if filas:
                 hubo = True
+            _fuera = _meta_act_fuera(acc)
             for dia, spend, moneda in filas:
+                if _fuera and str(dia)[:10] >= _fuera:
+                    continue                  # esa cuenta ya pauta otra cosa (ver META_ACTS_FUERA_DESDE)
                 if moneda == "USD" or es_owner:
                     usd_raw += spend
                     spend *= _dolar_pauta_dia(email, dia)
@@ -20796,9 +20819,16 @@ def _fin_ads_usd_meta(email, desde, hasta, solo=None, excluir=None) -> float:
     total = 0.0
     for acc in cuentas:
         try:
+            _hasta = hasta
+            _fuera = _meta_act_fuera(acc)
+            if _fuera and str(_hasta)[:10] >= _fuera:      # esa cuenta ya pauta otra cosa
+                import datetime as _dt_f
+                _hasta = (_dt_f.date.fromisoformat(_fuera) - _dt_f.timedelta(days=1)).isoformat()
+                if _hasta < str(desde)[:10]:
+                    continue
             r = requests.get("https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc),
                              params={"access_token": token, "fields": "spend,account_currency",
-                                     "time_range": _json.dumps({"since": desde, "until": hasta}),
+                                     "time_range": _json.dumps({"since": desde, "until": _hasta}),
                                      "level": "account"}, timeout=30)
             data = r.json().get("data") or []
             if not data:
@@ -24261,7 +24291,10 @@ def _pf_dia_clave(email, dia) -> str:
     # AUDITORIA 02-11-2026 (pago de MP contado dos veces, envio de Flex/unificados/digitales):
     # los dias desde PF_DIAS_MP2_DESDE se recalculan una vez. Los anteriores no se tocan.
     if str(dia)[:10] >= PF_DIAS_MP2_DESDE:
-        ck += "|mp3"          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
+        ck += "|mp3"
+    # CP2 deja de sumar desde el 10-11 (META_ACTS_FUERA_DESDE): esos dias se recalculan una vez.
+    if str(dia)[:10] >= "2026-11-10":
+        ck += "|cp2x"          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
     return ck
 
 
