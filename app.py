@@ -8651,7 +8651,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-11-iva-ebook-cp"})
+    return jsonify({"ok": True, "v": "2026-11-11-iva-ebook-mp"})
 
 
 _KPI_DBG = {}
@@ -18501,7 +18501,10 @@ def _impul_resumen(email, desde, hasta):
     if not mp_conectado:
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
-    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + iva_deb
+    # 11-11 19:40 (Cristian): el UNICO IVA a favor es el de la comision de MercadoPago (cobro al
+    # instante, viene con IVA adentro). Se resta el IVA de la venta MENOS ese credito.
+    iva_neto = iva_deb - mp_costo * 21.0 / 121.0
+    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + iva_neto
     ganancia = fact - comision_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
@@ -18512,7 +18515,7 @@ def _impul_resumen(email, desde, hasta):
     r["be_cpa"] = r["breakeven_cpa"] = round(ganancia / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
     r["impul_upsells"] = upsells
-    r["iva_ebook"] = round(iva_deb, 2)
+    r["iva_ebook"] = round(iva_neto, 2)      # IVA a pagar del ebook, YA restado en la ganancia
     # Para el bloque de IVA del Dashboard: lo del ebook YA esta restado entero aca (sin credito).
     r["mp_ebook"] = round(mp_costo, 2); r["perc_ebook"] = round(perc_iva, 2)
     r["impul_sin_verificar"] = sin_verif
@@ -25340,7 +25343,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # no se vuelve a restar con "Responsable Inscripto": antes se restaba dos veces (ej. 11-11:
     # ganancia -$9.318 cuando era +$8.677) y el a favor mostraba $2.209 de la comision de MP.
     _eb_iva = float(r.get("iva_ebook") or 0)
-    _iva_cred -= float(r.get("mp_ebook") or 0) * _F + float(r.get("perc_ebook") or 0)
+    # (11-11 19:40) la comision de MP SI da credito; la percepcion del ebook no.
+    _iva_cred -= float(r.get("perc_ebook") or 0)
     _iva_pag = _iva_deb - _iva_cred
     _iva_resta = _iva_pag - _eb_iva      # lo que la ganancia todavia NO tiene restado
     r["iva_pagar_resta"] = round(_iva_resta, 2)
