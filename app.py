@@ -18493,11 +18493,15 @@ def _impul_resumen(email, desde, hasta):
         ords_list.append({"num": str(o.get("order_number") or ""), "origen": "Impultienda" + (" (upsell)" if o.get("is_post_purchase") else ""),
                           "estado": "Pagado", "fecha": o.get("aprobado_at") or o.get("order_created_at") or "",
                           "total": round(tot, 2), "neto": round(tot, 2)})
-    iibb_monto = fact * IIBB_PCT / 100.0
+    # EBOOKS (Cristian, 11-11-2026): "sacarle el 21% de IVA para pagar el fisco; de eso no hay nada
+    # a favor". IVA = el CONTENIDO en el precio (÷1,21), entero, SIN credito fiscal. IIBB 3,5% sobre
+    # el neto sin IVA. Van dentro de 'comision' para que el break even y el CPA tope los cuenten.
+    iva_deb = fact * 21.0 / 121.0
+    iibb_monto = (fact - iva_deb) * 3.5 / 100.0
     if not mp_conectado:
         cu = _comis_user(email)
         mp_costo = fact * (cu["mp_comision"] + cu["mp_cuotas"]) * (1 + cu["iva"] / 100.0) / 100.0
-    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto
+    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + iva_deb
     ganancia = fact - comision_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
@@ -18508,6 +18512,7 @@ def _impul_resumen(email, desde, hasta):
     r["be_cpa"] = r["breakeven_cpa"] = round(ganancia / ordenes, 2) if ordenes else 0.0
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
     r["impul_upsells"] = upsells
+    r["iva_ebook"] = round(iva_deb, 2)
     r["impul_sin_verificar"] = sin_verif
     r["unidades"] = unidades
     r["facturado"] = r["tot_facturado"] = round(fact, 2)
@@ -24811,7 +24816,7 @@ def _pf_dia_clave(email, dia) -> str:
         ck += "|mp3"
     # CP2 deja de sumar desde el 10-11 (META_ACTS_FUERA_DESDE): esos dias se recalculan una vez.
     if str(dia)[:10] >= "2026-11-10":
-        ck += "|cp2x"          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
+        ck += "|cp2x|ivaeb"       # ivaeb: ebooks con IVA entero e IIBB 3,5% (11-11-2026)          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
     return ck
 
 
