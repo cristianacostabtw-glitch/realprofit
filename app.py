@@ -376,7 +376,7 @@ SOLO_ADMIN = [
     "/pf-movimientos",
     "/pf-impuestos", "/pf-imp-dolar-emma",
     "/clientes", "/pf-clientes",
-    "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-",
+    "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-", "/gads",
     "/envialo",
     "/fin-", "/equipo",
 ]
@@ -2464,7 +2464,7 @@ _SOLO_DASH = r"""
   {key:'tn',logo:'tn',nm:'Tiendanube',tag:'Ventas',desc:'Trae tus ventas online de tu tienda para el beneficio real.'},
   {key:'meli',logo:'meli',nm:'Mercado Libre',tag:'Ventas',desc:'Incluye tus ventas de marketplace en el calculo de beneficio.'},
   {key:'meta',logo:'meta',nm:'Meta Ads',tag:'Anuncios',desc:'Trae tus campanas de Facebook e Instagram Ads.'},
-  {key:'gads',logo:'gads',nm:'Google Ads',tag:'Anuncios',desc:'Trae tus campanas de Google Ads (Search, Performance Max, Shopping).'},
+  {key:'gads',logo:'gads',nm:'Google Ads',tag:'Anuncios',desc:'Suma el gasto de Google Ads a la inversion del Dashboard (ROAS, CPA y ganancia).'},
   {key:'tiktok',logo:'tiktok',nm:'TikTok Ads',tag:'Anuncios',desc:'Trae tus campanas de TikTok Ads para medir su rentabilidad real.'}
  ];
  function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');}
@@ -2474,9 +2474,9 @@ _SOLO_DASH = r"""
   var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
   var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk);
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk)||(p.key==='gads'&&window._rpGa);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; var etiqCon=(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':(p.key==='gads')?'/desconectar-gads':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; if(p.key==='gads'){ cambiar='<a href="#" onclick="rpGaToggle();return false;" style="'+ds+'">'+(window._rpGaOpen?'Cerrar':'Ver script')+'</a>'; } var etiqCon=(p.key==='gads'&&window._rpGaInfo&&window._rpGaInfo.cuenta&&window._rpGaInfo.cuenta.nombre)?('Conectado &middot; '+esc(window._rpGaInfo.cuenta.nombre)):(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='meli'){ b='<a href="/conectar-meli" onclick="window.location.assign(\'/conectar-meli\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -2488,6 +2488,7 @@ _SOLO_DASH = r"""
       +(window._rpTkListo
         ? '<a href="/conectar-tiktok" onclick="window.location.assign(\'/conectar-tiktok\');return false;" style="'+bs+'">&#9889; Conectar</a>'
         : '<a href="#" onclick="alert(\'Falta que TikTok apruebe la app. Mientras tanto usa Cargar gasto: el Dashboard lo suma igual.\');return false;" style="'+bs+'">&#9889; Conectar</a>'); }
+    else if(p.key==='gads'){ b='<a href="#" onclick="rpGaToggle();return false;" style="'+bs+'">&#9889; '+(window._rpGaOpen?'Cerrar':'Conectar')+'</a>'; }
     else { b='<a href="#" onclick="alert(\'Muy pronto podes conectar \'+esc(p.nm)+\'.\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     right=chip('No conectado','#94a3b8','#141d2c','#1e2b3d')+b; }
    var row='<div style="display:flex;align-items:center;gap:13px;padding:13px 17px">'
@@ -2503,11 +2504,13 @@ _SOLO_DASH = r"""
    else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
    else if(p.key==='tiktok' && window._rpTk) panel=rpTkPanel();
    else if(p.key==='tiktok' && !window._rpTk && window._rpTkManOpen) panel=rpTkManPanel();
+   else if(p.key==='gads' && (window._rpGa || window._rpGaOpen)) panel=rpGaPanel();
    h+='<div style="background:#0f1826;border:1px solid #1e2b3d;border-radius:12px;margin-bottom:9px;overflow:hidden">'+row+panel+'</div>';
   });
   document.getElementById('rp-integ-cards').innerHTML=h;
   if(metaOn){ try{ rpMetaLoad(); }catch(e){} }
   if(window._rpTk){ try{ rpTkLoad(); }catch(e){} }
+  try{ rpGaPintar(); }catch(e){}
  }
  window.rpMetaTokToggle=function(){ window._rpMetaTokOpen=!window._rpMetaTokOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
  function rpMetaTokenPanel(){ return ''
@@ -2630,7 +2633,58 @@ _SOLO_DASH = r"""
   fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meli/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeli=!!(j&&j.conectado); window._rpMeliNick=(j&&j.nickname)||''; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/tiendanube/estado').then(function(r){return r.json();}).then(function(j){ window._rpTn=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
-  fetch('/tiktok/estado').then(function(r){return r.json();}).then(function(j){ window._rpTk=!!(j&&j.conectado); window._rpTkListo=!!(j&&j.listo); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){}); }
+  fetch('/tiktok/estado').then(function(r){return r.json();}).then(function(j){ window._rpTk=!!(j&&j.conectado); window._rpTkListo=!!(j&&j.listo); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  try{ rpGaEstado(false); }catch(e){} }
+ // ---- Google Ads: el gasto lo manda un Script que corre adentro de la cuenta de Google ----
+ function rpGaPlata(v,mon){ return ((mon&&mon!=='ARS')?(esc(mon)+' '):'$ ')+Number(v||0).toLocaleString('es-AR',{maximumFractionDigits:2}); }
+ function rpGaMsg(t,ok){ window._rpGaM={t:t,ok:ok}; var e=document.getElementById('rp-ga-msg'); if(e){ e.style.color=ok?'#34d399':'#f87171'; e.innerHTML=t; } }
+ function rpGaPanel(){ var i=window._rpGaInfo||{}, c=i.cuenta||{}, h='<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">';
+  if(window._rpGa){
+   var hace=(i.hace_min<60)?('hace '+i.hace_min+' min'):('hace '+Math.round(i.hace_min/60)+' h');
+   h+='<div style="font-weight:700;color:#e2e8f0;font-size:12.5px">Cuenta '+esc(c.id||'')+' &middot; '+esc(c.moneda||'')+' <span style="color:#94a3b8;font-weight:400">&middot; &uacute;ltimo env&iacute;o '+hace+'</span></div>'
+    +'<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:9px;font-size:12.5px;color:#cbd5e1">'
+    +'<span>Hoy <b style="color:#f1f5f9">'+rpGaPlata(i.hoy,c.moneda)+'</b></span>'
+    +'<span>Ayer <b style="color:#f1f5f9">'+rpGaPlata(i.ayer,c.moneda)+'</b></span>'
+    +'<span>&Uacute;ltimos 7 d&iacute;as <b style="color:#f1f5f9">'+rpGaPlata(i.d7,c.moneda)+'</b></span></div>'
+    +(i.atrasado?'<div style="color:#f87171;font-size:12px;margin-top:9px;font-weight:600">El script no manda datos '+hace+'. Entr&aacute; a Google Ads &rarr; Secuencias de comandos y fijate que est&eacute; con frecuencia &laquo;Cada hora&raquo; y sin errores en el registro.</div>':'');
+  }
+  if(!window._rpGa || window._rpGaOpen){
+   h+='<div style="'+(window._rpGa?'margin-top:15px;':'')+'font-weight:700;color:#e2e8f0;font-size:13px">Google Ads manda el gasto solo, con un script que corre adentro de tu cuenta</div>'
+    +'<div style="color:#94a3b8;font-size:12px;margin-top:6px;line-height:1.7">'
+    +'<b style="color:#cbd5e1">1)</b> Copi&aacute; el script de ac&aacute; abajo. '
+    +'<b style="color:#cbd5e1">2)</b> En Google Ads: <b style="color:#cbd5e1">Herramientas &rarr; Acciones masivas &rarr; Secuencias de comandos &rarr; +</b>, borr&aacute; lo que venga y pegalo. '
+    +'<b style="color:#cbd5e1">3)</b> <b style="color:#cbd5e1">Autorizar</b> y despu&eacute;s <b style="color:#cbd5e1">Ejecutar</b>. '
+    +'<b style="color:#cbd5e1">4)</b> Guardalo con frecuencia <b style="color:#cbd5e1">Cada hora</b>. '
+    +'Solo lee el costo por d&iacute;a: no toca campa&ntilde;as ni presupuestos.</div>'
+    +'<textarea id="rp-ga-script" readonly spellcheck="false" onclick="this.select()" style="width:100%;height:150px;margin-top:10px;background:#0b1220;border:1px solid #1e2b3d;color:#93c5fd;border-radius:8px;padding:10px 11px;font-size:11.5px;font-family:ui-monospace,monospace;box-sizing:border-box;resize:vertical">Cargando el script...</textarea>'
+    +'<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-top:10px">'
+    +'<button onclick="rpGaCopiar()" style="background:#137fec;color:#fff;border:none;border-radius:8px;padding:9px 17px;font-weight:700;font-size:13px;cursor:pointer">Copiar script</button>'
+    +'<a href="https://ads.google.com/aw/bulk/scripts" target="_blank" rel="noopener" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:8px 15px;font-weight:600;font-size:13px;text-decoration:none">Abrir Google Ads</a>'
+    +'<button onclick="rpGaVerificar()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:8px 15px;font-weight:600;font-size:13px;cursor:pointer">Ya lo ejecut&eacute;: verificar</button>'
+    +'</div>'
+    +'<div style="color:#94a3b8;font-size:11.5px;margin-top:8px">El script lleva adentro la clave de tu cuenta de RealProfit: no lo compartas.</div>';
+  }
+  var m=window._rpGaM||{}; return h+'<div id="rp-ga-msg" style="font-size:12.5px;margin-top:10px;color:'+(m.ok?'#34d399':'#f87171')+'">'+(m.t||'')+'</div></div>'; }
+ window.rpGaPintar=function(){ var t=document.getElementById('rp-ga-script'); if(!t)return;
+  if(window._rpGaScript){ t.value=window._rpGaScript; return; }
+  if(window._rpGaScriptPid)return; window._rpGaScriptPid=1;
+  fetch('/gads/script').then(function(r){return r.json();}).then(function(j){ window._rpGaScriptPid=0;
+    var e=document.getElementById('rp-ga-script');
+    if(j&&j.ok&&j.script){ window._rpGaScript=j.script; if(e)e.value=j.script; }
+    else { if(e)e.value=''; rpGaMsg(esc((j&&j.error)||'No se pudo armar el script.'),false); } })
+   .catch(function(err){ window._rpGaScriptPid=0; var e=document.getElementById('rp-ga-script'); if(e)e.value=''; rpGaMsg('No se pudo traer el script: '+esc(String(err&&err.message||err)),false); }); };
+ window.rpGaToggle=function(){ window._rpGaOpen=!window._rpGaOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
+ window.rpGaCopiar=function(){ var s=window._rpGaScript||''; if(!s){ rpGaMsg('El script todav&iacute;a no carg&oacute;.',false); return; }
+  function viejo(){ var t=document.getElementById('rp-ga-script'); try{ t.focus(); t.select(); if(document.execCommand('copy')){ rpGaMsg('Copiado. Ahora pegalo en Google Ads.',true); return; } }catch(e){} rpGaMsg('No se pudo copiar solo: seleccion&aacute; el texto y copialo a mano.',false); }
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(s).then(function(){ rpGaMsg('Copiado. Ahora pegalo en Google Ads.',true); }).catch(viejo); } else { viejo(); } };
+ window.rpGaEstado=function(aviso){ fetch('/gads/estado').then(function(r){return r.json();}).then(function(j){
+   var antes=!!window._rpGa; window._rpGa=!!(j&&j.conectado); window._rpGaInfo=j||{};
+   if(window._rpGa && !antes) window._rpGaOpen=false;
+   cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta);
+   if(aviso){ if(window._rpGa) rpGaMsg('Conectado: ya lleg&oacute; el gasto de la cuenta '+esc(((j.cuenta||{}).id)||'')+'.',true);
+              else rpGaMsg(esc((j&&j.error)||'Todavía no llegó nada. Ejecutá el script una vez en Google Ads (botón Ejecutar) y volvé a verificar.'),false); } })
+  .catch(function(err){ if(aviso) rpGaMsg('No se pudo consultar el estado: '+esc(String(err&&err.message||err)),false); }); };
+ window.rpGaVerificar=function(){ rpGaMsg('Buscando...',true); rpGaEstado(true); };
  function rpShopPanel(){ var CB='https://www.realprofitapp.com/shopify/callback'; return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">1) Dominio de tu tienda</div>'
@@ -4065,7 +4119,7 @@ _SOLO_DASH = r"""
     return out; }
   function metricas(){ if(!_raw)return false;
     var cards=_pubCards(); if(cards.length<4) return false;   // <4 = grilla todavía no montada → no destapar
-    var seq=[['Inversión Ads',(window.__CUR==='USD'&&_raw.publi_usd!=null)?('$'+Number(+(_raw.publi_usd)||0).toLocaleString('es-AR',{maximumFractionDigits:2})):money((_raw.publi_total!=null?_raw.publi_total:_raw.publi_ars)||0),(+(_raw.publi_meli||0))?'Meta + MercadoLibre':'Inversión en anuncios'],
+    var seq=[['Inversión Ads',(window.__CUR==='USD'&&_raw.publi_usd!=null)?('$'+Number(+(_raw.publi_usd)||0).toLocaleString('es-AR',{maximumFractionDigits:2})):money((_raw.publi_total!=null?_raw.publi_total:_raw.publi_ars)||0),(function(){ var a=['Meta']; if(+(_raw.publi_google||0)) a.push('Google'); if(+(_raw.publi_meli||0)) a.push('MercadoLibre'); return a.length>1?a.join(' + '):'Inversión en anuncios'; })()],
              ['Margen',num(_raw.margen)+'%','Ganancia ÷ facturación'],
              ['ROAS',num(_raw.roas)+'x','Facturación TOTAL (tienda + MELI) ÷ ads'],
              ['Break Even ROAS',num(_raw.be_roas)+'x','Mínimo para no perder · SOLO tienda (sin MELI)'],
@@ -4088,12 +4142,14 @@ _SOLO_DASH = r"""
   // HTML ahi, los dos writers se pisarian y la tarjeta titilaria.
   function _rpLogo(svg,px){ try{ return (svg||'').replace(/width="\d+"\s+height="\d+"/, 'width="'+px+'" height="'+px+'"'); }catch(e){ return ''; } }
   function pubSplit(card){ if(!card||!_raw) return;
-    var meta=+(_raw.publi_ars||0), meli=+(_raw.publi_meli||0);
+    var todo=+(_raw.publi_ars||0), meli=+(_raw.publi_meli||0), goog=+(_raw.publi_google||0);
+      if(goog>todo) goog=todo;            // publi_ars ya trae Google adentro
+      var meta=todo-goog;
     var box=card.querySelector('[data-rp="pubsplit"]');
-    if(!meli){ if(box){ try{ box.remove(); }catch(e){} } return; }   // sin pauta de MELI, no hay nada que repartir
-    var tot=meta+meli;
-    var pm=tot?Math.round(meta/tot*1000)/10:0, pl=tot?Math.round(meli/tot*1000)/10:0;
-    var fir=meta+'|'+meli+'|'+(window.__CUR||'');
+    if(!meli && !goog){ if(box){ try{ box.remove(); }catch(e){} } return; }   // sin pauta de MELI, no hay nada que repartir
+    var tot=todo+meli;
+    var pm=tot?Math.round(meta/tot*1000)/10:0, pl=tot?Math.round(meli/tot*1000)/10:0, pg=tot?Math.round(goog/tot*1000)/10:0;
+    var fir=meta+'|'+meli+'|'+goog+'|'+(window.__CUR||'');
     if(box && box.getAttribute('data-fir')===fir) return;
     if(!box){ box=document.createElement('div'); box.setAttribute('data-rp','pubsplit');
       box.style.cssText='display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:9px';
@@ -4103,7 +4159,8 @@ _SOLO_DASH = r"""
     function it(lg,nom,txt){ return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;line-height:1;white-space:nowrap;opacity:.9">'
         +(lg?('<span style="display:inline-flex;align-items:center">'+lg+'</span>'):('<b>'+nom+'</b>'))+'<span>'+txt+'</span></span>'; }
     box.innerHTML = it(_rpLogo(LG.meta,15),'Meta',money(meta)+' · '+pm+'%')
-                  + it(_rpLogo(LG.meli,15),'MELI',money(meli)+' · '+pl+'%'); }
+                    + (goog?it(_rpLogo(LG.gads,15),'Google',money(goog)+' · '+pg+'%'):'')
+                    + (meli?it(_rpLogo(LG.meli,15),'MELI',money(meli)+' · '+pl+'%'):''); }
   // Label ACTUAL de una tarjeta (hoja uppercase / con tracking), normalizado sin acentos → para no pisar cartas ajenas.
   function _lblOf(card){ try{ var d=card.querySelectorAll('span,div,p');
     for(var i=0;i<d.length;i++){ var e=d[i]; if(e.children.length) continue; var t=(e.textContent||'').trim(); if(!t) continue;
@@ -20269,6 +20326,259 @@ def _tiktok_ads_usd(email, desde, hasta) -> float:
     return round(monto, 2)
 
 
+# ==================== GOOGLE ADS (gasto por dia: lo manda un Script desde la cuenta) ====================
+# Google Ads no se conecta por API como Meta: la API pide un proyecto de Google Cloud aprobado.
+# En cambio la cuenta puede correr un Script propio (Herramientas > Secuencias de comandos) que
+# cada hora lee el costo por dia y lo manda aca con un token secreto de la cuenta de RealProfit.
+# Queda guardado POR DIA en disco (2 workers => nada de estado en memoria) y se suma a la misma
+# INVERSION ADS que Meta y TikTok.
+GADS_FILE = DATA_DIR / "gads_gasto.json"
+# {email: {"token": str, "cuenta": {"id","nombre","moneda","tz"}, "ts": epoch del ultimo envio,
+#          "dias": {"YYYY-MM-DD": monto en la moneda de la cuenta}}}
+_GADS_LOCK = threading.Lock()
+_GADS_BASE = _os.environ.get("RP_URL_PUBLICA", "https://www.realprofitapp.com").rstrip("/")
+_GADS_DIAS_SCRIPT = 120          # dias para atras que manda el script en cada corrida
+
+_GADS_SCRIPT = r"""/**
+ * RealProfit <- Google Ads: manda el gasto de cada dia al Dashboard de RealProfit.
+ * Solo LEE el costo de la cuenta. No toca campanas, presupuestos ni anuncios.
+ * Frecuencia recomendada: "Cada hora".
+ */
+var RP_URL = '__RP_URL__';
+var RP_TOKEN = '__RP_TOKEN__';
+var RP_DIAS = __RP_DIAS__;   // cuantos dias para atras manda en cada corrida
+
+function main() {
+  var cta = AdsApp.currentAccount();
+  var tz = cta.getTimeZone();
+  var ahora = new Date();
+  var dias = {};
+  for (var i = 0; i <= RP_DIAS; i++) {
+    dias[Utilities.formatDate(new Date(ahora.getTime() - i * 86400000), tz, 'yyyy-MM-dd')] = 0;
+  }
+  var fechas = Object.keys(dias).sort();
+  var hoy = fechas[fechas.length - 1];
+  var q = "SELECT segments.date, metrics.cost_micros FROM customer " +
+          "WHERE segments.date BETWEEN '" + fechas[0] + "' AND '" + hoy + "'";
+  var filas = AdsApp.report(q).rows();
+  while (filas.hasNext()) {
+    var r = filas.next();
+    var f = String(r['segments.date']);
+    dias[f] = (dias[f] || 0) + Number(r['metrics.cost_micros']) / 1000000;
+  }
+  for (var k in dias) { dias[k] = Math.round(dias[k] * 100) / 100; }
+  Logger.log('Cuenta ' + cta.getCustomerId() + ' (' + cta.getCurrencyCode() + ') | hoy ' + hoy + ': ' +
+             dias[hoy] + ' | ayer ' + fechas[fechas.length - 2] + ': ' + dias[fechas[fechas.length - 2]]);
+  var resp = UrlFetchApp.fetch(RP_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    muteHttpExceptions: true,
+    headers: {'X-RP-Token': RP_TOKEN},
+    payload: JSON.stringify({
+      cuenta_id: cta.getCustomerId(),
+      cuenta: cta.getName(),
+      moneda: cta.getCurrencyCode(),
+      tz: tz,
+      dias: dias
+    })
+  });
+  var cod = resp.getResponseCode();
+  Logger.log('RealProfit respondio ' + cod + ': ' + resp.getContentText());
+  if (cod !== 200) {
+    throw new Error('RealProfit no acepto el gasto (' + cod + '): ' + resp.getContentText());
+  }
+}
+"""
+
+
+def _gads_all() -> dict:
+    try:
+        d = _json.loads(GADS_FILE.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _gads_guardar(d) -> None:
+    tmp = GADS_FILE.with_name("%s.tmp%d_%d" % (GADS_FILE.name, _os.getpid(), threading.get_ident()))
+    tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    _os.replace(str(tmp), str(GADS_FILE))
+
+
+def _gads_token(email, crear=False) -> str:
+    """Token secreto del script de esta cuenta (se crea la primera vez que se pide el script)."""
+    with _GADS_LOCK:
+        d = _gads_all()
+        tok = str((d.get(email) or {}).get("token") or "").strip()
+        if not tok and crear:
+            tok = _secrets.token_urlsafe(24)
+            mio = d.get(email) or {}
+            mio["token"] = tok
+            d[email] = mio
+            _gads_guardar(d)
+        return tok
+
+
+def _gads_email_de_token(tok) -> str:
+    import hmac as _hm
+    tok = str(tok or "")
+    if len(tok) < 20:
+        return ""
+    for em, c in _gads_all().items():
+        t = str((c or {}).get("token") or "")
+        if t and _hm.compare_digest(t, tok):
+            return em
+    return ""
+
+
+def _gads_rango(mio, desde, hasta) -> float:
+    """Suma de los dias guardados entre dos fechas, EN LA MONEDA DE LA CUENTA de Google."""
+    dias = (mio or {}).get("dias") or {}
+    d, h = str(desde)[:10], str(hasta)[:10]
+    return round(sum(float(v or 0) for f, v in dias.items() if d <= f <= h), 2)
+
+
+def _gads_spend(email, desde, hasta) -> float:
+    """Gasto de Google Ads del periodo EN PESOS (mismo criterio que _meta_spend / _tiktok_spend).
+    No pasa por el estabilizador 'solo crece': sale de disco (igual en los 2 workers) y tiene que
+    poder BAJAR cuando Google corrige un dia (clics invalidos)."""
+    mio = _gads_all().get(email) or {}
+    monto = _gads_rango(mio, desde, hasta)
+    if monto and str((mio.get("cuenta") or {}).get("moneda") or "").upper() == "USD":
+        monto *= _dolar_ars_vivo()
+    return round(monto, 2)
+
+
+def _gads_ads_usd(email, desde, hasta) -> float:
+    """Gasto de Google Ads del periodo EN DOLARES (para la planilla de finanzas)."""
+    mio = _gads_all().get(email) or {}
+    monto = _gads_rango(mio, desde, hasta)
+    if monto and str((mio.get("cuenta") or {}).get("moneda") or "").upper() != "USD":
+        tc = _dolar_ars_vivo() or 0
+        monto = (monto / tc) if tc else 0.0
+    return round(monto, 2)
+
+
+@app.post("/gads/push")
+@limiter.limit("240 per hour")
+def gads_push():
+    """Lo llama el Script de Google Ads (sin sesion): entra con el token de la cuenta."""
+    import hmac as _hm
+    j = request.get_json(silent=True, force=True)
+    if not isinstance(j, dict):
+        return jsonify({"ok": False, "error": "El cuerpo no es JSON."}), 400
+    tok = str(request.headers.get("X-RP-Token") or j.get("token") or "").strip()
+    email = _gads_email_de_token(tok)
+    if not email:
+        return jsonify({"ok": False, "error": "Token invalido o Google Ads desconectado en RealProfit: "
+                        "copia de nuevo el script desde Integraciones > Google Ads."}), 403
+    crudo = j.get("dias")
+    if not isinstance(crudo, dict) or not crudo:
+        return jsonify({"ok": False, "error": "No vino ningun dia en 'dias'."}), 400
+    if len(crudo) > 800:
+        return jsonify({"ok": False, "error": "Demasiados dias (%d, maximo 800)." % len(crudo)}), 400
+    dias = {}
+    for f, m in crudo.items():
+        f = str(f)
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", f):
+            return jsonify({"ok": False, "error": "Fecha invalida: %r" % f[:20]}), 400
+        try:
+            v = float(m)
+        except Exception:
+            return jsonify({"ok": False, "error": "Monto invalido el %s: %r" % (f, str(m)[:20])}), 400
+        if not (0 <= v < 1e12):                    # tambien frena NaN / infinito
+            return jsonify({"ok": False, "error": "Monto fuera de rango el %s: %r" % (f, str(m)[:20])}), 400
+        dias[f] = round(v, 2)
+    cid = re.sub(r"[^0-9\-]", "", str(j.get("cuenta_id") or ""))[:20]
+    if not cid:
+        return jsonify({"ok": False, "error": "Falta el numero de cuenta de Google Ads (cuenta_id)."}), 400
+    moneda = re.sub(r"[^A-Z]", "", str(j.get("moneda") or "").upper())[:3]
+    hoy = _hoy()
+    with _GADS_LOCK:
+        d = _gads_all()
+        mio = d.get(email) or {}
+        if not _hm.compare_digest(str(mio.get("token") or ""), tok):
+            return jsonify({"ok": False, "error": "Google Ads se desconecto en RealProfit recien."}), 403
+        vieja = mio.get("cuenta") or {}
+        if vieja.get("id") and vieja.get("id") != cid:
+            return jsonify({"ok": False, "error": "Este script ya esta vinculado a la cuenta %s (%s). "
+                            "Para cambiar de cuenta, desconecta Google Ads en RealProfit y copia el "
+                            "script nuevo." % (vieja.get("id"), vieja.get("nombre") or "sin nombre")}), 409
+        antes = mio.get("dias") or {}
+        # ¿Cambio algun dia YA CERRADO? (primera carga, o Google corrigio un dia). El gasto se suma
+        # a nivel PERIODO y los periodos cerrados quedan 12 h en cache: sin invalidar, el Dashboard
+        # seguiria mostrando el numero viejo. Si solo cambio HOY no hace falta (su cache dura 60 s).
+        cambio = (str(vieja.get("moneda") or "") != moneda)
+        for f, v in dias.items():
+            if f < hoy and abs(float(antes.get(f, 0) or 0) - v) > 0.005:
+                cambio = True
+            antes[f] = v
+        mio["dias"] = antes
+        mio["cuenta"] = {"id": cid, "nombre": str(j.get("cuenta") or "")[:80],
+                         "moneda": moneda, "tz": str(j.get("tz") or "")[:40]}
+        mio["ts"] = int(_time.time())
+        d[email] = mio
+        try:
+            _gads_guardar(d)
+        except Exception as e:
+            return jsonify({"ok": False, "error": "No se pudo guardar: %s: %s" % (type(e).__name__, e)}), 500
+    if cambio:
+        _pf_invalidar(email, dias=-1)   # -1 => no borra dias de ventas, solo vence los periodos en cache
+    return jsonify({"ok": True, "dias": len(dias), "hoy": dias.get(hoy, 0),
+                    "recalcula_cerrados": bool(cambio)})
+
+
+@app.get("/gads/estado")
+def gads_estado():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Sin sesion."}), 401
+    mio = _gads_all().get(email) or {}
+    cta = mio.get("cuenta") or {}
+    ts = int(mio.get("ts") or 0)
+    if not (cta.get("id") and ts):
+        return jsonify({"ok": True, "conectado": False})
+    hoy = _dt.datetime.strptime(_hoy(), "%Y-%m-%d").date()
+    ayer = (hoy - _dt.timedelta(days=1)).isoformat()
+    d7 = (hoy - _dt.timedelta(days=6)).isoformat()
+    hace = max(0, int((_time.time() - ts) / 60))
+    return jsonify({"ok": True, "conectado": True, "cuenta": cta, "ts": ts,
+                    "hace_min": hace, "atrasado": hace > 180,
+                    "hoy": _gads_rango(mio, hoy.isoformat(), hoy.isoformat()),
+                    "ayer": _gads_rango(mio, ayer, ayer),
+                    "d7": _gads_rango(mio, d7, hoy.isoformat()),
+                    "dias_guardados": len(mio.get("dias") or {})})
+
+
+@app.get("/gads/script")
+def gads_script():
+    """El script listo para pegar en Google Ads, con la URL y el token de ESTA cuenta adentro."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Sin sesion."}), 401
+    try:
+        tok = _gads_token(email, crear=True)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "No se pudo crear el token: %s: %s" % (type(e).__name__, e)}), 500
+    txt = (_GADS_SCRIPT.replace("__RP_URL__", _GADS_BASE + "/gads/push")
+           .replace("__RP_TOKEN__", tok).replace("__RP_DIAS__", str(_GADS_DIAS_SCRIPT)))
+    return jsonify({"ok": True, "script": txt})
+
+
+@app.get("/desconectar-gads")
+def desconectar_gads():
+    """Borra el token (el script viejo deja de entrar) y el gasto guardado de Google Ads."""
+    email = _user_actual()
+    if email:
+        with _GADS_LOCK:
+            d = _gads_all()
+            if email in d:
+                d.pop(email, None)
+                _gads_guardar(d)
+        _pf_invalidar(email, dias=-1)
+    return redirect("/?integ=1")
+
+
 # ==================== SUBIR CREATIVOS (Meta Ads) ====================
 _ADS_API = "https://graph.facebook.com/v23.0"
 _ADS_JOBS = {}
@@ -21284,11 +21594,15 @@ def _fin_hoy_ar():
 
 def _fin_ads_usd(email, desde, hasta) -> float:
     """Gasto REAL de ADS en USD del período que se paga DIRECTO: Meta (sin la cuenta de
-    agencia, que va aparte con su comisión) + TikTok."""
+    agencia, que va aparte con su comisión) + TikTok + Google Ads."""
     total = _fin_ads_usd_meta(email, desde, hasta,
                               excluir=[_FIN_ACT_AGENCIA] if _FIN_ACT_AGENCIA else None)
     try:
         total += _tiktok_ads_usd(email, desde, hasta)
+    except Exception:
+        pass
+    try:
+        total += _gads_ads_usd(email, desde, hasta)
     except Exception:
         pass
     return round(total, 2)
@@ -25171,6 +25485,13 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         spend += _tiktok_spend(email, desde, hasta)
     except Exception:
         pass
+    _g_ads = 0.0
+    try:                                     # Google Ads: lo manda el script de la cuenta (por dia)
+        _g_ads = float(_gads_spend(email, desde, hasta) or 0)
+        spend += _g_ads
+    except Exception:
+        _g_ads = 0.0
+    blob["raw"]["publi_google"] = round(_g_ads, 2)   # para repartir la tarjeta de Inversion Ads
     if spend:
         r = blob["raw"]
         fact = r.get("facturado", 0.0)
