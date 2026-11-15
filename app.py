@@ -8738,7 +8738,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-15-aire-pagina"})
+    return jsonify({"ok": True, "v": "2026-11-15-sin-cp-aire"})
 
 
 _KPI_DBG = {}
@@ -20908,24 +20908,6 @@ _ADS_CUENTAS = {
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
-    "aire": {
-        # EBOOKS (14-11-2026, pedido de Cristian): Manual del Aire desde la cuenta de ebooks, en
-        # CP2 (la publicidad de esa cuenta, ver META_CUENTAS_ASIGNADAS). Solo la ve
-        # noxalaboficial@gmail.com ("solo_email", filtrado en /pf-ads-cuentas).
-        # Pagina nueva, sin Instagram (ig vacio = anuncio desde la pagina). OJO: el id de
-        # facebook.com/profile.php?id=61591639269228 NO es el de la API; el de la pagina es
-        # 1240654552459470 (me/accounts del system user, ADVERTISE, 15-11-2026).
-        "portfolio": "CP1", "solo_email": "noxalaboficial@gmail.com",
-        "nombre": "MANUAL DEL AIRE (CP2)", "ad_account": "1779069840175413", "token_env": "META_TOKEN",
-        "page": "1240654552459470", "pixel": "1515085804001785", "ig": "",   # pixel EBOOKS PRO
-        "landing": "https://manual-del-aire.impultienda.ar/",
-        "titulo": "Manual del Aire Acondicionado", "subtitulo": "Descarga inmediata", "presupuesto": 35,
-        "copy": ("\u2744\ufe0f \u00bfTu aire acondicionado no enfr\u00eda como antes o te llega una boleta de luz alt\u00edsima?\n\n"
-                 "En el Manual del Aire Acondicionado te explicamos paso a paso c\u00f3mo usarlo, limpiarlo "
-                 "y mantenerlo para que rinda m\u00e1s y gaste menos.\n\n"
-                 "\U0001f4f2 Lo descarg\u00e1s al instante en tu celular.\n\n"
-                 "\U0001f447 Toc\u00e1 \"M\u00e1s informaci\u00f3n\" y llevatelo hoy."),
-    },
 }
 
 
@@ -22807,8 +22789,7 @@ def pf_ads_cuentas():
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
            "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
            "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles)}
-          for k, v in _ADS_CUENTAS.items() if not v.get("oculta")
-          and (not v.get("solo_email") or v["solo_email"] == (_user_actual() or ""))]
+          for k, v in _ADS_CUENTAS.items() if not v.get("oculta")]
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok),
                     "n_sin_acceso": sum(1 for c in cs if not c["acceso"])})
 
