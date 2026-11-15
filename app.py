@@ -3952,6 +3952,7 @@ _SOLO_DASH = r"""
     var _mok=false;
     try{ costos4(); }catch(e){}
     try{ _mok=metricas(); }catch(e){}
+    try{ netoEbook(); }catch(e){}
     try{ canales(); }catch(e){}   // NUNCA puede romper el resto del pintado
     _raw=save;
     try{ fixFacturacion(); }catch(e){}
@@ -4097,7 +4098,7 @@ _SOLO_DASH = r"""
   // Mis tarjetas son CLONES de las del dashboard, asi que dicen MARGEN, GANANCIA, VENTAS…
   // igual que las suyas. Sin esta guarda, cardByLabel/_hdrLeaf/_pubCards agarran las mias y
   // escriben el valor equivocado (paso en produccion: el Margen del dashboard quedo vacio).
-  function _rpcMio(n){ try{ var c=document.getElementById('rp-canales'); return !!(c && c.contains(n)); }catch(e){ return false; } }
+  function _rpcMio(n){ try{ var c=document.getElementById('rp-canales'); if(c && c.contains(n)) return true; return !!(n && n.closest && n.closest('[data-rpneto]')); }catch(e){ return false; } }
   function _hdrLeaf(name){ var all=document.querySelectorAll('span,div,p,h2,h3');
     for(var i=0;i<all.length;i++){ var e=all[i]; if(e.children.length) continue;
       if(_rpcMio(e)) continue;
@@ -4137,6 +4138,28 @@ _SOLO_DASH = r"""
       setCard(cards[j], seq[j][0], seq[j][1], seq[j][2]); hit++; }
     try{ pubSplit(cards[0]); }catch(e){}
     return hit>=seq.length; }
+  // EBOOKS (14-11-2026): UNA tarjeta "Neto después de impuestos" al lado de Comisión CP3, SOLO si el
+  // server marca la cuenta como ebooks (_raw.ebook). Es un CLON nuestro (React no lo maneja) con
+  // data-rpneto: _rpcMio y estructura() lo saltean, asi no corre el orden de Publicidad ni lo esconden.
+  function netoEbook(){
+    var mia=document.querySelector('[data-rpneto]');
+    if(!_raw || !_raw.ebook || _raw.neto_despues_imp==null){ if(mia){ try{ mia.remove(); }catch(e){} } return; }
+    var com=_cardByLabel('comisión cp3'); if(!com || _rpcMio(com)) return;
+    // si la tarjeta viene envuelta, subo hasta el hijo directo de la grilla (asi queda AL LADO, en la grilla)
+    var gr=findGrid(); if(gr && gr.contains(com)){ while(com.parentElement && com.parentElement!==gr) com=com.parentElement; }
+    if(mia && (!mia.isConnected || com.nextElementSibling!==mia)){ try{ mia.remove(); }catch(e){} mia=null; }
+    if(!mia){
+      mia=com.cloneNode(true);
+      // fuera marcas/ids del original (overlay data-rp*, ids): si no, otro writer le pinta encima
+      var todos=[mia].concat(Array.prototype.slice.call(mia.querySelectorAll('*')));
+      for(var i=0;i<todos.length;i++){ var at=todos[i].attributes;
+        for(var j=at.length-1;j>=0;j--){ var nm=at[j].name; if(nm==='id' || nm.indexOf('data-rp')===0) todos[i].removeAttribute(nm); } }
+      mia.setAttribute('data-rpneto','1'); mia.style.display='';
+      var ic=mia.querySelector('.material-symbols-outlined'); if(ic) ic.textContent='account_balance_wallet';
+      try{ com.parentNode.insertBefore(mia, com.nextSibling); }catch(e){ return; }
+    }
+    if(mia.style.display==='none') mia.style.display='';
+    setCard(mia,'Neto después de impuestos',money(_raw.neto_despues_imp||0),'antes de impuestos '+money(_raw.neto_antes_imp||0)); }
   // Reparto de la pauta con los logos adentro de la tarjeta de Inversion Ads. Va en un div APARTE
   // (no en el <p> del subtitulo) porque setCard reescribe ese <p> en cada pasada: si le metiera
   // HTML ahi, los dos writers se pisarian y la tarjeta titilaria.
@@ -4187,6 +4210,7 @@ _SOLO_DASH = r"""
       // Mi bloque de canales es un hijo mas de la grilla y caia como "tarjeta 9 de Publicidad",
       // asi que este barrido lo ocultaba (display:none) y por eso NO SE VEIA. Se saltea.
       if(el.id==='rp-canales'){ if(el.style.display==='none') el.style.display=''; continue; }
+      if(el.getAttribute && el.getAttribute('data-rpneto')){ if(el.style.display==='none') el.style.display=''; continue; }
       if(esHeader(el)){ sec=el.textContent||''; pub=0; tgt=/Finanzas/.test(sec)?'none':''; if(el.style.display!==tgt) el.style.display=tgt; continue; }
       if(/Finanzas/.test(sec)) tgt='none';                       // tarjetas de Finanzas → fuera
       // Publicidad queda en 6: las tarjetas 7 y 8 son Recompras y Facturación Recompra, que
@@ -4551,7 +4575,7 @@ _SOLO_DASH = r"""
   // el parche NO corría (en NINGUNA cuenta con acentos descompuestos). _na() saca acentos → matchea siempre.
   function _na(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase(); }
   // OJO: este bloque es OTRO closure, asi que _rpcMio de arriba NO se ve aca. Se define de nuevo.
-  function _rpcMio(n){ try{ var c=document.getElementById('rp-canales'); return !!(c && c.contains(n)); }catch(e){ return false; } }
+  function _rpcMio(n){ try{ var c=document.getElementById('rp-canales'); if(c && c.contains(n)) return true; return !!(n && n.closest && n.closest('[data-rpneto]')); }catch(e){ return false; } }
   function cardByLabel(lbl){ lbl=_na(lbl); var a=document.querySelectorAll('span,div,p');
     for(var i=0;i<a.length;i++){ var e=a[i]; if(e.children.length) continue;
       if(_rpcMio(e)) continue;
@@ -8708,7 +8732,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-11-iva-ebook-mp"})
+    return jsonify({"ok": True, "v": "2026-11-14-neto-ebook"})
 
 
 _KPI_DBG = {}
@@ -25669,6 +25693,22 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     _iva_pag = _iva_deb - _iva_cred
     _iva_resta = _iva_pag - _eb_iva      # lo que la ganancia todavia NO tiene restado
     r["iva_pagar_resta"] = round(_iva_resta, 2)
+    # EBOOKS (14-11-2026, Cristian): UNA tarjeta "Neto despues de impuestos" al lado de la
+    # Comision de agencia, SOLO en la cuenta de ebooks. Mismo criterio que _impul_resumen para
+    # saber que cuenta es (tiene ordenes/token de Impultienda). Sale de los campos que ya se
+    # calculan venta por venta (pago real de MP de cada orden), sin formula nueva:
+    #   antes   = facturado - comision MP real - retenciones MP - percepciones MP  (lo que entra a MP)
+    #   despues = antes - IVA a pagar del ebook (venta - credito de la comision MP) - IIBB
+    # despues == la ganancia antes de pauta de _impul_resumen.
+    try:
+        if _impul_ordenes(email) or _impul_token(email):
+            _na = (float(r.get("facturado") or 0) - float(r.get("mp_costo_real") or 0)
+                   - float(r.get("retenciones_mp") or 0) - float(r.get("percep_iva") or 0))
+            r["ebook"] = True
+            r["neto_antes_imp"] = round(_na, 2)
+            r["neto_despues_imp"] = round(_na - _eb_iva - float(r.get("iibb_monto") or 0), 2)
+    except Exception:
+        pass
     r["iva_total"] = round(_iva_deb, 2)
     r["iva_favor"] = round(_iva_cred, 2)
     r["iva_pagar"] = round(_iva_pag, 2)
