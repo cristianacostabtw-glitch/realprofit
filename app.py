@@ -8738,7 +8738,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-14-neto-ebook-aire"})
+    return jsonify({"ok": True, "v": "2026-11-15-aire-pagina"})
 
 
 _KPI_DBG = {}
@@ -20912,12 +20912,12 @@ _ADS_CUENTAS = {
         # EBOOKS (14-11-2026, pedido de Cristian): Manual del Aire desde la cuenta de ebooks, en
         # CP2 (la publicidad de esa cuenta, ver META_CUENTAS_ASIGNADAS). Solo la ve
         # noxalaboficial@gmail.com ("solo_email", filtrado en /pf-ads-cuentas).
-        # Pagina nueva, sin Instagram todavia (ig vacio = anuncio desde la pagina). El id es el de
-        # facebook.com/profile.php?id=...: si al asignarla al usuario del sistema RealProfit
-        # Meta muestra otro id de pagina, se elige en el desplegable de Pagina del subidor.
+        # Pagina nueva, sin Instagram (ig vacio = anuncio desde la pagina). OJO: el id de
+        # facebook.com/profile.php?id=61591639269228 NO es el de la API; el de la pagina es
+        # 1240654552459470 (me/accounts del system user, ADVERTISE, 15-11-2026).
         "portfolio": "CP1", "solo_email": "noxalaboficial@gmail.com",
         "nombre": "MANUAL DEL AIRE (CP2)", "ad_account": "1779069840175413", "token_env": "META_TOKEN",
-        "page": "61591639269228", "pixel": "1515085804001785", "ig": "",   # pixel EBOOKS PRO
+        "page": "1240654552459470", "pixel": "1515085804001785", "ig": "",   # pixel EBOOKS PRO
         "landing": "https://manual-del-aire.impultienda.ar/",
         "titulo": "Manual del Aire Acondicionado", "subtitulo": "Descarga inmediata", "presupuesto": 35,
         "copy": ("\u2744\ufe0f \u00bfTu aire acondicionado no enfr\u00eda como antes o te llega una boleta de luz alt\u00edsima?\n\n"
