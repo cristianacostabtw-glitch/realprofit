@@ -3845,7 +3845,8 @@ _SOLO_DASH = r"""
     // titulos tambien: todo se apelmaza contra el bloque de MercadoLibre hasta la proxima pasada.
     // Con la grilla nativa en 4, una tarjeta sin span mide 1/4, que es lo normal: no se rompe nada.
     try{
-      var _spans={'cpa':'span 2','break even cpa':'span 1','comisión cp3':'span 1','comision cp3':'span 1'};
+      // ebooks (14-11): con la tarjeta de Neto al lado de Comision CP3, CPA va a 1 columna (1+1+1+1 = 4)
+      var _spans={'cpa':(document.querySelector('[data-rpneto]')?'span 1':'span 2'),'break even cpa':'span 1','comisión cp3':'span 1','comision cp3':'span 1'};
       [].slice.call(document.querySelectorAll('span,div,p')).forEach(function(e){
         if(e.children.length || _rpcMio(e)) return;
         var t=(e.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
@@ -4153,12 +4154,17 @@ _SOLO_DASH = r"""
       // fuera marcas/ids del original (overlay data-rp*, ids): si no, otro writer le pinta encima
       var todos=[mia].concat(Array.prototype.slice.call(mia.querySelectorAll('*')));
       for(var i=0;i<todos.length;i++){ var at=todos[i].attributes;
-        for(var j=at.length-1;j>=0;j--){ var nm=at[j].name; if(nm==='id' || nm.indexOf('data-rp')===0) todos[i].removeAttribute(nm); } }
+        for(var j=at.length-1;j>=0;j--){ var nm=at[j].name; if(nm==='id' || nm.indexOf('data-rp')===0 || nm.indexOf('data-mfy')===0) todos[i].removeAttribute(nm); }
+        // la de Comision CP3 nace de la de Recompras: la cortina (_tapaRec) le deja el numero en
+        // visibility:hidden y el clon lo heredaba -> el numero grande salia VACIO (14-11 23:51).
+        if(todos[i].style && todos[i].style.visibility) todos[i].style.visibility=''; }
       mia.setAttribute('data-rpneto','1'); mia.style.display='';
       var ic=mia.querySelector('.material-symbols-outlined'); if(ic) ic.textContent='account_balance_wallet';
       try{ com.parentNode.insertBefore(mia, com.nextSibling); }catch(e){ return; }
     }
     if(mia.style.display==='none') mia.style.display='';
+    if(mia.style.gridColumn!=='span 1') mia.style.gridColumn='span 1';
+    var _hv=mia.querySelectorAll('[style*="visibility"]'); for(var h=0;h<_hv.length;h++){ if(_hv[h].style.visibility==='hidden') _hv[h].style.visibility=''; }
     setCard(mia,'Neto después de impuestos',money(_raw.neto_despues_imp||0),'antes de impuestos '+money(_raw.neto_antes_imp||0)); }
   // Reparto de la pauta con los logos adentro de la tarjeta de Inversion Ads. Va en un div APARTE
   // (no en el <p> del subtitulo) porque setCard reescribe ese <p> en cada pasada: si le metiera
@@ -8732,7 +8738,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-14-neto-ebook"})
+    return jsonify({"ok": True, "v": "2026-11-14-neto-ebook-aire"})
 
 
 _KPI_DBG = {}
@@ -20902,6 +20908,24 @@ _ADS_CUENTAS = {
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
+    "aire": {
+        # EBOOKS (14-11-2026, pedido de Cristian): Manual del Aire desde la cuenta de ebooks, en
+        # CP2 (la publicidad de esa cuenta, ver META_CUENTAS_ASIGNADAS). Solo la ve
+        # noxalaboficial@gmail.com ("solo_email", filtrado en /pf-ads-cuentas).
+        # Pagina nueva, sin Instagram todavia (ig vacio = anuncio desde la pagina). El id es el de
+        # facebook.com/profile.php?id=...: si al asignarla al usuario del sistema RealProfit
+        # Meta muestra otro id de pagina, se elige en el desplegable de Pagina del subidor.
+        "portfolio": "CP1", "solo_email": "noxalaboficial@gmail.com",
+        "nombre": "MANUAL DEL AIRE (CP2)", "ad_account": "1779069840175413", "token_env": "META_TOKEN",
+        "page": "61591639269228", "pixel": "1515085804001785", "ig": "",   # pixel EBOOKS PRO
+        "landing": "https://manual-del-aire.impultienda.ar/",
+        "titulo": "Manual del Aire Acondicionado", "subtitulo": "Descarga inmediata", "presupuesto": 35,
+        "copy": ("\u2744\ufe0f \u00bfTu aire acondicionado no enfr\u00eda como antes o te llega una boleta de luz alt\u00edsima?\n\n"
+                 "En el Manual del Aire Acondicionado te explicamos paso a paso c\u00f3mo usarlo, limpiarlo "
+                 "y mantenerlo para que rinda m\u00e1s y gaste menos.\n\n"
+                 "\U0001f4f2 Lo descarg\u00e1s al instante en tu celular.\n\n"
+                 "\U0001f447 Toc\u00e1 \"M\u00e1s informaci\u00f3n\" y llevatelo hoy."),
+    },
 }
 
 
@@ -22783,7 +22807,8 @@ def pf_ads_cuentas():
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
            "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
            "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles)}
-          for k, v in _ADS_CUENTAS.items() if not v.get("oculta")]
+          for k, v in _ADS_CUENTAS.items() if not v.get("oculta")
+          and (not v.get("solo_email") or v["solo_email"] == (_user_actual() or ""))]
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok),
                     "n_sin_acceso": sum(1 for c in cs if not c["acceso"])})
 
