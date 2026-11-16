@@ -20908,6 +20908,25 @@ _ADS_CUENTAS = {
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
     },
+    "cp9": {
+        "portfolio": "CP3",
+        "nombre": "CP 8", "ad_account": "2173715987355478", "token_env": "META_TOKEN",
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
+        # Cuenta "CP 8" (pertenece a CP3, asignada al usuario del sistema de CP1). USD, agregada el 15-11-2026; pixel LIMPIEZA ANASHEI compartido. El gasto se suma
+        # solo si el id tambien esta en META_ACTS_EXTRA (Render): estar aca no alcanza.
+        "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
+        "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
+        "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
+                 "Si venís buscando:\n\n"
+                 "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
+                 "\U0001f4aa Sentirte más fuerte y seguro de vos mismo\n"
+                 "❤️ Apoyar una mejor circulación y vitalidad masculina\n\n"
+                 "...no sos el único.\n\n"
+                 "Miles de hombres ya están sumando NoxaLab a su rutina diaria.\n"
+                 "Solo 1 scoop al día, disuelto en agua.\n"
+                 "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
 }
 
 
