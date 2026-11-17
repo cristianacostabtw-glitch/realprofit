@@ -13542,9 +13542,11 @@ def _meli_unir_txt(pg, caja=None):
                     if caja.x0 <= w[0] < caja.x1 and caja.y0 <= w[1] < caja.y1)
 
 
-def _meli_unir_ident(txt):
-    """{pack_id: (comprador, potes)} de una hoja 'Identificacion Productos' del panel de ML.
-    Es la fuente mas confiable que hay: el SKU y la cantidad los pone ML, no los deducimos."""
+def _meli_unir_ident(txt, cfg=None):
+    """{pack_id: (comprador, potes, texto)} de una hoja 'Identificacion Productos' del panel de ML.
+    Es la fuente mas confiable que hay: el SKU y la cantidad los pone ML, no los deducimos.
+    `texto` es el de "SKU de etiquetas" si la cuenta lo configuro (si no, '')."""
+    _on = _meli_etq_activo(cfg)
     out = {}
     for b in re.split(r"(?=Pack ID:)", txt or "")[1:]:
         mp = _re_and.search(r"Pack ID:\s*([\d ]+)", b)
@@ -13553,13 +13555,17 @@ def _meli_unir_ident(txt):
             continue
         mc = _re_and.search(r"Cantidad:\s*(\d+)", b)
         u = _meli_unir_potes(ms.group(1)) or 1
+        _rg = _meli_etq_regla(cfg, "", None, ms.group(1)) if _on else {}
+        if _rg.get("unidades"):
+            u = int(_rg["unidades"])
         lineas = [x.strip() for x in b.splitlines() if x.strip()]
         quien = ""
         for k, l in enumerate(lineas):
             if l.startswith("SKU:") and k > 0:
                 quien = lineas[k - 1]
                 break
-        out[mp.group(1).replace(" ", "")] = (quien, u * int(mc.group(1) if mc else 1))
+        _n = u * int(mc.group(1) if mc else 1)
+        out[mp.group(1).replace(" ", "")] = (quien, _n, (_meli_etq_txt(_n, cfg, _rg) if _on else ""))
     return out
 
 
@@ -13577,6 +13583,10 @@ def meli_unir():
     except Exception as e:
         return jsonify({"ok": False, "msg": "Falta PyMuPDF: %s" % str(e)[:80]})
     docs, etiq, hojas, packs = [], [], [], {}
+    # SKU de etiquetas de la cuenta: reconoce tambien los sellos "X3 FRASCOS" (sin config: POTES)
+    _ecfg = _meli_etq_cfg(_user_actual())
+    _sello_re = _meli_etq_stamp_re(_ecfg)
+    _hoja_re = _meli_etq_hoja_re(_ecfg)
     try:
         for f in files:
             try:
@@ -13591,10 +13601,10 @@ def meli_unir():
                 pg = d[i]
                 t = pg.get_text() or ""
                 if ("SKU:" in t) and ("Cantidad:" in t):     # hoja Identificacion Productos
-                    packs.update(_meli_unir_ident(t))
+                    packs.update(_meli_unir_ident(t, _ecfg))
                     continue
                 if "PARA EMPAQUETAR" in t.upper():
-                    for n, sku in _MELI_HOJA_RE.findall(t):
+                    for n, sku in _hoja_re.findall(t):
                         cnt[re.sub(r"\s+", " ", sku).strip().upper()] += int(n)
                     continue
                 # ¿una etiqueta por hoja (lo que baja RealProfit) o tres (el panel de ML)?
@@ -13606,10 +13616,13 @@ def meli_unir():
                     if caja is not None and (r is None or not caja.contains(r.tl)):
                         r = None                              # el rect es de otra columna
                     mp = _re_and.search(r"Pack ID:\s*([\d ]{10,25})", tt)
-                    ms = _re_and.search(r"(x\d+\s+POTES?)", tt, _re_and.I)
+                    ms = _re_and.search(_sello_re, tt, _re_and.I)
+                    _sk = ms.group(1).upper() if ms else ""
+                    if ms and "+" in _sk:            # sello de dos productos: un solo espacio
+                        _sk = re.sub(r"\s+", " ", _sk).strip()
                     etiq.append({"f": fi, "p": i, "caja": caja, "guia": g, "rect": r,
                                  "pack": (re.sub(r"\D", "", mp.group(1))[:16] if mp else ""),
-                                 "sku": (ms.group(1).upper() if ms else "")})
+                                 "sku": _sk})
             hojas.append(cnt)
         if not etiq:
             return jsonify({"ok": False, "msg": "No encontr&eacute; etiquetas en lo que subiste."})
@@ -13619,7 +13632,7 @@ def meli_unir():
         for e in etiq:
             if e["pack"] in packs:
                 p = packs[e["pack"]][1]
-                e["sku"] = "X%d %s" % (p, "POTE" if p == 1 else "POTES")
+                e["sku"] = packs[e["pack"]][2] or "X%d %s" % (p, "POTE" if p == 1 else "POTES")
 
         # 2) Las que siguen sin SKU: se completan ARCHIVO POR ARCHIVO y solo si no hay duda, o
         #    sea cuando la hoja de ese archivo menos lo ya sellado da UN solo tipo de pack y
@@ -13656,17 +13669,18 @@ def meli_unir():
 
         # 4) ORDEN: primero los packs mas grandes y las que no tienen SKU al final, que es como
         #    se empaqueta.
-        keep.sort(key=lambda e: (0 if e["sku"] else 1, -_meli_unir_potes(e["sku"]), e["pack"]))
+        keep.sort(key=lambda e: (0 if e["sku"] else 1, -_meli_etq_n(e["sku"]), e["pack"]))
 
         out = fitz.open()
         for e in keep:
             pg0 = docs[e["f"]][e["p"]]
-            potes = _meli_unir_potes(e["sku"])
+            potes = _meli_etq_n(e["sku"])
+            _stxt = e["sku"] if _meli_etq_activo(_ecfg) else None
             if e["caja"] is None:
                 out.insert_pdf(docs[e["f"]], from_page=e["p"], to_page=e["p"])
                 pg = out[-1]
-                if potes and not _re_and.search(r"x\d+\s+POTES?", pg0.get_text() or "", _re_and.I):
-                    _meli_unir_sello(pg, fitz.Rect(0, 0, pg.rect.width, pg.rect.height), potes)
+                if potes and not _re_and.search(_sello_re, pg0.get_text() or "", _re_and.I):
+                    _meli_unir_sello(pg, fitz.Rect(0, 0, pg.rect.width, pg.rect.height), potes, _stxt)
             else:
                 esc = min(_MELI_W15 / e["caja"].width, _MELI_H15 / e["caja"].height)
                 aw, ah = e["caja"].width * esc, e["caja"].height * esc
@@ -13675,7 +13689,7 @@ def meli_unir():
                 pg = out.new_page(width=_MELI_W15, height=_MELI_H15)
                 pg.show_pdf_page(dest, docs[e["f"]], e["p"], clip=e["caja"])
                 if potes:
-                    _meli_unir_sello(pg, dest, potes)
+                    _meli_unir_sello(pg, dest, potes, _stxt)
         detalle = [{"sku": e["sku"]} for e in keep if e["sku"]]
         if detalle:
             _sku_hoja_empaquetar(out, detalle)
@@ -13704,19 +13718,23 @@ def meli_unir():
     return jsonify({"ok": True, "job": job, "archivos": len(docs), "etiquetas": len(keep),
                     "repetidas": len(repes), "sin_sku": sinsku, "ident": len(packs),
                     "bolsas": sum(total.values()),
-                    "potes": sum(_meli_unir_potes(k) * v for k, v in total.items()),
+                    "potes": sum(_meli_etq_n(k) * v for k, v in total.items()),
                     "cuadra": (sinsku == 0),
                     "desglose": [{"sku": k, "cant": v} for k, v in sorted(total.items())]})
 
 
-def _meli_unir_sello(pg, caja, potes):
+def _meli_unir_sello(pg, caja, potes, txt=None):
     """El sello 'X2 POTES' arriba a la derecha de la etiqueta: caja negra, texto blanco. Es el
     unico lugar realmente libre de la FLEX (debajo del 'Envio:' esta el Pack ID y despues el QR)
-    y es donde ya lo pone el bajador, asi que todas las etiquetas quedan iguales."""
+    y es donde ya lo pone el bajador, asi que todas las etiquetas quedan iguales.
+    `txt` = texto de "SKU de etiquetas" (X3 FRASCOS); sin el, el de siempre."""
     import fitz
-    txt = "X%d %s" % (potes, "POTE" if potes == 1 else "POTES")
+    txt = txt or "X%d %s" % (potes, "POTE" if potes == 1 else "POTES")
     fs = 13.0
     w = fitz.get_text_length(txt, fontname="hebo", fontsize=fs)
+    if w > 230:                      # un texto largo (dos productos) no se sale de la etiqueta
+        fs = max(8.0, fs * 230.0 / w)
+        w = fitz.get_text_length(txt, fontname="hebo", fontsize=fs)
     x1 = caja.x1 - 6.0
     x0 = x1 - w
     y = caja.y0 + 30.0
@@ -13748,12 +13766,16 @@ def _meli_units_from_sku(sku):
     return 1
 
 
-def _meli_stamp(pg, rect, potes):
-    """Estampa 'X2 POTES' (caja negra, texto blanco) justo debajo del tracking HC…AR de la etiqueta."""
+def _meli_stamp(pg, rect, potes, txt=None):
+    """Estampa 'X2 POTES' (caja negra, texto blanco) justo debajo del tracking HC…AR de la etiqueta.
+    `txt` = el texto de "SKU de etiquetas" (X3 FRASCOS); sin el, el de siempre."""
     import fitz
-    txt = "X%d %s" % (potes, "POTE" if potes == 1 else "POTES")
+    txt = txt or "X%d %s" % (potes, "POTE" if potes == 1 else "POTES")
     fs = 13.0
     w = fitz.get_text_length(txt, fontname="hebo", fontsize=fs)
+    if w > 230:                      # un texto largo (dos productos) no se sale de la etiqueta
+        fs = max(8.0, fs * 230.0 / w)
+        w = fitz.get_text_length(txt, fontname="hebo", fontsize=fs)
     x0 = rect.x0
     y = rect.y1 + 20.0
     cap = fs * 0.72
@@ -13796,15 +13818,21 @@ def _meli_marcar_visto(mapa, seen, clave):
             seen.add(k)
 
 
-def _meli_etiquetas_procesar(data, mapa_ext=None):
+def _meli_etiquetas_procesar(data, mapa_ext=None, etq_cfg=None):
     """Devuelve (pdf_bytes, orders, stats). Estampa los potes en cada etiqueta y agrega la hoja
     PARA EMPAQUETAR.
     El SKU sale de la hoja 'Identificación Productos' del PDF (cuando se sube a mano), o de
     `mapa_ext` {tracking: {sku, cant, buyer, potes}} cuando el PDF viene de la API de ML, que
     NO incluye esa hoja (verificado el 13/09). El mapa por API es mas confiable: el SKU sale
-    de seller_sku de la orden, no de parsear texto impreso."""
+    de seller_sku de la orden, no de parsear texto impreso.
+    `etq_cfg` = config de "SKU de etiquetas" de la cuenta; si cada envio del mapa trae "etq"
+    se estampa ese texto. Sin config todo sale "X2 POTES" como siempre."""
     import fitz
     import io
+    _etq_on = _meli_etq_activo(etq_cfg)
+
+    def _etq_de(d):
+        return d.get("etq") or "X%d %s" % (d["potes"], "POTE" if d["potes"] == 1 else "POTES")
     doc = fitz.open(stream=data, filetype="pdf")
     # 1) Mapa tracking → {sku, cantidad, comprador, potes} desde las hojas de identificación.
     ident_pages = set()
@@ -13829,9 +13857,14 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
                         buyer = lineas[idx - 1]
                         break
                 u = _meli_units_from_sku(sku)
+                _rg = _meli_etq_regla(etq_cfg, "", None, sku) if _etq_on else {}
+                if _rg.get("unidades"):
+                    u = int(_rg["unidades"])
                 potes = max(1, u * max(1, cant))
                 if trak not in mapa:
                     mapa[trak] = {"sku": sku, "cant": cant, "buyer": buyer, "potes": potes}
+                    if _etq_on:
+                        mapa[trak]["etq"] = _meli_etq_txt(potes, etq_cfg, _rg)
     # 2) POR CADA HOJA separo las etiquetas usando los PUNTOS MEDIOS entre los trackings de ESA hoja.
     #    (Robusto: no depende de un umbral global; las columnas salen de las posiciones reales de cada
     #    hoja. Antes el clustering global mezclaba columnas → salían 2-3 etiquetas juntas.)
@@ -13888,7 +13921,7 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
         for (_xc, trak, rr) in en_hoja:
             if trak in flex_hits:
                 continue      # se estampa mas abajo, cuando ya se sabe el recuadro de la etiqueta
-            _meli_stamp(pg, rr, mapa[trak]["potes"])
+            _meli_stamp(pg, rr, mapa[trak]["potes"], mapa[trak].get("etq"))
         # Rango vertical del contenido de la hoja (para no dejar franjas blancas arriba/abajo).
         blocks = pg.get_text("blocks")
         ys0 = [b[1] for b in blocks] or [0.0]
@@ -13917,13 +13950,14 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
             if trak in flex_hits:
                 # En la etiqueta FLEX el sello va arriba a la derecha, que es la unica zona
                 # realmente vacia: debajo del "Envio:" esta el "Pack ID" y mas abajo el QR.
-                _t = "X%d %s" % (info["potes"], "POTE" if info["potes"] == 1 else "POTES")
+                _t = _etq_de(info)
                 _wt = fitz.get_text_length(_t, fontname="hebo", fontsize=13.0)
                 _xs = max(bbox.x0 + 6, bbox.x1 - _wt - 16)
                 _ys = bbox.y0 + 28
-                _meli_stamp(pg, fitz.Rect(_xs, _ys - 20, _xs, _ys - 20), info["potes"])
+                _meli_stamp(pg, fitz.Rect(_xs, _ys - 20, _xs, _ys - 20), info["potes"], info.get("etq"))
             labels.append({"page": i, "bbox": bbox, "potes": info["potes"],
-                           "trak": trak, "buyer": info["buyer"], "sku": info["sku"]})
+                           "trak": trak, "buyer": info["buyer"], "sku": info["sku"],
+                           "etq": info.get("etq") or ""})
 
     # 3-bis) HOJAS DONDE NO SE UBICO NINGUN TRACKING.
     # Las etiquetas FLEX (self_service) no traen impreso el HC...AR ni el numero de seguimiento
@@ -13958,7 +13992,8 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
                     _meli_marcar_visto(mapa, seen, trak)
                 labels.append({"page": i, "bbox": _bb & pg.rect,
                                "potes": int(info.get("potes") or 1), "trak": trak,
-                               "buyer": info.get("buyer") or "", "sku": info.get("sku") or ""})
+                               "buyer": info.get("buyer") or "", "sku": info.get("sku") or "",
+                               "etq": info.get("etq") or ""})
 
     # 4) Una hoja de 10×15 cm por etiqueta, sin deformar.
     # ORDEN: el mismo que la hoja PARA EMPAQUETAR y que Insertar SKU — el grupo MÁS GRANDE primero.
@@ -13967,9 +14002,8 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
     CM = 28.3465
     PW, PH = 10 * CM, 15 * CM                        # 10cm ancho × 15cm alto (vertical, como Andreani)
     from collections import Counter as _CntM
-    _gr_m = _CntM("X%d %s" % (d["potes"], "POTE" if d["potes"] == 1 else "POTES") for d in labels)
-    labels.sort(key=lambda d: (-_gr_m["X%d %s" % (d["potes"], "POTE" if d["potes"] == 1 else "POTES")],
-                               d["potes"], d["trak"]))
+    _gr_m = _CntM(_etq_de(d) for d in labels)
+    labels.sort(key=lambda d: (-_gr_m[_etq_de(d)], d["potes"], d["trak"]))
     out = fitz.open()
     orders = []
     detalle = []
@@ -13983,10 +14017,12 @@ def _meli_etiquetas_procesar(data, mapa_ext=None):
         y0 = (PH - dh) / 2.0
         dest = fitz.Rect(x0, y0, x0 + dw, y0 + dh)
         page.show_pdf_page(dest, doc, d["page"], clip=bb)
-        sku_fmt = "X%d %s" % (d["potes"], "POTE" if d["potes"] == 1 else "POTES")
+        sku_fmt = _etq_de(d)
         detalle.append({"sku": sku_fmt})
         orders.append({"tracking": d["trak"], "buyer": d["buyer"],
                        "sku_meli": d["sku"], "potes": d["potes"]})
+        if d.get("etq"):
+            orders[-1]["etq"] = d["etq"]
     if detalle:
         _sku_hoja_empaquetar(out, detalle)          # hoja final PARA EMPAQUETAR
     if not len(out):
@@ -14138,6 +14174,361 @@ def _meli_units_sku(sku):
         if m:
             return max(1, int(m.group(1))), True
     return 1, False
+
+
+# ---------- SKU de etiquetas: palabra y unidades por publicacion (opt-in) ----------
+# Pedido 17-11-2026: un cliente vende FRASCOS, no potes. Cada cuenta puede decir, por
+# publicacion de ML (y por variante si la tiene), cuantas unidades lleva una venta y con que
+# palabra se estampa ("X3 FRASCOS"), mas una palabra por defecto de la cuenta.
+# SIN NADA CONFIGURADO NO CAMBIA NADA: sale "X2 POTES" bit a bit como antes (todo pasa por
+# _meli_etq_activo, que da False y deja el camino viejo intacto).
+# VA EN SU PROPIO ARCHIVO y no adentro de meli_tokens.json (donde viven bpu/stock30) por dos
+# razones medidas en el codigo: (1) /meli/callback REEMPLAZA el registro entero de la cuenta al
+# reconectar ML, asi que se borraria la config (lo mismo que paso con el cerebro de WhatsApp);
+# (2) _meli_token lee el registro, refresca el token por red (hasta 25 s) y lo vuelve a grabar
+# entero: con 2 workers eso pisa cualquier cosa guardada en el medio. Aca la escritura va con
+# candado de archivo entre procesos y reemplazo atomico (tmp + os.replace).
+_MELI_ETQ_SKU_F = DATA_DIR / "meli_etq_sku.json"      # {email: {palabra, plural, pubs:{clave:{...}}}}
+_MELI_ETQ_SKU_LK = DATA_DIR / "meli_etq_sku.lock"
+_MELI_ETQ_PUBS_F = DATA_DIR / "meli_etq_pubs.json"    # {email: {ts, filas}} cache de publicaciones
+_MELI_ETQ_PUBS_TTL = 900
+_MELI_ETQ_PAL_DEF = "POTE"
+_MELI_ETQ_PAL_RE = re.compile(r"^[A-Z0-9ÁÉÍÓÚÜÑ][A-Z0-9ÁÉÍÓÚÜÑ .\-/]{0,23}$")
+_MELI_ETQ_CLAVE_RE = re.compile(r"^[A-Z]{3}\d{1,20}(#\d{1,20})?$")
+
+
+def _meli_etq_pal_limpia(p):
+    """'  frasco ' -> 'FRASCO'. '' si viene vacia. None si trae algo que no se puede estampar
+    (el '+' separa productos en la hoja PARA EMPAQUETAR, no puede ir dentro de la palabra)."""
+    s = re.sub(r"\s+", " ", str(p or "")).strip().upper()
+    if not s:
+        return ""
+    return s if _MELI_ETQ_PAL_RE.match(s) else None
+
+
+def _meli_etq_plural(pal):
+    """Termina en vocal: +S (POTE->POTES, FRASCO->FRASCOS, CAJA->CAJAS). En consonante: +ES
+    (BLISTER->BLISTERES). Si ya termina en S (CAPS, PACKS) queda igual. El usuario puede
+    escribir el plural a mano y manda lo suyo."""
+    p = str(pal or "").strip().upper()
+    if not p:
+        return ""
+    if p[-1] in "AEIOUÁÉÍÓÚ":
+        return p + "S"
+    if p[-1] == "S":
+        return p
+    return p + "ES"
+
+
+def _meli_etq_cfg_all():
+    try:
+        d = _json.loads(_MELI_ETQ_SKU_F.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _meli_etq_cfg(email):
+    """La config de la cuenta, SANEADA AL LEER: lo que no sea valido se descarta (una regla
+    rota no puede estampar basura en las etiquetas)."""
+    c = _meli_etq_cfg_all().get(str(email or "")) or {}
+    if not isinstance(c, dict):
+        c = {}
+    pal = _meli_etq_pal_limpia(c.get("palabra")) or ""
+    plu = _meli_etq_pal_limpia(c.get("plural")) or ""
+    pubs = {}
+    for k, r in (c.get("pubs") or {}).items():
+        if not isinstance(r, dict) or not _MELI_ETQ_CLAVE_RE.match(str(k)):
+            continue
+        try:
+            u = int(r.get("unidades") or 0)
+        except Exception:
+            u = 0
+        u = u if 1 <= u <= 999 else 0
+        rp = _meli_etq_pal_limpia(r.get("palabra")) or ""
+        rq = _meli_etq_pal_limpia(r.get("plural")) or ""
+        if not (u or rp):
+            continue
+        pubs[str(k)] = {"unidades": u, "palabra": rp, "plural": (rq if rp else ""),
+                        "sku": str(r.get("sku") or "").strip()[:80],
+                        "titulo": str(r.get("titulo") or "")[:120]}
+    return {"palabra": pal, "plural": (plu if pal else ""), "pubs": pubs}
+
+
+def _meli_etq_activo(cfg):
+    """False = la cuenta no configuro nada -> todo sale exactamente como antes."""
+    if not cfg:
+        return False
+    if cfg.get("pubs"):
+        return True
+    pal = cfg.get("palabra") or _MELI_ETQ_PAL_DEF
+    plu = cfg.get("plural") or _meli_etq_plural(pal)
+    return (pal, plu) != ("POTE", "POTES")
+
+
+def _meli_etq_cfg_guardar(email, cambiar):
+    """Lee-modifica-escribe con candado entre los 2 workers y reemplazo atomico."""
+    with _sege_flock(_MELI_ETQ_SKU_LK):
+        d = _meli_etq_cfg_all()
+        c = d.get(str(email)) or {}
+        if not isinstance(c, dict):
+            c = {}
+        c.setdefault("pubs", {})
+        cambiar(c)
+        d[str(email)] = c
+        _MELI_ETQ_SKU_F.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _MELI_ETQ_SKU_F.with_name("%s.%d.tmp" % (_MELI_ETQ_SKU_F.name, _os.getpid()))
+        tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        _os.replace(str(tmp), str(_MELI_ETQ_SKU_F))
+    return _meli_etq_cfg(email)
+
+
+def _meli_etq_palabras(cfg, regla=None):
+    """(singular, plural) que se estampa: la de la publicacion, si no la de la cuenta, si no POTE."""
+    r = regla or {}
+    if r.get("palabra"):
+        return r["palabra"], (r.get("plural") or _meli_etq_plural(r["palabra"]))
+    pal = (cfg or {}).get("palabra") or _MELI_ETQ_PAL_DEF
+    return pal, ((cfg or {}).get("plural") or _meli_etq_plural(pal))
+
+
+def _meli_etq_regla(cfg, item_id="", var_id=None, sku=""):
+    """La fila guardada que aplica a una linea de venta, o {}.
+    Con item_id: primero item#variante, despues el item solo. Si la linea no sabe su variante
+    (var_id None: lista guardada antes de este cambio) se toma la variante de ESE item con el
+    mismo SKU. Sin item_id (PDF subido a mano, Unir PDF) solo se puede aparear por SKU."""
+    pubs = (cfg or {}).get("pubs") or {}
+    if not pubs:
+        return {}
+    iid = str(item_id or "").strip().upper()
+    k = str(sku or "").strip().upper()
+    if iid:
+        vid = str(var_id or "").strip()
+        if vid and (iid + "#" + vid) in pubs:
+            return pubs[iid + "#" + vid]
+        if iid in pubs:
+            return pubs[iid]
+        if var_id is None and k:
+            for ck, r in pubs.items():
+                if ck.startswith(iid + "#") and (r.get("sku") or "").strip().upper() == k:
+                    return r
+        return {}
+    if k:
+        for r in pubs.values():
+            if (r.get("sku") or "").strip().upper() == k:
+                return r
+    return {}
+
+
+def _meli_etq_txt(n, cfg=None, regla=None):
+    """'X2 POTES' / 'X1 POTE' / 'X3 FRASCOS'. Con cfg=None es literalmente el texto de antes."""
+    sing, plur = _meli_etq_palabras(cfg, regla)
+    return "X%d %s" % (n, sing if n == 1 else plur)
+
+
+def _meli_etq_txt_partes(partes):
+    """[(n, sing, plur), ...] de un envio -> UN texto. Si todo usa la misma palabra se suma
+    ('X3 FRASCOS'); si el envio mezcla palabras va 'X2 FRASCOS + X1 CAJA' (mismo formato que los
+    combos de la hoja PARA EMPAQUETAR)."""
+    grupos = {}
+    for n, s, p in partes:
+        g = grupos.setdefault((s, p), 0)
+        grupos[(s, p)] = g + int(n or 0)
+    if not grupos:
+        return ""
+    if len(grupos) == 1:
+        (s, p), n = list(grupos.items())[0]
+        n = max(1, n)
+        return "X%d %s" % (n, s if n == 1 else p)
+    return " + ".join("X%d %s" % (n, s if n == 1 else p) for (s, p), n in grupos.items() if n > 0)
+
+
+def _meli_etq_n(txt):
+    """Unidades de un texto estampado. 'X2 FRASCOS + X1 CAJA' -> 3. Sin '+' es exactamente
+    _meli_unir_potes (lo de siempre)."""
+    t = str(txt or "")
+    if "+" in t:
+        return sum(int(x) for x in re.findall(r"x\s*(\d+)", t, re.I))
+    return _meli_unir_potes(t)
+
+
+def _meli_etq_unidades(cfg, regla, sku):
+    """(unidades_por_venta, seguro): lo guardado > lo que se detecta del SKU > 1."""
+    try:
+        u = int((regla or {}).get("unidades") or 0)
+    except Exception:
+        u = 0
+    if u >= 1:
+        return u, True
+    return _meli_units_sku(sku)
+
+
+def _meli_etq_aplicar(email, filas, cfg=None):
+    """Recalcula potes / texto ('etq') de cada envio de la lista con la config de la cuenta.
+    Sin config devuelve LA MISMA lista sin tocarla. Con config devuelve COPIAS: la lista
+    original esta cacheada (memoria y disco) y no puede quedar con la config pegada."""
+    if cfg is None:
+        cfg = _meli_etq_cfg(email)
+    if not filas or not _meli_etq_activo(cfg):
+        return filas
+    out = []
+    for e0 in filas:
+        e = dict(e0)
+        e["detalle"] = [dict(x) for x in (e0.get("detalle") or [])]
+        partes, tot, dud = [], 0, False
+        for x in e["detalle"]:
+            r = _meli_etq_regla(cfg, x.get("item_id"), x.get("variation_id"), x.get("sku"))
+            try:
+                cant = int(x.get("cant") or 1)
+            except Exception:
+                cant = 1
+            u, seguro = _meli_etq_unidades(cfg, r, x.get("sku"))
+            sing, plur = _meli_etq_palabras(cfg, r)
+            x["potes"] = u * cant
+            x["seguro"] = seguro
+            partes.append((u * cant, sing, plur))
+            tot += u * cant
+            if not seguro:
+                dud = True
+        if not partes:
+            partes = [(1,) + _meli_etq_palabras(cfg)]
+        e["potes"] = max(1, tot)
+        e["dudoso"] = dud
+        e["etq"] = _meli_etq_txt_partes(partes)
+        out.append(e)
+    return out
+
+
+def _meli_etq_stamp_re(cfg):
+    """Regex del sello ya estampado en una etiqueta. Sin config: la de siempre (x2 POTES)."""
+    if not _meli_etq_activo(cfg):
+        return r"(x\d+\s+POTES?)"
+    ws = {"POTE", "POTES"}
+    ws.update(_meli_etq_palabras(cfg))
+    for r in ((cfg or {}).get("pubs") or {}).values():
+        ws.update(_meli_etq_palabras(cfg, r))
+    alt = "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in sorted(ws, key=len, reverse=True))
+    un = r"x\s*\d+\s+(?:%s)(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])" % alt
+    return r"(%s(?:\s*\+\s*%s)*)" % (un, un)
+
+
+def _meli_etq_hoja_re(cfg):
+    """Regex de las lineas '30X BOLSAS DE X2 POTES' de una hoja PARA EMPAQUETAR."""
+    if not _meli_etq_activo(cfg):
+        return _MELI_HOJA_RE
+    return re.compile(r"(\d+)\s*X\s+BOLSAS?\s+DE\s+" + _meli_etq_stamp_re(cfg), re.I)
+
+
+def _meli_etq_pubs_traer(email, tope=600):
+    """Publicaciones (activas y pausadas) con sus variantes: [{clave,item_id,variation_id,
+    titulo,variante,foto,sku,status}]. Una llamada de busqueda paginada + multiget de a 20."""
+    tok, uid = _meli_ctx(email)
+    if not tok or not uid:
+        return None, "Mercado Libre no conectado"
+    h = {"Authorization": "Bearer " + tok}
+    ids, off = [], 0
+    try:
+        while len(ids) < tope:
+            r = requests.get("%s/users/%s/items/search" % (MELI_API, uid), headers=h,
+                             params={"limit": 100, "offset": off}, timeout=25)
+            if r.status_code >= 400:
+                if not ids:
+                    return None, "MercadoLibre contesto %s al pedir tus publicaciones" % r.status_code
+                break
+            lote = (r.json() if r.content else {}).get("results") or []
+            ids.extend(lote)
+            if len(lote) < 100:
+                break
+            off += 100
+    except Exception as e:
+        return None, "%s: %s" % (type(e).__name__, str(e)[:100])
+
+    def _lote(chunk):
+        try:
+            rr = requests.get("%s/items" % MELI_API, headers=h, timeout=25,
+                              params={"ids": ",".join(chunk), "include_attributes": "all",
+                                      "attributes": "id,title,status,thumbnail,secure_thumbnail,"
+                                                    "seller_custom_field,attributes,variations"})
+            return (rr.json() if rr.content else []) or []
+        except Exception:
+            return []
+
+    def _sku_de(o):
+        s = str((o or {}).get("seller_custom_field") or "").strip()
+        if not s:
+            for a in ((o or {}).get("attributes") or []):
+                if (a.get("id") or "") == "SELLER_SKU":
+                    s = str(a.get("value_name") or "").strip()
+                    break
+        return s
+
+    from concurrent.futures import ThreadPoolExecutor as _TPEe
+    chunks = [ids[i:i + 20] for i in range(0, len(ids), 20)]
+    filas = []
+    with _TPEe(max_workers=6) as _ex:
+        for arr in _ex.map(_lote, chunks):
+            for wrap in (arr if isinstance(arr, list) else []):
+                b = (wrap or {}).get("body") or {}
+                st = b.get("status") or ""
+                if not b.get("id") or st not in ("active", "paused"):
+                    continue
+                foto = b.get("secure_thumbnail") or b.get("thumbnail") or ""
+                if foto.startswith("http://"):
+                    foto = "https://" + foto[7:]
+                base = {"item_id": str(b["id"]), "titulo": (b.get("title") or "")[:120],
+                        "foto": foto, "status": st}
+                vs = b.get("variations") or []
+                if not vs:
+                    filas.append(dict(base, clave=str(b["id"]), variation_id="", variante="",
+                                      sku=_sku_de(b)))
+                    continue
+                for v in vs:
+                    vid = str(v.get("id") or "")
+                    if not vid:
+                        continue
+                    nom = " / ".join(str(a.get("value_name") or "") for a in
+                                     (v.get("attribute_combinations") or []) if a.get("value_name"))
+                    filas.append(dict(base, clave=str(b["id"]) + "#" + vid, variation_id=vid,
+                                      variante=nom[:80], sku=(_sku_de(v) or _sku_de(b))))
+    filas.sort(key=lambda f: (0 if f["status"] == "active" else 1, f["titulo"], f["variante"]))
+    return filas, ""
+
+
+def _meli_etq_pubs(email, fresco=False):
+    """Las publicaciones con cache EN DISCO (son 2 workers): la pantalla no vuelve a barrer ML
+    en cada entrada. 'Actualizar' manda fresco=1."""
+    try:
+        d = _json.loads(_MELI_ETQ_PUBS_F.read_text(encoding="utf-8"))
+        d = d if isinstance(d, dict) else {}
+    except Exception:
+        d = {}
+    c = d.get(str(email)) or {}
+    if not fresco and c.get("filas") is not None and (_time.time() - float(c.get("ts") or 0)) < _MELI_ETQ_PUBS_TTL:
+        return c["filas"], "", int(_time.time() - float(c.get("ts") or 0))
+    filas, err = _meli_etq_pubs_traer(email)
+    if filas is None:
+        if c.get("filas") is not None:            # ML fallo: muestro lo ultimo que se leyo
+            return c["filas"], "", int(_time.time() - float(c.get("ts") or 0))
+        return None, err, 0
+    try:
+        d[str(email)] = {"ts": _time.time(), "filas": filas}
+        tmp = _MELI_ETQ_PUBS_F.with_name("%s.%d.tmp" % (_MELI_ETQ_PUBS_F.name, _os.getpid()))
+        tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        _os.replace(str(tmp), str(_MELI_ETQ_PUBS_F))
+    except Exception:
+        pass
+    return filas, "", 0
+
+
+def _meli_etq_fila_vista(cfg, f):
+    """Agrega a una publicacion lo guardado, lo que se estampa HOY y la vista previa."""
+    r = (cfg.get("pubs") or {}).get(f["clave"]) or {}
+    u_hoy, seguro = _meli_units_sku(f.get("sku"))
+    sug = u_hoy if seguro else (_bpu_auto(f.get("titulo")) or 1)
+    u_ef = r.get("unidades") or u_hoy
+    return dict(f, u_hoy=u_hoy, seguro=seguro, sugerida=sug,
+                unidades=(r.get("unidades") or None), palabra=r.get("palabra") or "",
+                plural=r.get("plural") or "", vista=_meli_etq_txt(u_ef, cfg, r))
 
 
 _MELI_LISTOS_CACHE = {}        # {email: (ts, filas)} — copia en memoria del worker
@@ -14577,6 +14968,8 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
             e["detalle"].append({"sku": sku, "cant": cant, "potes": u * cant, "seguro": seguro,
                                  "sabor": sab, "precio": float(it.get("unit_price") or 0),
                                  "item_id": str(itm.get("id") or ""),
+                                 # la variante: la config de "SKU de etiquetas" puede ser por variante
+                                 "variation_id": str(itm.get("variation_id") or ""),
                                  "titulo": (itm.get("title") or "")[:70]})
     filas = []
     for e in envios.values():
@@ -14634,6 +15027,8 @@ def _meli_etiquetas_pendientes(email, sids=None):
         return None, [], {}, {"msg": err}
     if not filas:
         return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+    _etq_cfg = _meli_etq_cfg(email)
+    filas = _meli_etq_aplicar(email, filas, _etq_cfg)     # sin config: la misma lista
     # Las que ML todavia no habilito para imprimir (handling / pending-buffered) se listan pero
     # NO se piden: con una sola en la tanda ML rechaza el lote. Se avisan aparte.
     _sin_etq = [f for f in filas if f.get("etiqueta") is False]
@@ -14651,6 +15046,8 @@ def _meli_etiquetas_pendientes(email, sids=None):
     mapa = {}
     for f in filas:
         _d = {"sku": f["sku"], "cant": f["cant"], "buyer": f["buyer"], "potes": f["potes"]}
+        if f.get("etq"):
+            _d["etq"] = f["etq"]          # texto final de "SKU de etiquetas" (X3 FRASCOS)
         # DOS CLAVES por envio: el tracking y el numero de envio, las dos al MISMO dict.
         # Hacen falta las dos porque la etiqueta FLEX no imprime el tracking sino
         # "Envio: 4829 0368581", y hay FLEX cuyo tracking ni siquiera es ese numero
@@ -14719,7 +15116,7 @@ def _meli_etiquetas_pendientes(email, sids=None):
             crudo = _b.getvalue()
         except Exception as e:
             return None, [], {}, {"msg": "no pude unir las tandas de etiquetas: %s" % str(e)[:120]}
-    pdf, orders, stats = _meli_etiquetas_procesar(crudo, mapa_ext=mapa)
+    pdf, orders, stats = _meli_etiquetas_procesar(crudo, mapa_ext=mapa, etq_cfg=_etq_cfg)
     # OJO: en "sids" van SOLO los que salieron. Los que fallaron no se marcan como bajados,
     # si no desaparecian de la lista sin que exista su etiqueta.
     # ML puede contestar 200 con un PDF VALIDO pero con MENOS etiquetas de las pedidas: se come
@@ -15169,6 +15566,8 @@ def meli_pendientes_lista():
     ya = len([f for f in filas if f["bajada"]])
     if not todas:                                   # las ya bajadas no vuelven a aparecer
         filas = [f for f in filas if not f["bajada"]]
+    # SKU de etiquetas: unidades/palabra de la config de la cuenta (sin config no cambia nada)
+    filas = _meli_etq_aplicar(email, filas)
     return jsonify({"ok": True, "envios": filas, "ya_bajadas": ya, "todas": todas,
                     "potes": sum(f.get("potes") or 0 for f in filas),
                     "edad": int(_edad if _edad < 1e8 else 0), "refrescando": _refrescando,
@@ -15395,7 +15794,7 @@ def meli_etiquetas():
         return jsonify({"ok": False, "msg": "falta PyMuPDF en el servidor (esperá el redeploy)"}), 500
     data = f.read()
     try:
-        pdf, orders, stats = _meli_etiquetas_procesar(data)
+        pdf, orders, stats = _meli_etiquetas_procesar(data, etq_cfg=_meli_etq_cfg(email))
     except Exception as e:
         return jsonify({"ok": False, "msg": "No pude leer el PDF: %s" % (str(e)[:120])}), 500
     if not orders:
@@ -15422,6 +15821,88 @@ def meli_etiquetas_descargar():
     import io
     return send_file(io.BytesIO(st["pdf"]), as_attachment=True,
                      download_name="MELI-etiquetas-SKU.pdf", mimetype="application/pdf")
+
+
+@app.get("/meli/etq-sku")
+def meli_etq_sku_ver():
+    """SKU de etiquetas: las publicaciones de la cuenta (con sus variantes), lo guardado y lo
+    que se estampa hoy. Las publicaciones salen de un cache en disco de 15 min (fresco=1 lo salta)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Sin sesion"}), 401
+    cfg = _meli_etq_cfg(email)
+    pal_def = cfg.get("palabra") or _MELI_ETQ_PAL_DEF
+    base = {"palabra": cfg.get("palabra") or "", "plural": cfg.get("plural") or "",
+            "palabra_def": pal_def, "plural_auto": _meli_etq_plural(pal_def)}
+    fresco = (request.args.get("fresco") or "") in ("1", "true", "si")
+    try:
+        pubs, err, edad = _meli_etq_pubs(email, fresco=fresco)
+    except Exception as e:
+        return jsonify(dict(base, ok=False, msg="%s: %s" % (type(e).__name__, str(e)[:160]))), 500
+    if pubs is None:
+        return jsonify(dict(base, ok=False, msg=err or "No pude leer tus publicaciones"))
+    filas = [_meli_etq_fila_vista(cfg, f) for f in pubs]
+    vistas = {f["clave"] for f in filas}
+    # lo guardado de publicaciones que ya no aparecen (cerradas/borradas): se avisa, sigue valiendo
+    viejas = [dict(clave=k, **r) for k, r in (cfg.get("pubs") or {}).items() if k not in vistas]
+    return jsonify(dict(base, ok=True, filas=filas, guardadas_fuera=viejas, edad=edad))
+
+
+@app.post("/meli/etq-sku")
+def meli_etq_sku_guardar():
+    """Guarda UNA fila ({clave, unidades, palabra, plural, sku, titulo}) o la palabra por
+    defecto de la cuenta ({defecto: true, palabra, plural}). Unidades/palabra vacias = borrar."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "msg": "Sin sesion"}), 401
+    d = request.get_json(silent=True) or {}
+    pal = _meli_etq_pal_limpia(d.get("palabra"))
+    plu = _meli_etq_pal_limpia(d.get("plural"))
+    if pal is None or plu is None:
+        return jsonify({"ok": False, "msg": "La palabra solo puede tener letras, numeros, espacios, "
+                                            "punto, guion o barra (sin '+'), hasta 24 letras."}), 400
+    if d.get("defecto"):
+        def _cambiar(c):
+            c["palabra"] = pal
+            c["plural"] = plu if pal else ""
+        try:
+            cfg = _meli_etq_cfg_guardar(email, _cambiar)
+        except Exception as e:
+            return jsonify({"ok": False, "msg": "No pude guardar: %s: %s" % (type(e).__name__, str(e)[:120])}), 500
+        pd = cfg.get("palabra") or _MELI_ETQ_PAL_DEF
+        return jsonify({"ok": True, "palabra": cfg.get("palabra") or "", "plural": cfg.get("plural") or "",
+                        "palabra_def": pd, "plural_auto": _meli_etq_plural(pd),
+                        "plural_def": cfg.get("plural") or _meli_etq_plural(pd)})
+    clave = str(d.get("clave") or "").strip().upper()
+    if not _MELI_ETQ_CLAVE_RE.match(clave):
+        return jsonify({"ok": False, "msg": "Publicacion invalida: %s" % clave[:40]}), 400
+    u_raw = d.get("unidades")
+    u = 0
+    if u_raw not in (None, ""):
+        try:
+            u = int(str(u_raw).strip())
+        except Exception:
+            u = -1
+        if not (1 <= u <= 999):
+            return jsonify({"ok": False, "msg": "Las unidades por venta van de 1 a 999 (vacio = la que detecta el SKU)."}), 400
+    sku = str(d.get("sku") or "").strip()[:80]
+    tit = str(d.get("titulo") or "").strip()[:120]
+
+    def _cambiar(c):
+        pubs = c.setdefault("pubs", {})
+        if not (u or pal):
+            pubs.pop(clave, None)
+            return
+        pubs[clave] = {"unidades": u, "palabra": pal, "plural": (plu if pal else ""),
+                       "sku": sku, "titulo": tit}
+    try:
+        cfg = _meli_etq_cfg_guardar(email, _cambiar)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "No pude guardar: %s: %s" % (type(e).__name__, str(e)[:120])}), 500
+    r = (cfg.get("pubs") or {}).get(clave) or {}
+    u_hoy, _seg = _meli_units_sku(sku)
+    return jsonify({"ok": True, "clave": clave, "guardado": bool(r),
+                    "vista": _meli_etq_txt(r.get("unidades") or u_hoy, cfg, r)})
 
 
 # ---------- Seguimientos (Despachos): leer PDF Andreani + enviar por WhatsApp y/o TiendaNube ----------
@@ -30384,8 +30865,11 @@ var IC_STK=_svg('<path d="M21 8V5a1 1 0 0 0-.6-.9l-7.8-3.1a2 2 0 0 0-1.2 0L3.6 4
  +'a1 1 0 0 0 .6.9l7.8 3.1a2 2 0 0 0 1.2 0"/><path d="M3.3 4.6 12 8.5l8.7-3.9"/><path d="M12 8.5V23"/>'
  +'<path d="M16 17h6"/><path d="M19 14l3 3-3 3"/>');
 var IC_ML=_svg('<circle cx="12" cy="12" r="9"/><path d="M7.5 14.5 10 10l2 3 2-4.5 2.5 6"/>');
+var IC_SKUE=_svg('<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/>'
+ +'<circle cx="7.5" cy="7.5" r="1.5"/>');
 var FEATURES=[
  {k:'etiquetas',ic:IC_ETQ,t:'Etiquetas + SKU',d:'Tildá las ventas a despachar y bajá las etiquetas ya estampadas con el SKU (potes) y la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
+ {k:'skuetq',ic:IC_SKUE,t:'SKU de etiquetas',d:'Esto es lo que se estampa en cada etiqueta de MercadoLibre y en la hoja PARA EMPAQUETAR.',soon:false},
  {k:'ventas',ic:IC_VTA,t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
  {k:'stocksync',ic:IC_STK,t:'Stock y sincronización',d:'El stock de tu tienda y el de Mercado Libre, emparejados por SKU. Mirá las diferencias y sincronizá.',soon:false}
 ];
@@ -30418,6 +30902,7 @@ function renderMain(){
  m.innerHTML=head+(f.k==='ventas'?'<div id="mlvivo" style="margin-bottom:16px"></div>':'')+'<div class="card"><div id="mlc" style="color:var(--ink3);font-size:12.5px">Cargando…</div></div>'+(f.k==='envios'?'<div id="mlhist"></div>':'');
  if(f.k==='clonar'){cargarClonar();return;}
  if(f.k==='stocksync'){cargarStockSync();return;}
+ if(f.k==='skuetq'){cargarSkuEtq();return;}
  if(f.k==='ventas'){cargarVivo();cargarVentas();} else if(f.k==='sku')cargarPubs(); else if(f.k==='stock')cargarStock(); else if(f.k==='envios')cargarEnvios(); else if(f.k==='stkpend')cargarStkEsperando(); else if(f.k==='mensajes')cargarPreg(); else if(f.k==='metricas')cargarMetr();
 }
 var _CLON=[];
@@ -31153,7 +31638,7 @@ function etqPintar(j){
      +'<div style="font-size:13px;font-weight:700;color:#eef3f9;white-space:nowrap">'+etqPlata(o.precio)+'</div>'
      +'<div style="font-size:12px;color:#93a3ba;white-space:nowrap">'+(o.cant||1)+((o.cant||1)>1?' unidades':' unidad')+'</div>'
      +'<div style="font-size:11.5px;color:#93a3ba;white-space:nowrap">SKU: '+esc(o.sku||'')+((o.cant||1)>1?(' <b style="color:#ffe600">&#215;'+(o.cant)+'</b>'):'')+'</div>'
-     +'<div style="font-size:13px;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+';background:#16202e;border-radius:9px;padding:6px 11px;white-space:nowrap">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+' potes</div>'
+     +'<div style="font-size:13px;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+';background:#16202e;border-radius:9px;padding:6px 11px;white-space:nowrap">'+(o.etq?(esc(o.etq)+(o.dudoso?' &#9888;':'')):('X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+' potes'))+'</div>'
     +'</div>'
     +(o.etiqueta===false
       ? '<div style="padding:0 13px 11px;font-size:11.5px;color:#ffb35a;font-weight:600">ML todav&#237;a no habilit&#243; la etiqueta: se imprime m&#225;s tarde</div>'
@@ -31280,7 +31765,7 @@ function etqProc(){
   var st=j.stats||{};
   if(m){ m.innerHTML='✓ '+(st.paquetes||0)+' paquetes · '+(st.potes||0)+' potes en total'+((st.sin_estampar>0)?(' · <span style="color:#ffb35a">'+st.sin_estampar+' sin ubicar en las etiquetas</span>'):''); m.style.color='#34d399'; }
   var res=document.getElementById('etqres'); if(!res)return;
-  var rows=(j.orders||[]).map(function(o){ return '<tr><td>'+esc(o.buyer||'')+'</td><td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td><td style="font-size:11.5px">'+esc(o.sku_meli||'')+'</td><td style="text-align:center;font-weight:800;color:#ffe600">X'+o.potes+'</td></tr>'; }).join('');
+  var rows=(j.orders||[]).map(function(o){ return '<tr><td>'+esc(o.buyer||'')+'</td><td style="color:#7aa2c8;font-size:11.5px">'+esc(o.tracking||'')+'</td><td style="font-size:11.5px">'+esc(o.sku_meli||'')+'</td><td style="text-align:center;font-weight:800;color:#ffe600">'+(o.etq?esc(o.etq):('X'+o.potes))+'</td></tr>'; }).join('');
   res.innerHTML='<button onclick="etqDown(\''+j.token+'\')" class="btn" style="border:0;cursor:pointer">⬇ Descargar PDF (SKU + PARA EMPAQUETAR)</button>'
    +'<div style="overflow:auto;margin-top:14px"><table><thead><tr>'+TH+'Cliente</th>'+TH+'Tracking</th>'+TH+'SKU MELI</th><th style="text-align:center">Potes</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
  }).catch(function(){ if(b)b.disabled=false; if(m){m.textContent='Error de red';m.style.color='#e0637f';} });
@@ -31298,6 +31783,104 @@ function etqDown(t){
 // y la tabla quedaba vacia aunque hubiera publicaciones.
 var SS={todas:[],sin_publicar:[],hay_tienda:false,n_pubs:0};
 var SSsel={};
+// ── SKU de etiquetas (17-11-2026): palabra y unidades por publicacion que se estampan en las
+// etiquetas de ML y en la hoja PARA EMPAQUETAR. Sin configurar nada sale "X2 POTES" como siempre.
+var SKUE={filas:[],palabra:'',plural:'',fuera:[],edad:0};
+function skuEtqPlural(p){ p=(p||'').trim().toUpperCase(); if(!p)return ''; var u=p.charAt(p.length-1);
+ if('AEIOUÁÉÍÓÚ'.indexOf(u)>=0)return p+'S'; if(u==='S')return p; return p+'ES'; }
+function skuEtqDefPal(){ var p=SKUE.palabra||'POTE'; return [p,(SKUE.palabra&&SKUE.plural)?SKUE.plural:skuEtqPlural(p)]; }
+function skuEtqVal(id){ var e=document.getElementById(id); return e?(e.value||'').trim().toUpperCase():''; }
+function skuEtqPals(i){ var p=skuEtqVal('se_p_'+i); if(p)return [p,skuEtqVal('se_q_'+i)||skuEtqPlural(p)]; return skuEtqDefPal(); }
+function skuEtqVista(i){
+ var f=SKUE.filas[i]; if(!f)return; var ui=document.getElementById('se_u_'+i); var n=parseInt(ui&&ui.value,10);
+ if(!(n>=1))n=f.u_hoy||1; var w=skuEtqPals(i); var v=document.getElementById('se_v_'+i);
+ if(v)v.textContent='→ X'+n+' '+(n===1?w[0]:w[1]);
+ var q=document.getElementById('se_q_'+i); if(q)q.placeholder=skuEtqVal('se_p_'+i)?skuEtqPlural(skuEtqVal('se_p_'+i)):skuEtqDefPal()[1];
+ var p=document.getElementById('se_p_'+i); if(p)p.placeholder=skuEtqDefPal()[0];
+}
+function skuEtqMsg(id,t,c){ var m=document.getElementById(id); if(m){ m.textContent=t; m.style.color=c; } }
+function cargarSkuEtq(fresco){
+ var c=document.getElementById('mlc'); if(!c)return;
+ c.innerHTML='Leyendo tus publicaciones…';
+ fetch('/meli/etq-sku'+(fresco?'?fresco=1':'')).then(function(r){return r.json();}).then(function(j){
+  if(!j||!j.ok){ c.innerHTML=err(j); return; }
+  SKUE.filas=j.filas||[]; SKUE.palabra=j.palabra||''; SKUE.plural=j.plural||''; SKUE.fuera=j.guardadas_fuera||[]; SKUE.edad=j.edad||0;
+  renderSkuEtq();
+ }).catch(function(e){ c.innerHTML=err({msg:'No se pudo cargar: '+((e&&e.message)||'sin conexión')}); });
+}
+function renderSkuEtq(){
+ var c=document.getElementById('mlc'); if(!c)return;
+ var btn='background:#0a1322;border:1px solid #2a3d59;color:#9fd0ff;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;font-size:12.5px';
+ var inp='background:#0a1322;border:1px solid #22324a;color:#e8edf4;border-radius:7px;padding:6px 8px;font-size:12px';
+ var dp=skuEtqDefPal();
+ var top='<div style="background:#0a1322;border:1px solid #1b2635;border-radius:12px;padding:15px;margin-bottom:12px">'
+  +'<div style="font-weight:800;font-size:14px;margin-bottom:4px">Palabra por defecto</div>'
+  +'<div style="color:#8493a8;font-size:12px;margin-bottom:10px">Va en las publicaciones que no tienen una palabra propia. Vacía = POTE.</div>'
+  +'<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">'
+  +'<input id="se_dp" value="'+esc(SKUE.palabra)+'" placeholder="POTE" maxlength="24" onchange="skuEtqDefGuardar()" style="width:150px;'+inp+';font-size:14px;font-weight:700;padding:9px;text-transform:uppercase">'
+  +'<input id="se_dq" value="'+esc(SKUE.palabra?SKUE.plural:'')+'" placeholder="'+esc(skuEtqPlural(dp[0]))+'" maxlength="24" onchange="skuEtqDefGuardar()" title="Plural (vacío = automático)" style="width:150px;'+inp+';font-size:14px;padding:9px;text-transform:uppercase">'
+  +'<span style="color:#5b6b82;font-size:12px">plural (vacío = automático)</span>'
+  +'<span id="se_dm" style="font-size:12.5px;font-weight:700"></span>'
+  +'</div></div>';
+ var v=SKUE.filas;
+ var acc='<div style="display:flex;gap:9px;margin-bottom:10px;flex-wrap:wrap;align-items:center">'
+  +'<input id="se_f" placeholder="Buscar publicación o SKU" oninput="skuEtqFiltro()" style="width:220px;'+inp+';padding:9px">'
+  +'<button onclick="cargarSkuEtq(true)" style="'+btn+'">Actualizar publicaciones</button>'
+  +'<span style="color:#5b6b82;font-size:12px">'+v.length+' publicaci'+(v.length===1?'ón':'ones')+(SKUE.edad>60?(' · leídas hace '+Math.round(SKUE.edad/60)+' min'):'')+'</span>'
+  +'</div>';
+ var fuera=SKUE.fuera.length?('<div style="color:#8493a8;font-size:12px;margin-bottom:10px">'+SKUE.fuera.length+' configuración(es) de publicaciones que ya no están activas siguen valiendo para sus ventas.</div>'):'';
+ if(!v.length){ c.innerHTML=top+acc+fuera+vacio('No encontré publicaciones activas en esta cuenta.'); return; }
+ var rows=v.map(function(f,i){
+  var aviso='';
+  if(!f.seguro){
+   aviso='<div style="font-size:10.5px;color:#ffb35a;margin-top:3px">El SKU no dice las unidades: hoy sale X1'
+    +(f.sugerida>1?(' &#183; <a href="#" onclick="skuEtqUsar('+i+','+f.sugerida+');return false" style="color:#9fd0ff">usar '+f.sugerida+' (por el título)</a>'):'')+'</div>';
+  }
+  return '<tr id="se_r_'+i+'">'
+   +'<td><div style="display:flex;gap:9px;align-items:center">'
+   +(f.foto?('<img src="'+esc(f.foto)+'" loading="lazy" alt="" style="width:34px;height:34px;border-radius:6px;object-fit:cover;background:#16202e;flex:none">'):'<div style="width:34px;height:34px;border-radius:6px;background:#16202e;flex:none"></div>')
+   +'<div style="min-width:0"><div style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:#eef3f9">'+esc(f.titulo)+'</div>'
+   +(f.variante?('<div style="font-size:11.5px;color:#7aa2c8">'+esc(f.variante)+'</div>'):'')
+   +'<div style="font-size:10px;color:#5b6b82">'+esc(f.item_id)+(f.sku?(' &#183; SKU '+esc(f.sku)):' &#183; sin SKU')+(f.status==='paused'?' &#183; <span style="color:#ffb35a">pausada</span>':'')+'</div>'
+   +aviso+'</div></div></td>'
+   +'<td style="text-align:center"><input id="se_u_'+i+'" type="number" min="1" max="999" value="'+(f.unidades||'')+'" placeholder="'+(f.u_hoy||1)+'" oninput="skuEtqVista('+i+')" onchange="skuEtqGuardar('+i+')" style="width:62px;text-align:center;'+inp+'"></td>'
+   +'<td><input id="se_p_'+i+'" value="'+esc(f.palabra||'')+'" placeholder="'+esc(dp[0])+'" maxlength="24" oninput="skuEtqVista('+i+')" onchange="skuEtqGuardar('+i+')" style="width:110px;'+inp+';text-transform:uppercase"></td>'
+   +'<td><input id="se_q_'+i+'" value="'+esc(f.palabra?(f.plural||''):'')+'" placeholder="" maxlength="24" oninput="skuEtqVista('+i+')" onchange="skuEtqGuardar('+i+')" style="width:110px;'+inp+';text-transform:uppercase"></td>'
+   +'<td style="white-space:nowrap;font-weight:800;color:#ffe600;font-size:12.5px" id="se_v_'+i+'"></td>'
+   +'<td style="white-space:nowrap;font-size:11.5px;font-weight:700" id="se_m_'+i+'"></td>'
+   +'</tr>';
+ }).join('');
+ c.innerHTML=top+acc+fuera
+  +'<div style="overflow:auto"><table><thead><tr>'+TH+'Publicación</th><th style="text-align:center">Unidades por venta</th>'+TH+'Palabra</th>'+TH+'Plural</th>'+TH+'Se estampa</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+ for(var i=0;i<v.length;i++)skuEtqVista(i);
+}
+function skuEtqFiltro(){
+ var q=((document.getElementById('se_f')||{}).value||'').trim().toLowerCase();
+ SKUE.filas.forEach(function(f,i){ var r=document.getElementById('se_r_'+i); if(!r)return;
+  var t=((f.titulo||'')+' '+(f.variante||'')+' '+(f.sku||'')+' '+(f.item_id||'')).toLowerCase();
+  r.style.display=(!q||t.indexOf(q)>=0)?'':'none'; });
+}
+function skuEtqUsar(i,n){ var u=document.getElementById('se_u_'+i); if(!u)return; u.value=n; skuEtqVista(i); skuEtqGuardar(i); }
+function skuEtqGuardar(i){
+ var f=SKUE.filas[i]; if(!f)return;
+ var u=((document.getElementById('se_u_'+i)||{}).value||'').trim();
+ var p=skuEtqVal('se_p_'+i), q=skuEtqVal('se_q_'+i);
+ skuEtqMsg('se_m_'+i,'Guardando…','#7aa2c8');
+ post('/meli/etq-sku',{clave:f.clave,unidades:u,palabra:p,plural:q,sku:f.sku||'',titulo:(f.titulo||'')+(f.variante?(' · '+f.variante):'')}).then(function(r){
+  if(r&&r.ok){ f.unidades=u?parseInt(u,10):null; f.palabra=p; f.plural=p?q:''; skuEtqMsg('se_m_'+i,'Guardado','#34d399'); }
+  else skuEtqMsg('se_m_'+i,(r&&r.msg)||'No se pudo guardar','#e0637f');
+ }).catch(function(e){ skuEtqMsg('se_m_'+i,'Error: '+((e&&e.message)||'sin conexión'),'#e0637f'); });
+}
+function skuEtqDefGuardar(){
+ var p=skuEtqVal('se_dp'), q=skuEtqVal('se_dq');
+ skuEtqMsg('se_dm','Guardando…','#7aa2c8');
+ post('/meli/etq-sku',{defecto:true,palabra:p,plural:q}).then(function(r){
+  if(r&&r.ok){ SKUE.palabra=r.palabra||''; SKUE.plural=r.plural||'';
+   var dq=document.getElementById('se_dq'); if(dq)dq.placeholder=r.plural_auto||'';
+   skuEtqMsg('se_dm','Guardado','#34d399'); for(var i=0;i<SKUE.filas.length;i++)skuEtqVista(i); }
+  else skuEtqMsg('se_dm',(r&&r.msg)||'No se pudo guardar','#e0637f');
+ }).catch(function(e){ skuEtqMsg('se_dm','Error: '+((e&&e.message)||'sin conexión'),'#e0637f'); });
+}
 function cargarStockSync(){
  var c=document.getElementById('mlc'); if(!c)return;
  c.innerHTML='Leyendo tus publicaciones…';
