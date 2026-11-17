@@ -3587,6 +3587,42 @@ _SOLO_DASH = r"""
   var el=document.getElementById('rp-cvar-'+id+'-1'), row=el&&el.closest('tr'), b=row&&row.querySelector('.rp-badge');
   if(b){ if(algo){ b.className='rp-badge rp-concosto'; b.style.cssText='background:#0e2a1c;border:1px solid #17492f;color:#34d399;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#10003; Cargado'; } else { b.className='rp-badge rp-sincosto'; b.style.cssText='background:#2a2210;border:1px solid #4a3a1a;color:#f0c674;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600'; b.innerHTML='&#9888;&#65039; Sin costo'; } }
   rpProdWarn(); };
+ // PACKS COMO VARIANTES (opt-in): producto con 2+ variantes que son packs (Pack 1 mes / 2 meses / 3 meses).
+ // Si se activa, cada variante vale N unidades: el costo y el SKU de la venta se calculan por unidades.
+ function _rpPackFila(p){
+  var vs=(p&&p.variantes)||[]; if(vs.length<2) return '';
+  var on=!!p.packs_on, id=String(p.id);
+  var sNum='width:64px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:6px 8px;font-size:12.5px;text-align:right';
+  var f='<tr><td colspan="4" style="padding:0 10px 14px;border-bottom:1px solid #141f2e">'
+   +'<div style="background:#0b1424;border:1px solid #1a2636;border-radius:10px;padding:10px 12px">'
+   +'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#cbd5e1;font-size:12.5px;font-weight:600">'
+   +'<input type="checkbox" id="rp-pk-on-'+id+'"'+(on?' checked':'')+' onchange="rpPackToggle(\''+id+'\')" style="cursor:pointer"> Las variantes son packs'
+   +'<span id="rp-pk-st-'+id+'" style="color:#34d399;font-size:11.5px;font-weight:600;margin-left:6px"></span></label>'
+   +'<div style="color:#5b6b82;font-size:11.5px;margin-top:4px">Pack 3 meses = 3 unidades: el costo y el SKU se calculan por unidades.</div>'
+   +'<div id="rp-pk-box-'+id+'" style="display:'+(on?'block':'none')+';margin-top:8px">';
+  vs.forEach(function(v){
+   var vid=String(v.id||'').replace(/[^0-9A-Za-z_-]/g,''); if(!vid) return;
+   var u=(v.unidades_guardadas!=null&&Number(v.unidades_guardadas)>=1)?Number(v.unidades_guardadas):(Number(v.unidades_sugeridas)||1);
+   f+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #121c2b">'
+    +'<span style="color:#e2e8f0;font-size:12.5px">'+esc(v.titulo||'')+(v.sku_shopify?' <span style="color:#5b6b82;font-size:11px">('+esc(v.sku_shopify)+')</span>':'')
+    +(v.precio?' <span style="color:#5b6b82;font-size:11px">$ '+Number(v.precio).toLocaleString('es-AR')+'</span>':'')+'</span>'
+    +'<span style="display:flex;align-items:center;gap:6px;color:#94a3b8;font-size:11.5px"><input type="number" min="1" max="100" step="1" data-vid="'+vid+'" value="'+u+'" onchange="rpPackSave(\''+id+'\')" style="'+sNum+'"> unidades</span></div>';
+  });
+  f+='</div></div></td></tr>';
+  return f; }
+ window.rpPackToggle=function(id){
+  var on=document.getElementById('rp-pk-on-'+id), box=document.getElementById('rp-pk-box-'+id);
+  if(box) box.style.display=(on&&on.checked)?'block':'none';
+  rpPackSave(id); };
+ window.rpPackSave=function(id){
+  var on=document.getElementById('rp-pk-on-'+id), box=document.getElementById('rp-pk-box-'+id), st=document.getElementById('rp-pk-st-'+id);
+  var packs={};
+  if(on&&on.checked&&box){ var ins=box.querySelectorAll('input[data-vid]');
+   for(var i=0;i<ins.length;i++){ var n=parseInt(ins[i].value,10); if(!(n>=1)){ n=1; ins[i].value='1'; } if(n>100){ n=100; ins[i].value='100'; } packs[ins[i].getAttribute('data-vid')]=n; } }
+  if(st){ st.style.color='#94a3b8'; st.textContent='Guardando...'; }
+  fetch('/pf-sku-set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:id,packs:packs})})
+   .then(function(r){return r.json();}).then(function(j){ if(st){ if(j&&j.ok){ st.style.color='#34d399'; st.textContent=(on&&on.checked)?'Guardado':'Desactivado'; } else { st.style.color='#f87171'; st.textContent='No se pudo guardar'; } setTimeout(function(){ if(st) st.textContent=''; },1800); } })
+   .catch(function(){ if(st){ st.style.color='#f87171'; st.textContent='Error, probá de nuevo'; } }); };
  function rpProdLoad(){ var chip=document.getElementById('rp-prod-chip'), warn=document.getElementById('rp-prod-warn'), body=document.getElementById('rp-prod-body'); if(!body)return;
   body.innerHTML='<div style="color:#94a3b8;font-size:13px;padding:24px 4px">Cargando...</div>'; warn.innerHTML=''; chip.innerHTML='';
   fetch('/pf-productos').then(function(r){return r.json();}).then(function(j){
@@ -3619,7 +3655,7 @@ _SOLO_DASH = r"""
     h+='<tr><td style="padding:14px 10px;border-bottom:1px solid #141f2e;vertical-align:top"><div style="display:flex;align-items:center;gap:13px"><div style="width:44px;height:44px;border-radius:9px;background:#101c2e;border:1px solid #1e2b3d;flex:none;overflow:hidden;display:flex;align-items:center;justify-content:center">'+img+'</div><div style="min-width:0"><div style="font-weight:600;color:#f1f5f9;font-size:14px">'+esc(p.nombre)+'</div><div style="margin-top:5px">'+badge+'</div></div></div></td>'
     +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;color:#f1f5f9;font-weight:600;font-size:14px;vertical-align:top">'+(p.precio?('$ '+Number(p.precio).toLocaleString('es-AR')):'&mdash;')+'</td>'
     +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+skuC+'</td>'
-    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+costC+'</td></tr>'; });
+    +'<td style="padding:14px 10px;border-bottom:1px solid #141f2e;text-align:right;vertical-align:top">'+costC+'</td></tr>'+_rpPackFila(p); });
    h+='</tbody></table>'; body.innerHTML=h; rpProdWarn();
    var rf=document.getElementById('rp-prod-ref'); if(rf) rf.onclick=rpProdLoad;
   }).catch(function(){ body.innerHTML='<div style="color:#f87171;font-size:13px;padding:24px 4px">No se pudieron cargar los productos.</div>'; }); }
@@ -7511,6 +7547,7 @@ def pf_pedidos_cero():
             break
         url, params = nxt, None
     costos = (_costos().get(email) or {})
+    _skus = _skus_map(email)     # packs-variantes (opt-in): sin packs, _q_linea = quantity
     emap = _envialo_costos(email)
     out = []
     for o in orders:
@@ -7527,10 +7564,11 @@ def pf_pedidos_cero():
         prods = []
         for li in (o.get("line_items") or []):
             q = int(li.get("quantity") or 0)
-            un += q
+            _qu = _q_linea(_skus, li)       # unidades reales (pack 3 meses x1 = 3)
+            un += _qu
             c = costos.get(str(li.get("product_id") or ""))
             if c:
-                cp += _costo_qty(c, q)
+                cp += _costo_qty(c, _qu)
             prods.append("%s x%d" % ((li.get("title") or "?")[:40], q))
         env, env_fuente = _envio_de_pedido(email, o, emap)   # igual que el dashboard
         _ful_o = _oper_orden(_oper_dia_pedido(o.get("created_at"), desde, hasta))   # tarifa de SU fecha
@@ -7680,11 +7718,12 @@ def pf_debug_ordenes():
     emap = _envialo_costos(email)
     pagos = _mp_pagos_lista(email, desde, hasta)
     by_ref, by_amt = _mp_bolsas(pagos, _todas)   # igual que el dashboard
+    _skus = _skus_map(email)     # packs-variantes (opt-in): sin packs, _q_linea = quantity
     out = []
     for o in orders[:n]:
         tot = float(o.get("total_price") or o.get("current_total_price") or 0)
-        u = sum(int(li.get("quantity") or 0) for li in (o.get("line_items") or []))
-        cp = sum(_costo_qty(costos.get(str(li.get("product_id") or "")), int(li.get("quantity") or 0))
+        u = sum(_q_linea(_skus, li) for li in (o.get("line_items") or []))
+        cp = sum(_costo_qty(costos.get(str(li.get("product_id") or "")), _q_linea(_skus, li))
                  for li in (o.get("line_items") or []))
         # QUE ENTRA DE VERDAD EN LA VENTA. "unidades" suma TODAS las lineas, asi que mete la guia
         # digital y el oxido nitrico que va de regalo con el pack grande: por eso aparecian ventas
@@ -7972,14 +8011,16 @@ def _stk_get(url, headers, params, deadline=None, timeout=20, intentos=6):
     raise RuntimeError("HTTP %s despues de %d intentos" % (getattr(r, "status_code", "?"), intentos))
 
 
-def _stk_ord_shopify(o):
+def _stk_ord_shopify(o, skus=None):
     """Pedido REST de Shopify -> entrada compacta.
     q = unidades que SALIERON (o van a salir) del estante, por producto:
       - solo renglones con envio (la Guia Digital, requires_shipping=false, no es stock fisico);
       - menos lo reembolsado CON reposicion (restock cancel/return): un reembolso sin reposicion
         de un pedido ya despachado NO devuelve potes (antes partially_refunded devolvia todo);
       - cancelado o reembolsado sin haber despachado nada = 0 (los potes nunca salieron).
-    p = unidades pagadas que todavia NO se despacharon (fulfillable_quantity = unfulfilledQuantity)."""
+    p = unidades pagadas que todavia NO se despacharon (fulfillable_quantity = unfulfilledQuantity).
+    skus = config de Productos: si el producto tiene packs-variantes activos, cada unidad del
+    renglon vale las unidades del pack (Pack 3 meses x1 = 3). Sin packs = igual que siempre."""
     fs = (o.get("financial_status") or "").lower()
     ful = (o.get("fulfillment_status") or "").lower()
     cancel = bool(o.get("cancelled_at"))
@@ -8003,11 +8044,12 @@ def _stk_ord_shopify(o):
         neto = max(0, cant - vuelto.get(str(li.get("id") or ""), 0))
         if (cancel or fs in ("refunded", "voided")) and nunca_salio:
             neto = 0
+        _f = _pack_factor(skus, li) if skus else 1
         if neto:
-            q[pid] = q.get(pid, 0) + neto
+            q[pid] = q.get(pid, 0) + neto * _f
         pend = min(int(li.get("fulfillable_quantity") or 0), neto)
         if pend > 0 and pago and not cancel:
-            p[pid] = p.get(pid, 0) + pend
+            p[pid] = p.get(pid, 0) + pend * _f
     f, t = _stk_cuando(o.get("created_at"))
     ent = {"q": q, "e": "paid" if pago else "pending", "f": f, "t": t, "c": "tienda"}
     if p:
@@ -8267,8 +8309,9 @@ def _stock_sync(email, esperar=True, deadline_s=None):
                                                        "fulfillment_status": "unfulfilled",
                                                        "created_at_min": vent_desde + "T00:00:00-03:00"},
                                                  deadline, latir, "Shopify (sin despachar)")
+                _skus_stk = _skus_map(email)      # packs-variantes (opt-in)
                 for o in crudos:
-                    ent, tt = _stk_ord_shopify(o)
+                    ent, tt = _stk_ord_shopify(o, _skus_stk)
                     nuevos["sh:%s" % o.get("id")] = ent
                     tit.update(tt)
                 cur["sh"] = marca
@@ -8909,12 +8952,13 @@ def pf_orden():
     tot = float(o.get("total_price") or o.get("current_total_price") or 0)
     desc = float(o.get("total_discounts") or 0)
     costos = (_costos().get(email) or {})
+    _skus = _skus_map(email)     # packs-variantes (opt-in): sin packs, _q_linea = quantity
     items, costo_prod = [], 0.0
     for li in (o.get("line_items") or []):
         q = int(li.get("quantity") or 0)
         pid = str(li.get("product_id") or "")
         cu = costos.get(pid)
-        costo_prod += _costo_qty(cu, q)
+        costo_prod += _costo_qty(cu, _q_linea(_skus, li))
         items.append({"nombre": li.get("title") or li.get("name") or "?", "cantidad": q,
                       "precio": float(li.get("price") or 0), "foto": _shop_img(shop, token, pid)})
     # MP: matcheo el pago de esta orden por fecha/monto para el desglose real.
@@ -9347,6 +9391,74 @@ def _sku_cfg(v) -> dict:
     return {"tipo": "unitario", "base": "", "map": {}}
 
 
+# ---- PACKS COMO VARIANTES (opt-in por producto, 17-11-2026) --------------------------------------
+# Hay tiendas donde los packs son VARIANTES del mismo producto ("Pack 1 mes", "Pack 2 meses",
+# "Pack 3 meses"). Shopify manda quantity=1 para un "Pack 3 meses", y el costo/SKU contaban 1
+# unidad. Si el usuario activa "Las variantes son packs" en Productos, se guarda en la config de
+# SKU del producto: packs = {variant_id: unidades}. SOLO entonces cada renglón vale
+# quantity × unidades. Producto sin `packs` (o variante no listada) = quantity, igual que antes.
+def _packs_limpios(pk) -> dict:
+    """{variant_id(str): unidades(int>=1)} válido; descarta basura."""
+    out = {}
+    if not isinstance(pk, dict):
+        return out
+    for k, v in pk.items():
+        k = str(k or "").strip()
+        if not k:
+            continue
+        try:
+            n = int(float(v))
+        except Exception:
+            continue
+        if n >= 1:
+            out[k] = min(n, 100)
+    return out
+
+
+def _pack_factor(email_o_skus, li) -> int:
+    """Unidades que trae UNA unidad de este renglón de Shopify (1 si el producto no tiene packs)."""
+    skus = _skus_map(email_o_skus) if isinstance(email_o_skus, str) else (email_o_skus or {})
+    if not skus:
+        return 1
+    cfg = skus.get(str(li.get("product_id") or ""))
+    if not isinstance(cfg, dict):
+        return 1
+    pk = cfg.get("packs")
+    if not pk or not isinstance(pk, dict):
+        return 1
+    try:
+        n = int(pk.get(str(li.get("variant_id") or "")) or 0)
+    except Exception:
+        n = 0
+    return n if n >= 1 else 1
+
+
+def _q_linea(email_o_skus, li) -> int:
+    """Unidades REALES de un renglón de Shopify: quantity × unidades del pack (si el producto tiene
+    packs activos y la variante está cargada); si no, quantity tal cual (comportamiento de siempre)."""
+    q = int(li.get("quantity") or 0)
+    if not email_o_skus:
+        return q
+    return q * _pack_factor(email_o_skus, li)
+
+
+def _pack_unid_sugerida(title) -> int:
+    """Sugerencia (solo para PRECARGAR la UI) de unidades por el título de la variante:
+    'x3', '3 meses', 'tres', '3 unidades/potes'. Misma idea que _bpu_auto, con límites de palabra
+    ('todos' no es 'dos'). El multiplicador efectivo es SOLO lo que guarda el usuario."""
+    t = (title or "").lower()
+    m = re.search(r'\bx\s?(\d{1,2})\b', t) or re.search(r'\b(\d{1,2})\s?x\b', t)
+    if m and int(m.group(1)) >= 1:
+        return int(m.group(1))
+    m = re.search(r'\b(\d{1,2})\s*(?:meses|mes|unidades|unidad|potes|pote|frascos|frasco|cajas|caja)\b', t)
+    if m and int(m.group(1)) >= 1:
+        return int(m.group(1))
+    for n, w in [(6, "seis"), (5, "cinco"), (4, "cuatro"), (3, "tres"), (2, "dos"), (1, "un")]:
+        if re.search(r'\b%s\b' % w, t):
+            return n
+    return 1
+
+
 def _sku_calc(cfg, u: int) -> str:
     """SKU de la orden según el tipo y la cantidad comprada `u`."""
     c = _sku_cfg(cfg)
@@ -9402,6 +9514,31 @@ def pf_sku_set():
     pid = str(data.get("pid") or "").strip()
     if not pid:
         return jsonify({"ok": False})
+    # PACKS (variantes que son packs). Si viene `packs` SIN `tipo` = solo se tocan los packs y el
+    # resto de la config queda igual. {} / null / interruptor apagado = se BORRA `packs`.
+    if "packs" in data and "tipo" not in data:
+        m = _skus_map(email)
+        pk = _packs_limpios(data.get("packs"))
+        actual = m.get(pid)
+        if pk:
+            if isinstance(actual, dict):
+                nuevo = dict(actual)
+            elif actual is not None:
+                nuevo = dict(_sku_cfg(actual))           # SKU viejo en string (fijo) → mismo resultado
+            else:
+                nuevo = {"tipo": "unitario", "base": ""}
+            nuevo["packs"] = pk
+            m[pid] = nuevo
+        elif isinstance(actual, dict) and "packs" in actual:
+            nuevo = dict(actual)
+            nuevo.pop("packs", None)
+            if nuevo.get("tipo") != "variable" and not str(nuevo.get("base") or "").strip():
+                m.pop(pid, None)                         # sin base y sin packs → como si nunca existió
+            else:
+                m[pid] = nuevo
+        _skus_save(email, m)
+        _sku_ped_invalidar(email)
+        return jsonify({"ok": True, "packs": pk})
     tipo = (data.get("tipo") or "unitario").strip()
     tipo = {"xn": "unitario", "spray": "variable"}.get(tipo, tipo)
     if tipo not in ("unitario", "variable", "fijo"):
@@ -9412,6 +9549,10 @@ def pf_sku_set():
         if str(k).isdigit() and str(v or "").strip():
             smap[str(int(k))] = str(v).strip()
     m = _skus_map(email)
+    # Los packs NO se pierden al cambiar tipo/base (si vienen en el body, mandan esos).
+    _ant = m.get(pid)
+    _pk = (_packs_limpios(data.get("packs")) if "packs" in data
+           else (_packs_limpios(_ant.get("packs")) if isinstance(_ant, dict) else {}))
     if tipo == "variable":
         if smap:
             m[pid] = {"tipo": "variable", "base": "", "map": smap}
@@ -9419,9 +9560,15 @@ def pf_sku_set():
             m[pid] = {"tipo": "variable", "base": "", "map": {}}
     elif base:
         m[pid] = {"tipo": tipo, "base": base}
+    elif _pk:
+        m[pid] = {"tipo": tipo, "base": ""}            # sin base pero con packs: se guardan los packs
     else:
         m.pop(pid, None)                               # sin base y no-variable → limpiar
+    if _pk and pid in m:
+        m[pid]["packs"] = _pk
     _skus_save(email, m)
+    if "packs" in data:
+        _sku_ped_invalidar(email)
     return jsonify({"ok": True, "ejemplos": {str(n): _sku_calc(m.get(pid), n) for n in (1, 2, 3)}})
 
 
@@ -9758,6 +9905,18 @@ def _sku_ped_save():
         _SKU_PED_FILE.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
+
+
+def _sku_ped_invalidar(email):
+    """Cambiaron los packs de un producto: el caché de pedidos del "Insertar SKU" guarda las
+    unidades YA multiplicadas, así que se vence para que el próximo estampado las recalcule."""
+    try:
+        _sku_ped_load()
+        if email in _SKU_PED_CACHE:
+            _SKU_PED_CACHE[email] = (0, _SKU_PED_CACHE[email][1])
+            _sku_ped_save()
+    except Exception:
+        pass
 _WA_LOG_LOCK = threading.Lock()   # serializa la escritura del log de chats (envíos en PARALELO seguros)
 
 
@@ -9857,6 +10016,7 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             _DESP_CACHE[email] = {"key": ckey, "ts": _t.time(), "orders": orders}
             _desp_cache_save()            # persisto a disco → el próximo deploy no arranca frío
     st = _desp_state(email)
+    _skus_dsp = _skus_map(email)      # packs-variantes (opt-in): sin packs = quantity
     out = []
     for o in orders:
         if o.get("cancelled_at"):
@@ -9890,7 +10050,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                   or o.get("contact_email") or "—")
         suc = _es_sucursal_ship(o)
         # Solo las unidades que se despachan: en un pedido mixto la guia no va en la caja.
-        unidades = sum(int(li.get("quantity") or 0) for li in _lis_env)
+        # Packs-variantes (opt-in): Pack 3 meses x1 = 3 unidades; sin packs = quantity.
+        unidades = sum(_q_linea(_skus_dsp, li) for li in _lis_env)
         localidad = sa.get("city") or ""
         cp = sa.get("zip") or ""
         prov = sa.get("province") or ""
@@ -12183,7 +12344,13 @@ def pf_despachos_sku_sync():
                 for v in (p.get("variants") or []):
                     sk = (v.get("sku") or "").strip()
                     if sk:
-                        skus[str(p.get("id"))] = sk
+                        _ant = skus.get(str(p.get("id")))
+                        if isinstance(_ant, dict) and _ant.get("packs"):
+                            # mismo SKU fijo de siempre, pero sin borrar los packs que cargó el usuario
+                            skus[str(p.get("id"))] = {"tipo": "fijo", "base": sk, "map": {},
+                                                      "packs": _ant.get("packs")}
+                        else:
+                            skus[str(p.get("id"))] = sk
                         n += 1
                         break
             _skus_save(email, skus)
@@ -12467,6 +12634,7 @@ def _sku_pedidos_map(email, prog=None):
         if _got:
             try:
                 _p("Bajando pedidos de Shopify (últimos 35 días)…")
+                _skus_pk = _skus_map(email)      # packs-variantes (opt-in): sin packs = quantity
                 for o in _shopify_orders(tks.get("shop"), tks.get("access_token"), desde, hasta,
                                          deadline=deadline, max_pages=10, timeout=12):
                     num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
@@ -12474,7 +12642,7 @@ def _sku_pedidos_map(email, prog=None):
                         continue
                     items = []
                     for li in (o.get("line_items") or []):
-                        items.append((str(li.get("product_id") or ""), int(li.get("quantity") or 0),
+                        items.append((str(li.get("product_id") or ""), _q_linea(_skus_pk, li),
                                       li.get("title") or li.get("name") or ""))
                     sa = _D(o.get("shipping_address"))
                     cu = o.get("customer") or {}
@@ -17930,6 +18098,7 @@ def _shopify_resumen(email, desde, hasta):
             pass
         return None
     costos = (_costos().get(email) or {})
+    _skus_res = _skus_map(email)      # packs-variantes (opt-in): sin packs, _q_linea = quantity
     r = resumen_vacio()
     r["fecha"] = desde if desde == hasta else (desde + " a " + hasta)
     r["desde"] = desde; r["hasta"] = hasta
@@ -18006,7 +18175,7 @@ def _shopify_resumen(email, desde, hasta):
         if (o.get("financial_status") or "") in ("paid", "partially_paid", "authorized"):
             cobr += tot
         for li in (o.get("line_items") or []):
-            q = int(li.get("quantity") or 0)
+            q = _q_linea(_skus_res, li)      # packs-variantes (opt-in): sin packs = quantity
             unidades += q
             pid = str(li.get("product_id") or "")
             c = costos.get(pid)
@@ -27244,7 +27413,7 @@ def pf_productos():
                     cfg = {"tipo": "fijo", "base": v.get("sku"), "map": {}}   # fallback: el SKU fijo de Shopify
                 else:
                     cfg = {"tipo": "unitario", "base": "", "map": {}}         # default: por cantidad
-                productos.append({
+                _fila = {
                     "id": pid,
                     "nombre": p.get("title") or "",
                     "sku_tipo": cfg["tipo"], "sku_base": cfg["base"], "sku_map": cfg.get("map") or {},
@@ -27252,7 +27421,22 @@ def pf_productos():
                     "precio": float(v.get("price") or 0),
                     "img": (p.get("image") or {}).get("src") or "",
                     "costo": costos.get(str(pid)) or 0,
-                })
+                }
+                # PACKS COMO VARIANTES: con 2+ variantes se mandan para el interruptor
+                # "Las variantes son packs". El renglón del producto queda igual (costo por unidad base).
+                _vs = p.get("variants") or []
+                if len(_vs) >= 2:
+                    _pk = _packs_limpios(guardado.get("packs")) if isinstance(guardado, dict) else {}
+                    _fila["packs_on"] = bool(_pk)
+                    _fila["variantes"] = [{
+                        "id": str(_v.get("id") or ""),
+                        "titulo": _v.get("title") or "",
+                        "precio": float(_v.get("price") or 0),
+                        "sku_shopify": _v.get("sku") or "",
+                        "unidades_sugeridas": _pack_unid_sugerida(_v.get("title")),
+                        "unidades_guardadas": _pk.get(str(_v.get("id") or "")),
+                    } for _v in _vs]
+                productos.append(_fila)
     except Exception:
         pass
     sin = sum(1 for x in productos if not x.get("costo"))
@@ -37954,11 +38138,12 @@ def _flex_datos_orden(email, num) -> dict:
         c = _DESP_CACHE.get(email) or {}
         for o in (c.get("orders") or []):
             if str(o.get("order_number") or "").strip() == str(num):
-                items = [(str(li.get("product_id") or ""), int(li.get("quantity") or 0),
+                _skus = _skus_map(email)
+                items = [(str(li.get("product_id") or ""), _q_linea(_skus, li),
                           li.get("title") or li.get("name") or "")
                          for li in (o.get("line_items") or [])]
                 return {"nota": (o.get("note") or "").strip(),
-                        "sku": _sku_de_items(items, _skus_map(email))}
+                        "sku": _sku_de_items(items, _skus)}
     except Exception:
         pass
     return {"nota": "", "sku": ""}
@@ -40679,12 +40864,48 @@ def _logi(email) -> dict:
     return (_logi_all().get(email) or {})
 
 
-def _logi_auto(metodo) -> str:
+# NOMBRES DE ENVIO FLEX PROPIOS DE CADA CUENTA (17-11-2026).
+# Hay tiendas cuyo Flex no dice "flex" en el checkout (ej. "Envio a domicilio · Entrega rapida"):
+# sin esto RealProfit los tomaba como Andreani (una cuenta veia 2 Flex de 141).
+# Clave = primeros 16 hex del sha256 del email de la cuenta (el repo es publico: no van emails).
+# Valor = textos que, si aparecen en el metodo de envio (sin acentos, minuscula), lo hacen Flex.
+# Tambien se pueden cargar por env FLEX_METODOS = {"<email o hash>": ["texto", ...]}.
+_FLEX_METODOS_CUENTA = {
+    "6543321770e34beb": ["entrega rapida"],
+}
+try:
+    for _k, _v in (_json.loads(_os.getenv("FLEX_METODOS", "") or "{}") or {}).items():
+        _FLEX_METODOS_CUENTA.setdefault(_k.strip().lower(), []).extend(_v or [])
+except Exception:
+    pass
+
+
+def _flex_txt(s) -> str:
+    import unicodedata as _u
+    s = _u.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode("ascii")
+    return " ".join(s.lower().split())
+
+
+def _flex_metodos_de(email) -> list:
+    e = (email or "").strip().lower()
+    if not e:
+        return []
+    import hashlib as _h
+    k = _h.sha256(e.encode("utf-8")).hexdigest()[:16]
+    return [_flex_txt(x) for x in (_FLEX_METODOS_CUENTA.get(k) or []) + (_FLEX_METODOS_CUENTA.get(e) or []) if x]
+
+
+def _logi_auto(metodo, email=None) -> str:
     """La logistica sale SOLA del metodo de envio que eligio el cliente en el checkout.
-    Los de Envialo Flex son los del rayito; tambien se aceptan las variantes escritas."""
+    Los de Envialo Flex son los del rayito; tambien se aceptan las variantes escritas,
+    y los nombres propios de Flex de cada cuenta (_FLEX_METODOS_CUENTA)."""
     t = (metodo or "").lower()
     if "\u26a1" in t or "flex" in t or "envialo" in t or "redchat" in t:
         return "flex"
+    if email:
+        tn = _flex_txt(metodo)
+        if any(x and x in tn for x in _flex_metodos_de(email)):
+            return "flex"
     return "andreani"
 
 
@@ -40694,7 +40915,7 @@ def _logi_de(email, num, metodo=None) -> str:
     m = _logi(email).get(str(num))
     if m in ("flex", "andreani"):
         return m
-    return _logi_auto(metodo)
+    return _logi_auto(metodo, email)
 
 
 def _logi_set(email, nums, cual) -> int:
