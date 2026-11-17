@@ -377,7 +377,7 @@ SOLO_ADMIN = [
     "/pf-impuestos", "/pf-imp-dolar-emma",
     "/clientes", "/pf-clientes",
     "/integraciones", "/conectar-", "/desconectar-", "/shopify", "/tiendanube", "/meta", "/mp-", "/gads",
-    "/envialo",
+    "/envialo", "/redchat",
     "/fin-", "/equipo",
 ]
 
@@ -2456,11 +2456,13 @@ _SOLO_DASH = r"""
 <script>
 (function(){
   var L={envialo:`<svg width="22" height="22" viewBox="0 0 24 24" fill="#ff6b35"><path d="M3 4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h1a1 1 0 0 0 1-1v-4a1 1 0 0 0-.29-.71l-3-3A1 1 0 0 0 18 8h-2V5a1 1 0 0 0-1-1H3zm13 6h1.59L20 12.41V13h-4v-3zM7 16.5A1.5 1.5 0 1 1 5.5 15 1.5 1.5 0 0 1 7 16.5zm10 0A1.5 1.5 0 1 1 15.5 15a1.5 1.5 0 0 1 1.5 1.5z"/></svg>`,mp:`<svg width="21" height="21" viewBox="0 0 24 24" fill="#00b1ea"><path d="M11.115 16.479a.93.927 0 0 1-.939-.886c-.002-.042-.006-.155-.103-.155-.04 0-.074.023-.113.059-.112.103-.254.206-.46.206a.816.814 0 0 1-.305-.066c-.535-.214-.542-.578-.521-.725.006-.038.007-.08-.02-.11l-.032-.03h-.034c-.027 0-.055.012-.093.039a.788.786 0 0 1-.454.16.7.699 0 0 1-.253-.05c-.708-.27-.65-.928-.617-1.126.005-.041-.005-.072-.03-.092l-.05-.04-.047.043a.728.726 0 0 1-.505.203.73.728 0 0 1-.732-.725c0-.4.328-.722.732-.722.364 0 .675.27.721.63l.026.195.11-.165c.01-.018.307-.46.852-.46.102 0 .21.016.316.05.434.13.508.52.519.68.008.094.075.1.09.1.037 0 .064-.024.083-.045a.746.744 0 0 1 .54-.225c.128 0 .263.03.402.09.69.293.379 1.158.374 1.167-.058.144-.061.207-.005.244l.027.013h.02c.03 0 .07-.014.134-.035.093-.032.235-.08.367-.08a.944.942 0 0 1 .94.93.936.934 0 0 1-.94.928zm7.302-4.171c-1.138-.98-3.768-3.24-4.481-3.77-.406-.302-.685-.462-.928-.533a1.559 1.554 0 0 0-.456-.07c-.182 0-.376.032-.58.095-.46.145-.918.505-1.362.854l-.023.018c-.414.324-.84.66-1.164.73a1.986 1.98 0 0 1-.43.049c-.362 0-.687-.104-.81-.258-.02-.025-.007-.066.04-.125l.008-.008 1-1.067c.783-.774 1.525-1.506 3.23-1.545h.085c1.062 0 2.12.469 2.24.524a7.03 7.03 0 0 0 3.056.724c1.076 0 2.188-.263 3.354-.795a9.135 9.11 0 0 0-.405-.317c-1.025.44-2.003.66-2.946.66-.962 0-1.925-.229-2.858-.68-.05-.022-1.22-.567-2.44-.57-.032 0-.065 0-.096.002-1.434.033-2.24.536-2.782.976-.528.013-.982.138-1.388.25-.361.1-.673.186-.979.185-.125 0-.35-.01-.37-.012-.35-.01-2.115-.437-3.518-.962-.143.1-.28.203-.415.31 1.466.593 3.25 1.053 3.812 1.089.157.01.323.027.491.027.372 0 .744-.103 1.104-.203.213-.059.446-.123.692-.17l-.196.194-1.017 1.087c-.08.08-.254.294-.14.557a.705.703 0 0 0 .268.292c.243.162.677.27 1.08.271.152 0 .297-.015.43-.044.427-.095.874-.448 1.349-.82.377-.296.913-.672 1.323-.782a1.494 1.49 0 0 1 .37-.05.611.61 0 0 1 .095.005c.27.034.533.125 1.003.472.835.62 4.531 3.815 4.566 3.846.002.002.238.203.22.537-.007.186-.11.352-.294.466a.902.9 0 0 1-.484.15.804.802 0 0 1-.428-.124c-.014-.01-1.28-1.157-1.746-1.543-.074-.06-.146-.115-.22-.115a.122.122 0 0 0-.096.045c-.073.09.01.212.105.294l1.48 1.47c.002 0 .184.17.204.395.012.244-.106.447-.35.606a.957.955 0 0 1-.526.171.766.764 0 0 1-.42-.127l-.214-.206a21.035 20.978 0 0 0-1.08-1.009c-.072-.058-.148-.112-.221-.112a.127.127 0 0 0-.094.038c-.033.037-.056.103.028.212a.698.696 0 0 0 .075.083l1.078 1.198c.01.01.222.26.024.511l-.038.048a1.18 1.178 0 0 1-.1.096c-.184.15-.43.164-.527.164a.8.798 0 0 1-.147-.012c-.106-.018-.178-.048-.212-.089l-.013-.013c-.06-.06-.602-.609-1.054-.98-.059-.05-.133-.11-.21-.11a.128.128 0 0 0-.096.042c-.09.096.044.24.1.293l.92 1.003a.204.204 0 0 1-.033.062c-.033.044-.144.155-.479.196a.91.907 0 0 1-.122.007c-.345 0-.712-.164-.902-.264a1.343 1.34 0 0 0 .13-.576 1.368 1.365 0 0 0-1.42-1.357c.024-.342-.025-.99-.697-1.274a1.455 1.452 0 0 0-.575-.125c-.146 0-.287.025-.42.075a1.153 1.15 0 0 0-.671-.564 1.52 1.515 0 0 0-.494-.085c-.28 0-.537.08-.767.242a1.168 1.165 0 0 0-.903-.43 1.173 1.17 0 0 0-.82.335c-.287-.217-1.425-.93-4.467-1.613a17.39 17.344 0 0 1-.692-.189 4.822 4.82 0 0 0-.077.494l.67.157c3.108.682 4.136 1.391 4.309 1.525a1.145 1.142 0 0 0-.09.442 1.16 1.158 0 0 0 1.378 1.132c.096.467.406.821.879 1.003a1.165 1.162 0 0 0 .415.08c.09 0 .179-.012.266-.034.086.22.282.493.722.668a1.233 1.23 0 0 0 .457.094c.122 0 .241-.022.355-.063a1.373 1.37 0 0 0 1.269.841c.37.002.726-.147.985-.41.221.121.688.341 1.163.341.06 0 .118-.002.175-.01.47-.059.689-.24.789-.382a.571.57 0 0 0 .048-.078c.11.032.234.058.373.058.255 0 .501-.086.75-.265.244-.174.418-.424.444-.637v-.01c.083.017.167.026.251.026.265 0 .527-.082.773-.242.48-.31.562-.715.554-.98a1.28 1.279 0 0 0 .978-.194 1.04 1.04 0 0 0 .502-.808 1.088 1.085 0 0 0-.16-.653c.804-.342 2.636-1.003 4.795-1.483a4.734 4.721 0 0 0-.067-.492 27.742 27.667 0 0 0-5.049 1.62zm5.123-.763c0 4.027-5.166 7.293-11.537 7.293-6.372 0-11.538-3.266-11.538-7.293 0-4.028 5.165-7.293 11.539-7.293 6.371 0 11.537 3.265 11.537 7.293zm.46.004c0-4.272-5.374-7.755-12-7.755S.002 7.277.002 11.55L0 12.004c0 4.533 4.695 8.203 11.999 8.203 7.347 0 12-3.67 12-8.204z"/></svg>`,meli:`<svg width="21" height="21" viewBox="0 0 24 24" fill="#ffe600"><path d="M11.115 16.479a.93.927 0 0 1-.939-.886c-.002-.042-.006-.155-.103-.155-.04 0-.074.023-.113.059-.112.103-.254.206-.46.206a.816.814 0 0 1-.305-.066c-.535-.214-.542-.578-.521-.725.006-.038.007-.08-.02-.11l-.032-.03h-.034c-.027 0-.055.012-.093.039a.788.786 0 0 1-.454.16.7.699 0 0 1-.253-.05c-.708-.27-.65-.928-.617-1.126.005-.041-.005-.072-.03-.092l-.05-.04-.047.043a.728.726 0 0 1-.505.203.73.728 0 0 1-.732-.725c0-.4.328-.722.732-.722.364 0 .675.27.721.63l.026.195.11-.165c.01-.018.307-.46.852-.46.102 0 .21.016.316.05.434.13.508.52.519.68.008.094.075.1.09.1.037 0 .064-.024.083-.045a.746.744 0 0 1 .54-.225c.128 0 .263.03.402.09.69.293.379 1.158.374 1.167-.058.144-.061.207-.005.244l.027.013h.02c.03 0 .07-.014.134-.035.093-.032.235-.08.367-.08a.944.942 0 0 1 .94.93.936.934 0 0 1-.94.928zm7.302-4.171c-1.138-.98-3.768-3.24-4.481-3.77-.406-.302-.685-.462-.928-.533a1.559 1.554 0 0 0-.456-.07c-.182 0-.376.032-.58.095-.46.145-.918.505-1.362.854l-.023.018c-.414.324-.84.66-1.164.73a1.986 1.98 0 0 1-.43.049c-.362 0-.687-.104-.81-.258-.02-.025-.007-.066.04-.125l.008-.008 1-1.067c.783-.774 1.525-1.506 3.23-1.545h.085c1.062 0 2.12.469 2.24.524a7.03 7.03 0 0 0 3.056.724c1.076 0 2.188-.263 3.354-.795a9.135 9.11 0 0 0-.405-.317c-1.025.44-2.003.66-2.946.66-.962 0-1.925-.229-2.858-.68-.05-.022-1.22-.567-2.44-.57-.032 0-.065 0-.096.002-1.434.033-2.24.536-2.782.976-.528.013-.982.138-1.388.25-.361.1-.673.186-.979.185-.125 0-.35-.01-.37-.012-.35-.01-2.115-.437-3.518-.962-.143.1-.28.203-.415.31 1.466.593 3.25 1.053 3.812 1.089.157.01.323.027.491.027.372 0 .744-.103 1.104-.203.213-.059.446-.123.692-.17l-.196.194-1.017 1.087c-.08.08-.254.294-.14.557a.705.703 0 0 0 .268.292c.243.162.677.27 1.08.271.152 0 .297-.015.43-.044.427-.095.874-.448 1.349-.82.377-.296.913-.672 1.323-.782a1.494 1.49 0 0 1 .37-.05.611.61 0 0 1 .095.005c.27.034.533.125 1.003.472.835.62 4.531 3.815 4.566 3.846.002.002.238.203.22.537-.007.186-.11.352-.294.466a.902.9 0 0 1-.484.15.804.802 0 0 1-.428-.124c-.014-.01-1.28-1.157-1.746-1.543-.074-.06-.146-.115-.22-.115a.122.122 0 0 0-.096.045c-.073.09.01.212.105.294l1.48 1.47c.002 0 .184.17.204.395.012.244-.106.447-.35.606a.957.955 0 0 1-.526.171.766.764 0 0 1-.42-.127l-.214-.206a21.035 20.978 0 0 0-1.08-1.009c-.072-.058-.148-.112-.221-.112a.127.127 0 0 0-.094.038c-.033.037-.056.103.028.212a.698.696 0 0 0 .075.083l1.078 1.198c.01.01.222.26.024.511l-.038.048a1.18 1.178 0 0 1-.1.096c-.184.15-.43.164-.527.164a.8.798 0 0 1-.147-.012c-.106-.018-.178-.048-.212-.089l-.013-.013c-.06-.06-.602-.609-1.054-.98-.059-.05-.133-.11-.21-.11a.128.128 0 0 0-.096.042c-.09.096.044.24.1.293l.92 1.003a.204.204 0 0 1-.033.062c-.033.044-.144.155-.479.196a.91.907 0 0 1-.122.007c-.345 0-.712-.164-.902-.264a1.343 1.34 0 0 0 .13-.576 1.368 1.365 0 0 0-1.42-1.357c.024-.342-.025-.99-.697-1.274a1.455 1.452 0 0 0-.575-.125c-.146 0-.287.025-.42.075a1.153 1.15 0 0 0-.671-.564 1.52 1.515 0 0 0-.494-.085c-.28 0-.537.08-.767.242a1.168 1.165 0 0 0-.903-.43 1.173 1.17 0 0 0-.82.335c-.287-.217-1.425-.93-4.467-1.613a17.39 17.344 0 0 1-.692-.189 4.822 4.82 0 0 0-.077.494l.67.157c3.108.682 4.136 1.391 4.309 1.525a1.145 1.142 0 0 0-.09.442 1.16 1.158 0 0 0 1.378 1.132c.096.467.406.821.879 1.003a1.165 1.162 0 0 0 .415.08c.09 0 .179-.012.266-.034.086.22.282.493.722.668a1.233 1.23 0 0 0 .457.094c.122 0 .241-.022.355-.063a1.373 1.37 0 0 0 1.269.841c.37.002.726-.147.985-.41.221.121.688.341 1.163.341.06 0 .118-.002.175-.01.47-.059.689-.24.789-.382a.571.57 0 0 0 .048-.078c.11.032.234.058.373.058.255 0 .501-.086.75-.265.244-.174.418-.424.444-.637v-.01c.083.017.167.026.251.026.265 0 .527-.082.773-.242.48-.31.562-.715.554-.98a1.28 1.279 0 0 0 .978-.194 1.04 1.04 0 0 0 .502-.808 1.088 1.085 0 0 0-.16-.653c.804-.342 2.636-1.003 4.795-1.483a4.734 4.721 0 0 0-.067-.492 27.742 27.667 0 0 0-5.049 1.62zm5.123-.763c0 4.027-5.166 7.293-11.537 7.293-6.372 0-11.538-3.266-11.538-7.293 0-4.028 5.165-7.293 11.539-7.293 6.371 0 11.537 3.265 11.537 7.293zm.46.004c0-4.272-5.374-7.755-12-7.755S.002 7.277.002 11.55L0 12.004c0 4.533 4.695 8.203 11.999 8.203 7.347 0 12-3.67 12-8.204z"/></svg>`,tn:`<img src="data:image/png;base64,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" width="26" height="26" style="border-radius:6px;display:block">`,shopify:`<svg width="22" height="22" width="256px" height="292px" viewBox="0 0 256 292" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"> <g> <path d="M223.773626,57.3402078 C223.572932,55.8793405 222.29409,55.0718963 221.236945,54.9832175 C220.182133,54.8945386 197.853734,53.2399781 197.853734,53.2399781 C197.853734,53.2399781 182.346604,37.8448639 180.64537,36.1412966 C178.941803,34.4377293 175.616346,34.9558004 174.325836,35.336186 C174.134476,35.3921937 170.937371,36.3793293 165.646977,38.0152206 C160.466266,23.1101737 151.325344,9.41162582 135.241802,9.41162582 C134.798408,9.41162582 134.341011,9.43029505 133.883615,9.45596525 C129.309654,3.40713457 123.643542,0.779440373 118.74987,0.779440373 C81.285392,0.779440373 63.3862673,47.6135387 57.7738299,71.414474 C43.2164974,75.9254268 32.8737437,79.1318671 31.5528956,79.5472575 C23.4271131,82.0956074 23.1704111,82.3523094 22.1039313,90.0090275 C21.2988208,95.8058236 0.0369009009,260.235071 0.0369009009,260.235071 L165.714653,291.277334 L255.485648,271.856667 C255.485648,271.856667 223.971987,58.8010751 223.773626,57.3402078 L223.773626,57.3402078 Z M156.48972,40.8482763 C152.328815,42.1364532 147.598499,43.5996542 142.471461,45.1865388 C142.476129,44.1994032 142.480796,43.2262696 142.480796,42.1644571 C142.480796,32.8998514 141.194953,25.4414939 139.132003,19.5280151 C147.418807,20.5688247 152.937899,29.9967861 156.48972,40.8482763 L156.48972,40.8482763 Z M128.852258,21.3646006 C131.155574,27.1380602 132.65378,35.4225312 132.65378,46.6030666 C132.65378,47.1748118 132.649112,47.6975503 132.644445,48.2272897 C123.52686,51.0510108 113.620499,54.1174319 103.690802,57.1931876 C109.265901,35.6768995 119.716003,25.2851391 128.852258,21.3646006 L128.852258,21.3646006 Z M117.720729,10.8281537 C119.337951,10.8281537 120.966841,11.3765623 122.525722,12.4500431 C110.519073,18.099819 97.6489725,32.3304399 92.2138928,60.7473424 C84.2701352,63.2070135 76.506069,65.6106769 69.3277499,67.834649 C75.6939575,46.1596724 90.8113669,10.8281537 117.720729,10.8281537 L117.720729,10.8281537 Z" fill="#95BF46"></path> <path d="M221.236945,54.9832175 C220.182133,54.8945386 197.853734,53.2399781 197.853734,53.2399781 C197.853734,53.2399781 182.346604,37.8448639 180.64537,36.1412966 C180.008283,35.5065427 179.149498,35.1821649 178.251042,35.0421456 L165.723988,291.275001 L255.485648,271.856667 C255.485648,271.856667 223.971987,58.8010751 223.773626,57.3402078 C223.572932,55.8793405 222.29409,55.0718963 221.236945,54.9832175" fill="#5E8E3E"></path> <path d="M135.241802,104.585029 L124.173282,137.510551 C124.173282,137.510551 114.474617,132.334507 102.586984,132.334507 C85.1592573,132.334507 84.2818035,143.272342 84.2818035,146.028387 C84.2818035,161.066452 123.48252,166.828244 123.48252,202.052414 C123.48252,229.764553 105.90544,247.610004 82.2048516,247.610004 C53.7646126,247.610004 39.2212821,229.90924 39.2212821,229.90924 L46.8359944,204.750118 C46.8359944,204.750118 61.7853808,217.585214 74.4011133,217.585214 C82.6435785,217.585214 85.9970391,211.095323 85.9970391,206.353338 C85.9970391,186.736644 53.8369559,185.861524 53.8369559,153.629098 C53.8369559,126.500372 73.3089633,100.246767 112.614694,100.246767 C127.760108,100.246767 135.241802,104.585029 135.241802,104.585029" fill="#FFFFFF"></path> </g> </svg>`,meta:`<svg width="22" height="22" width="256px" height="171px" viewBox="0 0 256 171" version="1.1" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid"> <title>Meta</title> <defs> <linearGradient x1="13.8784354%" y1="55.9337491%" x2="89.143574%" y2="58.6936324%" id="linearGradient-1"> <stop stop-color="#0064E1" offset="0%"></stop> <stop stop-color="#0064E1" offset="40%"></stop> <stop stop-color="#0073EE" offset="83%"></stop> <stop stop-color="#0082FB" offset="100%"></stop> </linearGradient> <linearGradient x1="54.3150272%" y1="82.782443%" x2="54.3150272%" y2="39.3067715%" id="linearGradient-2"> <stop stop-color="#0082FB" offset="0%"></stop> <stop stop-color="#0064E0" offset="100%"></stop> </linearGradient> </defs> <g> <path d="M27.6511337,112.135763 C27.6511337,121.910697 29.7966337,129.415496 32.6009181,133.955766 C36.2776464,139.902629 41.7615802,142.422034 47.3523439,142.422034 C54.5633607,142.422034 61.1601057,140.632633 73.8728613,123.050216 C84.0573098,108.957574 96.0578662,89.1762415 104.132425,76.775073 L117.806649,55.7651968 C127.305606,41.1740159 138.300181,24.9536792 150.906107,13.9591042 C161.197385,4.98539435 172.29879,0 183.471415,0 C202.228961,0 220.096258,10.8699402 233.770483,31.2566421 C248.735568,53.5840868 256,81.7070524 256,110.72917 C256,127.982195 252.599249,140.659341 246.81263,150.674642 C241.221867,160.360551 230.325219,170.037557 211.994992,170.037557 L211.994992,142.422034 C227.690082,142.422034 231.607178,128 231.607178,111.494784 C231.607178,87.9744053 226.123244,61.8723049 214.042565,43.2215885 C205.469467,29.9924885 194.35916,21.9090277 182.136041,21.9090277 C168.915844,21.9090277 158.277368,31.8798164 146.321324,49.6580887 C139.964946,59.1036305 133.439421,70.61455 126.112672,83.6032828 L118.047016,97.8917791 C101.844485,126.620114 97.7404368,133.163444 89.639171,143.962164 C75.4396995,162.871053 63.3145083,170.037557 47.3523439,170.037557 C28.4167478,170.037557 16.4428989,161.838364 9.02712477,149.481708 C2.97343163,139.412992 0,126.201697 0,111.147587 L27.6511337,112.135763 Z" fill="#0081FB"></path> <path d="M21.8021978,33.2062874 C34.4793434,13.665322 52.7739602,0 73.7571289,0 C85.9090277,0 97.9897065,3.59660593 110.604535,13.8967868 C124.403394,25.1584365 139.110307,43.702323 157.458339,74.2645709 L164.037279,85.2324384 C179.919321,111.690638 188.955348,125.302546 194.243427,131.721241 C201.04493,139.964946 205.807762,142.422034 211.994992,142.422034 C227.690082,142.422034 231.607178,128 231.607178,111.494784 L256,110.72917 C256,127.982195 252.599249,140.659341 246.81263,150.674642 C241.221867,160.360551 230.325219,170.037557 211.994992,170.037557 C200.599805,170.037557 190.504382,167.562665 179.340659,157.03102 C170.758659,148.947559 160.725553,134.587843 153.007094,121.679232 L130.047573,83.3273056 C118.527751,64.0801224 107.960495,49.7293087 101.844485,43.230491 C95.2655446,36.2420364 86.8081792,27.802476 73.3120045,27.802476 C62.3886493,27.802476 53.1122548,35.4675198 45.3492836,47.192099 L21.8021978,33.2062874 Z" fill="url(#linearGradient-1)"></path> <path d="M73.3120045,27.802476 C62.3886493,27.802476 53.1122548,35.4675198 45.3492836,47.192099 C34.3725136,63.7596328 27.6511337,88.4373348 27.6511337,112.135763 C27.6511337,121.910697 29.7966337,129.415496 32.6009181,133.955766 L9.02712477,149.481708 C2.97343163,139.412992 0,126.201697 0,111.147587 C0,83.7724301 7.51370149,55.2399499 21.8021978,33.2062874 C34.4793434,13.665322 52.7739602,0 73.7571289,0 L73.3120045,27.802476 Z" fill="url(#linearGradient-2)"></path> </g> </svg>`,gads:`<svg width="22" height="22" width="256px" height="230px" viewBox="0 0 256 230" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"> <g> <path d="M5.888,166.405103 L90.88,20.9 C101.676138,27.2558621 156.115862,57.3844138 164.908138,63.1135172 L79.9161379,208.627448 C70.6206897,220.906621 -5.888,185.040138 5.888,166.396276 L5.888,166.405103 Z" fill="#FBBC04"></path> <path d="M250.084224,166.401789 L165.092224,20.9055131 C153.210293,1.13172 127.619121,-6.05393517 106.600638,5.62496138 C85.582155,17.3038579 79.182155,42.4624786 91.0640861,63.1190303 L176.056086,208.632961 C187.938017,228.397927 213.52919,235.583582 234.547672,223.904686 C254.648086,212.225789 261.966155,186.175582 250.084224,166.419444 L250.084224,166.401789 Z" fill="#4285F4"></path> <ellipse fill="#34A853" cx="42.6637241" cy="187.924414" rx="42.6637241" ry="41.6044138"></ellipse> </g> </svg>`,tiktok:`<svg width="22" height="22" width="256px" height="290px" viewBox="0 0 256 290" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" preserveAspectRatio="xMidYMid"> <title>TikTok</title> <g> <path d="M189.720224,104.421475 C208.398189,117.766281 231.279538,125.618095 255.992548,125.618095 L255.992548,78.0872726 C251.315611,78.0882654 246.650588,77.6008156 242.074913,76.6318726 L242.074913,114.045382 C217.363889,114.045382 194.485518,106.193568 175.80259,92.8497541 L175.80259,189.846306 C175.80259,238.368905 136.447224,277.701437 87.902784,277.701437 C69.7897057,277.701437 52.9543216,272.228299 38.9691786,262.841664 C54.9309256,279.153859 77.1908018,289.273158 101.81744,289.273158 C150.364858,289.273158 189.72221,249.940626 189.72221,201.416041 L189.72221,104.421475 L189.720224,104.421475 Z M206.889179,56.4687254 C197.343701,46.0456391 191.076347,32.5757434 189.720224,17.6842019 L189.720224,11.5707278 L176.531282,11.5707278 C179.851103,30.497877 191.174632,46.6681056 206.889179,56.4687254 L206.889179,56.4687254 Z M69.6735517,225.606854 C64.3403943,218.617757 61.4583846,210.068027 61.4712906,201.277053 C61.4712906,179.084685 79.472186,161.090739 101.680438,161.090739 C105.819294,161.089747 109.933331,161.723134 113.877603,162.974023 L113.877603,114.380938 C109.268175,113.749536 104.616057,113.481488 99.9659254,113.579773 L99.9659254,151.402303 C96.0186741,150.151413 91.9026521,149.516041 87.7628035,149.520012 C65.5545513,149.520012 47.5546487,167.511972 47.5546487,189.707318 C47.5546487,205.401018 56.552118,218.98806 69.6735517,225.606854 Z" fill="#FF004F"></path> <path d="M175.80259,92.8487613 C194.485518,106.192575 217.363889,114.044389 242.074913,114.044389 L242.074913,76.6308799 C228.281375,73.6942679 216.070311,66.4897401 206.889179,56.4687254 C191.173639,46.6671128 179.851103,30.4968842 176.531282,11.5707278 L141.8876,11.5707278 L141.8876,201.414056 C141.809172,223.545865 123.839052,241.466346 101.678453,241.466346 C88.6195635,241.466346 77.0180599,235.24466 69.6705734,225.606854 C56.5501325,218.98806 47.5526631,205.400025 47.5526631,189.708311 C47.5526631,167.51495 65.5525657,149.521004 87.760818,149.521004 C92.0158278,149.521004 96.1169583,150.183182 99.9639399,151.403295 L99.9639399,113.580765 C52.272289,114.565593 13.9166419,153.513923 13.9166419,201.415048 C13.9166419,225.326893 23.4680767,247.004014 38.9701714,262.842657 C52.9553144,272.228299 69.7906985,277.70243 87.9037768,277.70243 C136.449209,277.70243 175.803582,238.367912 175.803582,189.846306 L175.803582,92.8487613 L175.80259,92.8487613 Z" fill="#000000"></path> <path d="M242.074913,76.6308799 L242.074913,66.5145593 C229.636505,66.5334219 217.442318,63.0517795 206.889179,56.4677326 C216.231139,66.6902795 228.532545,73.7389425 242.074913,76.6308799 Z M176.531282,11.5707278 C176.214589,9.76190185 175.971361,7.9411627 175.80259,6.11347418 L175.80259,0 L127.968973,0 L127.968973,189.845313 C127.89253,211.974144 109.923403,229.894625 87.760818,229.894625 C81.2542071,229.894625 75.1109499,228.350869 69.6705734,225.607847 C77.0180599,235.24466 88.6195635,241.465353 101.678453,241.465353 C123.837066,241.465353 141.810164,223.546857 141.8876,201.415048 L141.8876,11.5707278 L176.531282,11.5707278 Z M99.9659254,113.580765 L99.9659254,102.811203 C95.9690357,102.265179 91.9393845,101.991175 87.9047695,101.99315 C39.3553659,101.99315 0,141.326686 0,189.845313 C0,220.263769 15.4673478,247.071522 38.9711641,262.840672 C23.4690694,247.003021 13.9176347,225.324907 13.9176347,201.414056 C13.9176347,153.513923 52.272289,114.565593 99.9659254,113.580765 Z" fill="#00F2EA"></path> </g> </svg>`};
+ L.redchat='<svg width="22" height="22" viewBox="0 0 24 24" fill="#ef4444"><path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9.5L5 20.6V17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm3 6.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm5 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zm5 0a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z"/></svg>';
  try{ window.__RPLOGOS=L; }catch(e){}   // los usa la tarjeta de Inversion Ads
  var PLAT=[
   {key:'mp',logo:'mp',nm:'Mercado Pago',tag:'Pagos',desc:'Trae tus pagos y movimientos para calcular tu ganancia real.',real:true},
   {key:'shopify',logo:'shopify',nm:'Shopify',tag:'Ventas',desc:'Conecta tu tienda para centralizar ventas y costos por orden.'},
   {key:'envialo',logo:'envialo',nm:'Envialo',tag:'Envios',desc:'Trae el costo real de cada envio para restarlo de la ganancia.'},
+  {key:'redchat',logo:'redchat',nm:'RedChat',tag:'Envios',desc:'Opcional: detecta solo cómo se llaman tus envíos Flex, a sucursal y a domicilio, y clasifica tus pedidos con eso.'},
   {key:'tn',logo:'tn',nm:'Tiendanube',tag:'Ventas',desc:'Trae tus ventas online de tu tienda para el beneficio real.'},
   {key:'meli',logo:'meli',nm:'Mercado Libre',tag:'Ventas',desc:'Incluye tus ventas de marketplace en el calculo de beneficio.'},
   {key:'meta',logo:'meta',nm:'Meta Ads',tag:'Anuncios',desc:'Trae tus campanas de Facebook e Instagram Ads.'},
@@ -2474,15 +2476,16 @@ _SOLO_DASH = r"""
   var bs='background:#137fec;color:#fff;border-radius:10px;padding:9px 17px;font-weight:700;font-size:13px;text-decoration:none';
   var ds='background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px;text-decoration:none';
   PLAT.forEach(function(p){
-   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk)||(p.key==='gads'&&window._rpGa);
+   var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk)||(p.key==='gads'&&window._rpGa)||(p.key==='redchat'&&window._rpRc);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':(p.key==='gads')?'/desconectar-gads':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; if(p.key==='gads'){ cambiar='<a href="#" onclick="rpGaToggle();return false;" style="'+ds+'">'+(window._rpGaOpen?'Cerrar':'Ver script')+'</a>'; } var etiqCon=(p.key==='gads'&&window._rpGaInfo&&window._rpGaInfo.cuenta&&window._rpGaInfo.cuenta.nombre)?('Conectado &middot; '+esc(window._rpGaInfo.cuenta.nombre)):(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='redchat')?'/desconectar-redchat':(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':(p.key==='gads')?'/desconectar-gads':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; if(p.key==='gads'){ cambiar='<a href="#" onclick="rpGaToggle();return false;" style="'+ds+'">'+(window._rpGaOpen?'Cerrar':'Ver script')+'</a>'; } var etiqCon=(p.key==='redchat'&&window._rpRcInfo&&window._rpRcInfo.cuenta)?('Conectado &middot; '+esc(window._rpRcInfo.cuenta)):(p.key==='gads'&&window._rpGaInfo&&window._rpGaInfo.cuenta&&window._rpGaInfo.cuenta.nombre)?('Conectado &middot; '+esc(window._rpGaInfo.cuenta.nombre)):(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='meli'){ b='<a href="/conectar-meli" onclick="window.location.assign(\'/conectar-meli\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='shopify'){ b='<a href="#" onclick="rpShopToggle();return false;" style="'+bs+'">&#9889; '+(window._rpShopOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='meta'){ b='<a href="#" onclick="rpMetaTokToggle();return false;" style="'+bs+'">&#9889; '+(window._rpMetaTokOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='envialo'){ b='<a href="#" onclick="rpEnvToggle();return false;" style="'+bs+'">&#9889; '+(window._rpEnvOpen?'Cerrar':'Conectar')+'</a>'; }
+    else if(p.key==='redchat'){ b='<a href="#" onclick="rpRcToggle();return false;" style="'+bs+'">&#9889; '+(window._rpRcOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='tn'){ b='<a href="#" onclick="rpTnToggle();return false;" style="'+bs+'">&#9889; '+(window._rpTnOpen?'Cerrar':'Conectar')+'</a>'; }
     else if(p.key==='tiktok'){ b='<a href="#" onclick="rpTkManToggle();return false;" style="'+ds+'">&#128200; '+(window._rpTkManOpen?'Cerrar':'Cargar gasto')+'</a>'
       +(window._rpTkListo
@@ -2502,6 +2505,8 @@ _SOLO_DASH = r"""
    else if(p.key==='meta' && !metaOn && window._rpMetaTokOpen) panel=rpMetaTokenPanel();
    else if(p.key==='envialo' && window._rpEnvOpen && !window._rpEnv) panel=rpEnvPanel();
    else if(p.key==='tn' && window._rpTnOpen && !window._rpTn) panel=rpTnPanel();
+   else if(p.key==='redchat' && window._rpRc) panel=rpRcInfoPanel();
+   else if(p.key==='redchat' && window._rpRcOpen) panel=rpRcPanel();
    else if(p.key==='tiktok' && window._rpTk) panel=rpTkPanel();
    else if(p.key==='tiktok' && !window._rpTk && window._rpTkManOpen) panel=rpTkManPanel();
    else if(p.key==='gads' && (window._rpGa || window._rpGaOpen)) panel=rpGaPanel();
@@ -2633,6 +2638,7 @@ _SOLO_DASH = r"""
   fetch('/envialo/estado').then(function(r){return r.json();}).then(function(j){ window._rpEnv=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/meli/estado').then(function(r){return r.json();}).then(function(j){ window._rpMeli=!!(j&&j.conectado); window._rpMeliNick=(j&&j.nickname)||''; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/tiendanube/estado').then(function(r){return r.json();}).then(function(j){ window._rpTn=!!(j&&j.conectado); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
+  fetch('/redchat/estado').then(function(r){return r.json();}).then(function(j){ window._rpRc=!!(j&&j.conectado); window._rpRcInfo=(j&&j.conectado)?j:null; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   fetch('/tiktok/estado').then(function(r){return r.json();}).then(function(j){ window._rpTk=!!(j&&j.conectado); window._rpTkListo=!!(j&&j.listo); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }).catch(function(){});
   try{ rpGaEstado(false); }catch(e){} }
  // ---- Google Ads: el gasto lo manda un Script que corre adentro de la cuenta de Google ----
@@ -2728,6 +2734,49 @@ _SOLO_DASH = r"""
    .then(function(r){return r.json();})
    .then(function(j){ if(j&&j.ok){ window._rpEnv=true; window._rpEnvOpen=false; show('¡Vinculado!',true); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); } else { go.disabled=false; go.textContent='Vincular'; show((j&&j.error)||'No se pudo vincular.',false); } })
    .catch(function(){ go.disabled=false; go.textContent='Vincular'; show('Error de conexión. Probá de nuevo.',false); }); };
+ // ---- RedChat (opcional): token de usuario -> mapa de nombres de envio (Flex / Sucursal / Domicilio) ----
+ window.rpRcToggle=function(){ window._rpRcOpen=!window._rpRcOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
+ function rpRcPanel(){ return ''
+  +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
+  +'<div style="font-weight:700;color:#e2e8f0;font-size:13px">Peg&aacute; tu <b>Token de acceso</b> de RedChat</div>'
+  +'<div style="color:#94a3b8;font-size:11.5px;margin-top:5px;line-height:1.6">Es opcional. Lo sac&aacute;s de RedChat &rarr; tu perfil &rarr; <b style="color:#cbd5e1">Seguridad</b> &rarr; Token de acceso. Solo leemos tus &oacute;rdenes: as&iacute; sabemos c&oacute;mo se llaman en tu checkout los env&iacute;os <b style="color:#cbd5e1">Flex</b>, a <b style="color:#cbd5e1">sucursal</b> y a <b style="color:#cbd5e1">domicilio</b>, y clasificamos tus pedidos solos.</div>'
+  +'<input id="rp-rc-tok" type="password" autocomplete="off" spellcheck="false" placeholder="Token de acceso de RedChat" style="width:100%;margin-top:9px;background:#0b1220;border:1px solid #1e2b3d;color:#f1f5f9;border-radius:8px;padding:9px 11px;font-size:13px;box-sizing:border-box;font-family:ui-monospace,monospace">'
+  +'<div id="rp-rc-msg" style="margin-top:12px;font-size:12.5px;display:none;font-weight:600"></div>'
+  +'<div style="display:flex;gap:9px;justify-content:flex-end;margin-top:14px">'
+  +'<button onclick="rpRcToggle()" style="background:#111c2b;border:1px solid #1e2b3d;color:#cbd5e1;border-radius:8px;padding:9px 15px;font-weight:600;font-size:12.5px;cursor:pointer">Cancelar</button>'
+  +'<button id="rp-rc-go" onclick="rpRcGo()" style="background:#137fec;border:none;color:#fff;border-radius:8px;padding:9px 20px;font-weight:700;font-size:12.5px;cursor:pointer">Conectar</button>'
+  +'</div></div>'; }
+ function rpRcFecha(ts){ if(!ts) return 'todav&iacute;a no'; try{ return new Date(ts*1000).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+ function rpRcGrupo(ic,tit,col,arr){
+  var lis=(arr||[]).slice(0,10).map(function(x){ return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:#cbd5e1;padding:3px 0"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(x.nombre).replace(/"/g,'&quot;')+'">'+esc(x.nombre)+'</span><b style="color:'+col+';flex:none">'+(x.n||0)+'</b></div>'; }).join('');
+  if(!lis) lis='<div style="color:#5b6b82;font-size:12px">Ninguno en tus pedidos</div>';
+  return '<div style="flex:1;min-width:200px;background:#0b1220;border:1px solid #1e2b3d;border-radius:10px;padding:10px 12px"><div style="font-weight:700;font-size:12.5px;color:'+col+';margin-bottom:6px">'+ic+' '+tit+'</div>'+lis+'</div>'; }
+ function rpRcInfoPanel(){ var j=window._rpRcInfo||{}; var g=j.grupos||{};
+  var h='<div style="border-top:1px solid #1e2b3d;padding:14px 17px 16px;background:#0c1521">'
+   +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-bottom:9px">Detectamos en tus pedidos:</div>'
+   +'<div style="display:flex;gap:9px;flex-wrap:wrap">'+rpRcGrupo('&#9889;','Flex','#c4b5fd',g.flex)+rpRcGrupo('&#127972;','Sucursal','#38bdf8',g.sucursal)+rpRcGrupo('&#127968;','Domicilio','#34d399',g.domicilio)+'</div>';
+  if(g.otros&&g.otros.length) h+='<div style="color:#8493a8;font-size:11.5px;margin-top:8px">Sin transportista en RedChat todav&iacute;a (esos los decide la regla de siempre): '+g.otros.slice(0,5).map(function(x){ return esc(x.nombre)+' ('+(x.n||0)+')'; }).join(' &middot; ')+'</div>';
+  h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;color:#8493a8;font-size:11.5px"><span>&Uacute;ltimo sync: <b style="color:#cbd5e1">'+rpRcFecha(j.ultimo_sync)+'</b> &middot; '+(j.pedidos||0)+' pedidos de los &uacute;ltimos '+(j.dias||60)+' d&iacute;as'+(j.completo?'':' (todav&iacute;a trayendo los m&aacute;s viejos)')+'</span>'
+   +'<a href="#" id="rp-rc-sync" onclick="rpRcSync();return false;" style="color:#5aa2f5;font-weight:700;text-decoration:none">Actualizar</a></div>';
+  if(j.error) h+='<div style="color:#f87171;font-size:12px;margin-top:8px;font-weight:600">'+esc(String(j.error))+'</div>';
+  return h+'</div>'; }
+ window.rpRcGo=function(){ var t=(document.getElementById('rp-rc-tok').value||'').trim(); var msg=document.getElementById('rp-rc-msg'); var go=document.getElementById('rp-rc-go');
+  function show(txt,ok){ msg.style.display='block'; msg.style.color=ok?'#34d399':'#f87171'; msg.textContent=txt; }
+  if(!t){ show('Pegá tu Token de acceso de RedChat.',false); return; }
+  go.disabled=true; go.textContent='Conectando...'; show('Validando el token y leyendo tus pedidos (puede tardar unos segundos)...',true);
+  fetch('/redchat/conectar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
+   .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'HTTP '+r.status+': la respuesta no es JSON'}; }); })
+   .then(function(j){ if(j&&j.conectado){ window._rpRc=true; window._rpRcInfo=j; window._rpRcOpen=false; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }
+     else { go.disabled=false; go.textContent='Conectar'; show((j&&j.error)||'No se pudo conectar (sin detalle del servidor).',false); } })
+   .catch(function(x){ go.disabled=false; go.textContent='Conectar'; show('Error de conexión: '+((x&&x.message)||x),false); }); };
+ window.rpRcSync=function(){ var a=document.getElementById('rp-rc-sync'); if(a){ if(a.getAttribute('data-busy')) return; a.setAttribute('data-busy','1'); a.textContent='Actualizando...'; }
+  fetch('/redchat/sync',{method:'POST'})
+   .then(function(r){ return r.json().catch(function(){ return {ok:false,conectado:true,error:'HTTP '+r.status+': la respuesta no es JSON'}; }); })
+   .then(function(j){ if(j&&j.conectado===false){ window._rpRc=false; window._rpRcInfo=null; }
+     else if(j&&j.grupos){ window._rpRc=true; window._rpRcInfo=j; }
+     else { window._rpRcInfo=Object.assign({},window._rpRcInfo||{},{error:(j&&j.error)||'No se pudo actualizar (sin detalle del servidor).'}); }
+     cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); })
+   .catch(function(x){ window._rpRcInfo=Object.assign({},window._rpRcInfo||{},{error:'Error de conexión: '+((x&&x.message)||x)}); cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); }); };
  window.rpTnToggle=function(){ window._rpTnOpen=!window._rpTnOpen; cards(!!window._rpMp,!!window._rpShop,!!window._rpMeta); };
  function rpTnPanel(){ return ''
   +'<div style="border-top:1px solid #1e2b3d;padding:16px 17px 18px;background:#0c1521">'
@@ -10086,6 +10135,10 @@ def pf_despachos_list():
     desde = request.args.get("desde") or None
     hasta = request.args.get("hasta") or None
     refresh = request.args.get("refresh") in ("1", "true", "yes")
+    try:
+        _rc_sync(email, max_pag=6, max_seg=8)          # RedChat (opcional): solo si vencio; acotado
+    except Exception:
+        pass
     try:
         rows = _despachos_orders(email, desde, hasta, refresh=refresh)
     except Exception as e:
@@ -40915,6 +40968,9 @@ def _logi_de(email, num, metodo=None) -> str:
     m = _logi(email).get(str(num))
     if m in ("flex", "andreani"):
         return m
+    rc = _rc_logi(email, num, metodo)      # solo cuentas con RedChat conectado; el resto: None
+    if rc:
+        return rc
     return _logi_auto(metodo, email)
 
 
@@ -40937,6 +40993,539 @@ def _logi_set(email, nums, cual) -> int:
     tmp.write_text(_json.dumps(todo, ensure_ascii=False), encoding="utf-8")
     tmp.replace(DESP_LOGI)
     return n
+
+
+# ───────────────── REDCHAT (CONECTOR OPCIONAL POR CUENTA, 17-11-2026) ─────────────────
+# Cada tienda le pone a sus envios el nombre que quiere en el checkout ("⚡ ENVIO FULL EXPRESS",
+# "Envio a domicilio · Entrega rapida", "Andreani Punto de Retiro — HOP ..."). RedChat SABE con
+# que transportista sale cada pedido (carrier) y si es a sucursal o a domicilio (delivery_type).
+# Si la cuenta pega su token de RedChat:
+#   - se bajan sus pedidos de Shopify de los ultimos ~60 dias (cache en disco, TTL 10 min),
+#   - se aprende el mapa  nombre de envio -> {carrier, tipo, cantidad},
+#   - _logi_de usa: (a) marca manual > (b) carrier de RedChat del pedido > (c) mapa aprendido
+#     > (d) _logi_auto de siempre.
+# Cuentas SIN RedChat: _rc_logi devuelve None y todo queda EXACTAMENTE como antes.
+# No se guarda NADA del cliente (ni nombre, ni direccion, ni telefono): solo nº de pedido,
+# carrier, tipo, nombre del metodo normalizado y fecha.
+# Solo lectura: a RedChat se le hacen unicamente GET.
+_RC_BASE = "https://app.redchat.com.ar/api/v1"
+_RC_CONNS = DATA_DIR / "redchat_conns.json"     # {email: {token, account_id, cuenta, stores, store_ids, desde}}
+_RC_DIR = DATA_DIR / "redchat_cache"            # <sha16(email)>.json  (+ .lock mientras sincroniza)
+_RC_TTL = 600                                   # 10 min entre sincronizaciones
+_RC_TTL_ERR = 120                               # si RedChat fallo, no reintentar en cada request
+_RC_DIAS = 60                                   # ventana de pedidos que se guardan
+_RC_SOLAPE = 36 * 3600                          # al refrescar, re-leer las ultimas 36 hs (cambios de carrier)
+_RC_RESWEEP = 24 * 3600                         # una vez por dia se vuelve a barrer la ventana entera
+_RC_LOCKS = {}
+_RC_LOCKS_MX = threading.Lock()
+_RC_MEMO = {}                                   # path -> ((mtime_ns, size), dict)   (por proceso, valida contra disco)
+
+
+class _RcError(Exception):
+    pass
+
+
+def _rc_hash(email) -> str:
+    import hashlib as _h
+    return _h.sha256((email or "").strip().lower().encode("utf-8")).hexdigest()[:16]
+
+
+def _rc_json_memo(path):
+    """Lee un JSON del disco cacheando por (mtime, tamaño): con 2 workers el disco es la verdad,
+    y _logi_de se llama una vez por pedido (no se puede parsear 600 KB cada vez)."""
+    try:
+        st = path.stat()
+    except Exception:
+        return None
+    sig = (st.st_mtime_ns, st.st_size)
+    m = _RC_MEMO.get(str(path))
+    if m and m[0] == sig:
+        return m[1]
+    try:
+        d = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    _RC_MEMO[str(path)] = (sig, d)
+    return d
+
+
+def _rc_escribir(path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".%d-%d.tmp" % (_os.getpid(), threading.get_ident()))
+    tmp.write_text(_json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _rc_conns() -> dict:
+    d = _rc_json_memo(_RC_CONNS)
+    return d if isinstance(d, dict) else {}
+
+
+def _rc_conf(email):
+    if not email:
+        return None
+    c = _rc_conns().get(email)
+    return c if (isinstance(c, dict) and c.get("token") and c.get("account_id")) else None
+
+
+def _rc_cache_path(email):
+    return _RC_DIR / ("%s.json" % _rc_hash(email))
+
+
+def _rc_cache_leer(email) -> dict:
+    d = _rc_json_memo(_rc_cache_path(email))
+    return d if isinstance(d, dict) else {}
+
+
+def _rc_clave(metodo) -> str:
+    """Nombre del envio normalizado: sin la sucursal/direccion (lo que va despues de '—'),
+    minuscula, sin acentos ni emojis. 'Andreani Punto de Retiro — PUNTO ANDREANI HOP X 12'
+    -> 'andreani punto de retiro'. ' - ' solo se corta si lo de la izquierda es de retiro
+    (para no juntar 'Envio a domicilio - Entrega rapida' con 'Envio a domicilio - Andreani')."""
+    import re as _r
+    s = str(metodo or "")
+    for sep in ("—", "–"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    if " - " in s:
+        izq = s.split(" - ", 1)[0]
+        if _r.search(r"\b(sucursal|retiro|punto|hop|pickup)\b", _flex_txt(izq)):
+            s = izq
+    t = _flex_txt(s).replace('"', " ").replace("'", " ")
+    return " ".join(t.split()).strip(" -:.,")
+
+
+def _rc_nombre(metodo) -> str:
+    """Lo mismo pero para mostrar (con acentos y emojis, como lo ve el cliente)."""
+    s = str(metodo or "")
+    for sep in ("—", "–"):
+        if sep in s:
+            s = s.split(sep, 1)[0]
+    if " - " in s:
+        izq = s.split(" - ", 1)[0]
+        if _rc_clave(izq) == _rc_clave(s):
+            s = izq
+    return " ".join(s.split())[:80]
+
+
+def _rc_carrier_logi(carrier):
+    c = (carrier or "").lower()
+    if "flex" in c or "envialo" in c:
+        return "flex"
+    if "andreani" in c:
+        return "andreani"
+    return None                          # oca, mercadolibre, sin asignar: no decide RedChat
+
+
+def _rc_tipo(delivery_type):
+    d = (delivery_type or "").lower()
+    if d == "pickup":
+        return "sucursal"
+    if d == "ship":
+        return "domicilio"
+    return None
+
+
+def _rc_ts(s):
+    """'2026-11-17T20:29:49.000Z' -> epoch (UTC). None si no se puede leer."""
+    try:
+        return _dt.datetime.strptime(str(s)[:19], "%Y-%m-%dT%H:%M:%S").replace(
+            tzinfo=_dt.timezone.utc).timestamp()
+    except Exception:
+        return None
+
+
+def _rc_get(token, path, params=None, timeout=20):
+    """GET a RedChat. Si no es 200 levanta _RcError con el codigo y lo que contesto (sin el token)."""
+    try:
+        r = requests.get(_RC_BASE + path, params=params, timeout=(6, timeout),
+                         headers={"api_access_token": token, "Accept": "application/json"})
+    except Exception as e:
+        raise _RcError("%s: %s" % (type(e).__name__, str(e)[:160]))
+    if r.status_code != 200:
+        txt = (r.text or "")[:160].replace(token, "***") if token else (r.text or "")[:160]
+        if r.status_code == 401:
+            raise _RcError("HTTP 401: RedChat rechazó el token (copiá de nuevo el Token de acceso "
+                           "de RedChat → Seguridad). Respuesta: %s" % txt)
+        raise _RcError("HTTP %s: %s" % (r.status_code, txt))
+    try:
+        return r.json()
+    except Exception as e:
+        raise _RcError("RedChat no devolvió JSON (%s)" % type(e).__name__)
+
+
+def _rc_validar(token, account_id=None, shop_dominio=None) -> dict:
+    """Valida el token contra RedChat y averigua cuenta + tiendas Shopify. Solo GET."""
+    if not token:
+        raise _RcError("Pegá tu Token de acceso de RedChat.")
+    cands = []
+    if account_id:
+        cands = [str(account_id).strip()]
+    else:
+        prof = _rc_get(token, "/profile")
+        accs = [a for a in (prof.get("accounts") or []) if isinstance(a, dict) and a.get("id")]
+        accs.sort(key=lambda a: 0 if (a.get("status") or "active") == "active" else 1)
+        cands = [str(a["id"]) for a in accs]
+        if not cands and prof.get("account_id"):
+            cands = [str(prof["account_id"])]
+        if not cands:
+            raise _RcError("El token es válido pero no tiene ninguna cuenta de RedChat asociada.")
+    ultimo_err = None
+    plataformas = []
+    for aid in cands:
+        try:
+            acc = _rc_get(token, "/accounts/%s" % aid)
+            st = _rc_get(token, "/accounts/%s/operator/logistics/stores" % aid)
+        except _RcError as e:
+            ultimo_err = e
+            continue
+        stores = st.get("stores") if isinstance(st, dict) else st
+        stores = [s for s in (stores or []) if isinstance(s, dict) and s.get("id")]
+        plataformas += [str(s.get("platform") or "?") for s in stores]
+        shop = [s for s in stores if (s.get("platform") or "").lower() == "shopify"]
+        if not shop:
+            continue
+        dom = (shop_dominio or "").strip().lower()
+        if dom:
+            igual = [s for s in shop if (s.get("external_store_id") or "").strip().lower() == dom]
+            if igual:
+                shop = igual
+        return {"account_id": str(aid), "cuenta": (acc.get("name") or "")[:80],
+                "stores": [{"id": s["id"], "nombre": (s.get("name") or "")[:80],
+                            "dominio": (s.get("external_store_id") or "")[:120]} for s in shop],
+                "store_ids": [s["id"] for s in shop]}
+    if ultimo_err and not plataformas:
+        raise ultimo_err
+    raise _RcError("Tu RedChat no tiene ninguna tienda Shopify conectada (tiendas que vimos: %s)."
+                   % (", ".join(sorted(set(plataformas))) or "ninguna"))
+
+
+def _rc_mapa(orders: dict) -> dict:
+    """nombre normalizado -> {nombre, n, carrier, logi, tipo, carriers, tipos}.
+    logi/tipo solo si una opcion tiene >= 60% de los pedidos que traen el dato."""
+    agg = {}
+    for o in (orders or {}).values():
+        k = o.get("k") or ""
+        if not k or o.get("pk"):            # los nº de pack son copias: no votan dos veces
+            continue
+        a = agg.setdefault(k, {"n": 0, "car": {}, "lg": {}, "tip": {}})
+        a["n"] += 1
+        c = o.get("c")
+        if c:
+            a["car"][c] = a["car"].get(c, 0) + 1
+            lg = _rc_carrier_logi(c)
+            if lg:
+                a["lg"][lg] = a["lg"].get(lg, 0) + 1
+        t = _rc_tipo(o.get("t"))
+        if t:
+            a["tip"][t] = a["tip"].get(t, 0) + 1
+
+    def _mayor(dd):
+        if not dd:
+            return None
+        k, v = max(dd.items(), key=lambda x: x[1])
+        return k if v >= 0.6 * sum(dd.values()) else None
+    out = {}
+    for k, a in agg.items():
+        out[k] = {"n": a["n"], "carrier": _mayor(a["car"]), "logi": _mayor(a["lg"]),
+                  "tipo": _mayor(a["tip"]), "carriers": a["car"], "tipos": a["tip"]}
+    return out
+
+
+def _rc_lock(email):
+    with _RC_LOCKS_MX:
+        lk = _RC_LOCKS.get(email)
+        if lk is None:
+            lk = _RC_LOCKS[email] = threading.Lock()
+        return lk
+
+
+def _rc_lease(email) -> bool:
+    """Candado ENTRE workers (archivo .lock): que no sincronicen los dos a la vez."""
+    p = _RC_DIR / ("%s.lock" % _rc_hash(email))
+    try:
+        _RC_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            if _time.time() - p.stat().st_mtime > 90:     # quedo de un worker muerto
+                p.unlink()
+        except FileNotFoundError:
+            pass
+        fd = _os.open(str(p), _os.O_CREAT | _os.O_EXCL | _os.O_WRONLY)
+        _os.write(fd, str(_os.getpid()).encode())
+        _os.close(fd)
+        return True
+    except Exception:
+        return False
+
+
+def _rc_unlease(email) -> None:
+    try:
+        (_RC_DIR / ("%s.lock" % _rc_hash(email))).unlink()
+    except Exception:
+        pass
+
+
+def _rc_sync(email, max_pag=20, max_seg=15.0, forzar=False):
+    """Trae/actualiza los pedidos de RedChat de la cuenta. Acotado (paginas y segundos) para
+    no colgar el request: si la ventana de 60 dias no entra, sigue en el proximo refresco.
+    Nunca rompe: si RedChat falla, queda el ultimo cache y se guarda el error real.
+    Devuelve el cache (dict) o None si la cuenta no tiene RedChat."""
+    conf = _rc_conf(email)
+    if not conf:
+        return None
+    c = _rc_cache_leer(email)
+    now = _time.time()
+    if not forzar:
+        if now - float(c.get("ts") or 0) < _RC_TTL:
+            return c
+        if c.get("error") and now - float(c.get("error_ts") or 0) < _RC_TTL_ERR:
+            return c
+    lk = _rc_lock(email)
+    if not lk.acquire(False):
+        return c                                       # otro hilo de este worker ya esta en eso
+    try:
+        if not _rc_lease(email):
+            return c                                   # el otro worker ya esta en eso
+        try:
+            return _rc_sync_correr(email, conf, dict(c), max_pag, max_seg)
+        finally:
+            _rc_unlease(email)
+    finally:
+        lk.release()
+
+
+def _rc_sync_correr(email, conf, c, max_pag, max_seg):
+    now = _time.time()
+    t0 = now
+    corte = now - _RC_DIAS * 86400
+    sids = [str(s) for s in (conf.get("store_ids") or [])]
+    orders = dict(c.get("orders") or {})
+    nombres = dict(c.get("nombres") or {})
+    bf = {k: dict(v) for k, v in (c.get("bf") or {}).items() if k in sids}
+    top = {k: v for k, v in (c.get("top") or {}).items() if k in sids}
+    if now - float(c.get("sweep_ts") or 0) > _RC_RESWEEP:     # una vez por dia: barrer todo de nuevo
+        bf = {}
+        c["sweep_ts"] = now
+    paginas = [0]
+    err = None
+
+    def _queda():
+        return paginas[0] < max_pag and (_time.time() - t0) < max_seg
+
+    def _pagina(sid, page):
+        j = _rc_get(conf["token"], "/accounts/%s/operator/logistics/orders" % conf["account_id"],
+                    params={"store_id": sid, "page": page, "per_page": 50}, timeout=20)
+        paginas[0] += 1
+        lst = [o for o in ((j or {}).get("orders") or []) if isinstance(o, dict)]
+        meta = (j or {}).get("meta") or {}
+        tot = int(meta.get("total_pages") or 0)
+        viejo = None
+        for o in lst:
+            ts = _rc_ts(o.get("placed_at"))
+            if ts is not None:
+                viejo = ts if viejo is None else min(viejo, ts)
+                if ts > float(top.get(sid) or 0):
+                    top[sid] = ts
+            if ts is not None and ts < corte:
+                continue
+            num = str(o.get("order_number") or "").strip().lstrip("#")
+            if not num:
+                continue
+            met = o.get("shipping_method") or ""
+            k = _rc_clave(met)
+            rec = {"c": (o.get("carrier") or None), "t": (o.get("delivery_type") or None),
+                   "k": k, "ts": ts, "s": sid}
+            orders[num] = rec
+            if k:
+                nombres[k] = _rc_nombre(met)
+            for pn in (o.get("pack_order_numbers") or []):
+                if isinstance(pn, (str, int)):
+                    pn = str(pn).strip().lstrip("#")
+                    if pn and pn != num and (pn not in orders or orders[pn].get("pk")):
+                        orders[pn] = dict(rec, pk=num)
+        fin = (not lst) or (tot and page >= tot)
+        return viejo, fin
+
+    try:
+        for sid in sids:
+            # 1) CABEZA: lo nuevo + re-leer las ultimas 36 hs (el carrier puede cambiar antes de despachar)
+            # Mientras el barrido no termino, la cabeza usa a lo sumo la mitad de las paginas: en una
+            # cuenta de ~100 pedidos/dia las 36 hs son 3-4 paginas y se comian todo el presupuesto.
+            # (Cortar la cabeza no deja huecos: lo nuevo corre las paginas y el barrido las re-lee.)
+            b0 = bf.get(sid) or {}
+            tope_cab = max_pag if b0.get("done") else max(1, max_pag // 2)
+            if top.get(sid):
+                lim = max(float(top[sid]) - _RC_SOLAPE, corte)
+                p = 1
+                while _queda() and p <= tope_cab:
+                    viejo, fin = _pagina(sid, p)
+                    if fin or (viejo is not None and viejo < lim):
+                        break
+                    p += 1
+            # 2) BARRIDO hacia atras hasta 60 dias (continua donde quedo el refresco anterior)
+            b = bf.setdefault(sid, {"page": 1, "done": False})
+            while (not b.get("done")) and _queda():
+                viejo, fin = _pagina(sid, int(b.get("page") or 1))
+                if fin or (viejo is not None and viejo < corte):
+                    b["done"] = True
+                    break
+                b["page"] = int(b.get("page") or 1) + 1
+    except _RcError as e:
+        err = str(e)
+    except Exception as e:
+        err = "%s: %s" % (type(e).__name__, str(e)[:160])
+    orders = {k: v for k, v in orders.items() if (v.get("ts") is None or v["ts"] >= corte)}
+    usados = {v.get("k") for v in orders.values()}
+    c.update({"orders": orders, "nombres": {k: v for k, v in nombres.items() if k in usados},
+              "bf": bf, "top": top, "mapa": _rc_mapa(orders), "n": len(orders),
+              "completo": bool(sids) and all((bf.get(s) or {}).get("done") for s in sids),
+              "paginas_ultimo": paginas[0]})
+    if err and paginas[0] == 0:
+        # no se pudo leer nada: el cache anterior queda como estaba, solo se anota el error
+        c["error"], c["error_ts"] = err, _time.time()
+    else:
+        c["ts"] = _time.time()
+        c["error"], c["error_ts"] = (err, _time.time()) if err else (None, None)
+    try:
+        _rc_escribir(_rc_cache_path(email), c)
+    except Exception:
+        pass
+    return c
+
+
+def _rc_logi(email, num, metodo=None):
+    """'flex' | 'andreani' segun RedChat, o None (sin RedChat / sin dato -> decide la regla de siempre).
+    SOLO lee el cache de disco: nunca le pega a RedChat (se llama una vez por pedido)."""
+    try:
+        if not email or not _rc_conf(email):
+            return None
+        c = _rc_cache_leer(email)
+        if not c:
+            return None
+        o = (c.get("orders") or {}).get(str(num or "").strip().lstrip("#"))
+        if o:
+            lg = _rc_carrier_logi(o.get("c"))
+            if lg:
+                return lg
+        k = _rc_clave(metodo)
+        if k:
+            m = (c.get("mapa") or {}).get(k) or {}
+            if m.get("logi") in ("flex", "andreani"):
+                return m["logi"]
+    except Exception:
+        return None
+    return None
+
+
+def _rc_estado_json(email) -> dict:
+    conf = _rc_conf(email)
+    if not conf:
+        return {"ok": True, "conectado": False}
+    c = _rc_cache_leer(email)
+    nombres = c.get("nombres") or {}
+    grupos = {"flex": [], "sucursal": [], "domicilio": [], "otros": []}
+    for k, m in (c.get("mapa") or {}).items():
+        it = {"nombre": nombres.get(k) or k, "n": int(m.get("n") or 0),
+              "carrier": m.get("carrier"), "tipo": m.get("tipo")}
+        if m.get("logi") == "flex":
+            grupos["flex"].append(it)
+        elif m.get("tipo") == "sucursal":
+            grupos["sucursal"].append(it)
+        elif m.get("tipo") == "domicilio":
+            grupos["domicilio"].append(it)
+        else:
+            grupos["otros"].append(it)
+    for g in grupos.values():
+        g.sort(key=lambda x: -x["n"])
+    return {"ok": True, "conectado": True, "cuenta": conf.get("cuenta") or "",
+            "tiendas": [s.get("dominio") or s.get("nombre") or str(s.get("id"))
+                        for s in (conf.get("stores") or [])],
+            "ultimo_sync": c.get("ts"), "pedidos": int(c.get("n") or 0), "dias": _RC_DIAS,
+            "completo": bool(c.get("completo")), "error": c.get("error"),
+            "grupos": grupos}
+
+
+@app.get("/redchat/estado")
+def redchat_estado():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": True, "conectado": False})
+    try:
+        _rc_sync(email, max_pag=8, max_seg=10)       # solo si vencio el TTL; acotado
+    except Exception:
+        pass
+    try:
+        return jsonify(_rc_estado_json(email))
+    except Exception as e:
+        return jsonify({"ok": False, "conectado": bool(_rc_conf(email)),
+                        "error": "%s: %s" % (type(e).__name__, str(e)[:200])})
+
+
+@app.post("/redchat/conectar")
+@limiter.limit("20 per hour")
+def redchat_conectar():
+    """Guarda el token de RedChat de la cuenta. Valida pegandole a la API (solo GET)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Tenés que iniciar sesión."}), 401
+    data = request.get_json(silent=True) or request.form
+    token = str(data.get("token") or "").strip()
+    acc = str(data.get("account_id") or "").strip()
+    if not token:
+        return jsonify({"ok": False, "error": "Pegá tu Token de acceso de RedChat."}), 400
+    if acc and not acc.isdigit():
+        return jsonify({"ok": False, "error": "El ID de cuenta de RedChat es un número."}), 400
+    try:
+        info = _rc_validar(token, acc or None, (_shop_tokens().get(email) or {}).get("shop"))
+    except _RcError as e:
+        return jsonify({"ok": False, "error": "RedChat: %s" % e}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": "%s: %s" % (type(e).__name__, str(e)[:200])}), 502
+    d = dict(_rc_conns())
+    d[email] = dict(info, token=token, desde=_time.time())
+    _rc_escribir(_RC_CONNS, d)
+    try:
+        _rc_cache_path(email).unlink()           # otra cuenta/tienda: arrancar de cero
+    except Exception:
+        pass
+    sync_err = None
+    try:
+        _rc_sync(email, max_pag=20, max_seg=20, forzar=True)
+    except Exception as e:
+        sync_err = "%s: %s" % (type(e).__name__, str(e)[:200])
+    out = _rc_estado_json(email)
+    if sync_err and not out.get("error"):
+        out["error"] = sync_err
+    return jsonify(out)
+
+
+@app.post("/redchat/sync")
+@limiter.limit("60 per hour")
+def redchat_sync():
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False, "error": "Tenés que iniciar sesión."}), 401
+    if not _rc_conf(email):
+        return jsonify({"ok": True, "conectado": False})
+    try:
+        _rc_sync(email, max_pag=20, max_seg=20, forzar=True)
+    except Exception as e:
+        return jsonify({"ok": False, "conectado": True, "error": "%s: %s" % (type(e).__name__, str(e)[:200])})
+    return jsonify(_rc_estado_json(email))
+
+
+@app.get("/desconectar-redchat")
+def desconectar_redchat():
+    email = _user_actual()
+    if email:
+        d = dict(_rc_conns())
+        if d.pop(email, None) is not None:
+            _rc_escribir(_RC_CONNS, d)
+        try:
+            _rc_cache_path(email).unlink()
+        except Exception:
+            pass
+    return redirect("/?integ=1")
 
 
 # TARIFAS DE FLEX CON FECHA.
