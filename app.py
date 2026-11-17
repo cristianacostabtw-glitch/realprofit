@@ -2461,7 +2461,6 @@ _SOLO_DASH = r"""
  var PLAT=[
   {key:'mp',logo:'mp',nm:'Mercado Pago',tag:'Pagos',desc:'Trae tus pagos y movimientos para calcular tu ganancia real.',real:true},
   {key:'shopify',logo:'shopify',nm:'Shopify',tag:'Ventas',desc:'Conecta tu tienda para centralizar ventas y costos por orden.'},
-  {key:'envialo',logo:'envialo',nm:'Envialo',tag:'Envios',desc:'Trae el costo real de cada envio para restarlo de la ganancia.'},
   {key:'redchat',logo:'redchat',nm:'RedChat',tag:'Envios',desc:'Opcional: detecta solo cómo se llaman tus envíos Flex, a sucursal y a domicilio, y clasifica tus pedidos con eso.'},
   {key:'tn',logo:'tn',nm:'Tiendanube',tag:'Ventas',desc:'Trae tus ventas online de tu tienda para el beneficio real.'},
   {key:'meli',logo:'meli',nm:'Mercado Libre',tag:'Ventas',desc:'Incluye tus ventas de marketplace en el calculo de beneficio.'},
@@ -2756,6 +2755,7 @@ _SOLO_DASH = r"""
    +'<div style="font-weight:700;color:#e2e8f0;font-size:13px;margin-bottom:9px">Detectamos en tus pedidos:</div>'
    +'<div style="display:flex;gap:9px;flex-wrap:wrap">'+rpRcGrupo('&#9889;','Flex','#c4b5fd',g.flex)+rpRcGrupo('&#127972;','Sucursal','#38bdf8',g.sucursal)+rpRcGrupo('&#127968;','Domicilio','#34d399',g.domicilio)+'</div>';
   if(g.otros&&g.otros.length) h+='<div style="color:#8493a8;font-size:11.5px;margin-top:8px">Sin transportista en RedChat todav&iacute;a (esos los decide la regla de siempre): '+g.otros.slice(0,5).map(function(x){ return esc(x.nombre)+' ('+(x.n||0)+')'; }).join(' &middot; ')+'</div>';
+  if(typeof j.pagados_despachos==='number' && j.pagados_despachos>0) h+='<div style="color:#fca5a5;font-size:12px;margin-top:9px;font-weight:600">'+j.pagados_despachos+' pedido'+(j.pagados_despachos===1?' ya pagado':'s ya pagados')+' en RedChat (no aparece'+(j.pagados_despachos===1?'':'n')+' en Despachos)</div>';
   h+='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;color:#8493a8;font-size:11.5px"><span>&Uacute;ltimo sync: <b style="color:#cbd5e1">'+rpRcFecha(j.ultimo_sync)+'</b> &middot; '+(j.pedidos||0)+' pedidos de los &uacute;ltimos '+(j.dias||60)+' d&iacute;as'+(j.completo?'':' (todav&iacute;a trayendo los m&aacute;s viejos)')+'</span>'
    +'<a href="#" id="rp-rc-sync" onclick="rpRcSync();return false;" style="color:#5aa2f5;font-weight:700;text-decoration:none">Actualizar</a></div>';
   if(j.error) h+='<div style="color:#f87171;font-size:12px;margin-top:8px;font-weight:600">'+esc(String(j.error))+'</div>';
@@ -2974,6 +2974,9 @@ _SOLO_DASH = r"""
      var w = r.incompleta ? ' <span title="Dirección incompleta" style="color:#fb7185;font-size:12px;cursor:help">⚠</span>' : '';
      var lg = r.logistica==='flex'
        ? ' <span style="background:#1c1636;border:1px solid #3a2f6b;color:#c4b5fd;font-size:10.5px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">⚡ Flex</span>' : '';
+     if(r.rc_pagado){ var _rcu=String(r.rc_tracking_url||''); if(_rcu.indexOf('https://')!==0 && _rcu.indexOf('http://')!==0) _rcu='';
+       lg += ' <span title="'+_dEsc(r.rc_estado||'')+'" style="background:#2a1214;border:1px solid #5b2328;color:#fca5a5;font-size:10.5px;font-weight:700;border-radius:14px;padding:2px 8px;margin-left:6px">Pagado en RedChat'+(r.rc_estado?(' · '+_dEsc(r.rc_estado)):'')+'</span>'
+         +(_rcu?(' <a href="'+_dEsc(_rcu)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#5aa2f5;font-size:11px;font-weight:700;text-decoration:none;margin-left:4px">seguimiento'+(r.rc_tracking?(' '+_dEsc(r.rc_tracking)):'')+' &#8599;</a>'):(r.rc_tracking?(' <span style="color:#8493a8;font-size:11px">'+_dEsc(r.rc_tracking)+'</span>'):'')); }
      return '<tr onmouseover="this.style.background=&#39;#0d1622&#39;" onmouseout="this.style.background=&#39;&#39;">'
        +'<td style="'+td+';width:36px"><input type="checkbox" class="rp-d-chk" value="'+_dEsc(r.num)+'" onclick="rpDCnt()" style="width:16px;height:16px;accent-color:#3b82f6;cursor:pointer"></td>'
        +'<td style="'+td+';color:#cbd5e1;font-weight:700">#'+_dEsc(r.num)+w+(_dTiendas.length>=2?' <span style="font-size:9.5px;color:#5b6b82;font-weight:700;letter-spacing:.5px">'+(r.tienda==='shopify'?'SH':(r.tienda==='tn'?'TN':(r.tienda==='meli'?'ML':'')))+'</span>':'')+'</td>'
@@ -3026,18 +3029,19 @@ _SOLO_DASH = r"""
     .catch(function(){ _dStat('Error de conexión.', '#fb7185'); }); };
  window.rpDExcel=function(){ var sel=rpDSel(); if(!sel.length){ _dStat('Tildá los pedidos para el Excel.', '#fb7185'); return; }
    _dStat('⏳ Generando Excel Andreani…','#a78bfa');
-   var _dFlexOut=[],_dSinSuc=[],_dCorr=[];
+   var _dFlexOut=[],_dSinSuc=[],_dCorr=[],_dRcPag=[];
    fetch('/pf-despachos-excel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:sel,tienda:_dTienda})})
     .then(function(r){ if(!r.ok) return r.json().then(function(e){throw (e&&e.msg)||'error';});
       // los que ya tienen etiqueta Flex quedan afuera del Excel: hay que DECIRLO, no callarlo
       _dFlexOut=(r.headers.get('X-Flex-Excluidos')||'').split(',').filter(function(x){return x;});
       _dSinSuc=(r.headers.get('X-Sin-Sucursal')||'').split(',').filter(function(x){return x;});
       _dCorr=(r.headers.get('X-Corregidos')||'').split(',').filter(function(x){return x;});
+      _dRcPag=(r.headers.get('X-RC-Pagados')||'').split(',').filter(function(x){return x;});
       return r.blob(); })
     .then(function(b){ var u=URL.createObjectURL(b); var a=document.createElement('a'); a.href=u; a.download='Andreani.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
       // al exportar, los pasa a "Exportadas"
       // los que no entraron NO se marcan como exportados: hay que arreglarlos y volver a generar
-      var _fuera={}; (_dFlexOut||[]).concat(_dSinSuc||[]).forEach(function(x){_fuera[x]=1;});
+      var _fuera={}; (_dFlexOut||[]).concat(_dSinSuc||[]).concat(_dRcPag||[]).forEach(function(x){_fuera[x]=1;});
       var _ok=sel.filter(function(x){return !_fuera[String(x)];});
       if(_ok.length){ fetch('/pf-despachos-marcar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({nums:_ok,accion:'exportada'})}).then(function(){ _dLoaded=false; rpDLoad(); }); }
       else { _dLoaded=false; rpDLoad(); }
@@ -3045,6 +3049,7 @@ _SOLO_DASH = r"""
       _dStat('✅ Excel descargado ('+_ok.length+' pedidos) → Exportadas. Subílo a Andreani.'
         +(_n?('  ⚠️ '+_n+' afuera porque ya van por Flex: '+_dFlexOut.map(function(x){return '#'+x;}).join(', ')):'')
         +(_s?('  ⚠️ '+_s+' afuera: no pude resolver su SUCURSAL de Andreani (quedan sin exportar para que los revises): '+_dSinSuc.map(function(x){return '#'+x;}).join(', ')):'')
+        +(_dRcPag.length?('  ⚠️ '+_dRcPag.length+' afuera porque ya tienen el envío pagado en RedChat: '+_dRcPag.map(function(x){return '#'+x;}).join(', ')):'')
         +(_dCorr.length?('  🔧 Corregí solo '+_dCorr.length+' dato'+(_dCorr.length>1?'s':'')+' para que Andreani no rebote: '+_dCorr.map(function(x){ var p=x.split(':'), m={sin_mail:'sin mail → mail de la tienda',mail_malo:'mail inválido → mail de la tienda',mail:'mail mal escrito',sin_dni:'sin DNI → 00000000',dni_malo:'DNI inválido → 00000000',cuit:'CUIT → DNI',dni:'DNI con signos raros',nombre:'nombre con mail/teléfono pegado'}; return '#'+p[0]+' '+(m[p[1]]||p[1]); }).join(' · ')):'')); })
     .catch(function(e){ _dStat('No se pudo generar el Excel'+(typeof e==='string'?': '+e:'')+'.', '#fb7185'); }); };
  window.rpDEnvialo=function(inp){ var f=inp.files&&inp.files[0]; if(!f)return; inp.value='';
@@ -9084,7 +9089,12 @@ def _desp_save(email, st) -> None:
         d = {}
     d[email] = st
     DESP_STATE.parent.mkdir(parents=True, exist_ok=True)
-    DESP_STATE.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    # ATOMICO (tmp + replace). Con 2 workers, el otro podia leer el archivo a medio escribir:
+    # _desp_state devolvia {} (todo volvia a "por empaquetar" en esa carga) y, peor, un
+    # _desp_save que leia a medias arrancaba de {} y pisaba el estado de TODAS las cuentas.
+    _tmp = DESP_STATE.with_suffix(".%d-%d.tmp" % (_os.getpid(), threading.get_ident()))
+    _tmp.write_text(_json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    _tmp.replace(DESP_STATE)
 
 
 SKUS_FILE = DATA_DIR / "prod_skus.json"   # {email: {product_id: {"tipo": "xn|spray|fijo", "base": "..."}}}
@@ -9780,7 +9790,8 @@ def _tiendanube_orders(email, desde=None, hasta=None, refresh=False, deadline=No
     ckey = "%s|%s" % (desde or "", hasta or "")
     _tn_desp_load()
     _c = _TN_DESP_CACHE.get(email)
-    if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
+    if ((not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL)
+            and _c.get("ts", 0) > _desp_inval_ts(email)):
         for it in _c["out"]:                       # re-aplico el estado local → "marcar" se refleja SIN re-fetch
             it["estado"] = st.get(str(it["num"])) or "empaquetar"
         return _c["out"]
@@ -9896,6 +9907,41 @@ def _desp_cache_save():
         pass
 
 
+# VENCER EL CACHE DE DESPACHOS EN LOS DOS WORKERS. Cuando el seguimiento detecta que un pedido
+# YA tiene tracking en la tienda (lo cargo RedChat, otra app o una corrida anterior), la copia
+# de Shopify que tiene Despachos es vieja: hay que volver a bajarla. Antes solo se hacia un
+# _DESP_CACHE.pop() y solo si se habia cargado alguno NUEVO, y solo en el worker que corrio el
+# envio: con "N ya estaban" (0 nuevos) no se vencia nada, y el otro worker seguia sirviendo su
+# copia hasta 10 minutos. Ahora va una marca de tiempo a DISCO (la ven los dos) y el cache solo
+# vale si es MAS NUEVO que esa marca. No se borra la copia: si Shopify esta ocupado se sigue
+# mostrando lo ultimo conocido (antes el pop podia dejar Despachos en "conectá tu tienda").
+_DESP_INVAL_FILE = DATA_DIR / "desp_inval.json"   # {email: ts}
+
+
+def _desp_inval_ts(email) -> float:
+    try:
+        return float((_json.loads(_DESP_INVAL_FILE.read_text(encoding="utf-8")) or {}).get(email) or 0)
+    except Exception:
+        return 0.0
+
+
+def _desp_cache_invalidar(email) -> None:
+    try:
+        try:
+            d = _json.loads(_DESP_INVAL_FILE.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                d = {}
+        except Exception:
+            d = {}
+        d[email] = _time.time()
+        _DESP_INVAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _tmp = _DESP_INVAL_FILE.with_suffix(".%d-%d.tmp" % (_os.getpid(), threading.get_ident()))
+        _tmp.write_text(_json.dumps(d), encoding="utf-8")
+        _tmp.replace(_DESP_INVAL_FILE)
+    except Exception:
+        pass
+
+
 # Caché de despachos de TiendaNube (era lo que se colgaba: 40 págs × 40s sin caché). Persistente.
 _TN_DESP_CACHE = {}
 _TN_DESP_FILE = DATA_DIR / "tn_desp_cache.json"
@@ -10001,7 +10047,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
     _c = _DESP_CACHE.get(email)
     orders = None
     _got = False
-    if (not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL):
+    if ((not refresh) and _c and _c.get("key") == ckey and (_t.time() - _c.get("ts", 0) < _DESP_TTL)
+            and _c.get("ts", 0) > _desp_inval_ts(email)):
         orders = _c.get("orders")                            # caché fresco → NO vuelve a pegarle a Shopify
     if orders is None:
         _got = _SHOP_SEM.acquire(timeout=3)
@@ -10066,6 +10113,12 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
             _desp_cache_save()            # persisto a disco → el próximo deploy no arranca frío
     st = _desp_state(email)
     _skus_dsp = _skus_map(email)      # packs-variantes (opt-in): sin packs = quantity
+    # RedChat (opcional): el cache de disco UNA vez por llamada. Sin RedChat = None y las filas
+    # quedan exactamente como antes (ni siquiera llevan los campos rc_*).
+    try:
+        _rcc = _rc_cache_leer(email) if _rc_conf(email) else None
+    except Exception:
+        _rcc = None
     out = []
     for o in orders:
         if o.get("cancelled_at"):
@@ -10110,6 +10163,13 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
         # Estado REAL: si ya tiene tracking en Shopify → enviada (aunque el estado local no lo sepa).
         # Si no, usa el estado local (exportada al generar Excel) o por defecto empaquetar.
         estado = "enviada" if tiene_trk else (st.get(num) or "empaquetar")
+        # PAGADO EN REDCHAT = mismo trato que "ya tiene tracking": pasa a enviada (sale de "por
+        # empaquetar", del Excel de Andreani y de los KPIs de por despachar; sigue siendo venta).
+        # Se calcula al leer, no se guarda: si RedChat lo deja de dar por pago, vuelve solo.
+        # Una marca a mano (exportada/enviada) gana siempre, igual que hoy.
+        _rcp = _rc_pedido(email, num, _rcc) if _rcc is not None else None
+        if _rcp and _rcp["rc_pagado"] and not _rcp["rc_etiqueta_error"] and not tiene_trk and not st.get(num):
+            estado = "enviada"
         out.append({
             "tienda": "shopify", "num": num, "nombre": nombre.strip(), "tipo": "sucursal" if suc else "domicilio",
             "localidad": localidad, "cp": cp, "provincia": prov, "unidades": unidades,
@@ -10123,6 +10183,8 @@ def _despachos_orders_shopify(email, desde=None, hasta=None, refresh=False, dead
                 (s.get("title") or "") for s in (o.get("shipping_lines") or []))),
             "logi_manual": str(num) in _logi(email),
         })
+        if _rcp is not None:
+            out[-1].update(_rcp)
     out.sort(key=lambda x: int(x["num"]) if str(x["num"]).isdigit() else 0, reverse=True)
     return out
 
@@ -10136,7 +10198,12 @@ def pf_despachos_list():
     hasta = request.args.get("hasta") or None
     refresh = request.args.get("refresh") in ("1", "true", "yes")
     try:
-        _rc_sync(email, max_pag=6, max_seg=8)          # RedChat (opcional): solo si vencio; acotado
+        # RedChat (opcional): solo si vencio; acotado. Con "Actualizar pedidos" se fuerza, para
+        # que un envio que se acaba de pagar en RedChat salga de "por empaquetar" en el momento.
+        if refresh:
+            _rc_sync(email, max_pag=10, max_seg=10, forzar=True)
+        else:
+            _rc_sync(email, max_pag=6, max_seg=8)
     except Exception:
         pass
     try:
@@ -12240,7 +12307,16 @@ def pf_despachos_excel():
     _flex = [r for r in sel if (r.get("logistica") or "") == "flex"]
     if _flex:
         sel = [r for r in sel if (r.get("logistica") or "") != "flex"]
+    # Tampoco los que ya tienen el envio PAGO en RedChat (solo cuentas con RedChat): meterlos
+    # aca es pagar el mismo envio dos veces. Se avisan por numero, no desaparecen en silencio.
+    _rcpag = [r for r in sel if r.get("rc_pagado")]
+    if _rcpag:
+        sel = [r for r in sel if not r.get("rc_pagado")]
     if not sel:
+        if _rcpag:
+            return jsonify({"ok": False,
+                            "msg": "los que tildaste ya tienen el envío pagado en RedChat: no van al "
+                                   "Excel de Andreani (%s)" % ", ".join("#" + str(r["num"]) for r in _rcpag[:20])}), 400
         if _flex:
             return jsonify({"ok": False,
                             "msg": "todos los que tildaste son Flex: no van al Excel de Andreani"}), 400
@@ -12374,6 +12450,9 @@ def pf_despachos_excel():
         # Que se vea cuales quedaron afuera por ser Flex, no que desaparezcan en silencio.
         resp.headers["X-Flex-Salteados"] = ",".join(str(r["num"]) for r in _flex)
         _exp.append("X-Flex-Salteados")
+    if _rcpag:
+        resp.headers["X-RC-Pagados"] = ",".join(str(r["num"]) for r in _rcpag)
+        _exp.append("X-RC-Pagados")
     if _exp:
         resp.headers["Access-Control-Expose-Headers"] = ", ".join(_exp)
     return resp
@@ -13939,6 +14018,64 @@ _MELI_SHIP_EST = DATA_DIR / "meli_ship_estado.json"   # {sid: status}
 _MELI_SHIP_FIN = ("shipped", "delivered", "cancelled", "not_delivered", "returned")
 
 
+# QUE CUENTA COMO "LISTA PARA DESPACHAR" (lo que ML muestra en Listas para enviar).
+# Doc publica de ML (shipment-handling, arbol de status/substatus, leido el 17-11-2026):
+#   ready_to_ship -> ready_to_print ("para imprimir"), printed ("impresa"), delayed ("demorada"),
+#                    invoice_pending, in_pickup_list, ready_for_pickup, ready_for_dropoff, ...
+#   handling      -> waiting_for_label_generation, invoice_pending, regenerating, manufacturing,
+#                    agency_unavailable, waiting_for_return_confirmation, return_confirmed
+#   pending       -> buffered (ML retiene la etiqueta hasta una fecha: "para descargar despues"), ...
+# Antes entraba SOLO status == ready_to_ship (cualquier substatus, y asi sigue). Ahora entran
+# tambien los handling (la etiqueta todavia no esta: se listan sin casilla de descarga) y los
+# pending/buffered. NO entran: manufacturing (va a "esperando stock"), las devoluciones, ni nada
+# de shipped/delivered/not_delivered/cancelled. Ademas de substatus=delayed, ML tambien marca
+# "demorado" un envio que paso su limite de despacho (/shipments/{id}/delays -> handling_delayed);
+# eso se mira con la fecha estimated_handling_limit si el envio la trae.
+_MELI_HANDLING_NO = ("manufacturing", "waiting_for_return_confirmation", "return_confirmed")
+_MELI_SUB_TXT = {"ready_to_print": "Para imprimir", "printed": "Impresa", "delayed": "Demorada",
+                 "invoice_pending": "Falta la factura", "waiting_for_label_generation": "Etiqueta más tarde",
+                 "buffered": "Etiqueta más tarde", "regenerating": "Etiqueta regenerándose",
+                 "ready_for_pickup": "Lista para colecta", "ready_for_dropoff": "Para llevar al correo",
+                 "in_pickup_list": "En lista de colecta", "agency_unavailable": "Agencia no disponible"}
+
+
+def _meli_listo(sj) -> bool:
+    st = (sj or {}).get("status") or ""
+    sub = (sj or {}).get("substatus") or ""
+    if st == "ready_to_ship":
+        return True
+    if st == "handling":
+        return sub not in _MELI_HANDLING_NO
+    return st == "pending" and sub == "buffered"
+
+
+def _meli_demorada(sj) -> bool:
+    sj = sj or {}
+    if (sj.get("substatus") or "") == "delayed":
+        return True
+    for _src in (sj.get("lead_time"), sj.get("shipping_option"), sj):
+        try:
+            _d = ((_src or {}).get("estimated_handling_limit") or {}).get("date") or ""
+            if _d:
+                _lim = _dt.datetime.fromisoformat(str(_d).replace("Z", "+00:00"))
+                if _lim.tzinfo is None:
+                    _lim = _lim.replace(tzinfo=_dt.timezone.utc)
+                return _lim < _dt.datetime.now(_dt.timezone.utc)
+        except Exception:
+            continue
+    return False
+
+
+def _meli_estado_fila(sj) -> dict:
+    """Campos de estado que viajan en cada fila de Etiquetas + SKU (chips de la pantalla)."""
+    sj = sj or {}
+    st = sj.get("status") or ""
+    sub = sj.get("substatus") or ""
+    txt = _MELI_SUB_TXT.get(sub) or ("Etiqueta más tarde" if st in ("handling", "pending") else "")
+    return {"estado": st, "sub": sub, "sub_txt": txt, "demorada": _meli_demorada(sj),
+            "etiqueta": st == "ready_to_ship"}
+
+
 def _meli_ship_est() -> dict:
     try:
         return _json.loads(_MELI_SHIP_EST.read_text(encoding="utf-8"))
@@ -14005,6 +14142,9 @@ def _meli_units_sku(sku):
 
 _MELI_LISTOS_CACHE = {}        # {email: (ts, filas)} — copia en memoria del worker
 _MELI_LISTOS_TTL = 90
+_MELI_LISTOS_DIAS = 45         # mas alla de las 400 mas nuevas, barrer hasta esta antiguedad
+_MELI_LISTOS_MAX_ORD = 4000    # tope de ordenes leidas (80 paginas)
+_MELI_LISTOS_SEG_ORD = 60      # tope de segundos para la parte de ordenes extra
 _MELI_LISTOS_T = {}            # {email: {"ordenes":s, "envios":s, "resto":s, "n_env":n}}
 
 # La lista TAMBIEN va a disco. Dos razones: son 2 workers (lo que cachea uno no lo ve el otro)
@@ -14135,9 +14275,10 @@ def _meli_verificar(email, filas):
         js = estado.get(f.get("sid"), None)
         if js is None:                             # fallo la consulta: la dejo, no invento
             vivas.append(f); continue
-        if (js.get("status") or "") != "ready_to_ship":
+        if not _meli_listo(js):
             fuera += 1; continue                   # ya se despacho / se cancelo / cambio
         f["tracking"] = js.get("tracking_number") or f.get("tracking") or ""
+        f.update(_meli_estado_fila(js))
         vivas.append(f)
     if fuera:
         print("[MELI verificar] %d ya no estan listas (de %d)" % (fuera, len(filas)), flush=True)
@@ -14216,6 +14357,45 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
                 for _c, _l, _t in _ex0.map(_pagina, _offs):
                     if _c == 200:
                         res += _l
+        # MAS ALLA DE LAS 400 MAS NUEVAS (17-11-2026). En una cuenta grande las 400 ordenes son
+        # 2-3 dias, y las ventas listas MAS VIEJAS (justo las "demoradas") quedaban afuera: ML
+        # mostraba 64 y aca salian menos. Se sigue paginando hacia atras de a 6 paginas hasta
+        # cubrir _MELI_LISTOS_DIAS dias, con tope de tiempo (corre de fondo con candado de 240 s)
+        # y de ordenes. De esas solo pasan las que pueden estar sin despachar: pagas y sin el tag
+        # "delivered" (las demas ni se le pregunta el envio a ML). Las primeras 400 no cambian.
+        if _total > 400:
+            _corte = (_dt.datetime.now(_dt.timezone.utc)
+                      - _dt.timedelta(days=_MELI_LISTOS_DIAS)).strftime("%Y-%m-%dT%H:%M:%S")
+            _sig = 400
+
+            def _vieja(_o):
+                try:
+                    _d = _dt.datetime.fromisoformat(str(_o.get("date_created") or "").replace("Z", "+00:00"))
+                    return _d.astimezone(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") < _corte
+                except Exception:
+                    return False
+            _ya_corte = any(_vieja(_o) for _o in res[-50:]) if res else True
+            while (not _ya_corte) and _sig < min(_total, _MELI_LISTOS_MAX_ORD) \
+                    and (_tcr.time() - _T0) < _MELI_LISTOS_SEG_ORD:
+                _lote_offs = list(range(_sig, min(_sig + 300, _total, _MELI_LISTOS_MAX_ORD), 50))
+                _sig += 300
+                _nuevas = []
+                with _TPE0(max_workers=6) as _ex1:
+                    for _c, _l, _t in _ex1.map(_pagina, _lote_offs):
+                        if _c != 200:
+                            _ya_corte = True        # ML contesto mal: corto aca, sin inventar
+                        _nuevas += _l
+                for _o in _nuevas:
+                    if _vieja(_o):
+                        _ya_corte = True
+                        continue
+                    if (_o.get("status") or "") != "paid":
+                        continue
+                    if "delivered" in (_o.get("tags") or []):
+                        continue
+                    res.append(_o)
+                if not _nuevas:
+                    break
         _off = 400                       # ya estan todas: el while de abajo no entra
         while _off < 400:
             r = None
@@ -14302,7 +14482,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
         _s = str(_s)
         if sel and _s not in sel:
             continue
-        if ((cache.get(_s) or {}).get("status") or "") != "ready_to_ship":
+        if not _meli_listo(cache.get(_s)):
             continue
         _b0 = o.get("buyer") or {}
         if _b0.get("first_name") or _b0.get("last_name"):
@@ -14355,7 +14535,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
         if sel and sid not in sel:        # filtro ANTES de pedir el envio: no gasto llamadas
             continue
         sj = cache.get(sid) or {}
-        if (sj.get("status") or "") != "ready_to_ship":
+        if not _meli_listo(sj):
             continue
         _b = o.get("buyer") or {}
         _nomgu = _nomdisk.get(str(o.get("id"))) or ""
@@ -14377,7 +14557,7 @@ def _meli_envios_listos(email, sids=None, _fresco=False):
             # {"logistic":{"direction":"forward","mode":"me2","type":"self_service"}}
             "flex": (((sj.get("logistic") or {}).get("type")
                       or sj.get("logistic_type") or "") == "self_service"),
-            "cant": 0, "potes": 0, "dudoso": False, "detalle": []})
+            "cant": 0, "potes": 0, "dudoso": False, "detalle": [], **_meli_estado_fila(sj)})
         for it in (o.get("order_items") or []):
             itm = it.get("item") or {}
             sku = str(itm.get("seller_sku") or itm.get("seller_custom_field") or "").strip()
@@ -14454,11 +14634,19 @@ def _meli_etiquetas_pendientes(email, sids=None):
         return None, [], {}, {"msg": err}
     if not filas:
         return None, [], {}, {"msg": "no hay envios listos para imprimir"}
+    # Las que ML todavia no habilito para imprimir (handling / pending-buffered) se listan pero
+    # NO se piden: con una sola en la tanda ML rechaza el lote. Se avisan aparte.
+    _sin_etq = [f for f in filas if f.get("etiqueta") is False]
+    _vivos_todos = {f["sid"] for f in filas}
+    filas = [f for f in filas if f.get("etiqueta") is not False]
+    if not filas:
+        return None, [], {}, {"msg": "ML todavia no habilito la etiqueta de ninguno de esos envios "
+                                     "(%d): se pueden imprimir mas tarde" % len(_sin_etq)}
     # Las que se tildaron pero YA NO estan ready_to_ship. La pantalla las muestra desde la foto
     # guardada sin reconfirmarlas contra ML (el tope de 4s que la hace rapida), asi que podes
     # tildar 10 y que 2 ya se hayan movido: alguien las imprimio del panel, o ya se despacharon.
     # Antes bajaban 8 sin una palabra; ahora se dicen por nombre.
-    _vivos = {f["sid"] for f in filas}
+    _vivos = _vivos_todos
     _viejas = [x for x in (sids or []) if x not in _vivos]
     mapa = {}
     for f in filas:
@@ -14575,7 +14763,8 @@ def _meli_etiquetas_pendientes(email, sids=None):
                                 "crudo_bytes": total_bytes, "sids": _ok,
                                 "fallidos": fallidos,
                                 "faltantes": [_nom.get(x, x) for x in _falta],
-                                "yanolistas": _viejas}
+                                "yanolistas": _viejas,
+                                "sin_etiqueta": [f["sid"] for f in _sin_etq]}
 
 
 def _meli_esperando_stock(email):
@@ -15687,12 +15876,8 @@ def _seg_enviar_shopify(email, pedidos) -> dict:
             _sege_shop_ebooks_de(ctx, ya, _al_ebook)
         except Exception as e:
             ebook["errores"].append({"num": "", "msg": _sege_err(e)})
-    if env:
-        try:
-            _DESP_CACHE.pop(email, None)
-            _desp_cache_save()
-        except Exception:
-            pass
+    if env or salt:
+        _desp_cache_invalidar(email)
     return {"ok": True, "enviados": env, "saltados": salt, "fallaron": fail, "errores": errores[:8],
             "ebook_cerrados": ebook["cerrados"], "ebook_errores": ebook["errores"][:8]}
 
@@ -15888,6 +16073,10 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
             if _n_marc:
                 _desp_save(email, _st)
             _SEG_JOBS[job]["marcados"] = _n_marc
+            # Si alguno YA tenia el tracking cargado en la tienda (RedChat u otra app lo
+            # despacho por su lado), la copia de Despachos esta vieja: que se vuelva a bajar.
+            if _n_marc or any(_p.get("tn") for _p in pedidos):
+                _desp_cache_invalidar(email)
         except Exception:
             pass
         _SEG_JOBS[job].update({"listo": True, "pedidos": pedidos, "wpp_on": wpp_on,
@@ -17433,12 +17622,8 @@ def _sege_run(job, token) -> None:
                 _job_put(job, snap)
             return
         _sege_volcar_anot(job, st)
-        if (st["c"].get("tienda") or {}).get("env"):
-            try:
-                _DESP_CACHE.pop(email, None)
-                _desp_cache_save()
-            except Exception:
-                pass
+        if (st["c"].get("tienda") or {}).get("env") or (st["c"].get("tienda") or {}).get("salt"):
+            _desp_cache_invalidar(email)
         with _SEGE_LOCK:
             if perdido["v"]:
                 st["msg"] = "otro proceso retomó este envío"
@@ -30947,8 +31132,10 @@ function etqPintar(j){
                   :('<div style="width:44px;height:44px;border-radius:9px;background:#16202e;flex:none"></div>');
    return '<div style="border:1px solid #1b2635;border-radius:14px;margin-bottom:10px;overflow:hidden;background:linear-gradient(180deg,#0f1723,#0b111b);'+(bj?'opacity:.5':'')+'">'
     +'<div style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid #16202e;background:#0c131e;flex-wrap:wrap">'
-     +'<input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" data-flex="'+(o.flex?1:0)+'" '+(bj?'':'checked')+' onchange="etqCnt()" style="width:16px;height:16px;cursor:pointer;flex:none">'
+     +'<input type="checkbox" class="etqck" value="'+esc(o.sid)+'" data-potes="'+(o.potes||0)+'" data-flex="'+(o.flex?1:0)+'" '+((bj||o.etiqueta===false)?'':'checked')+(o.etiqueta===false?' disabled title="ML todavia no habilito esta etiqueta"':'')+' onchange="etqCnt()" style="width:16px;height:16px;cursor:pointer;flex:none">'
      +(o.flex?'<span class="chip" style="--tono:var(--acc);--tono-sb:var(--acc-sb);--tono-ln:var(--acc-ln);padding:3px 9px;font-size:10px">FLEX</span>':'')
+     +(o.demorada?'<span style="background:#2a1214;border:1px solid #5b2328;color:#fca5a5;border-radius:14px;padding:3px 9px;font-size:10px;font-weight:700">DEMORADA</span>':'')
+     +((o.sub_txt&&o.sub!=='delayed')?('<span style="background:#16202e;border:1px solid #2b3b52;color:#9fb3cc;border-radius:14px;padding:3px 9px;font-size:10px;font-weight:700">'+esc(String(o.sub_txt).toUpperCase())+'</span>'):'')
      +'<span style="font-size:12.5px;font-weight:700;color:#c4d0de">#'+esc(o.numero||'')+'</span>'
      +'<span style="font-size:12px;color:#7aa2c8">'+esc(etqFecha(o.fecha_hora))+'</span>'
      +'<span style="flex:1;min-width:6px"></span>'
@@ -30968,7 +31155,9 @@ function etqPintar(j){
      +'<div style="font-size:11.5px;color:#93a3ba;white-space:nowrap">SKU: '+esc(o.sku||'')+((o.cant||1)>1?(' <b style="color:#ffe600">&#215;'+(o.cant)+'</b>'):'')+'</div>'
      +'<div style="font-size:13px;font-weight:800;color:'+(o.dudoso?'#ffb35a':'#ffe600')+';background:#16202e;border-radius:9px;padding:6px 11px;white-space:nowrap">X'+(o.potes||0)+(o.dudoso?' &#9888;':'')+' potes</div>'
     +'</div>'
-    +'<div style="padding:0 13px 11px;font-size:11.5px;color:#34d399;font-weight:600">Etiqueta lista para imprimir &#183; <span style="color:#7aa2c8;font-weight:500">'+esc(o.tracking||'')+'</span></div>'
+    +(o.etiqueta===false
+      ? '<div style="padding:0 13px 11px;font-size:11.5px;color:#ffb35a;font-weight:600">ML todav&#237;a no habilit&#243; la etiqueta: se imprime m&#225;s tarde</div>'
+      : '<div style="padding:0 13px 11px;font-size:11.5px;color:#34d399;font-weight:600">Etiqueta lista para imprimir &#183; <span style="color:#7aa2c8;font-weight:500">'+esc(o.tracking||'')+'</span></div>')
    +'</div>';
   }).join('');
   // Aviso de antiguedad: la lista sale al toque desde el ultimo barrido guardado. Si se esta
@@ -31018,13 +31207,14 @@ function etqCargar(fresco, callado){
   if(!yaHabia){ var L3=document.getElementById('etqlista');
     if(L3)L3.innerHTML='<span style="color:#e0637f">Error de red</span>'; } });
 }
-function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++)c[i].checked=v; etqCnt(); }
+function etqTodos(v){ var c=document.querySelectorAll('.etqck'); for(var i=0;i<c.length;i++){ if(!c[i].disabled) c[i].checked=v; } etqCnt(); }
 // Tildar por tipo de envio. Los botones de bajar NO cambian: siguen filtrando ellos por
 // data-flex, asi que aunque quede algo mal tildado nunca se mezclan FLEX con correo.
 function etqPick(q){
  var c=document.querySelectorAll('.etqck');
  for(var i=0;i<c.length;i++){
   var f=(c[i].getAttribute('data-flex')==='1');
+  if(c[i].disabled){ c[i].checked=false; continue; }   // ML todavia no habilito esa etiqueta
   c[i].checked = (q==='todas') ? true : (q==='ning') ? false : (q==='flex') ? f : !f;
  }
  var b1=document.getElementById('pkflex'), b2=document.getElementById('pknor');
@@ -41016,6 +41206,8 @@ _RC_TTL_ERR = 120                               # si RedChat fallo, no reintenta
 _RC_DIAS = 60                                   # ventana de pedidos que se guardan
 _RC_SOLAPE = 36 * 3600                          # al refrescar, re-leer las ultimas 36 hs (cambios de carrier)
 _RC_RESWEEP = 24 * 3600                         # una vez por dia se vuelve a barrer la ventana entera
+_RC_VER = 2                                     # v2 (17-11): el cache guarda tambien si el envio esta pago en RedChat
+_RC_PAG_DIAS = 10                               # ventana del barrido de "pagados en RedChat" (ver _rc_sync_correr)
 _RC_LOCKS = {}
 _RC_LOCKS_MX = threading.Lock()
 _RC_MEMO = {}                                   # path -> ((mtime_ns, size), dict)   (por proceso, valida contra disco)
@@ -41276,7 +41468,7 @@ def _rc_sync(email, max_pag=20, max_seg=15.0, forzar=False):
     c = _rc_cache_leer(email)
     now = _time.time()
     if not forzar:
-        if now - float(c.get("ts") or 0) < _RC_TTL:
+        if now - float(c.get("ts") or 0) < _RC_TTL and c.get("v") == _RC_VER:
             return c
         if c.get("error") and now - float(c.get("error_ts") or 0) < _RC_TTL_ERR:
             return c
@@ -41303,18 +41495,27 @@ def _rc_sync_correr(email, conf, c, max_pag, max_seg):
     nombres = dict(c.get("nombres") or {})
     bf = {k: dict(v) for k, v in (c.get("bf") or {}).items() if k in sids}
     top = {k: v for k, v in (c.get("top") or {}).items() if k in sids}
-    if now - float(c.get("sweep_ts") or 0) > _RC_RESWEEP:     # una vez por dia: barrer todo de nuevo
+    if now - float(c.get("sweep_ts") or 0) > _RC_RESWEEP or c.get("v") != _RC_VER:
+        # una vez por dia: barrer todo de nuevo. Y tambien si el cache es de antes de que se
+        # guardara el estado del envio (v1): asi los pedidos viejos se completan solos en los
+        # proximos syncs, sin borrar nada (mientras tanto el pedido sin el dato cuenta como
+        # NO pagado = exactamente como antes).
         bf = {}
         c["sweep_ts"] = now
+        c["v"] = _RC_VER
+    pp = {k: dict(v) for k, v in (c.get("pp") or {}).items() if k in sids}
     paginas = [0]
     err = None
 
     def _queda():
         return paginas[0] < max_pag and (_time.time() - t0) < max_seg
 
-    def _pagina(sid, page):
+    def _pagina(sid, page, extra=None):
+        prm = {"store_id": sid, "page": page, "per_page": 50}
+        if extra:
+            prm.update(extra)
         j = _rc_get(conf["token"], "/accounts/%s/operator/logistics/orders" % conf["account_id"],
-                    params={"store_id": sid, "page": page, "per_page": 50}, timeout=20)
+                    params=prm, timeout=20)
         paginas[0] += 1
         lst = [o for o in ((j or {}).get("orders") or []) if isinstance(o, dict)]
         meta = (j or {}).get("meta") or {}
@@ -41335,6 +41536,7 @@ def _rc_sync_correr(email, conf, c, max_pag, max_seg):
             k = _rc_clave(met)
             rec = {"c": (o.get("carrier") or None), "t": (o.get("delivery_type") or None),
                    "k": k, "ts": ts, "s": sid}
+            rec.update(_rc_envio_campos(o))
             orders[num] = rec
             if k:
                 nombres[k] = _rc_nombre(met)
@@ -41362,6 +41564,25 @@ def _rc_sync_correr(email, conf, c, max_pag, max_seg):
                     if fin or (viejo is not None and viejo < lim):
                         break
                     p += 1
+            # 1-bis) PAGADOS EN REDCHAT. La cabeza solo re-lee las ultimas 36 hs, pero el envio
+            # de un pedido de hace 3 dias se puede pagar HOY: sin esto Despachos se enteraba
+            # recien con el barrido diario. RedChat filtra por shipping_paid=true (verificado
+            # 17-11-2026: total_count 4103 de 10459) y ordena por fecha del pedido, asi que se
+            # recorren los pagados de los ultimos _RC_PAG_DIAS dias con un cursor que sigue
+            # donde quedo (a lo sumo la mitad de las paginas de este refresco).
+            # Solo con el barrido de 60 dias TERMINADO: mientras barre, el barrido ya re-lee
+            # todo (pagados incluidos) y no hay que robarle paginas.
+            q = pp.setdefault(sid, {"page": 1})
+            lim_pp = max(corte, now - _RC_PAG_DIAS * 86400)
+            n_pp = 0
+            while (bf.get(sid) or {}).get("done") and _queda() and n_pp < max(1, max_pag // 2):
+                viejo, fin = _pagina(sid, int(q.get("page") or 1), {"shipping_paid": "true"})
+                n_pp += 1
+                if fin or (viejo is not None and viejo < lim_pp):
+                    q["page"] = 1                      # vuelta completa: la proxima arranca de nuevo
+                    q["vuelta_ts"] = _time.time()
+                    break
+                q["page"] = int(q.get("page") or 1) + 1
             # 2) BARRIDO hacia atras hasta 60 dias (continua donde quedo el refresco anterior)
             b = bf.setdefault(sid, {"page": 1, "done": False})
             while (not b.get("done")) and _queda():
@@ -41377,7 +41598,7 @@ def _rc_sync_correr(email, conf, c, max_pag, max_seg):
     orders = {k: v for k, v in orders.items() if (v.get("ts") is None or v["ts"] >= corte)}
     usados = {v.get("k") for v in orders.values()}
     c.update({"orders": orders, "nombres": {k: v for k, v in nombres.items() if k in usados},
-              "bf": bf, "top": top, "mapa": _rc_mapa(orders), "n": len(orders),
+              "bf": bf, "top": top, "pp": pp, "mapa": _rc_mapa(orders), "n": len(orders),
               "completo": bool(sids) and all((bf.get(s) or {}).get("done") for s in sids),
               "paginas_ultimo": paginas[0]})
     if err and paginas[0] == 0:
@@ -41391,6 +41612,99 @@ def _rc_sync_correr(email, conf, c, max_pag, max_seg):
     except Exception:
         pass
     return c
+
+
+# ── ¿El envio ya esta resuelto en RedChat? ──────────────────────────────────────────────────
+# Medido el 17-11-2026 contra la API real (cuenta de prueba, 1.000 pedidos Shopify del 04 al
+# 17-11, mas una muestra de agosto-octubre). Combinaciones (shipping_paid, label_status,
+# shipping_status, tracking?):
+#   (True,  downloaded, delivered,        si)  408
+#   (False, None,       None,             no)  220   <- pendiente de verdad
+#   (False, None,       None,             si)  213   <- tracking cargado por otra via (el PDF
+#                                                       de Andreani -> Shopify); en Shopify
+#                                                       TODOS estaban "fulfilled"
+#   (True,  downloaded, out_for_delivery, si)  102
+#   (True,  downloaded, in_transit,       si)   50
+#   (True,  downloaded, failed_delivery,  si)    6
+#   (True,  error,      None,             no)    1   <- pago, la etiqueta fallo EN RedChat
+# shipping_paid=True siempre trae label_status (downloaded/error) y fulfillment_sent_at; nunca
+# aparecio una etiqueta generada sin pago. Tambien se vieron shipping_status returning/returned.
+# Barrido completo de 60 dias (6.421 pedidos) el mismo dia: 2.937 pago+entregado, 2.714 solo
+# tracking, 372 nada, 175 en reparto, 76 volviendo, 68 devueltos, 66 en camino, 8 visita
+# fallida, 4 pago con etiqueta en error, 1 "packed". De los 285 que Shopify tenia sin despachar,
+# 5 estaban resueltos en RedChat: los 4 con etiqueta en error y el "packed" (tracking que nunca
+# llego a Shopify: fulfillment_sent_at vacio).
+# REGLA: resuelto = shipping_paid, o tracking_number, o etiqueta generada (label_status que no
+# sea vacio ni "error"). El pago con etiqueta en ERROR (sin tracking) tambien cuenta como
+# pagado (sale del Excel de Andreani: seria pagar dos veces el envio) pero NO sale de "por
+# empaquetar": el paquete todavia no tiene etiqueta y alguien lo tiene que arreglar en RedChat.
+# Cancelados / reembolsos (refund_pending, financial_status refunded/voided/cancelled): NO se
+# tocan, quedan como hoy. Un pedido del cache viejo (sin estos campos) = NO resuelto.
+_RC_LABEL_MAL = ("", "error", "failed", "cancelled", "canceled", "pending")
+_RC_FIN_NO = ("refunded", "voided", "cancelled", "canceled", "partially_refunded")
+_RC_ESTADO_TXT = {"delivered": "Entregado", "in_transit": "En camino", "out_for_delivery": "En reparto",
+                  "failed_delivery": "Visita fallida", "returning": "Volviendo", "returned": "Devuelto",
+                  "shipped": "Despachado", "pending": "Pendiente", "ready_to_ship": "Listo para despachar",
+                  "packed": "Empaquetado"}
+
+
+def _rc_envio_campos(o) -> dict:
+    """Lo que se guarda del envio de un pedido de RedChat. Nada del cliente: pago del envio,
+    estado de la etiqueta, seguimiento y estado del envio (y si el pedido esta reembolsado)."""
+    def _s(v, n=120):
+        return (str(v)[:n] if v not in (None, "") else None)
+    return {"sp": bool(o.get("shipping_paid")) if "shipping_paid" in o else None,
+            "ls": _s(o.get("label_status"), 30), "tn": _s(o.get("tracking_number"), 60),
+            "tu": _s(o.get("tracking_url"), 200), "ss": _s(o.get("shipping_status"), 30),
+            "fs": _s(o.get("fulfillment_sent_at"), 30), "fi": _s(o.get("financial_status"), 30),
+            "rf": bool(o.get("refund_pending"))}
+
+
+def _rc_resuelto(o) -> bool:
+    """True si el envio de ese pedido ya esta pago / con etiqueta / con seguimiento en RedChat."""
+    if not isinstance(o, dict) or "sp" not in o:
+        return False                                   # cache viejo: sin el dato, como antes
+    if o.get("rf") or (o.get("fi") or "").lower() in _RC_FIN_NO:
+        return False                                   # reembolsos / cancelados: no se tocan
+    if o.get("sp") is True or o.get("tn"):
+        return True
+    return (o.get("ls") or "").lower() not in _RC_LABEL_MAL
+
+
+def _rc_estado_txt(o) -> str:
+    ss = (o.get("ss") or "").lower()
+    if ss:
+        return _RC_ESTADO_TXT.get(ss) or ss.replace("_", " ").capitalize()
+    ls = (o.get("ls") or "").lower()
+    if ls == "error":
+        return "Etiqueta con error (arreglala en RedChat)"
+    if ls:
+        return "Etiqueta generada"
+    if o.get("sp"):
+        return "Envío pago"
+    return "Con seguimiento" if o.get("tn") else ""
+
+
+def _rc_pedido(email, num, c=None):
+    """{rc_pagado, rc_tracking, rc_tracking_url, rc_estado} del pedido segun RedChat, o None si
+    la cuenta no tiene RedChat. SOLO lee el cache de disco (se llama una vez por pedido)."""
+    try:
+        if c is None:
+            if not email or not _rc_conf(email):
+                return None
+            c = _rc_cache_leer(email)
+        o = (c.get("orders") or {}).get(str(num or "").strip().lstrip("#")) or {}
+        ok = _rc_resuelto(o)
+        url = str(o.get("tu") or "")
+        if not url.lower().startswith(("https://", "http://")):
+            url = ""                                   # solo links web: va a un href en la pantalla
+        return {"rc_pagado": ok, "rc_tracking": (o.get("tn") or "") if ok else "",
+                "rc_tracking_url": url if ok else "",
+                "rc_estado": _rc_estado_txt(o) if ok else "",
+                # pago pero la etiqueta fallo en RedChat y no hay seguimiento: sigue por empaquetar
+                "rc_etiqueta_error": bool(ok and (o.get("ls") or "").lower() == "error" and not o.get("tn"))}
+    except Exception:
+        return None
 
 
 def _rc_logi(email, num, metodo=None):
@@ -41438,11 +41752,36 @@ def _rc_estado_json(email) -> dict:
     for g in grupos.values():
         g.sort(key=lambda x: -x["n"])
     return {"ok": True, "conectado": True, "cuenta": conf.get("cuenta") or "",
+            "pagados_despachos": _rc_pagados_en_despachos(email, c),
             "tiendas": [s.get("dominio") or s.get("nombre") or str(s.get("id"))
                         for s in (conf.get("stores") or [])],
             "ultimo_sync": c.get("ts"), "pedidos": int(c.get("n") or 0), "dias": _RC_DIAS,
             "completo": bool(c.get("completo")), "error": c.get("error"),
             "grupos": grupos}
+
+
+def _rc_pagados_en_despachos(email, c):
+    """Cuantos pedidos que Shopify da como 'sin despachar' ya estan pagos en RedChat (por eso no
+    aparecen en Despachos). Sale de los dos caches de disco/memoria: NO le pega a Shopify."""
+    try:
+        _desp_cache_load()
+        dc = _DESP_CACHE.get(email) or {}
+        if dc.get("orders") is None:
+            return None                                # todavia no se abrio Despachos
+        st = _desp_state(email)
+        n = 0
+        for o in dc.get("orders") or []:
+            num = str(o.get("order_number") or o.get("name") or "").replace("#", "").strip()
+            if o.get("cancelled_at") or st.get(num):
+                continue
+            if any(f.get("tracking_number") for f in (o.get("fulfillments") or [])):
+                continue
+            _p = _rc_pedido(email, num, c) or {}
+            if _p.get("rc_pagado") and not _p.get("rc_etiqueta_error"):
+                n += 1
+        return n
+    except Exception:
+        return None
 
 
 @app.get("/redchat/estado")
