@@ -459,7 +459,7 @@ _SOLO_DASH = r"""
    var aside=document.querySelector('aside'); if(!aside)return;
    var nav=aside.querySelector('nav'); if(!nav)return;
    var kids=nav.querySelectorAll(':scope > *');
-   for(var i=0;i<kids.length;i++){ var ch=kids[i]; if(ch.id && ch.id.indexOf('rp-meli-sub-')===0) continue; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-mov-nav'||ch.id==='rp-imp-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-meli-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
+   for(var i=0;i<kids.length;i++){ var ch=kids[i]; if(ch.id && ch.id.indexOf('rp-meli-sub-')===0) continue; ch.style.display = (ch.querySelector('a[href="/dashboard"]')||ch.id==='rp-prod-nav'||ch.id==='rp-comis-nav'||ch.id==='rp-desp-nav'||ch.id==='rp-fact-nav'||ch.id==='rp-imp-nav'||ch.id==='rp-ads-nav'||ch.id==='rp-wa-nav'||ch.id==='rp-meli-nav'||ch.id==='rp-stock-nav') ? '' : 'none'; }
    Array.prototype.forEach.call(aside.children,function(c){ if(c.tagName!=='NAV' && !c.querySelector('nav') && !(c.tagName==='A' && c.getAttribute('aria-label')) && !c.classList.contains('rp-pill')) c.style.display='none'; });
    // Agregar "Productos" en la barra: clon del item de Dashboard (queda idéntico y nativo).
    if(!nav.querySelector('#rp-prod-nav')){
@@ -508,7 +508,7 @@ _SOLO_DASH = r"""
    // Agregar "Movimientos" en la barra (debajo de Facturación).
    if(!nav.querySelector('#rp-mov-nav')){
     var fn0=nav.querySelector('#rp-fact-nav')||nav.querySelector('#rp-desp-nav')||nav.querySelector('#rp-comis-nav');
-    if(fn0){ var cmv=fn0.cloneNode(true); cmv.id='rp-mov-nav'; cmv.style.display='';
+    if(fn0){ var cmv=fn0.cloneNode(true); cmv.id='rp-mov-nav'; cmv.style.display='none';   /* 17-11 Cristian: sacar Movimientos de la barra (queda oculto; Subir ADS se ubica igual) */
      var amv=cmv.querySelector('a'); if(amv){ amv.setAttribute('href','#'); amv.removeAttribute('aria-current'); amv.classList.remove('bg-white/[0.08]'); amv.classList.remove('text-primary');
       var namv=amv.cloneNode(true); amv.parentNode.replaceChild(namv,amv); namv.addEventListener('click',function(e){ e.preventDefault(); e.stopPropagation(); window.rpMov(true); }); amv=namv; }
      var icmv=cmv.querySelector('.material-symbols-outlined'); if(icmv) icmv.textContent='swap_vert';
@@ -5350,7 +5350,6 @@ _SOLO_DASH = r"""
   <div class="ti">Ir a una secci&oacute;n</div>
   <div class="mi" onclick="rpMobClose()"><span class="material-symbols-outlined">home</span>Inicio (Dashboard)</div>
   <div class="mi" onclick="rpMob('rpStock')"><span class="material-symbols-outlined">warehouse</span>Stock</div>
-  <div class="mi" onclick="rpMob('rpMov')"><span class="material-symbols-outlined">swap_vert</span>Movimientos</div>
   <div class="mi" onclick="rpMob('rpFact')"><span class="material-symbols-outlined">receipt_long</span>Facturaci&oacute;n</div>
   <div class="mi" onclick="rpMob('rpImp')"><span class="material-symbols-outlined">account_balance</span>Impuestos</div>
   <div class="mi" onclick="rpMob('rpDesp')"><span class="material-symbols-outlined">local_shipping</span>Despachos</div>
