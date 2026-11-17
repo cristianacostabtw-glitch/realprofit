@@ -40679,12 +40679,48 @@ def _logi(email) -> dict:
     return (_logi_all().get(email) or {})
 
 
-def _logi_auto(metodo) -> str:
+# NOMBRES DE ENVIO FLEX PROPIOS DE CADA CUENTA (17-11-2026).
+# Hay tiendas cuyo Flex no dice "flex" en el checkout (ej. "Envio a domicilio · Entrega rapida"):
+# sin esto RealProfit los tomaba como Andreani (una cuenta veia 2 Flex de 141).
+# Clave = primeros 16 hex del sha256 del email de la cuenta (el repo es publico: no van emails).
+# Valor = textos que, si aparecen en el metodo de envio (sin acentos, minuscula), lo hacen Flex.
+# Tambien se pueden cargar por env FLEX_METODOS = {"<email o hash>": ["texto", ...]}.
+_FLEX_METODOS_CUENTA = {
+    "6543321770e34beb": ["entrega rapida"],
+}
+try:
+    for _k, _v in (_json.loads(_os.getenv("FLEX_METODOS", "") or "{}") or {}).items():
+        _FLEX_METODOS_CUENTA.setdefault(_k.strip().lower(), []).extend(_v or [])
+except Exception:
+    pass
+
+
+def _flex_txt(s) -> str:
+    import unicodedata as _u
+    s = _u.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode("ascii")
+    return " ".join(s.lower().split())
+
+
+def _flex_metodos_de(email) -> list:
+    e = (email or "").strip().lower()
+    if not e:
+        return []
+    import hashlib as _h
+    k = _h.sha256(e.encode("utf-8")).hexdigest()[:16]
+    return [_flex_txt(x) for x in (_FLEX_METODOS_CUENTA.get(k) or []) + (_FLEX_METODOS_CUENTA.get(e) or []) if x]
+
+
+def _logi_auto(metodo, email=None) -> str:
     """La logistica sale SOLA del metodo de envio que eligio el cliente en el checkout.
-    Los de Envialo Flex son los del rayito; tambien se aceptan las variantes escritas."""
+    Los de Envialo Flex son los del rayito; tambien se aceptan las variantes escritas,
+    y los nombres propios de Flex de cada cuenta (_FLEX_METODOS_CUENTA)."""
     t = (metodo or "").lower()
     if "\u26a1" in t or "flex" in t or "envialo" in t or "redchat" in t:
         return "flex"
+    if email:
+        tn = _flex_txt(metodo)
+        if any(x and x in tn for x in _flex_metodos_de(email)):
+            return "flex"
     return "andreani"
 
 
@@ -40694,7 +40730,7 @@ def _logi_de(email, num, metodo=None) -> str:
     m = _logi(email).get(str(num))
     if m in ("flex", "andreani"):
         return m
-    return _logi_auto(metodo)
+    return _logi_auto(metodo, email)
 
 
 def _logi_set(email, nums, cual) -> int:
