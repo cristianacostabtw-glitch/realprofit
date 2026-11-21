@@ -4255,7 +4255,7 @@ _SOLO_DASH = r"""
     if(mia.style.display==='none') mia.style.display='';
     if(mia.style.gridColumn!=='span 1') mia.style.gridColumn='span 1';
     var _hv=mia.querySelectorAll('[style*="visibility"]'); for(var h=0;h<_hv.length;h++){ if(_hv[h].style.visibility==='hidden') _hv[h].style.visibility=''; }
-    setCard(mia,'Neto después de impuestos',money(_raw.neto_despues_imp||0),'antes de impuestos '+money(_raw.neto_antes_imp||0)); }
+    setCard(mia,'Neto después de impuestos',money(_raw.neto_despues_imp||0),'antes de impuestos '+money(_raw.neto_antes_imp||0)+(_raw.impuesto_ganancias?(' · Ganancias '+(_raw.ganancias_pct||30)+'% '+money(_raw.impuesto_ganancias)+' (ya restado de la ganancia)'):'')); }
   // Reparto de la pauta con los logos adentro de la tarjeta de Inversion Ads. Va en un div APARTE
   // (no en el <p> del subtitulo) porque setCard reescribe ese <p> en cada pasada: si le metiera
   // HTML ahi, los dos writers se pisarian y la tarjeta titilaria.
@@ -6290,6 +6290,7 @@ IVA_COMPRAS_PCT = float(_os.getenv("IVA_COMPRAS_PCT", "21") or 21)
 _IVA_F_VTA = (IVA_VENTAS_PCT / 100.0) / (1.0 + IVA_VENTAS_PCT / 100.0)
 _IVA_F_CMP = (IVA_COMPRAS_PCT / 100.0) / (1.0 + IVA_COMPRAS_PCT / 100.0)
 
+EBOOK_GANANCIAS_PCT = float(_os.getenv("EBOOK_GANANCIAS_PCT", "30") or 30)   # ebooks: Ganancias sobre la ganancia (21-11-2026)
 IIBB_PCT = 3.0          # IIBB que se paga por mes. Decision de Cristian (30-09-2026): queda en
                         # 3% y NO se toca. Las RETENCIONES de provincias que MP descuenta van
                         # aparte, en "retenciones_mp", y siguen restando igual que antes (estaban
@@ -26773,6 +26774,33 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # ROAS del canal MELI: lo que factura MELI sobre lo que se gasta en pauta de MELI.
         _mlf = float(r.get("meli_facturado", 0) or 0)
         r["ml_roas"] = round(_mlf / _p_meli, 2) if _p_meli else 0.0
+    except Exception:
+        pass
+    # EBOOKS (21-11-2026, Cristian): "a los ebooks, cuando descontás el IVA y el IIBB, sumales
+    # impuesto a las ganancias un 30%" -> "de la ganancia". Va sobre la ganancia del PERIODO (ya
+    # sin pauta, IVA, IIBB ni MP) y solo si es positiva: un periodo en perdida no paga Ganancias.
+    # No toca el break even ni el CPA tope (es un impuesto sobre lo ganado, no un costo por venta).
+    try:
+        if r.get("ebook"):
+            _g0 = float(r.get("ganancia", 0) or 0)
+            _gi = round(_g0 * EBOOK_GANANCIAS_PCT / 100.0, 2) if _g0 > 0 else 0.0
+            r["ganancia_antes_gan"] = round(_g0, 2)
+            r["impuesto_ganancias"] = _gi
+            r["ganancias_pct"] = EBOOK_GANANCIAS_PCT
+            if _gi:
+                _fg = float(r.get("facturado", 0) or 0)
+                _og = r.get("ordenes", 0) or 0
+                r["ganancia"] = round(_g0 - _gi, 2)
+                r["tot_ganancia"] = r["ganancia"]
+                r["margen"] = round(r["ganancia"] / _fg * 100, 2) if _fg else 0.0
+                r["tot_margen"] = r["margen"]
+                r["gan_por_venta"] = round(r["ganancia"] / _og, 2) if _og else 0.0
+                r["tot_gan_por_venta"] = r["gan_por_venta"]
+                if r.get("web_ganancia") is not None:
+                    r["web_ganancia"] = round(float(r.get("web_ganancia") or 0) - _gi, 2)
+                    _wf = float(r.get("web_facturado", 0) or 0) if r.get("web_facturado") is not None else 0.0
+                    if _wf:
+                        r["web_margen"] = round(r["web_ganancia"] / _wf * 100, 2)
     except Exception:
         pass
     # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
