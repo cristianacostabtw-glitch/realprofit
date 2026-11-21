@@ -4255,7 +4255,7 @@ _SOLO_DASH = r"""
     if(mia.style.display==='none') mia.style.display='';
     if(mia.style.gridColumn!=='span 1') mia.style.gridColumn='span 1';
     var _hv=mia.querySelectorAll('[style*="visibility"]'); for(var h=0;h<_hv.length;h++){ if(_hv[h].style.visibility==='hidden') _hv[h].style.visibility=''; }
-    setCard(mia,'Neto después de impuestos',money(_raw.neto_despues_imp||0),'antes de impuestos '+money(_raw.neto_antes_imp||0)+(_raw.impuesto_ganancias?(' · Ganancias '+(_raw.ganancias_pct||30)+'% '+money(_raw.impuesto_ganancias)+' (ya restado de la ganancia)'):'')); }
+    setCard(mia,'Neto después de impuestos',money(_raw.neto_despues_imp||0),'antes de impuestos '+money(_raw.neto_antes_imp||0)+(_raw.impuesto_ganancias?(' · incluye Ganancias '+(_raw.ganancias_pct||5)+'% '+money(_raw.impuesto_ganancias)):'')); }
   // Reparto de la pauta con los logos adentro de la tarjeta de Inversion Ads. Va en un div APARTE
   // (no en el <p> del subtitulo) porque setCard reescribe ese <p> en cada pasada: si le metiera
   // HTML ahi, los dos writers se pisarian y la tarjeta titilaria.
@@ -6290,7 +6290,7 @@ IVA_COMPRAS_PCT = float(_os.getenv("IVA_COMPRAS_PCT", "21") or 21)
 _IVA_F_VTA = (IVA_VENTAS_PCT / 100.0) / (1.0 + IVA_VENTAS_PCT / 100.0)
 _IVA_F_CMP = (IVA_COMPRAS_PCT / 100.0) / (1.0 + IVA_COMPRAS_PCT / 100.0)
 
-EBOOK_GANANCIAS_PCT = float(_os.getenv("EBOOK_GANANCIAS_PCT", "30") or 30)   # ebooks: Ganancias sobre la ganancia (21-11-2026)
+EBOOK_GANANCIAS_PCT = float(_os.getenv("EBOOK_GANANCIAS_PCT", "5") or 5)   # ebooks: Ganancias = 5% de la FACTURACION de cada venta (21-11-2026)
 IIBB_PCT = 3.0          # IIBB que se paga por mes. Decision de Cristian (30-09-2026): queda en
                         # 3% y NO se toca. Las RETENCIONES de provincias que MP descuenta van
                         # aparte, en "retenciones_mp", y siguen restando igual que antes (estaban
@@ -19479,7 +19479,11 @@ def _impul_resumen(email, desde, hasta):
     # 11-11 19:40 (Cristian): el UNICO IVA a favor es el de la comision de MercadoPago (cobro al
     # instante, viene con IVA adentro). Se resta el IVA de la venta MENOS ese credito.
     iva_neto = iva_deb - mp_costo * 21.0 / 121.0
-    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + iva_neto
+    # 21-11-2026 (Cristian): impuesto a las GANANCIAS = 5% de la FACTURACION de cada venta ("de
+    # facturacion, no de ganancia"; en el ebook no hay facturas de gastos para descontar). Va en
+    # la comision: lo restan la ganancia, el break even y el CPA tope, aunque el dia de perdida.
+    gan_imp = fact * EBOOK_GANANCIAS_PCT / 100.0
+    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + iva_neto + gan_imp
     ganancia = fact - comision_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
@@ -19491,6 +19495,7 @@ def _impul_resumen(email, desde, hasta):
     r["ordenes"] = r["ventas_periodo"] = r["tot_ordenes"] = ordenes
     r["impul_upsells"] = upsells
     r["iva_ebook"] = round(iva_neto, 2)      # IVA a pagar del ebook, YA restado en la ganancia
+    r["impuesto_ganancias"] = round(gan_imp, 2)   # Ganancias del ebook, YA restado (va en comision)
     # Para el bloque de IVA del Dashboard: lo del ebook YA esta restado entero aca (sin credito).
     r["mp_ebook"] = round(mp_costo, 2); r["perc_ebook"] = round(perc_iva, 2)
     r["impul_sin_verificar"] = sin_verif
@@ -19655,7 +19660,7 @@ def _combinar_resumen(a, b):
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
                    "meli_envio", "meli_retenciones", "meli_cargo_envio",
-           "iva_ebook", "mp_ebook", "perc_ebook"]
+           "iva_ebook", "mp_ebook", "perc_ebook", "impuesto_ganancias"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
     fact = r["facturado"]; gan = r["ganancia"]; ordn = r["ordenes"]
@@ -26073,7 +26078,12 @@ def _pf_dia_clave(email, dia) -> str:
         ck += "|mp3"
     # CP2 deja de sumar desde el 10-11 (META_ACTS_FUERA_DESDE): esos dias se recalculan una vez.
     if str(dia)[:10] >= "2026-11-10":
-        ck += "|cp2x|ivaeb"       # ivaeb: ebooks con IVA entero e IIBB 3,5% (11-11-2026)          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
+        ck += "|cp2x|ivaeb"
+        try:
+            if _impul_ordenes(email):
+                ck += "|gan%g" % EBOOK_GANANCIAS_PCT     # 21-11: Ganancias 5% de la facturacion
+        except Exception:
+            pass       # ivaeb: ebooks con IVA entero e IIBB 3,5% (11-11-2026)          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
     return ck
 
 
@@ -26619,7 +26629,9 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                    - float(r.get("retenciones_mp") or 0) - float(r.get("percep_iva") or 0))
             r["ebook"] = True
             r["neto_antes_imp"] = round(_na, 2)
-            r["neto_despues_imp"] = round(_na - _eb_iva - float(r.get("iibb_monto") or 0), 2)
+            r["neto_despues_imp"] = round(_na - _eb_iva - float(r.get("iibb_monto") or 0)
+                                          - float(r.get("impuesto_ganancias") or 0), 2)
+            r["ganancias_pct"] = EBOOK_GANANCIAS_PCT
     except Exception:
         pass
     r["iva_total"] = round(_iva_deb, 2)
@@ -26727,7 +26739,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # $800 en negro desde ahi (_oper_w_total, que ya suma los pedidos en $0 de ordenes_cero).
         # Sin dias nuevos es OPER_ORDEN x (pedidos web + en $0), igual que antes.
         _pre_w = (_fact_w - _prod_w - _com_w - _ret_w - _env_w - _oper_w_total(r, _ord_w)
-                  - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w)
+                  - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w
+                  - float(r.get("impuesto_ganancias", 0) or 0))
         # LA PAUTA TAMBIEN DA CREDITO FISCAL. En las cuentas en dolares la cambiaria factura el
         # bruto transferido con el IVA adentro, asi que cada peso de pauta cuesta de verdad
         # (1 - credito). Eso NO es un costo fijo del periodo (crece junto con la pauta), por eso
@@ -26774,33 +26787,6 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # ROAS del canal MELI: lo que factura MELI sobre lo que se gasta en pauta de MELI.
         _mlf = float(r.get("meli_facturado", 0) or 0)
         r["ml_roas"] = round(_mlf / _p_meli, 2) if _p_meli else 0.0
-    except Exception:
-        pass
-    # EBOOKS (21-11-2026, Cristian): "a los ebooks, cuando descontás el IVA y el IIBB, sumales
-    # impuesto a las ganancias un 30%" -> "de la ganancia". Va sobre la ganancia del PERIODO (ya
-    # sin pauta, IVA, IIBB ni MP) y solo si es positiva: un periodo en perdida no paga Ganancias.
-    # No toca el break even ni el CPA tope (es un impuesto sobre lo ganado, no un costo por venta).
-    try:
-        if r.get("ebook"):
-            _g0 = float(r.get("ganancia", 0) or 0)
-            _gi = round(_g0 * EBOOK_GANANCIAS_PCT / 100.0, 2) if _g0 > 0 else 0.0
-            r["ganancia_antes_gan"] = round(_g0, 2)
-            r["impuesto_ganancias"] = _gi
-            r["ganancias_pct"] = EBOOK_GANANCIAS_PCT
-            if _gi:
-                _fg = float(r.get("facturado", 0) or 0)
-                _og = r.get("ordenes", 0) or 0
-                r["ganancia"] = round(_g0 - _gi, 2)
-                r["tot_ganancia"] = r["ganancia"]
-                r["margen"] = round(r["ganancia"] / _fg * 100, 2) if _fg else 0.0
-                r["tot_margen"] = r["margen"]
-                r["gan_por_venta"] = round(r["ganancia"] / _og, 2) if _og else 0.0
-                r["tot_gan_por_venta"] = r["gan_por_venta"]
-                if r.get("web_ganancia") is not None:
-                    r["web_ganancia"] = round(float(r.get("web_ganancia") or 0) - _gi, 2)
-                    _wf = float(r.get("web_facturado", 0) or 0) if r.get("web_facturado") is not None else 0.0
-                    if _wf:
-                        r["web_margen"] = round(r["web_ganancia"] / _wf * 100, 2)
     except Exception:
         pass
     # SELLO DE TIEMPO. Cuando el calculo fresco no llega a tiempo se devuelve el snapshot ANTERIOR,
