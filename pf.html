@@ -7087,13 +7087,13 @@ html.mfy-ready #root{opacity:1;transition:opacity .15s ease}
  function maps(d){
   var tnContrib=d.facturado-d.costo_prod-d.costos_extra, mlContrib=d.meli_ganancia, totContrib=tnContrib+mlContrib;
   return {
-   todas:{ "Ventas":String(d.tot_ordenes),"Facturación":money(d.tot_facturado),"Ticket prom":money(d.tot_aov),
-    "Ganancia":money(d.tot_ganancia),"Margen %":pct(d.tot_margen),
+   todas:{ "Ventas":String(d.tot_ordenes||d.ordenes||0),"Facturación":money(d.tot_facturado),"Ticket prom":money(d.tot_aov),
+    "Ganancia":money(d.ganancia!=null?d.ganancia:d.tot_ganancia),"Margen %":pct(d.margen!=null?d.margen:d.tot_margen),
     "Margen bruto":pct(d.tot_facturado?(d.tot_facturado-d.tot_costo)/d.tot_facturado*100:0),
     "Costos totales":money(d.tot_facturado-d.tot_ganancia),"Contribución":money(totContrib),
-    "Inversión Ads":money(d.publi_ars),"ROAS":roas(d.publi_ars?d.tot_facturado/d.publi_ars:0),
-    "Break Even ROAS":roas(d.roas_be),"CPA":money(d.tot_ordenes?d.publi_ars/d.tot_ordenes:0),
-    "Break Even CPA":money(d.tot_ordenes?totContrib/d.tot_ordenes:0),
+    "Inversión Ads":money(d.publi_total!=null?d.publi_total:d.publi_ars),"ROAS":roas(d.roas!=null?d.roas:(d.publi_ars?d.tot_facturado/d.publi_ars:0)),
+    "Break Even ROAS":roas(d.be_roas!=null?d.be_roas:d.roas_be),"CPA":money(d.cpa!=null?d.cpa:(d.tot_ordenes?d.publi_ars/d.tot_ordenes:0)),
+    "Break Even CPA":money(d.be_cpa!=null?d.be_cpa:(d.tot_ordenes?totContrib/d.tot_ordenes:0)),
     "Costo producto":money(d.tot_costo),"Comisiones":money(d.com_pago+d.com_plataforma+d.impuestos+d.meli_comision),
     "Costo envíos":money(d.envios),"Logística":money(d.tot_fullfilment),"True ROAS":DASH,"Facturación equilibrio":DASH },
    tn:{ "Ventas":String(d.ordenes),"Facturación":money(d.facturado),"Ticket prom":money(d.ticket),
@@ -7344,20 +7344,23 @@ html.mfy-ready #root{opacity:1;transition:opacity .15s ease}
   if(!c1.parentElement) grid.insertBefore(c1,w.nextSibling);
   if(!c2.parentElement) grid.insertBefore(c2,c1.nextSibling);
   if(!c3.parentElement) grid.insertBefore(c3,c2.nextSibling);
-  function set(el,valor,sub){
+  function set(el,valor,sub,tit){
+   // 21-11-2026: la de Recompras la reusa RealProfit como "Comisión CP3"; si ya no dice su
+   // titulo, no le piso el subtitulo (salia "Nadie recompró en el período" cada 4-6 s).
+   if(tit){ var _ok=false, _ss=el.querySelectorAll("span"); for(var _i=0;_i<_ss.length;_i++){ if((_ss[_i].textContent||"").trim()===tit){ _ok=true; break; } } if(!_ok) return; }
    var v=el.querySelector('[data-mfy-val]');
    if(v)v.textContent=valor;
    var p=el.querySelector("p"); if(p)p.textContent=sub;
   }
   var n=d.ventas_recompras||0, f=d.facturacion_recompras||0, t=d.tasa_recompra||0;
-  set(c1,String(n), n?(pct(t)+" de las ventas · clientes que volvieron"):"Nadie recompró en el período");
-  set(c2,money(f), n?("Plata de "+n+" recompra"+(n===1?"":"s")):"Sin facturación de recompra");
+  set(c1,String(n), n?(pct(t)+" de las ventas · clientes que volvieron"):"Nadie recompró en el período","Recompras");
+  set(c2,money(f), n?("Plata de "+n+" recompra"+(n===1?"":"s")):"Sin facturación de recompra","Facturación recompra");
   // Reembolsos/cancelaciones: NO cuentan como venta (ya restados). Si alguno salió despachado,
   // ahí SÍ perdiste mercadería → lo aviso en el subtítulo.
   var rn=d.reemb_cantidad||0, rm=d.reemb_monto||0, rd=d.reemb_despachados||0, rp=d.reemb_perdida||0;
   var sub = rn ? (money(rm)+" fuera de la venta") : "Ninguno en el período";
   if(rd) sub = "⚠ "+rd+" ya despachado · perdiste "+money(rp);
-  set(c3, String(rn), sub);
+  set(c3, String(rn), sub, "Reembolsos / cancel.");
  }
 
  function fillAll(d,prod,ords){ var M=maps(d);
