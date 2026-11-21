@@ -19483,7 +19483,10 @@ def _impul_resumen(email, desde, hasta):
     # facturacion, no de ganancia"; en el ebook no hay facturas de gastos para descontar). Va en
     # la comision: lo restan la ganancia, el break even y el CPA tope, aunque el dia de perdida.
     gan_imp = fact * EBOOK_GANANCIAS_PCT / 100.0
-    comision_monto = mp_costo + iibb_ret + perc_iva + iibb_monto + iva_neto + gan_imp
+    # 21-11-2026 (Cristian): la retencion de IIBB que hace MP es un PAGO A CUENTA del mismo IIBB,
+    # no otro impuesto. Antes se restaban las dos (retencion + IIBB 3,5%) y el 21-11 sobraban
+    # $1.549. Ahora va UNA vez: el IIBB del periodo, o la retencion si fuera mayor.
+    comision_monto = mp_costo + perc_iva + max(iibb_monto, iibb_ret) + iva_neto + gan_imp
     ganancia = fact - comision_monto
     r["mp_costo_real"] = round(mp_costo, 2); r["mp_match"] = mp_match
     r["retenciones_mp"] = r["iibb_retenido"] = round(iibb_ret, 2)
@@ -26081,7 +26084,7 @@ def _pf_dia_clave(email, dia) -> str:
         ck += "|cp2x|ivaeb"
         try:
             if _impul_ordenes(email):
-                ck += "|gan%g" % EBOOK_GANANCIAS_PCT     # 21-11: Ganancias 5% de la facturacion
+                ck += "|gan%g|ret1" % EBOOK_GANANCIAS_PCT     # 21-11: Ganancias 5% + retencion IIBB una sola vez
         except Exception:
             pass       # ivaeb: ebooks con IVA entero e IIBB 3,5% (11-11-2026)          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
     return ck
@@ -26629,7 +26632,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                    - float(r.get("retenciones_mp") or 0) - float(r.get("percep_iva") or 0))
             r["ebook"] = True
             r["neto_antes_imp"] = round(_na, 2)
-            r["neto_despues_imp"] = round(_na - _eb_iva - float(r.get("iibb_monto") or 0)
+            _rt = float(r.get("retenciones_mp") or 0)    # ya esta restada en _na: es parte del IIBB
+            r["neto_despues_imp"] = round(_na + _rt - _eb_iva - max(float(r.get("iibb_monto") or 0), _rt)
                                           - float(r.get("impuesto_ganancias") or 0), 2)
             r["ganancias_pct"] = EBOOK_GANANCIAS_PCT
     except Exception:
@@ -26740,7 +26744,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
         # Sin dias nuevos es OPER_ORDEN x (pedidos web + en $0), igual que antes.
         _pre_w = (_fact_w - _prod_w - _com_w - _ret_w - _env_w - _oper_w_total(r, _ord_w)
                   - _iibb_w - (r.get("tienda_monto", 0) or 0) - _iva_w - _com_ag_w
-                  - float(r.get("impuesto_ganancias", 0) or 0))
+                  - float(r.get("impuesto_ganancias", 0) or 0)
+                  + (min(_ret_w, _iibb_w) if r.get("ebook") else 0.0))   # ebooks: la retencion es parte del IIBB
         # LA PAUTA TAMBIEN DA CREDITO FISCAL. En las cuentas en dolares la cambiaria factura el
         # bruto transferido con el IVA adentro, asi que cada peso de pauta cuesta de verdad
         # (1 - credito). Eso NO es un costo fijo del periodo (crece junto con la pauta), por eso
