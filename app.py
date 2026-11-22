@@ -5495,7 +5495,8 @@ _SOLO_DASH = r"""
         if(!j||!j.ok){ if(av) av.innerHTML='\u26a0 '+((j&&j.msg)||'no se pudo crear el pixel'); return; }
         var s=document.getElementById('rpa-pixel'); var o=document.createElement('option'); o.value=j.id; o.textContent=j.nombre; s.appendChild(o); s.value=j.id;
         document.getElementById('rpa-pxnom').value=''; document.getElementById('rpa-pxnew').style.display='none';
-        if(av) av.innerHTML='\u2705 Pixel <b>'+j.nombre+'</b> creado (ID '+j.id+')'+(j.en_la_cuenta?' y asignado a la cuenta.':' \u26a0 Meta todav\u00eda no lo muestra en la cuenta: '+(j.pasos||[]).join(' \u00b7 '))+' Pegalo en la tienda para que mida las ventas.';
+        if(av) av.innerHTML='\u2705 Pixel <b>'+j.nombre+'</b> creado (ID '+j.id+')'+(j.en_la_cuenta?' y asignado a la cuenta.':' \u26a0 Meta todav\u00eda no lo muestra en la cuenta: '+(j.pasos||[]).join(' \u00b7 '))+' Pegalo en la tienda para que mida las ventas.'
+          +'<br>\ud83d\udd11 Token para la tienda (API de conversiones): <a target="_blank" style="color:#8fb3e0;font-weight:700" href="https://business.facebook.com/events_manager2/list/dataset/'+j.id+'/settings">abrí la configuración del pixel</a> \u2192 API de conversiones \u2192 <b>Generar token de acceso</b>, y pegalo en Impultienda junto al ID.';
        }).catch(function(e){ bt.removeAttribute('data-ocupado'); bt.textContent='Crear pixel'; if(av) av.innerHTML='\u26a0 '+e; });
      };
      </script>
