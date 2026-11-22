@@ -20371,6 +20371,17 @@ _MARCA_GULAB = {"id": "gulab", "paginas": ["1508517182336767"],
                 # PARA PINO dispara solo en gulab-arg; ARRASCAETA en gulab-arg y visionpure (se usa
                 # en las dos). TONY no tiene eventos de ninguna tienda: no se ofrece.
                 "pixels": ["2094687534433581", "1116886214424143"]}
+_MARCA_VISIONPURE = {"id": "visionpure", "paginas": ["1499397869914408"],
+                     "dominios": ["visionpure-argentina1.myshopify.com"],
+                     "igs": ["17841471399362397"],
+                     "pixels": ["1116886214424143"]}     # ARRASCAETA: el que usan sus ads activos
+# Cristian (21-11): al token de CP 3 le asigno Gulab Y VisionPure → en Subir ADS de esta cuenta se
+# lanza para las dos. El GASTO del dashboard de Gulab sigue siendo solo el de Gulab (asignacion abajo).
+_MARCA_CP3_SUBIR = {"id": "gulab+visionpure",
+                    "paginas": _MARCA_GULAB["paginas"] + _MARCA_VISIONPURE["paginas"],
+                    "dominios": _MARCA_GULAB["dominios"] + _MARCA_VISIONPURE["dominios"],
+                    "igs": _MARCA_GULAB["igs"] + _MARCA_VISIONPURE["igs"],
+                    "pixels": _MARCA_GULAB["pixels"]}   # ARRASCAETA ya esta en Gulab
 META_CUENTAS_ASIGNADAS["farmalab.contacto@gmail.com"] = {
     "cuenta": "1134833092375782", "extras": ["3402562649948484"],
     "token_env": "META_TOKEN_CP3", "desde": "2026-11-22", "forzar": True, "marca": _MARCA_GULAB}
@@ -20497,7 +20508,7 @@ def _meta_spend(email, desde, hasta):
     # Los DOLARES no cambian: son los que cobra Meta. Lo que cambia es cuantos pesos cuesta cada uno.
     for acc in cuentas:
         try:
-            _mk = _marca_de(email, acc)
+            _mk = _marca_gasto(email, acc)
             if _mk:                                   # cuenta compartida: solo las campañas de la marca
                 filas = _meta_dias_estable("%s@%s" % (acc, _mk.get("id")), desde, hasta,
                                            _meta_insights_dias_marca(token, acc, desde, hasta, _mk))
@@ -20625,19 +20636,25 @@ _MARCA_ESTADOS = _json.dumps(["ACTIVE", "PAUSED", "ARCHIVED", "CAMPAIGN_PAUSED",
                               "PREAPPROVED", "PENDING_BILLING_INFO"])
 
 
-def _marca_de(email, acc):
-    """La marca a la que se limita la cuenta publicitaria 'acc' para ESTE usuario (None = la cuenta
-    entera es suya). Sale de la asignacion o de la config de Subir ADS (solo_para)."""
+def _marca_gasto(email, acc):
+    """Marca cuyo GASTO suma esta cuenta de RealProfit en esa cuenta publicitaria (None = toda)."""
     acc = str(acc or "").replace("act_", "").strip()
-    e = str(email or "").strip().lower()
-    asig = META_CUENTAS_ASIGNADAS.get(e) or {}
+    asig = META_CUENTAS_ASIGNADAS.get(str(email or "").strip().lower()) or {}
     if asig.get("marca") and acc in [str(asig.get("cuenta"))] + [str(x) for x in (asig.get("extras") or [])]:
         return asig["marca"]
+    return None
+
+
+def _marca_de(email, acc):
+    """Marca(s) con las que este usuario puede operar en Subir ADS en esa cuenta publicitaria
+    (None = la cuenta entera es suya). Primero la config de Subir ADS, si no la del gasto."""
+    acc = str(acc or "").replace("act_", "").strip()
+    e = str(email or "").strip().lower()
     for v in _ADS_CUENTAS.values():
         if str(v.get("ad_account")) == acc and v.get("marca") and e in [
                 str(x).strip().lower() for x in (v.get("solo_para") or [])]:
             return v["marca"]
-    return None
+    return _marca_gasto(email, acc)
 
 
 def _marca_link_ok(link, marca) -> bool:
@@ -21989,7 +22006,7 @@ _ADS_CUENTAS = {
     "cp10": {
         "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
         "nombre": "CP USD NUEVA", "ad_account": "1134833092375782", "token_env": "META_TOKEN_CP3",
-        "marca": _MARCA_GULAB,
+        "marca": _MARCA_CP3_SUBIR,
         "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",  # Gulab Argentina / pixel PARA PINO (dispara en gulab-arg) / @gulab.argentina
         "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
         "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
@@ -22004,7 +22021,7 @@ _ADS_CUENTAS = {
     "cp11": {
         "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
         "nombre": "CP US", "ad_account": "3402562649948484", "token_env": "META_TOKEN_CP3",
-        "marca": _MARCA_GULAB,
+        "marca": _MARCA_CP3_SUBIR,
         "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",
         "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
         "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
@@ -24245,6 +24262,14 @@ def pf_ads_identidad():
         pass
     _mk = _marca_de(_user_actual(), acct)
     if _mk:                          # cuenta compartida: solo lo de ESTA marca
+        for _igm in (_mk.get("igs") or []):          # los IG de la marca aunque la cuenta no los liste
+            if not any(str(i.get("id")) == str(_igm) for i in igs):
+                _un = ""
+                try:
+                    _un = (_ads_call("GET", str(_igm), params={"fields": "username"}) or {}).get("username", "")
+                except Exception:
+                    pass
+                igs.append({"id": str(_igm), "name": ("@" + _un) if _un else "Instagram"})
         pages = [p for p in pages if str(p.get("id")) in [str(x) for x in (_mk.get("paginas") or [])]]
         igs = [i for i in igs if str(i.get("id")) in [str(x) for x in (_mk.get("igs") or [])]]
         if _mk.get("pixels"):
