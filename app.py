@@ -20361,9 +20361,19 @@ META_CUENTAS_ASIGNADAS["noxalaboficial@gmail.com"]["emma"] = False   # ebooks: P
 # Gulab (farmalab.contacto@gmail.com), nunca a NoxaLab. Token del usuario del sistema realprofit-cp3
 # (app REALPROFIT CP3 1716093049939395) en la env META_TOKEN_CP3. Suman desde el 22-11 (lo de antes
 # era pauta de otras tiendas). 'forzar': usa este token aunque la cuenta tenga otro Meta pegado.
+# Las cuentas de CP 3 son COMPARTIDAS entre marcas (21-11: CP USD NUEVA gastaba en VisionPure con
+# "cbo definitly", antes tuvo Gulab y Canova). Por eso a Gulab no se le asigna la CUENTA entera sino
+# SOLO las campañas de su marca: anuncios con la pagina de Gulab y que llevan a su tienda (o a sus
+# redes). Gasto, campañas, conjuntos, publicaciones, paginas, IG y pixeles se filtran con esto.
+_MARCA_GULAB = {"id": "gulab", "paginas": ["1508517182336767"],
+                "dominios": ["gulab-arg.myshopify.com"],
+                "igs": ["17841463841376035"],
+                # PARA PINO dispara solo en gulab-arg; ARRASCAETA en gulab-arg y visionpure (se usa
+                # en las dos). TONY no tiene eventos de ninguna tienda: no se ofrece.
+                "pixels": ["2094687534433581", "1116886214424143"]}
 META_CUENTAS_ASIGNADAS["farmalab.contacto@gmail.com"] = {
     "cuenta": "1134833092375782", "extras": ["3402562649948484"],
-    "token_env": "META_TOKEN_CP3", "desde": "2026-11-22", "forzar": True}
+    "token_env": "META_TOKEN_CP3", "desde": "2026-11-22", "forzar": True, "marca": _MARCA_GULAB}
 
 ADS_CP_CFG = DATA_DIR / "ads_cp_cfg.json"   # {email: {cuenta: {"emma": bool, "agencia": bool, "baja_desde": "AAAA-MM-DD"}}}
 _ADS_CP_LOCK = threading.Lock()
@@ -20487,7 +20497,12 @@ def _meta_spend(email, desde, hasta):
     # Los DOLARES no cambian: son los que cobra Meta. Lo que cambia es cuantos pesos cuesta cada uno.
     for acc in cuentas:
         try:
-            filas = _meta_dias_estable(acc, desde, hasta, _meta_insights_dias(token, acc, desde, hasta))
+            _mk = _marca_de(email, acc)
+            if _mk:                                   # cuenta compartida: solo las campañas de la marca
+                filas = _meta_dias_estable("%s@%s" % (acc, _mk.get("id")), desde, hasta,
+                                           _meta_insights_dias_marca(token, acc, desde, hasta, _mk))
+            else:
+                filas = _meta_dias_estable(acc, desde, hasta, _meta_insights_dias(token, acc, desde, hasta))
             if filas:
                 hubo = True
             _fuera = _meta_act_fuera(acc)
@@ -20598,6 +20613,142 @@ def _meta_insights_dias(token, acc, desde, hasta) -> list:
             break
         url, params = nxt, None
     return out
+
+
+_MARCA_SOCIALES = ("instagram.com", "facebook.com", "fb.me", "fb.com", "wa.me", "whatsapp.com",
+                   "m.me", "messenger.com")
+_MARCA_CAMP_FILE = DATA_DIR / "marca_campanas.json"   # {"marca|campaña": true/false} (definitivo)
+_MARCA_CAMP_LOCK = threading.Lock()
+_MARCA_CAMP_TMP = {}                                   # (marca, campaña) -> instante: sin anuncios todavia
+_MARCA_ESTADOS = _json.dumps(["ACTIVE", "PAUSED", "ARCHIVED", "CAMPAIGN_PAUSED", "ADSET_PAUSED",
+                              "DISAPPROVED", "PENDING_REVIEW", "WITH_ISSUES", "IN_PROCESS",
+                              "PREAPPROVED", "PENDING_BILLING_INFO"])
+
+
+def _marca_de(email, acc):
+    """La marca a la que se limita la cuenta publicitaria 'acc' para ESTE usuario (None = la cuenta
+    entera es suya). Sale de la asignacion o de la config de Subir ADS (solo_para)."""
+    acc = str(acc or "").replace("act_", "").strip()
+    e = str(email or "").strip().lower()
+    asig = META_CUENTAS_ASIGNADAS.get(e) or {}
+    if asig.get("marca") and acc in [str(asig.get("cuenta"))] + [str(x) for x in (asig.get("extras") or [])]:
+        return asig["marca"]
+    for v in _ADS_CUENTAS.values():
+        if str(v.get("ad_account")) == acc and v.get("marca") and e in [
+                str(x).strip().lower() for x in (v.get("solo_para") or [])]:
+            return v["marca"]
+    return None
+
+
+def _marca_link_ok(link, marca) -> bool:
+    import urllib.parse as _upm
+    try:
+        h = (_upm.urlparse(str(link)).hostname or "").lower()
+    except Exception:
+        h = ""
+    if h.startswith("www."):
+        h = h[4:]
+    if not h:
+        return True
+    for d in list(marca.get("dominios") or []) + list(_MARCA_SOCIALES):
+        if h == d or h.endswith("." + d):
+            return True
+    return False
+
+
+def _marca_campana_es(token, cid, marca):
+    """True/False si la campaña es de la marca (por sus anuncios: pagina + destino). None si todavia
+    no tiene anuncios o no se pudo leer (no se cuenta ni se muestra hasta saberlo)."""
+    import time as _tm
+    cid = str(cid or "").strip()
+    if not cid or not marca:
+        return None
+    k = "%s|%s" % (marca.get("id"), cid)
+    try:
+        d = _json.loads(_MARCA_CAMP_FILE.read_text(encoding="utf-8"))
+        if isinstance(d, dict) and k in d:
+            return bool(d[k])
+    except Exception:
+        pass
+    if _tm.time() - _MARCA_CAMP_TMP.get(k, 0) < 300:
+        return None
+    pags = [str(x) for x in (marca.get("paginas") or [])]
+    n = ok = 0
+    try:
+        url = "https://graph.facebook.com/%s/%s/ads" % (META_API, cid)
+        params = {"access_token": token, "effective_status": _MARCA_ESTADOS, "limit": 100,
+                  "fields": "creative{object_story_spec{page_id,link_data{link},video_data{call_to_action{value{link}}},"
+                            "template_data{link}},effective_object_story_id,asset_feed_spec{link_urls{website_url}}}"}
+        for _ in range(5):
+            j = requests.get(url, params=params, timeout=30).json()
+            if j.get("error"):
+                return None
+            for a in (j.get("data") or []):
+                cr = a.get("creative") or {}
+                oss = cr.get("object_story_spec") or {}
+                pg = str(oss.get("page_id") or str(cr.get("effective_object_story_id") or "").split("_")[0])
+                links = [((oss.get("link_data") or {}).get("link")),
+                         ((((oss.get("video_data") or {}).get("call_to_action") or {}).get("value") or {}).get("link")),
+                         ((oss.get("template_data") or {}).get("link"))]
+                links += [u.get("website_url") for u in ((cr.get("asset_feed_spec") or {}).get("link_urls") or [])]
+                n += 1
+                if pg in pags and all(_marca_link_ok(l, marca) for l in links if l):
+                    ok += 1
+            nxt = (j.get("paging") or {}).get("next")
+            if not nxt:
+                break
+            url, params = nxt, None
+    except Exception:
+        return None
+    if not n:
+        _MARCA_CAMP_TMP[k] = _tm.time()
+        return None
+    es = ok > 0 and ok * 2 >= n
+    with _MARCA_CAMP_LOCK:
+        try:
+            d = _json.loads(_MARCA_CAMP_FILE.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                d = {}
+        except FileNotFoundError:
+            d = {}
+        except Exception:
+            return es
+        d[k] = es
+        try:
+            tmp = _MARCA_CAMP_FILE.with_name("%s.tmp%d_%d" % (_MARCA_CAMP_FILE.name, _os.getpid(), threading.get_ident()))
+            tmp.write_text(_json.dumps(d), encoding="utf-8")
+            _os.replace(str(tmp), str(_MARCA_CAMP_FILE))
+        except Exception:
+            pass
+    return es
+
+
+def _meta_insights_dias_marca(token, acc, desde, hasta, marca) -> list:
+    """Como _meta_insights_dias pero sumando SOLO las campañas de la marca (cuenta compartida)."""
+    por_dia, mon = {}, ""
+    url = "https://graph.facebook.com/%s/act_%s/insights" % (META_API, acc)
+    params = {"access_token": token, "fields": "campaign_id,spend,account_currency",
+              "time_range": _json.dumps({"since": desde, "until": hasta}),
+              "level": "campaign", "time_increment": 1, "limit": 500}
+    clas = {}
+    for _ in range(40):
+        j = requests.get(url, params=params, timeout=30).json()
+        if j.get("error"):
+            raise RuntimeError(str((j.get("error") or {}).get("message") or "error de Meta")[:160])
+        for x in (j.get("data") or []):
+            dia = str(x.get("date_start") or desde)[:10]
+            mon = (x.get("account_currency") or mon or "").upper()
+            por_dia.setdefault(dia, 0.0)
+            cid = str(x.get("campaign_id") or "")
+            if cid not in clas:
+                clas[cid] = _marca_campana_es(token, cid, marca)
+            if clas[cid] is True:
+                por_dia[dia] += float(x.get("spend") or 0)
+        nxt = (j.get("paging") or {}).get("next")
+        if not nxt:
+            break
+        url, params = nxt, None
+    return [(d, round(v, 2), mon) for d, v in sorted(por_dia.items())]
 
 
 def _meta_spend_agencia(email, desde, hasta) -> float:
@@ -21838,6 +21989,7 @@ _ADS_CUENTAS = {
     "cp10": {
         "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
         "nombre": "CP USD NUEVA", "ad_account": "1134833092375782", "token_env": "META_TOKEN_CP3",
+        "marca": _MARCA_GULAB,
         "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",  # Gulab Argentina / pixel PARA PINO (dispara en gulab-arg) / @gulab.argentina
         "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
         "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
@@ -21852,6 +22004,7 @@ _ADS_CUENTAS = {
     "cp11": {
         "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
         "nombre": "CP US", "ad_account": "3402562649948484", "token_env": "META_TOKEN_CP3",
+        "marca": _MARCA_GULAB,
         "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",
         "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
         "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
@@ -21874,6 +22027,8 @@ def _ads_token():
     t = getattr(_ads_local, "token", None)
     if t:
         return t
+    if getattr(_ads_local, "bloqueo", False):
+        return ""                 # usuario que no es el dueño y no tiene Meta propio: NUNCA otro token
     # 2) Request: token que el usuario logueado PEGÓ en la app (meta_tokens.json) → env META_TOKEN.
     try:
         email = _user_actual()
@@ -21925,6 +22080,8 @@ def _ads_token_para_cuenta(cuenta_key):
         dedic = _os.getenv(cfg["token_env"]) or ""
         if dedic:
             cands.append(dedic)
+    if cfg and cfg.get("solo_para"):
+        return cands[0] if cands else ""   # cuenta de otra marca: jamas un token de otro usuario
     try:
         email = _user_actual()
     except Exception:
@@ -23410,6 +23567,11 @@ def _ads_run(job, params):
         if "ig" in params:
             cfg["ig"] = (params.get("ig") or "").strip()
         acct, pixel = cfg["ad_account"], cfg["pixel"]
+        if cfg.get("solo_para") and not params.get("_token"):
+            raise RuntimeError("falta el token de %s en el servidor" % cfg.get("nombre", ""))
+        _mkj = cfg.get("marca")
+        if _mkj and str(cfg.get("page")) not in [str(x) for x in (_mkj.get("paginas") or [])]:
+            raise RuntimeError("la página elegida no es de esta marca")
         cbo = (params.get("tipo") or "cbo") != "abo"
         budget_sharing = bool(params.get("budget_sharing"))   # solo aplica en ABO (compartir 20%)
         presup = int(params.get("presupuesto") or cfg["presupuesto"])
@@ -23427,10 +23589,14 @@ def _ads_run(job, params):
         posts = []
         if escala:
             _pgs = _ads_paginas_de(acct)
+            if _mkj:
+                _pgs = [p for p in _pgs if str(p.get("id")) in [str(x) for x in (_mkj.get("paginas") or [])]]
             _pg_post = ""
             _pref = params.get("page") or cfg.get("page")
             for _p in (params.get("posts") or []):
                 _r = _ads_post_resolver(acct, _p, _pref, _pgs)
+                if _mkj and _r.get("ok") and str(_r.get("page")) not in [str(x) for x in (_mkj.get("paginas") or [])]:
+                    raise RuntimeError("La publicación %s es de una página de otra marca" % str(_p)[:40])
                 if not _r.get("ok"):
                     raise RuntimeError("La publicación %s %s" % (
                         _r.get("post") or str(_p)[:40], _r.get("error")))
@@ -23758,6 +23924,20 @@ def _ads_es_dueno(u) -> bool:
 
 @app.before_request
 def _ads_guardia_cuentas():
+    if not request.path.startswith("/pf-ads-"):
+        return None
+    try:
+        return _ads_guardia_cuentas_()
+    except Exception as e:           # falla CERRADA: si el control no se pudo hacer, no se sigue
+        _ads_local.token = None
+        _ads_local.bloqueo = True
+        return jsonify({"ok": False, "msg": "control de cuentas: %s: %s" % (type(e).__name__, str(e)[:120])}), 403
+
+
+_ADS_SOLO_DUENO = ("/pf-ads-diag", "/pf-ads-diag-cuenta")   # crean/borran campañas de prueba en TODAS
+
+
+def _ads_guardia_cuentas_():
     """Subir ADS, de raiz (21-11-2026): en CADA pedido /pf-ads-*
       1) se borra el token que pudo quedar de un pedido anterior en este mismo hilo (antes quedaba
          pegado y un usuario podia operar con el token de otro);
@@ -23767,11 +23947,14 @@ def _ads_guardia_cuentas():
       3) todas las llamadas a Meta del pedido usan el token de ESA cuenta publicitaria (paginas,
          pixeles e IG salen de su propio portafolio), y si no hay cuenta, el de este usuario (nunca
          el de otro usuario)."""
-    try:
-        if not request.path.startswith("/pf-ads-"):
-            return None
+    if True:
         _ads_local.token = None
+        _ads_local.bloqueo = False
         u = str(_user_actual() or "").strip().lower()
+        if not u:
+            return None                      # cada endpoint contesta 401
+        if request.path in _ADS_SOLO_DUENO and not _ads_es_dueno(u):
+            return jsonify({"ok": False, "msg": "solo el dueño"}), 403
         claves = []
         for k in ("cuenta", "origen", "destino"):
             v = request.args.get(k)
@@ -23789,6 +23972,8 @@ def _ads_guardia_cuentas():
         if not claves and request.path in ("/pf-ads-posts-chequear", "/pf-ads-identidad",
                                            "/pf-ads-campanas", "/pf-ads-conjuntos-config"):
             claves = ["cp1"]                 # esos endpoints usan cp1 si no viene cuenta
+        # una clave que no existe la mayoria de los endpoints la toma como cp1: se controla como cp1
+        claves = [c if c in _ADS_CUENTAS else "cp1" for c in claves]
         for c in claves:
             if c in _ADS_CUENTAS and not _ads_cuenta_visible(_ADS_CUENTAS[c]):
                 return jsonify({"ok": False, "msg": "esa cuenta publicitaria no está conectada a esta cuenta"}), 403
@@ -23805,9 +23990,40 @@ def _ads_guardia_cuentas():
             _ads_local.token = _ads_token_para_cuenta(key) or None
         elif u and not _ads_es_dueno(u):
             _ads_local.token = (_meta_ctx(u).get("token") or None)
-    except Exception:
-        return None
+        if not _ads_local.token and not _ads_es_dueno(u):
+            _ads_local.bloqueo = True        # sin Meta propio: nada de tokens de otros usuarios
     return None
+
+
+def _ads_campana_permitida(cid, acct=None) -> bool:
+    """¿Este usuario puede ver/usar esa campaña? Tiene que ser de una cuenta publicitaria conectada a
+    el, y si la cuenta es compartida entre marcas, de SU marca."""
+    u = str(_user_actual() or "").strip().lower()
+    if not u:
+        return False
+    if _ads_es_dueno(u):
+        return True
+    try:
+        a = str((_ads_call("GET", str(cid), params={"fields": "account_id"}) or {}).get("account_id") or "")
+    except Exception:
+        return False
+    if not a or (acct and a != str(acct).replace("act_", "")):
+        return False
+    vis = {str(v["ad_account"]) for v in _ADS_CUENTAS.values() if _ads_cuenta_visible(v)}
+    vis |= {str(c) for c in (_meta_ctx(u).get("cuentas") or [])}
+    if a not in vis:
+        return False
+    mk = _marca_de(u, a)
+    return (not mk) or _marca_campana_es(_ads_token(), cid, mk) is True
+
+
+def _ads_filtrar_marca(acct, filas, clave="id"):
+    """Saca las campañas de otra marca (cuentas compartidas)."""
+    mk = _marca_de(_user_actual(), acct)
+    if not mk:
+        return filas
+    tk = _ads_token()
+    return [f for f in filas if _marca_campana_es(tk, f.get(clave), mk) is True]
 
 
 @app.get("/pf-ads-cuentas")
@@ -23937,6 +24153,11 @@ def pf_ads_posts_chequear():
     acct = cfg["ad_account"]
     _ads_local.token = _ads_token_para_cuenta(cta)
     pgs = _ads_paginas_de(acct)
+    _mk = _marca_de(_user_actual(), acct)
+    if _mk:
+        pgs = [p for p in pgs if str(p.get("id")) in [str(x) for x in (_mk.get("paginas") or [])]]
+        if d.get("page") and str(d.get("page")) not in [str(x) for x in (_mk.get("paginas") or [])]:
+            return jsonify({"ok": False, "msg": "esa página no es de esta marca"}), 403
     out = []
     pref = d.get("page") or cfg.get("page")
     for p in (d.get("posts") or [])[:12]:          # tope: cada uno son 1-2 llamadas a Meta
@@ -24022,6 +24243,12 @@ def pf_ads_identidad():
         min_diario = int(float(_cta.get("min_daily_budget") or 0)) / 100.0
     except Exception:
         pass
+    _mk = _marca_de(_user_actual(), acct)
+    if _mk:                          # cuenta compartida: solo lo de ESTA marca
+        pages = [p for p in pages if str(p.get("id")) in [str(x) for x in (_mk.get("paginas") or [])]]
+        igs = [i for i in igs if str(i.get("id")) in [str(x) for x in (_mk.get("igs") or [])]]
+        if _mk.get("pixels"):
+            pixels = [p for p in pixels if str(p.get("id")) in [str(x) for x in _mk["pixels"]]]
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages, "moneda": moneda,
                     "min_diario": min_diario, "pixel_asignado": bool(pixel_ok),
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
@@ -24047,7 +24274,9 @@ def pf_ads_posts():
     desde = (request.args.get("desde") or "").strip()
     hasta = (request.args.get("hasta") or "").strip()
     posts, por_id, por_gasto, gastos = {}, {}, {}, []
-    campos = "id,name,creative{effective_object_story_id,object_story_id}"
+    campos = "id,name,campaign_id,creative{effective_object_story_id,object_story_id}"
+    _mk = _marca_de(_user_actual(), acct)
+    _tkm = _ads_token() if _mk else ""
     def _fecha_ok(x):
         return len(x) == 10 and x[4] == "-" and x[7] == "-" and x.replace("-", "").isdigit()
     if _fecha_ok(desde) and _fecha_ok(hasta):
@@ -24058,6 +24287,8 @@ def pf_ads_posts():
             r = _ads_call("GET", "act_%s/ads" % acct, params=params)
             datos = r.get("data") or []
             for a in datos:
+                if _mk and _marca_campana_es(_tkm, a.get("campaign_id"), _mk) is not True:
+                    continue                 # anuncio de otra marca en una cuenta compartida
                 cr = a.get("creative") or {}
                 sid = cr.get("effective_object_story_id") or cr.get("object_story_id") or ""
                 if not sid:
@@ -24109,6 +24340,7 @@ def pf_ads_campanas():
         out = [{"id": c["id"], "name": c.get("name", ""), "cbo": bool(c.get("daily_budget")),
                 "presupuesto": int((c.get("daily_budget") or 0)) // 100, "activa": True}
                for c in r.get("data", []) if c.get("effective_status") == "ACTIVE"]
+        out = _ads_filtrar_marca(cfg["ad_account"], out)
         out.sort(key=lambda x: int(x["id"]) if str(x["id"]).isdigit() else 0, reverse=True)
         return jsonify({"ok": True, "campanas": out})
     except Exception as e:
@@ -24132,7 +24364,7 @@ def pf_ads_conjuntos_config():
         lim = 25
     F = ("name,status,effective_status,billing_event,optimization_goal,bid_strategy,daily_budget,"
          "attribution_spec,promoted_object,destination_type,pacing_type,optimization_sub_event,"
-         "targeting,created_time,campaign{name}")
+         "targeting,created_time,campaign{id,name}")
     try:
         j = _ads_call("GET", "act_%s/adsets" % acct,
                       params={"fields": F, "limit": lim,
@@ -24140,7 +24372,10 @@ def pf_ads_conjuntos_config():
     except Exception as e:
         return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:110])})
     out = []
+    _mk = _marca_de(email, acct)
     for s_ in (j.get("data") or []):
+        if _mk and _marca_campana_es(_ads_token(), (s_.get("campaign") or {}).get("id"), _mk) is not True:
+            continue                         # conjunto de otra marca (cuenta compartida)
         t = s_.get("targeting") or {}
         geo = (t.get("geo_locations") or {}).get("countries") or []
         aut = (t.get("targeting_automation") or {})
@@ -24417,6 +24652,8 @@ def pf_ads_conjuntos():
     cid = (request.args.get("campaign_id") or "").strip()
     if not cid:
         return jsonify({"ok": False, "conjuntos": []})
+    if not _ads_campana_permitida(cid):
+        return jsonify({"ok": False, "msg": "esa campaña no es de esta cuenta", "conjuntos": []}), 403
     import time as _t
     # Caché de 2 minutos: la pantalla pide esto cada vez que se toca el desplegable y es lo
     # que termina gatillando el limite de Meta. Si Meta ya nos corto, sirve lo ultimo bueno
@@ -25134,6 +25371,7 @@ def pf_ads_dup_campanas():
                               "effective_status": _json.dumps(["ACTIVE", "PAUSED"])})
         out = [{"id": c["id"], "name": c.get("name", ""), "activa": c.get("effective_status") == "ACTIVE",
                 "cbo": _ads_dup_tiene(c.get("daily_budget"))} for c in r.get("data", [])]
+        out = _ads_filtrar_marca(_ADS_CUENTAS[k]["ad_account"], out)
         out.sort(key=lambda x: (not x["activa"], -int(x["id"]) if str(x["id"]).isdigit() else 0))
         return jsonify({"ok": True, "campanas": out})
     except Exception as e:
@@ -25147,6 +25385,11 @@ def pf_ads_dup_chequear():
     if not _user_actual():
         return jsonify({"ok": False}), 401
     d = request.get_json(silent=True) or {}
+    if d.get("origen") in _ADS_CUENTAS and d.get("campana"):
+        _ads_local.token = _ads_token_para_cuenta(d["origen"]) or None
+        if not _ads_campana_permitida(d["campana"], _ADS_CUENTAS[d["origen"]]["ad_account"]):
+            _ads_local.token = None
+            return jsonify({"ok": False, "problemas": ["esa campaña no es de esta cuenta"]}), 403
     try:
         r = _ads_dup_chequeo(d.get("origen"), d.get("campana"), d.get("destino"),
                              d.get("cotizacion"), d.get("con_post") is not False)
@@ -25168,13 +25411,17 @@ def pf_ads_duplicar():
         return jsonify({"ok": False, "msg": "elegí la cuenta de origen, la campaña y la cuenta destino"}), 400
     if origen == destino:
         return jsonify({"ok": False, "msg": "la cuenta destino tiene que ser otra"}), 400
+    _ads_local.token = _ads_token_para_cuenta(origen) or None
+    if not _ads_campana_permitida(campana, _ADS_CUENTAS[origen]["ad_account"]):
+        return jsonify({"ok": False, "msg": "esa campaña no es de esta cuenta"}), 403
     clave = (origen, campana, destino)
     if clave in _ADS_DUP_ACTIVOS:
         return jsonify({"ok": False, "msg": "esa campaña ya se está duplicando en esa cuenta"}), 409
     _ADS_DUP_ACTIVOS.add(clave)
     import uuid
     job = uuid.uuid4().hex[:12]
-    _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+    _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {},
+                      "email": str(_user_actual() or "").lower()}
     _job_put(job, _ADS_JOBS[job])
     _sin_reciclar_on()              # que --max-requests no mate el duplicado a mitad
     try:
@@ -25222,6 +25469,33 @@ def pf_ads_lanzar():
     presups = data.get("presupuestos") or {}
     jobs = []
     for c in vistas:
+        _cf = _ADS_CUENTAS[c]
+        _tk = _ads_token_para_cuenta(c)
+        if _cf.get("solo_para") and not _tk:
+            return jsonify({"ok": False, "msg": "%s: falta su token en el servidor" % _cf.get("nombre", c)}), 400
+        _mk = _marca_de(_user_actual(), _cf["ad_account"])
+        if _mk:
+            _pg = str((data.get("page") or "").strip() or _cf.get("page") or "")
+            _px = str((data.get("pixel") or "").strip() or _cf.get("pixel") or "")
+            _ig = str((data.get("ig") if "ig" in data else _cf.get("ig")) or "").strip()
+            if _pg not in [str(x) for x in (_mk.get("paginas") or [])]:
+                return jsonify({"ok": False, "msg": "esa página no es de esta marca"}), 403
+            if _mk.get("pixels") and _px not in [str(x) for x in _mk["pixels"]]:
+                return jsonify({"ok": False, "msg": "ese pixel no es de esta marca"}), 403
+            if _ig and _ig not in [str(x) for x in (_mk.get("igs") or [])]:
+                return jsonify({"ok": False, "msg": "ese Instagram no es de esta marca"}), 403
+        _ads_local.token = _tk or None
+        if data.get("modo_campana") == "existente" and data.get("campaign_id"):
+            if not _ads_campana_permitida(data["campaign_id"], _cf["ad_account"]):
+                return jsonify({"ok": False, "msg": "esa campaña no es de esta cuenta"}), 403
+        if (data.get("modo_conjunto") in ("dup", "usar")) and data.get("adset_src_id"):
+            try:
+                _cs = str((_ads_call("GET", str(data["adset_src_id"]), params={"fields": "campaign_id"}) or {}).get("campaign_id") or "")
+            except Exception:
+                _cs = ""
+            if not _cs or not _ads_campana_permitida(_cs, _cf["ad_account"]):
+                return jsonify({"ok": False, "msg": "ese conjunto no es de esta cuenta"}), 403
+    for c in vistas:
         d = dict(data)
         d["cuenta"] = c
         d.pop("cuentas", None); d.pop("presupuestos", None)
@@ -25230,7 +25504,8 @@ def pf_ads_lanzar():
         d["_token"] = _ads_token_para_cuenta(c)   # token que REALMENTE puede usar esa cuenta (no cruza cuentas)
         job = uuid.uuid4().hex[:12]
         _ads_lastcfg_set(_user_actual(), c, d)    # recordar la config para la próxima subida
-        _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {}}
+        _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {},
+                          "email": str(_user_actual() or "").lower()}
         _job_put(job, _ADS_JOBS[job])   # a DISCO: si el worker se recicla, el progreso no se pierde
         _sin_reciclar_on()              # que --max-requests no mate el lanzamiento a mitad (03-11 CP5)
         try:
@@ -25254,6 +25529,9 @@ def pf_ads_progreso():
     st = _ADS_JOBS.get(_jid) or _job_get(_jid)
     if not st:
         return jsonify({"ok": False}), 404
+    _uj = str(_user_actual() or "").lower()
+    if st.get("email") and st.get("email") != _uj and not _ads_es_dueno(_uj):
+        return jsonify({"ok": False}), 404       # el progreso de un lanzamiento de OTRA cuenta
     # Si hace mas de 3 minutos que no late, el proceso murio. Dos causas vistas: el worker de
     # gunicorn se reciclo por --max-requests (medido 14-sep: mato el job 19s despues de lanzarlo,
     # sin una sola linea de OOM) o el sistema lo mato por memoria. NO afirmar cual de las dos:
@@ -41587,7 +41865,7 @@ def _mcp_ads_insights(email, d, h, nivel="account", campos=None, limite=500):
     token = tk.get("access_token") or _os.getenv("META_OWNER_TOKEN", "")
     if not token:
         return None, "No hay token de Meta conectado."
-    cuentas = [(k.upper(), v["ad_account"]) for k, v in _ADS_CUENTAS.items()]
+    cuentas = [(k.upper(), v["ad_account"]) for k, v in _ADS_CUENTAS.items() if not v.get("solo_para")]
     vistas, out = set(), []
     # DOS cotizaciones distintas, a proposito:
     #  - el GASTO se pasa al costo REAL del dolar de pauta (cotizacion / 0,9177521), que es lo
