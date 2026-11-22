@@ -23739,14 +23739,75 @@ def _ads_cuenta_visible(cfg) -> bool:
     sp = [str(x).strip().lower() for x in ((cfg or {}).get("solo_para") or [])]
     if sp:
         return u in sp
-    duenos = {"cristianacostabtw@gmail.com"}
-    duenos |= {x.strip().lower() for x in (_os.getenv("META_OWNER_EMAIL", "") or "").split(",") if x.strip()}
-    if u in duenos:
+    if _ads_es_dueno(u):
         return True
     try:
         return str((cfg or {}).get("ad_account") or "") in [str(c) for c in (_meta_ctx(u).get("cuentas") or [])]
     except Exception:
         return False
+
+
+_ADS_DUENOS_FIJOS = {"cristianacostabtw@gmail.com"}
+
+
+def _ads_es_dueno(u) -> bool:
+    d = set(_ADS_DUENOS_FIJOS)
+    d |= {x.strip().lower() for x in (_os.getenv("META_OWNER_EMAIL", "") or "").split(",") if x.strip()}
+    return str(u or "").strip().lower() in d
+
+
+@app.before_request
+def _ads_guardia_cuentas():
+    """Subir ADS, de raiz (21-11-2026): en CADA pedido /pf-ads-*
+      1) se borra el token que pudo quedar de un pedido anterior en este mismo hilo (antes quedaba
+         pegado y un usuario podia operar con el token de otro);
+      2) la cuenta publicitaria pedida (cuenta/cuentas/origen/destino/act, o cp1 por defecto) tiene
+         que estar conectada a ESTA cuenta de RealProfit, si no 403 (no se filtran campañas, paginas
+         ni pixeles de otra marca);
+      3) todas las llamadas a Meta del pedido usan el token de ESA cuenta publicitaria (paginas,
+         pixeles e IG salen de su propio portafolio), y si no hay cuenta, el de este usuario (nunca
+         el de otro usuario)."""
+    try:
+        if not request.path.startswith("/pf-ads-"):
+            return None
+        _ads_local.token = None
+        u = str(_user_actual() or "").strip().lower()
+        claves = []
+        for k in ("cuenta", "origen", "destino"):
+            v = request.args.get(k)
+            if v:
+                claves.append(v)
+        claves += list(request.args.getlist("cuentas"))
+        if request.method in ("POST", "PUT", "PATCH"):
+            d = request.get_json(silent=True) or {}
+            if isinstance(d, dict):
+                for k in ("cuenta", "origen", "destino"):
+                    if d.get(k):
+                        claves.append(str(d.get(k)))
+                for v in (d.get("cuentas") or []):
+                    claves.append(str(v))
+        if not claves and request.path in ("/pf-ads-posts-chequear", "/pf-ads-identidad",
+                                           "/pf-ads-campanas", "/pf-ads-conjuntos-config"):
+            claves = ["cp1"]                 # esos endpoints usan cp1 si no viene cuenta
+        for c in claves:
+            if c in _ADS_CUENTAS and not _ads_cuenta_visible(_ADS_CUENTAS[c]):
+                return jsonify({"ok": False, "msg": "esa cuenta publicitaria no está conectada a esta cuenta"}), 403
+        act = (request.args.get("act") or "").replace("act_", "").strip()
+        if act:
+            propias = {str(v["ad_account"]): k for k, v in _ADS_CUENTAS.items() if _ads_cuenta_visible(v)}
+            ctx_cts = [str(c) for c in ((_meta_ctx(u).get("cuentas") or []) if u else [])]
+            if act not in propias and act not in ctx_cts and not _ads_es_dueno(u):
+                return jsonify({"ok": False, "msg": "esa cuenta publicitaria no está conectada a esta cuenta"}), 403
+            if act in propias:
+                claves = [propias[act]] + claves
+        key = next((c for c in claves if c in _ADS_CUENTAS), None)
+        if key:
+            _ads_local.token = _ads_token_para_cuenta(key) or None
+        elif u and not _ads_es_dueno(u):
+            _ads_local.token = (_meta_ctx(u).get("token") or None)
+    except Exception:
+        return None
+    return None
 
 
 @app.get("/pf-ads-cuentas")
