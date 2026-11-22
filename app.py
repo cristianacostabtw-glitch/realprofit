@@ -21837,7 +21837,7 @@ _ADS_CUENTAS = {
     },
     "cp10": {
         "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
-        "nombre": "CP USD NUEVA (Gulab)", "ad_account": "1134833092375782", "token_env": "META_TOKEN_CP3",
+        "nombre": "CP USD NUEVA", "ad_account": "1134833092375782", "token_env": "META_TOKEN_CP3",
         "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",  # Gulab Argentina / pixel PARA PINO (dispara en gulab-arg) / @gulab.argentina
         "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
         "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
@@ -21851,7 +21851,7 @@ _ADS_CUENTAS = {
     },
     "cp11": {
         "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
-        "nombre": "CP US (Gulab)", "ad_account": "3402562649948484", "token_env": "META_TOKEN_CP3",
+        "nombre": "CP US", "ad_account": "3402562649948484", "token_env": "META_TOKEN_CP3",
         "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",
         "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
         "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
@@ -23725,15 +23725,18 @@ def _ads_run(job, params):
 
 
 def _ads_cuenta_visible(cfg) -> bool:
-    """Una cuenta con 'solo_para' (ej. las de CP 3 de Gulab) solo existe para esos usuarios."""
-    sp = cfg.get("solo_para") if cfg else None
-    if not sp:
-        return True
+    """Una cuenta con 'solo_para' (las de CP 3) solo existe para esos usuarios. Y un usuario que
+    TIENE cuentas propias con 'solo_para' ve SOLO esas: las de NoxaLab no le aparecen (21-11-2026)."""
     try:
         u = str(_user_actual() or "").strip().lower()
     except Exception:
         u = ""
-    return u in [str(x).strip().lower() for x in sp]
+    sp = [str(x).strip().lower() for x in ((cfg or {}).get("solo_para") or [])]
+    if sp:
+        return u in sp
+    propias = any(u and u in [str(x).strip().lower() for x in (v.get("solo_para") or [])]
+                  for v in _ADS_CUENTAS.values())
+    return not propias
 
 
 @app.get("/pf-ads-cuentas")
@@ -23755,7 +23758,9 @@ def pf_ads_cuentas():
     cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
            "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
-           "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles)}
+           "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles
+                          or (v.get("token_env") and _os.getenv(v["token_env"])
+                              and _ads_token_usa_cuenta(_os.getenv(v["token_env"]), v["ad_account"])))}
           for k, v in _ADS_CUENTAS.items() if not v.get("oculta") and _ads_cuenta_visible(v)]
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok),
                     "n_sin_acceso": sum(1 for c in cs if not c["acceso"])})
