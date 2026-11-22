@@ -23725,18 +23725,28 @@ def _ads_run(job, params):
 
 
 def _ads_cuenta_visible(cfg) -> bool:
-    """Una cuenta con 'solo_para' (las de CP 3) solo existe para esos usuarios. Y un usuario que
-    TIENE cuentas propias con 'solo_para' ve SOLO esas: las de NoxaLab no le aparecen (21-11-2026)."""
+    """Regla de Cristian (21-11-2026): "solo lo que se le conecte se puede subir ads". Cada cuenta de
+    RealProfit ve en Subir ADS SOLO las cuentas publicitarias conectadas a ELLA:
+      - las que tienen 'solo_para' (CP 3) solo para esos usuarios;
+      - la cuenta dueña de NoxaLab (la del token de CP1) ve las de NoxaLab, como siempre;
+      - cualquier otra ve solo las que suman en su Dashboard (_meta_ctx: asignadas/conectadas)."""
     try:
         u = str(_user_actual() or "").strip().lower()
     except Exception:
         u = ""
+    if not u:
+        return False
     sp = [str(x).strip().lower() for x in ((cfg or {}).get("solo_para") or [])]
     if sp:
         return u in sp
-    propias = any(u and u in [str(x).strip().lower() for x in (v.get("solo_para") or [])]
-                  for v in _ADS_CUENTAS.values())
-    return not propias
+    duenos = {"cristianacostabtw@gmail.com"}
+    duenos |= {x.strip().lower() for x in (_os.getenv("META_OWNER_EMAIL", "") or "").split(",") if x.strip()}
+    if u in duenos:
+        return True
+    try:
+        return str((cfg or {}).get("ad_account") or "") in [str(c) for c in (_meta_ctx(u).get("cuentas") or [])]
+    except Exception:
+        return False
 
 
 @app.get("/pf-ads-cuentas")
