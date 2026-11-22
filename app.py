@@ -19478,7 +19478,10 @@ def _impul_resumen(email, desde, hasta):
         if est != "approved":
             continue
         pago = None
-        if mp_conectado and str(o.get("payment_method") or "").lower() in ("mercadopago", ""):
+        # 22-11-2026: Impultienda manda "card" en los pagos con TARJETA aunque la pasarela sea el
+        # MercadoPago de la cuenta. Antes solo se buscaba el pago de los "mercadopago": los de
+        # tarjeta quedaban "sin verificar" y no se contaban (13 ventas en Impultienda, 10 aca).
+        if mp_conectado and str(o.get("payment_method") or "").lower() in ("mercadopago", "card", "tarjeta", ""):
             ol = {"id": o.get("order_id"), "order_number": o.get("order_number"),
                   "created_at": o.get("aprobado_at") or o.get("order_created_at"), "gateway": "mercadopago"}
             pago = _mp_match_pedido(ol, str(o.get("order_number") or ""), tot, by_ref, by_amt)[0]
