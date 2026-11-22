@@ -21877,7 +21877,12 @@ _ADS_CUENTAS = {
         # pagina / IG / pixel a eleccion (sin los de NoxaLab precargados) y copy/landing en blanco.
         "tambien_para": ["noxalaboficial@gmail.com"],
         "para_usuario": {"noxalaboficial@gmail.com": {"page": "", "pixel": "", "ig": "", "landing": "",
-                                                      "titulo": "", "subtitulo": "", "copy": ""}},
+                                                      "titulo": "", "subtitulo": "", "copy": "",
+            # 22-11: UTMs de Utmify en cada anuncio de ebooks (Utmify esta conectado a las 10
+            # tiendas de Impultienda y a esta cuenta publicitaria). Solo ebooks, nunca NoxaLab.
+            "url_tags": ("utm_source=FB&utm_campaign={{campaign.name}}|{{campaign.id}}"
+                         "&utm_medium={{adset.name}}|{{adset.id}}&utm_content={{ad.name}}|{{ad.id}}"
+                         "&utm_term={{placement}}")}},
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar (misma tienda que CP1)
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab 💪", "subtitulo": "Ultimas unidades", "presupuesto": 35,
@@ -22620,6 +22625,8 @@ def _ads_creative_payload(nombre, medio, cfg, ad, minimo=False):
                         (ADS_MEJORAS_MINIMO if minimo else ADS_MEJORAS_POST)}}
         if cfg.get("ig"):
             creative["instagram_user_id"] = cfg["ig"]
+        if cfg.get("url_tags"):
+            creative["url_tags"] = cfg["url_tags"]   # UTMs de Utmify (cuenta de ebooks)
         return creative
     url = (ad.get("url") or "").strip() or cfg["landing"]
     cta = {"type": "SHOP_NOW", "value": {"link": url}}
@@ -22648,6 +22655,8 @@ def _ads_creative_payload(nombre, medio, cfg, ad, minimo=False):
                     (ADS_MEJORAS_MINIMO if minimo else ADS_MEJORAS_NUEVO)}}
     if cfg.get("ig"):
         creative["instagram_user_id"] = cfg["ig"]   # el IG va al NIVEL del creativo, no dentro de object_story_spec
+    if cfg.get("url_tags"):
+        creative["url_tags"] = cfg["url_tags"]   # "Parametros de URL" del anuncio (UTMs de Utmify en ebooks)
     return creative
 
 
