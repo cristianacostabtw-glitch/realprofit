@@ -5477,7 +5477,7 @@ _SOLO_DASH = r"""
     </div>
     <div class="row"><div><span class="lb">P&aacute;gina</span><select class="in" id="rpa-page"></select></div>
      <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
-    <div style="margin-top:12px"><span class="lb">Pixel</span><select class="in" id="rpa-pixel"></select>
+    <div style="margin-top:12px"><span class="lb">Pixel <a href="javascript:void(0)" onclick="rpaPixelNuevo()" style="color:#8fb3e0;font-weight:700;margin-left:8px;text-decoration:none">+ Crear pixel nuevo</a></span><select class="in" id="rpa-pixel"></select>
      <div id="rpa-pixelav" style="color:#ffd479;font-size:11.5px;margin-top:5px;line-height:1.5"></div></div>
    </div>
    <div class="card" id="rpa-card-creativos">
@@ -5715,6 +5715,17 @@ _SOLO_DASH = r"""
   // se pone al toque la cacheada de ESA cuenta, y si no se conoce queda vacia hasta que llegue.
   try{ MONEDA=(window._MONEDAS&&window._MONEDAS[k])||''; }catch(e){ MONEDA=''; }
   rpaPresupLb();
+  window.rpaPixelNuevo=function(){
+   var kk=$('rpa-cuenta').value||'cp1'; var nm=window.prompt('Nombre del pixel nuevo (ej. el del ebook):','');
+   if(!nm) return;
+   var av=document.getElementById('rpa-pixelav'); if(av) av.innerHTML='Creando pixel…';
+   fetch('/pf-ads-pixel-crear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:kk,nombre:nm})})
+    .then(function(r){return r.json();}).then(function(j){
+     if(!j||!j.ok){ if(av) av.innerHTML='\u26a0 '+((j&&j.msg)||'no se pudo crear'); return; }
+     var o=document.createElement('option'); o.value=j.id; o.textContent=j.nombre; $('rpa-pixel').appendChild(o); $('rpa-pixel').value=j.id;
+     if(av) av.innerHTML='\u2705 Pixel '+j.nombre+' creado (ID '+j.id+')'+(j.en_la_cuenta?' y asignado a la cuenta.':'. \u26a0 Meta todav\u00eda no lo muestra en la cuenta: '+(j.pasos||[]).join(' · '))+' Pegalo en la tienda para que mida las ventas.';
+    }).catch(function(e){ if(av) av.innerHTML='\u26a0 '+e; });
+  };
   fetch('/pf-ads-identidad?cuenta='+k).then(function(r){return r.json();}).then(function(j){
    if(!j||!j.ok){ MONEDA=''; rpaPresupLb(); return; }
    MONEDA=j.moneda||''; try{ window._MONEDAS[k]=MONEDA; window._MINDIA[k]=j.min_diario||0; }catch(e){} rpaPresupLb();
@@ -21840,6 +21851,11 @@ _ADS_CUENTAS = {
     "cp2": {
         "portfolio": "CP1",
         "nombre": "SEGUNDA NOXALAB NX", "ad_account": "1779069840175413", "token_env": "META_TOKEN",
+        # Desde el 10-11 pauta los EBOOKS: la cuenta de RealProfit de ebooks la ve en Subir ADS, con
+        # pagina / IG / pixel a eleccion (sin los de NoxaLab precargados) y copy/landing en blanco.
+        "tambien_para": ["noxalaboficial@gmail.com"],
+        "para_usuario": {"noxalaboficial@gmail.com": {"page": "", "pixel": "", "ig": "", "landing": "",
+                                                      "titulo": "", "subtitulo": "", "copy": ""}},
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar (misma tienda que CP1)
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab 💪", "subtitulo": "Ultimas unidades", "presupuesto": 35,
@@ -23576,7 +23592,8 @@ def _ads_run(job, params):
 
     threading.Thread(target=_latir, daemon=True).start()
     try:
-        cfg = dict(_ADS_CUENTAS.get(params.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"])
+        _ckj = params.get("cuenta") or "cp1"
+        cfg = _ads_cfg_de(_ckj if _ckj in _ADS_CUENTAS else "cp1", params.get("_email") or "")
         if (params.get("page") or "").strip():
             cfg["page"] = params["page"].strip()
         if (params.get("pixel") or "").strip():
@@ -23922,6 +23939,8 @@ def _ads_cuenta_visible(cfg) -> bool:
     sp = [str(x).strip().lower() for x in ((cfg or {}).get("solo_para") or [])]
     if sp:
         return u in sp
+    if u in [str(x).strip().lower() for x in ((cfg or {}).get("tambien_para") or [])]:
+        return True
     if _ads_es_dueno(u):
         return True
     try:
@@ -23931,6 +23950,17 @@ def _ads_cuenta_visible(cfg) -> bool:
 
 
 _ADS_DUENOS_FIJOS = {"cristianacostabtw@gmail.com"}
+
+
+def _ads_cfg_de(key, email=None) -> dict:
+    """La config de esa cuenta publicitaria con los valores propios de ESTE usuario encima."""
+    cfg = dict(_ADS_CUENTAS.get(key) or {})
+    try:
+        e = str(email if email is not None else (_user_actual() or "")).strip().lower()
+    except Exception:
+        e = ""
+    cfg.update((cfg.get("para_usuario") or {}).get(e) or {})
+    return cfg
 
 
 def _ads_es_dueno(u) -> bool:
@@ -24059,9 +24089,10 @@ def pf_ads_cuentas():
     # Antes se filtraban y las que el token no veia DESAPARECIAN del selector sin explicacion
     # (paso el 21-10-2026 con las dos cuentas nuevas del portfolio CP2). Ahora vienen todas con
     # un flag: la pantalla las muestra deshabilitadas y diciendo por que.
-    cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": v["copy"],
-           "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
-           "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
+    _vu = {k: _ads_cfg_de(k) for k in _ADS_CUENTAS}
+    cs = [{"key": k, "nombre": v["nombre"], "presupuesto": v["presupuesto"], "copy": _vu[k].get("copy", ""),
+           "titulo": _vu[k].get("titulo", ""), "subtitulo": _vu[k].get("subtitulo", ""),
+           "landing": _vu[k].get("landing", ""), "portfolio": v.get("portfolio", ""),
            "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles
                           or (v.get("token_env") and _os.getenv(v["token_env"])
                               and _ads_token_usa_cuenta(_os.getenv(v["token_env"]), v["ad_account"])))}
@@ -24195,7 +24226,8 @@ def pf_ads_identidad():
     """Página / IG / pixel VINCULADOS a la cuenta (para los desplegables)."""
     if not _user_actual():
         return jsonify({"ok": False})
-    cfg = _ADS_CUENTAS.get(request.args.get("cuenta") or "cp1") or _ADS_CUENTAS["cp1"]
+    _ck = request.args.get("cuenta") or "cp1"
+    cfg = _ads_cfg_de(_ck if _ck in _ADS_CUENTAS else "cp1")
     acct = cfg["ad_account"]
 
     def lst(path, fields):
@@ -24275,9 +24307,67 @@ def pf_ads_identidad():
         if _mk.get("pixels"):
             pixels = [p for p in pixels if str(p.get("id")) in [str(x) for x in _mk["pixels"]]]
     return jsonify({"ok": True, "pixels": pixels, "igs": igs, "pages": pages, "moneda": moneda,
-                    "min_diario": min_diario, "pixel_asignado": bool(pixel_ok),
+                    "min_diario": min_diario, "pixel_asignado": bool(pixel_ok or not cfg.get("pixel")),
                     "def": {"page": cfg["page"], "pixel": cfg["pixel"], "ig": cfg.get("ig", "")},
                     "ultimo": _ads_lastcfg_get(_user_actual(), request.args.get("cuenta") or "cp1")})
+
+
+@app.post("/pf-ads-pixel-crear")
+def pf_ads_pixel_crear():
+    """Crea un pixel NUEVO y lo deja listo para usar en esa cuenta publicitaria: lo crea el
+    portafolio dueño de la cuenta, se lo comparte a la cuenta y le da acceso al usuario del sistema
+    de RealProfit. Devuelve el id (para pegarlo en la tienda)."""
+    if not _user_actual():
+        return jsonify({"ok": False}), 401
+    d = request.get_json(silent=True) or {}
+    k = d.get("cuenta") or ""
+    if k not in _ADS_CUENTAS:
+        return jsonify({"ok": False, "msg": "no reconocí la cuenta"}), 400
+    if _ADS_CUENTAS[k].get("marca"):
+        return jsonify({"ok": False, "msg": "en esta cuenta compartida el pixel se crea cuando separemos las marcas"}), 400
+    nombre = " ".join(str(d.get("nombre") or "").split())[:60]
+    if len(nombre) < 3:
+        return jsonify({"ok": False, "msg": "poné un nombre para el pixel (ej. el del ebook)"}), 400
+    acct = _ADS_CUENTAS[k]["ad_account"]
+    pasos = []
+    try:
+        bid = str(((_ads_call("GET", "act_%s" % acct, params={"fields": "business{id,name}"}) or {})
+                   .get("business") or {}).get("id") or "")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "no pude leer la cuenta: %s" % str(e)[:160]})
+    pid, err = "", ""
+    for path in ([("%s/adspixels" % bid)] if bid else []) + ["act_%s/adspixels" % acct]:
+        try:
+            pid = str((_ads_call("POST", path, data={"name": nombre}) or {}).get("id") or "")
+            if pid:
+                pasos.append("creado por " + ("el portafolio" if path.startswith(bid or "x") else "la cuenta"))
+                break
+        except Exception as e:
+            err = str(e)[:200]
+    if not pid:
+        return jsonify({"ok": False, "msg": "Meta no dejó crear el pixel: %s" % err})
+    if bid:
+        try:
+            _ads_call("POST", "%s/shared_accounts" % pid, data={"account_id": acct, "business": bid})
+            pasos.append("compartido con la cuenta publicitaria")
+        except Exception as e:
+            pasos.append("compartir con la cuenta: %s" % str(e)[:120])
+        try:
+            yo = str((_ads_call("GET", "me", params={"fields": "id"}) or {}).get("id") or "")
+            if yo:
+                _ads_call("POST", "%s/assigned_users" % pid,
+                          data={"user": yo, "business": bid, "tasks": _json.dumps(["ADVERTISE", "ANALYZE", "EDIT", "UPLOAD"])})
+                pasos.append("acceso para RealProfit")
+        except Exception as e:
+            pasos.append("acceso RealProfit: %s" % str(e)[:120])
+    ok_cta = False
+    try:
+        for p in (_ads_call("GET", "act_%s/adspixels" % acct, params={"fields": "id", "limit": 200}) or {}).get("data", []):
+            if str(p.get("id")) == pid:
+                ok_cta = True
+    except Exception:
+        pass
+    return jsonify({"ok": True, "id": pid, "nombre": nombre, "en_la_cuenta": ok_cta, "pasos": pasos})
 
 
 @app.get("/pf-ads-posts")
@@ -25498,6 +25588,11 @@ def pf_ads_lanzar():
         _tk = _ads_token_para_cuenta(c)
         if _cf.get("solo_para") and not _tk:
             return jsonify({"ok": False, "msg": "%s: falta su token en el servidor" % _cf.get("nombre", c)}), 400
+        _cu = _ads_cfg_de(c)
+        if not str((data.get("page") or "").strip() or _cu.get("page") or ""):
+            return jsonify({"ok": False, "msg": "elegí la página del anuncio"}), 400
+        if not str((data.get("pixel") or "").strip() or _cu.get("pixel") or ""):
+            return jsonify({"ok": False, "msg": "elegí el pixel (o creá uno nuevo)"}), 400
         _mk = _marca_de(_user_actual(), _cf["ad_account"])
         if _mk:
             _pg = str((data.get("page") or "").strip() or _cf.get("page") or "")
@@ -25527,6 +25622,7 @@ def pf_ads_lanzar():
         if presups.get(c):
             d["presupuesto"] = presups[c]
         d["_token"] = _ads_token_para_cuenta(c)   # token que REALMENTE puede usar esa cuenta (no cruza cuentas)
+        d["_email"] = str(_user_actual() or "").strip().lower()
         job = uuid.uuid4().hex[:12]
         _ads_lastcfg_set(_user_actual(), c, d)    # recordar la config para la próxima subida
         _ADS_JOBS[job] = {"done": 0, "total": 0, "msg": "Arrancando…", "listo": False, "error": None, "stats": {},
