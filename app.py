@@ -5477,7 +5477,28 @@ _SOLO_DASH = r"""
     </div>
     <div class="row"><div><span class="lb">P&aacute;gina</span><select class="in" id="rpa-page"></select></div>
      <div><span class="lb">Instagram</span><select class="in" id="rpa-ig"></select></div></div>
-    <div style="margin-top:12px"><span class="lb">Pixel <a href="javascript:void(0)" onclick="rpaPixelNuevo()" style="color:#8fb3e0;font-weight:700;margin-left:8px;text-decoration:none">+ Crear pixel nuevo</a></span><select class="in" id="rpa-pixel"></select>
+    <div style="margin-top:12px"><span class="lb">Pixel <a href="javascript:void(0)" onclick="rpaPxAbrir()" style="color:#8fb3e0;font-weight:700;margin-left:8px;text-decoration:none">+ Crear pixel nuevo</a></span><select class="in" id="rpa-pixel"></select>
+     <div id="rpa-pxnew" style="display:none;margin-top:8px;gap:8px;align-items:center">
+      <input class="in" id="rpa-pxnom" placeholder="Nombre del pixel nuevo (ej. el del ebook)" style="flex:1" onkeydown="if(event.key==='Enter'){rpaPxCrear();}">
+      <span id="rpa-pxbtn" onclick="rpaPxCrear()" style="cursor:pointer;background:#3b82f6;color:#fff;font-weight:700;font-size:13px;padding:10px 16px;border-radius:10px;white-space:nowrap">Crear pixel</span>
+     </div>
+     <script>
+     window.rpaPxAbrir=function(){var b=document.getElementById('rpa-pxnew'); b.style.display=(b.style.display==='flex')?'none':'flex'; if(b.style.display==='flex'){document.getElementById('rpa-pxnom').focus();}};
+     window.rpaPxCrear=function(){
+      var nm=(document.getElementById('rpa-pxnom').value||'').trim(); var av=document.getElementById('rpa-pixelav'); var bt=document.getElementById('rpa-pxbtn');
+      if(nm.length<3){ if(av) av.innerHTML='\u26a0 Poné un nombre para el pixel (ej. el del ebook).'; return; }
+      if(bt.getAttribute('data-ocupado')) return; bt.setAttribute('data-ocupado','1'); bt.textContent='Creando…';
+      var kk=(document.getElementById('rpa-cuenta')||{}).value||'';
+      fetch('/pf-ads-pixel-crear',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuenta:kk,nombre:nm})})
+       .then(function(r){return r.json();}).then(function(j){
+        bt.removeAttribute('data-ocupado'); bt.textContent='Crear pixel';
+        if(!j||!j.ok){ if(av) av.innerHTML='\u26a0 '+((j&&j.msg)||'no se pudo crear el pixel'); return; }
+        var s=document.getElementById('rpa-pixel'); var o=document.createElement('option'); o.value=j.id; o.textContent=j.nombre; s.appendChild(o); s.value=j.id;
+        document.getElementById('rpa-pxnom').value=''; document.getElementById('rpa-pxnew').style.display='none';
+        if(av) av.innerHTML='\u2705 Pixel <b>'+j.nombre+'</b> creado (ID '+j.id+')'+(j.en_la_cuenta?' y asignado a la cuenta.':' \u26a0 Meta todav\u00eda no lo muestra en la cuenta: '+(j.pasos||[]).join(' \u00b7 '))+' Pegalo en la tienda para que mida las ventas.';
+       }).catch(function(e){ bt.removeAttribute('data-ocupado'); bt.textContent='Crear pixel'; if(av) av.innerHTML='\u26a0 '+e; });
+     };
+     </script>
      <div id="rpa-pixelav" style="color:#ffd479;font-size:11.5px;margin-top:5px;line-height:1.5"></div></div>
    </div>
    <div class="card" id="rpa-card-creativos">
