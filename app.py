@@ -20246,7 +20246,7 @@ def pf_cps():
     out = []
     for acc in ctx["cuentas"]:
         info = _ads_cp_info(ctx["token"], acc) if ctx["token"] else {}
-        asig = ctx["asig"] if str(ctx["asig"].get("cuenta") or "") == acc else {}
+        asig = ctx["asig"] if (str(ctx["asig"].get("cuenta") or "") == acc or acc in [str(x) for x in (ctx["asig"].get("extras") or [])]) else {}
         out.append({"id": acc, "nombre": info.get("nombre") or ("act_" + acc),
                     "portfolio": info.get("portfolio") or "", "moneda": info.get("moneda") or "",
                     "emma": _ads_cp_emma(email, acc), "agencia": _ads_cp_agencia(email, acc),
@@ -20357,6 +20357,13 @@ def _meta_act_fuera(acc):
 
 
 META_CUENTAS_ASIGNADAS["noxalaboficial@gmail.com"]["emma"] = False   # ebooks: P2P, sin Emma ni IVA
+# 21-11-2026 (Cristian): las cuentas del portafolio "CP 3" van SOLO a la cuenta de RealProfit de
+# Gulab (farmalab.contacto@gmail.com), nunca a NoxaLab. Token del usuario del sistema realprofit-cp3
+# (app REALPROFIT CP3 1716093049939395) en la env META_TOKEN_CP3. Suman desde el 22-11 (lo de antes
+# era pauta de otras tiendas). 'forzar': usa este token aunque la cuenta tenga otro Meta pegado.
+META_CUENTAS_ASIGNADAS["farmalab.contacto@gmail.com"] = {
+    "cuenta": "1134833092375782", "extras": ["3402562649948484"],
+    "token_env": "META_TOKEN_CP3", "desde": "2026-11-22", "forzar": True}
 
 ADS_CP_CFG = DATA_DIR / "ads_cp_cfg.json"   # {email: {cuenta: {"emma": bool, "agencia": bool, "baja_desde": "AAAA-MM-DD"}}}
 _ADS_CP_LOCK = threading.Lock()
@@ -20432,9 +20439,10 @@ def _meta_ctx(email) -> dict:
             cuenta = _os.getenv("META_OWNER_ACT") or cuenta
             es_owner = True
     asig = META_CUENTAS_ASIGNADAS.get(str(email or "").strip().lower()) or {}
-    if not token and asig and _os.getenv(asig.get("token_env") or ""):
+    if (not token or asig.get("forzar")) and asig and _os.getenv(asig.get("token_env") or ""):
         token = _os.getenv(asig["token_env"])
         cuenta = asig["cuenta"]
+        es_owner = False
     cuentas = []
     primaria = str(cuenta or "").replace("act_", "").strip()
     if primaria:
@@ -20449,6 +20457,10 @@ def _meta_ctx(email) -> dict:
             ex = ex.strip().replace("act_", "")
             if ex and ex not in cuentas:
                 cuentas.append(ex)
+    for ex in (asig.get("extras") or []):              # mas cuentas de la MISMA asignacion
+        ex = str(ex).replace("act_", "").strip()
+        if ex and ex not in cuentas:
+            cuentas.append(ex)
     return {"token": token, "cuentas": cuentas if token else [], "es_owner": es_owner, "asig": asig}
 
 
@@ -20479,7 +20491,7 @@ def _meta_spend(email, desde, hasta):
             if filas:
                 hubo = True
             _fuera = _meta_act_fuera(acc)
-            _es_asig = bool(_asig) and str(acc) == str(_asig.get("cuenta"))
+            _es_asig = bool(_asig) and (str(acc) == str(_asig.get("cuenta")) or str(acc) in [str(x) for x in (_asig.get("extras") or [])])
             _baja = _ads_cp_baja(email, acc)          # la X de Integraciones: desde ese dia no suma
             _emma = _ads_cp_emma(email, acc)
             _agen = _ads_cp_agencia(email, acc)
@@ -21822,6 +21834,34 @@ _ADS_CUENTAS = {
                  "Solo 1 scoop al día, disuelto en agua.\n"
                  "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
                  "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
+    "cp10": {
+        "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
+        "nombre": "CP USD NUEVA (Gulab)", "ad_account": "1134833092375782", "token_env": "META_TOKEN_CP3",
+        "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",  # Gulab Argentina / pixel PARA PINO (dispara en gulab-arg) / @gulab.argentina
+        "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
+        "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
+        "copy": ("🦷 ¿Te sangran las encías al cepillarte o sentís los dientes más largos?\n\n"
+                 "Dental White es un aceite para encías con coco MCT, manuka, bisabolol y árbol de té:\n"
+                 "✨ Llega donde el cepillo no llega\n"
+                 "💧 Buches de 7 minutos a la mañana, antes de cepillarte\n"
+                 "🌿 Fórmula 100% natural\n\n"
+                 "Envío gratis a todo el país y 60 días de garantía.\n\n"
+                 "👇 Tocá \"Comprar\" y conocé Dental White."),
+    },
+    "cp11": {
+        "portfolio": "CP 3", "solo_para": ["farmalab.contacto@gmail.com"],
+        "nombre": "CP US (Gulab)", "ad_account": "3402562649948484", "token_env": "META_TOKEN_CP3",
+        "page": "1508517182336767", "pixel": "2094687534433581", "ig": "17841463841376035",
+        "landing": "https://gulab-arg.myshopify.com/products/dental-white-encias",
+        "titulo": "Encías más sanas en 14 días", "subtitulo": "Envío gratis", "presupuesto": 35,
+        "copy": ("🦷 ¿Te sangran las encías al cepillarte o sentís los dientes más largos?\n\n"
+                 "Dental White es un aceite para encías con coco MCT, manuka, bisabolol y árbol de té:\n"
+                 "✨ Llega donde el cepillo no llega\n"
+                 "💧 Buches de 7 minutos a la mañana, antes de cepillarte\n"
+                 "🌿 Fórmula 100% natural\n\n"
+                 "Envío gratis a todo el país y 60 días de garantía.\n\n"
+                 "👇 Tocá \"Comprar\" y conocé Dental White."),
     },
 }
 
@@ -23684,6 +23724,18 @@ def _ads_run(job, params):
             pass
 
 
+def _ads_cuenta_visible(cfg) -> bool:
+    """Una cuenta con 'solo_para' (ej. las de CP 3 de Gulab) solo existe para esos usuarios."""
+    sp = cfg.get("solo_para") if cfg else None
+    if not sp:
+        return True
+    try:
+        u = str(_user_actual() or "").strip().lower()
+    except Exception:
+        u = ""
+    return u in [str(x).strip().lower() for x in sp]
+
+
 @app.get("/pf-ads-cuentas")
 def pf_ads_cuentas():
     if not _user_actual():
@@ -23704,7 +23756,7 @@ def pf_ads_cuentas():
            "titulo": v.get("titulo", ""), "subtitulo": v.get("subtitulo", ""),
            "landing": v.get("landing", ""), "portfolio": v.get("portfolio", ""),
            "acceso": bool((not accesibles) or str(v["ad_account"]) in accesibles)}
-          for k, v in _ADS_CUENTAS.items() if not v.get("oculta")]
+          for k, v in _ADS_CUENTAS.items() if not v.get("oculta") and _ads_cuenta_visible(v)]
     return jsonify({"ok": True, "cuentas": cs, "token": bool(tok),
                     "n_sin_acceso": sum(1 for c in cs if not c["acceso"])})
 
@@ -25087,7 +25139,7 @@ def pf_ads_lanzar():
         ctas = [data.get("cuenta") or "cp1"]
     vistas = []
     for c in ctas:                       # sin repetidos, respetando el orden
-        if c not in vistas and c in _ADS_CUENTAS:
+        if c not in vistas and c in _ADS_CUENTAS and _ads_cuenta_visible(_ADS_CUENTAS[c]):
             vistas.append(c)
     if not vistas:
         return jsonify({"ok": False, "msg": "no reconocí la cuenta elegida"}), 400
