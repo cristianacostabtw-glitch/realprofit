@@ -4787,9 +4787,23 @@ _SOLO_DASH = r"""
     // BREAK EVEN: backend → subtítulo (2.70x) → último recurso fa/(ga+inv).
     var bcard=cardByLabel('Break Even ROAS');
     var br=null;
+    // (23-11-2026) Ya NO se lee el subtitulo: ese "2.70x" era texto FIJO del HTML clonado, nunca un dato.
     if(R && R.be_roas!=null) br=R.be_roas;
-    else { var sb=_subNum(bcard); if(sb!=null) br=sb;
-           else if(fa && (ga+iv2)>0) br=Math.round(fa/(ga+iv2)*100)/100; }
+    else if(fa && (ga+iv2)>0) br=Math.round(fa/(ga+iv2)*100)/100;
+    // SUBTITULOS de ROAS y Break Even ROAS con el ROAS REAL. Antes quedaba el texto de muestra del
+    // clon ("recuperás $2.70" / "tu ROAS real es 2.70x") y contradecia la tarjeta (farmalab 23-11:
+    // ROAS 21.25x con "tu ROAS real es 2.70x"). El break even es SOLO tienda → se compara con roas_web.
+    try{
+      if(R && R.roas!=null){
+        var _rr=+R.roas||0, _rw=(R.roas_web!=null?(+R.roas_web||0):_rr);
+        var _rc=cardByLabel('ROAS'), _rs=_rc?subLeaf(_rc):null;
+        var _rt=_rr>0?('Por cada $1 invertido recuperás $'+_rr.toFixed(2)):'Sin pauta en el período';
+        if(_rs && _rs.textContent!==_rt) _rs.textContent=_rt;
+        var _bs=bcard?subLeaf(bcard):null;
+        var _bt=_rw>0?('Mínimo para no perder · tu ROAS'+(Math.abs(_rw-_rr)>0.005?' de la tienda':'')+' es '+_rw.toFixed(2)+'x'):'Mínimo para no perder';
+        if(_bs && _bs.textContent!==_bt) _bs.textContent=_bt;
+      }
+    }catch(e){}
     if(mg==null && br==null) return;                 // sin datos reales no toco nada (anti-titileo)
     // TARJETA MARGEN (era "True ROAS" → la renombro a "Margen" y le pongo el %). Elimina "True ROAS" del sistema.
     if(mg!=null){ var m=cardByLabel('Margen')||cardByLabel('True ROAS');
@@ -8885,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-23-seg-shopify-primero"})
+    return jsonify({"ok": True, "v": "2026-11-23-gasto-cp-farmalab"})
 
 
 _KPI_DBG = {}
@@ -20586,9 +20600,15 @@ _MARCA_CP3_SUBIR = {"id": "gulab+visionpure",
                     "dominios": _MARCA_GULAB["dominios"] + _MARCA_VISIONPURE["dominios"],
                     "igs": _MARCA_GULAB["igs"] + _MARCA_VISIONPURE["igs"],
                     "pixels": _MARCA_GULAB["pixels"]}   # ARRASCAETA ya esta en Gulab
+# 23-11-2026 (Cristian): "tiene que tomar el gasto de la CP asignada que tiene". El GASTO del
+# dashboard de esta cuenta es la CP ENTERA (todas sus campañas), sin filtrar por marca. Con el
+# filtro Gulab el 23-11 sumaba solo "22-11 CBO TEST COCO ACEITIN" (US$21,95 = $38.794) y dejaba
+# afuera las 3 campañas de VisionPure (US$131,8), que es la tienda Shopify conectada a esta cuenta
+# (sus 15 ventas eran VisionPure) → ROAS 21x de mentira. Subir ADS sigue filtrando por marca con
+# la config de cp10/cp11 (_ADS_CUENTAS[...]["marca"]), que no depende de esta asignacion.
 META_CUENTAS_ASIGNADAS["farmalab.contacto@gmail.com"] = {
     "cuenta": "1134833092375782", "extras": ["3402562649948484"],
-    "token_env": "META_TOKEN_CP3", "desde": "2026-11-22", "forzar": True, "marca": _MARCA_GULAB}
+    "token_env": "META_TOKEN_CP3", "desde": "2026-11-22", "forzar": True}
 
 ADS_CP_CFG = DATA_DIR / "ads_cp_cfg.json"   # {email: {cuenta: {"emma": bool, "agencia": bool, "baja_desde": "AAAA-MM-DD"}}}
 _ADS_CP_LOCK = threading.Lock()
