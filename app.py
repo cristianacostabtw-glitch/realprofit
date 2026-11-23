@@ -3427,7 +3427,8 @@ _SOLO_DASH = r"""
      res.innerHTML=(aviso?('<div style="color:#fde68a;font-size:12px;margin-bottom:6px">'+_dEsc(aviso)+'</div>'):'')
        +rpDBarra(pct,'⏳ Enviando seguimientos · '+hech+' de '+tot+' · '+(p.seg||0)+'s'+(p.intentos>1?(' · retomado '+(p.intentos-1)+'×'):'')+' — podés cerrar esto, sigue en el servidor')
        +'<div style="color:#93a3ba;font-size:12px;margin-top:6px">'+ln+'</div>'
-       +(fallos?('<div style="color:#fde68a;font-size:12px;margin-top:6px">⚠️ El server no contesta la consulta ('+fallos+' seguidas) — el envío sigue del lado del server, sigo mirando…</div>'):''); }
+       +((p.canal==='todos'&&c.tienda&&c.wpp&&(c.tienda.done||0)<(c.tienda.total||0))?'<div style="color:#93a3ba;font-size:11.5px;margin-top:4px">Primero se carga en '+(p.tienda==='shopify'?'Shopify':'TiendaNube')+'; el WhatsApp sale solo a los pedidos que la tienda confirmó.</div>':'')
+       +(fallos?('<div style="color:#fde68a;font-size:12px;margin-top:6px">⚠️ El server no contesta la consulta ('+fallos+' seguidas) — si se reinició, el servidor retoma el envío solo desde donde quedó (no repite nada). Sigo mirando…</div>'):''); }
    function terminar(p){ libre(); olvidar();
      marcar(p); if(_dSeg.length) _dSegRender(); else res.innerHTML='';
      var head='<div style="background:#0e2a1c;border:1px solid #17492f;border-radius:12px;padding:12px 14px;color:#34d399;font-size:12.5px;font-weight:700;margin-bottom:10px">✅ '+lineas(p).join(' · ')+' <span style="color:#7fbf9f;font-weight:600">('+(p.seg||0)+'s)</span></div>';
@@ -3465,7 +3466,7 @@ _SOLO_DASH = r"""
    }
    function sinResp(){ fallos++;
        if(fallos>=120){ libre(); res.innerHTML='<div style="color:#fb7185;font-size:12.5px">El server no contesta hace '+Math.round(fallos*1.5)+'s. El envío sigue (o se retoma) del lado del server. <button onclick="rpDSegVer(\''+job+'\')" style="background:#16233a;border:1px solid #2f4a6b;color:#8fbdf5;border-radius:9px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer">Seguir mirando</button></div>'; return; }
-       res.innerHTML=rpDBarra(5,'⚠️ El server no contesta la consulta ('+fallos+' seguidas) — el envío sigue del lado del server, sigo mirando…');
+       res.innerHTML=rpDBarra(5,'⚠️ El server no contesta la consulta ('+fallos+' seguidas) — si se reinició, retoma el envío solo desde donde quedó. Sigo mirando…');
    }
    if(!silencioso) res.innerHTML=rpDBarra(1,'⏳ Envío en marcha…');
    tick();
@@ -8884,7 +8885,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-22-ventas-coherente"})
+    return jsonify({"ok": True, "v": "2026-11-23-seg-shopify-primero"})
 
 
 _KPI_DBG = {}
@@ -16588,8 +16589,11 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
         # /seguimientos y Despachos nunca se enteraba: los MISMOS pedidos volvian a salir en
         # la tanda siguiente y se despachaban dos veces (23-10-2026: quedaron 125 "por
         # empaquetar" despues de subir el PDF de 147 etiquetas).
-        # Se marca "ENVIADA". El circuito es: generar el Excel -> "exportada"; cargar el PDF
-        # de seguimientos -> "enviada". Si llego el numero de seguimiento, el paquete salio.
+        # 23-11-2026: leer el PDF marca "EXPORTADA" (la etiqueta existe, sale de "por empaquetar").
+        # "ENVIADA" es SOLO cuando la tienda confirmo el seguimiento: o ya lo tenia cargado al leer
+        # (tn=True), o el job de envio lo confirmo pedido por pedido (_desp_marcar_enviadas). Antes se
+        # marcaba "enviada" aca, ANTES de mandar nada: con el envio caido por OOM, Despachos decia
+        # enviados 444 y en Shopify faltaban 88 (paquetes_23_11_2026-3).
         try:
             _st = _desp_state(email)
             _n_marc = 0
@@ -16597,9 +16601,11 @@ def _seg_leer_run(job, items, email, tienda, store, hdr):
                 _k = str(_p.get("num") or "").replace("#", "").strip()
                 if not _k or not _p.get("track"):
                     continue
-                if _st.get(_k) != "enviada":
-                    _n_marc += 1
-                _st[_k] = "enviada"
+                _nuevo = "enviada" if _p.get("tn") else "exportada"
+                if _st.get(_k) in ("enviada", _nuevo):
+                    continue                       # nunca se baja un "enviada" (puede ser a mano)
+                _n_marc += 1
+                _st[_k] = _nuevo
             if _n_marc:
                 _desp_save(email, _st)
             _SEG_JOBS[job]["marcados"] = _n_marc
@@ -17591,6 +17597,9 @@ def _wa_mutar_disco(fn) -> bool:
                 except Exception:
                     pass
                 return False
+            finally:
+                disco = None
+                _mem_soltar()
             return True
 
 
@@ -17667,7 +17676,8 @@ def _wa_drenar() -> None:
             except Exception:
                 pass
         try:
-            fs = sorted(_WA_ANOT_DIR.glob("*.json"))[:3000]
+            # con un envío corriendo, las plantillas las vuelca el job al terminar (una escritura)
+            fs = [] if _watchdog_envio_latiendo() else sorted(_WA_ANOT_DIR.glob("*.json"))[:3000]
         except Exception:
             fs = []
         grupos = {}
@@ -17764,6 +17774,10 @@ def _wa_st_flush(forzar=False) -> None:
             return
         # si no entró nada nuevo, los que no encontraron su mensaje se reintentan cada 60 s, no cada 10
         if not forzar and not _WA_ST_HILO["nuevos"] and ahora - _WA_ST_HILO["ult_lectura"] < 60:
+            return
+        # envío de seguimientos corriendo: cada volcado = leer+escribir wa_chats entero (cientos de MB
+        # en RAM). Con 2-3 estados por WhatsApp eso era cada 10 s en cada worker → OOM. Cada 60 s alcanza.
+        if not forzar and ahora - _WA_ST_HILO["ult_lectura"] < 60 and _watchdog_envio_latiendo():
             return
         snap = {em: {k: list(v) for k, v in d.items()} for em, d in _WA_ST_PEND.items() if d}
         _WA_ST_HILO["nuevos"] = 0
@@ -17868,6 +17882,106 @@ def _wa_seg_marcar_varios_seguro(email, nums) -> None:
 
 
 # ---------------------------------- el job ----------------------------------
+_DESP_MARK_LOCK = threading.Lock()
+
+
+def _desp_marcar_enviadas(email, nums) -> int:
+    """Despachos → "enviada" SOLO para los pedidos que la tienda CONFIRMO (env/salt del job)."""
+    ks = [str(n or "").replace("#", "").strip() for n in (nums or [])]
+    ks = [k for k in ks if k]
+    if not (email and ks):
+        return 0
+    with _DESP_MARK_LOCK:
+        with _sege_flock(str(DESP_STATE) + ".lock"):
+            st = _desp_state(email)
+            c = 0
+            for k in ks:
+                if st.get(k) != "enviada":
+                    st[k] = "enviada"
+                    c += 1
+            if c:
+                _desp_save(email, st)
+    if c:
+        try:
+            _desp_cache_invalidar(email)
+        except Exception:
+            pass
+    return c
+
+
+_MEM_TRIM = {"t": 0.0, "libc": None}
+
+
+def _mem_soltar(forzar=False) -> None:
+    """Devuelve al SO la memoria que quedo libre despues de parsear/escribir wa_chats (decenas de MB
+    de JSON → cientos de MB en Python). Sin esto el RSS de cada worker solo sube: el 23-11-2026 la
+    instancia murio por OOM (2 GiB) dos veces en medio del envio de seguimientos."""
+    try:
+        ahora = _time.time()
+        if not forzar and ahora - _MEM_TRIM["t"] < 2:
+            return
+        _MEM_TRIM["t"] = ahora
+        if _MEM_TRIM["libc"] is None:
+            import ctypes
+            _MEM_TRIM["libc"] = ctypes.CDLL("libc.so.6")
+        _MEM_TRIM["libc"].malloc_trim(0)
+    except Exception:
+        _MEM_TRIM["libc"] = False if _MEM_TRIM["libc"] is None else _MEM_TRIM["libc"]
+
+
+_SEGE_AUTO = {"t": 0.0}
+
+
+def _sege_auto_retomar_run() -> None:
+    """Retoma SOLO (sin que nadie mire el modal) un envio que murio sin terminar: OOM, deploy,
+    reinicio. Mismo camino que /pf-despachos-seg-reanudar (candado rlock + chequeo de latido), asi que
+    nunca arrancan dos. Lo ya mandado no se repite (log por pedido) y lo que quedo en vuelo queda EN
+    DUDA. Tope 8 intentos y solo envios cortados hace menos de 30 min."""
+    try:
+        ahora = _time.time()
+        for f in _JOBS_DIR.glob("se*.json"):
+            try:
+                if ahora - f.stat().st_mtime > 1800:
+                    continue
+                job = f.stem
+                if not _sege_jid_ok(job):
+                    continue
+                d = _json.loads(f.read_text(encoding="utf-8"))
+                if d.get("tipo") != "seg-envio" or d.get("listo") or _sege_edad(d) <= _SEGE_MUERTO + 15:
+                    continue
+                if int(d.get("intentos") or 0) >= 8:
+                    continue
+                with _sege_flock(_sege_p(job, "rlock")):
+                    st = _job_get(job)
+                    if not st or st.get("listo") or _sege_edad(st) <= _SEGE_MUERTO + 15:
+                        continue
+                    motivo = _sege_motivo_muerte(st, int(_sege_edad(st)))
+                    st["motivos"] = (list(st.get("motivos") or []) + ["(lo retomó solo el servidor) " + motivo])[-5:]
+                    _SEGE_PARAR.discard(job)
+                    try:
+                        print("[seg-auto] retomo %s: %s" % (job, motivo[:160]), flush=True)
+                    except Exception:
+                        pass
+                    _sege_arrancar(job, st)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+@app.before_request
+def _sege_auto_retomar():
+    """Cada 20 s (por worker) mira si quedo un envio de seguimientos caido y lo retoma en un hilo."""
+    try:
+        ahora = _time.time()
+        if ahora - _SEGE_AUTO["t"] < 20:
+            return
+        _SEGE_AUTO["t"] = ahora
+        threading.Thread(target=_sege_auto_retomar_run, daemon=True, name="seg-auto").start()
+    except Exception:
+        pass
+
+
 def _sege_estado_nuevo(job, email, canal, force, tienda, pedidos) -> dict:
     return {"tipo": "seg-envio", "job": job, "email": email, "canal": canal, "force": bool(force),
             "tienda": tienda, "pedidos": pedidos, "total": len(pedidos), "t0": _time.time(),
@@ -17911,7 +18025,7 @@ def _sege_latir(job, token, stop) -> None:
             _job_put(job, snap)
             _SEGE_LATIDO_FILE.parent.mkdir(parents=True, exist_ok=True)
             _SEGE_LATIDO_FILE.write_text(str(_time.time()), encoding="utf-8")
-            if n_anot and not volc["on"] and (n_anot >= 30 or _time.time() - ult_anot > 15):
+            if n_anot and not volc["on"] and (n_anot >= 600 or _time.time() - ult_anot > 600):
                 volc["on"] = True
                 ult_anot = _time.time()
                 try:
@@ -18097,7 +18211,7 @@ def _sege_run(job, token) -> None:
                     return
                 _correr("tienda", items, lambda p: _sege_tn_uno(ctx, p), 3)   # TN: ~2 req/s, con reintento ante 429
 
-        def _canal_wpp():
+        def _canal_wpp(gate=False):
             items = trabajos.get("wpp") or []
             if not items:
                 return
@@ -18113,24 +18227,62 @@ def _sege_run(job, token) -> None:
                     _res("wpp", p["num"], "salt", None)
                 else:
                     resto.append(p)
-            _correr("wpp", resto, lambda p: _sege_wpp_uno(c, p), 8)
+            if gate:
+                # "Enviar en Todos": el WhatsApp (que dice "tu pedido salió, seguimiento X") sale SOLO
+                # si la tienda CONFIRMÓ ese pedido. Antes iban los dos canales a la vez y por separado:
+                # el 23-11-2026 75 clientes recibieron el WhatsApp con el pedido sin fulfillment en
+                # Shopify. Los no confirmados quedan F con el motivo real → al retomar se reintentan.
+                with _SEGE_LOCK:
+                    conf = set(st["ok"].get("tienda") or [])
+                    mot = {}
+                    for e in (st.get("errores") or []):
+                        if e.get("canal") == "tienda":
+                            mot[str(e.get("num"))] = e.get("msg") or ""
+                lab = "Shopify" if es_shop else "TiendaNube"
+                listos = []
+                for p in resto:
+                    if p["num"] in conf:
+                        listos.append(p)
+                    else:
+                        m = mot.get(p["num"]) or errs_canal.get("tienda") or "no llegó a confirmarse"
+                        _res("wpp", p["num"], "fail", "no mandé el WhatsApp porque %s no confirmó el seguimiento (%s)" % (lab, m))
+                resto = listos
+            _correr("wpp", resto, lambda p: _sege_wpp_uno(c, p), 4)
 
         hilos = []
         errs_canal = {}
-        for cn, fn in (("tienda", _canal_tienda), ("wpp", _canal_wpp)):
-            if cn in canales:
-                def _envolver(cn=cn, fn=fn):
-                    try:
-                        fn()
-                    except Exception as e:
-                        if _sege_apagando():
-                            apagado["v"] = True
-                        else:
-                            errs_canal[cn] = _sege_err(e)
-                h = threading.Thread(target=_envolver, daemon=True, name="seg-" + cn)
-                h.start()
-                hilos.append(h)
-        for h in hilos:                         # tienda y WhatsApp corren A LA VEZ (APIs distintas)
+
+        def _envolver(cn, fn):
+            try:
+                fn()
+            except Exception as e:
+                if _sege_apagando():
+                    apagado["v"] = True
+                else:
+                    errs_canal[cn] = _sege_err(e)
+            finally:
+                if cn == "tienda":
+                    try:                         # Despachos → "enviada" SOLO lo que la tienda confirmó
+                        with _SEGE_LOCK:
+                            _okt = list(st["ok"].get("tienda") or [])
+                        _desp_marcar_enviadas(email, _okt)
+                    except Exception:
+                        pass
+
+        if "tienda" in canales and "wpp" in canales:
+            # PRIMERO la tienda, DESPUÉS el WhatsApp de los confirmados (ver _canal_wpp gate)
+            def _ambos():
+                _envolver("tienda", _canal_tienda)
+                if not (perdido["v"] or apagado["v"] or job in _SEGE_PARAR or _sege_apagando()):
+                    _envolver("wpp", lambda: _canal_wpp(gate=True))
+            hilos.append(threading.Thread(target=_ambos, daemon=True, name="seg-ambos"))
+        elif "tienda" in canales:
+            hilos.append(threading.Thread(target=_envolver, args=("tienda", _canal_tienda), daemon=True, name="seg-tienda"))
+        elif "wpp" in canales:
+            hilos.append(threading.Thread(target=_envolver, args=("wpp", _canal_wpp), daemon=True, name="seg-wpp"))
+        for h in hilos:
+            h.start()
+        for h in hilos:
             h.join()
         try:
             _sege_volcar_anot(job, st)          # también al apagarse o perder el job (antes: return sin volcar)
@@ -33592,6 +33744,7 @@ def _wa_save_chats(d, _pend=True):
                         pass
     except Exception:
         r = False
+    _mem_soltar()
     if r:
         # lo que esta foto traía ya está en disco: desde acá, un nuevo guardado de la MISMA foto (el bot
         # guarda varias veces mientras piensa) aplica solo lo que cambie de ahora en más.
@@ -37499,6 +37652,9 @@ def wa_webhook():
                 pass
     except Exception:
         pass
+    if locals().get("hay_msgs"):              # se leyó wa_chats entero: soltar esa memoria
+        chats = None
+        _mem_soltar()
     return jsonify({"ok": True})
 
 
