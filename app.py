@@ -3745,19 +3745,35 @@ _SOLO_DASH = r"""
   // (medido en los logs de Render). Cada una ocupa un hilo del server esperando. Si ya hay una
   // IGUAL en vuelo devuelvo ESA: cada quien se lleva su propio clone (el body se lee una sola vez).
   var _pfVuelo={};
+  // UN SOLO RAW PARA TODAS LAS TARJETAS (22-11-2026). Ventas y sus chips por canal los pinta el
+  // inyector del pf.html (softRefresh cada 2s) DIRECTO de la respuesta, sin el filtro de arriba;
+  // Facturacion/Ticket/Ganancia los pinta paint() desde _raw, que SI pasa el filtro. A las 22:48
+  // llego un blob de relleno (resumen_vacio: todo en 0, sin be_cpa ni calc_ts) mientras el server
+  // recalculaba: Ventas y los chips quedaron en 0 y Facturacion siguio con $1.854.458 (24 ventas).
+  // Ahora el filtro corre ACA, una vez por respuesta: si ya hay datos reales puestos y lo que llega
+  // no es un calculo real o es mas viejo, al pf.html le llega {ok:true} SIN raw y no repinta nada.
+  // Asi Ventas sale siempre del MISMO raw que Facturacion. Sin _raw todavia, pasa todo como antes.
   window.fetch=function(){ var args=arguments, _u0='';
     try{ _u0=(args[0]&&args[0].url)||args[0]||''; }catch(e){ _u0=''; }
     var _esPer=(typeof _u0==='string' && _u0.indexOf('/pf-periodo')>-1);
-    if(_esPer && _pfVuelo[_u0]) return _pfVuelo[_u0].then(function(r){ return r.clone(); });
-    var p=_of.apply(this,args);
-    if(_esPer){ _pfVuelo[_u0]=p; var _soltar=function(){ try{ delete _pfVuelo[_u0]; }catch(e){} }; p.then(_soltar,_soltar); }
-    try{ var u=_u0;
-      if(typeof u==='string' && u.indexOf('/pf-periodo')>-1){
-        p.then(function(res){ try{ res.clone().json().then(function(j){ var r=(j&&j.raw)||j;
-          if(r && (r.be_cpa!=null || r.be_roas!=null) && _rpMasNuevo(r)){ _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS'; setTimeout(paint,80); setTimeout(paint,450); pedirRecompras(r.desde,r.hasta); } }).catch(function(){}); }catch(e){} });
-      } }catch(e){}
-    if(_esPer) return p.then(function(r){ return r.clone(); });
-    return p; };
+    if(!_esPer) return _of.apply(this,args);
+    if(_pfVuelo[_u0]) return _pfVuelo[_u0].then(function(r){ return r.clone(); });
+    var p=_of.apply(this,args).then(function(res){
+      return res.clone().json().then(function(j){
+        var r=(j&&j.raw)||j;
+        if(r && (r.be_cpa!=null || r.be_roas!=null) && _rpMasNuevo(r)){
+          _raw=r; window.__RP=r; if(r.dolar) window.__RATE=r.dolar; if(!window.__CUR) window.__CUR='ARS';
+          setTimeout(paint,80); setTimeout(paint,450); try{ pedirRecompras(r.desde,r.hasta); }catch(e){}
+          return res;
+        }
+        if(_raw && j && j.raw){
+          try{ return new Response('{"ok":true,"rp_descartado":1}', {status:200, headers:{'Content-Type':'application/json'}}); }catch(e){}
+        }
+        return res;
+      }, function(){ return res; });
+    });
+    _pfVuelo[_u0]=p; var _soltar=function(){ try{ delete _pfVuelo[_u0]; }catch(e){} }; p.then(_soltar,_soltar);
+    return p.then(function(r){ return r.clone(); }); };
   // NO ESPERAR AL REACT. Antes solo interceptabamos el fetch ajeno: los numeros reales aparecian
   // cuando el dashboard de ProfitFlow decidia pedir /pf-periodo, y eso tardaba ~28 segundos. Durante
   // ese rato mostraba SUS numeros, calculados con porcentajes fijos (break even 2.70x, CPA $49.450,
@@ -8868,7 +8884,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-15-sin-cp-aire"})
+    return jsonify({"ok": True, "v": "2026-11-22-ventas-coherente"})
 
 
 _KPI_DBG = {}
@@ -25851,12 +25867,21 @@ def _pf_ttl(hasta, blob=None) -> int:
 
 _LAST_BLOB = DATA_DIR / "last_blob.json"   # ULTIMO dashboard de HOY por usuario -> home() lo inyecta = carga instantanea (estilo Escalafy)
 def _save_last_blob(email, blob):
+    # 22-11-2026: ATOMICO (tmp + replace). Con write_text directo, el que leia justo mientras se
+    # escribia (otro hilo, o el worker nuevo cuando gunicorn recicla) veia el archivo a medio
+    # escribir -> _load_last_blob daba None -> /pf-periodo servia resumen_vacio() (Ventas 0). Y si
+    # el archivo quedaba roto, este mismo read fallaba siempre y no se arreglaba nunca mas.
     try:
         d = {}
-        if _LAST_BLOB.exists():
-            d = _json.loads(_LAST_BLOB.read_text(encoding="utf-8"))
+        try:
+            if _LAST_BLOB.exists():
+                d = _json.loads(_LAST_BLOB.read_text(encoding="utf-8")) or {}
+        except Exception:
+            d = {}
         d[str(email)] = blob
-        _LAST_BLOB.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp = _LAST_BLOB.with_name(_LAST_BLOB.name + ".%d.%d.tmp" % (_os.getpid(), threading.get_ident()))
+        tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_LAST_BLOB)
     except Exception:
         pass
 def _load_last_blob(email):
@@ -25876,6 +25901,17 @@ def _pf_blob_ts(b):
         return 0
 
 
+def _pf_es_periodo(b, desde, hasta):
+    """True si el blob es de ESE periodo (raw.desde/raw.hasta). El snapshot de disco es la foto de
+    HOY: pasada la medianoche es la de AYER, y servirla para otro periodo pinta numeros ajenos con
+    el selector en otra fecha (el front acepta siempre un periodo distinto)."""
+    try:
+        r = (b or {}).get("raw") or {}
+        return r.get("desde") == desde and (r.get("hasta") or r.get("desde")) == hasta
+    except Exception:
+        return False
+
+
 def _pf_mejor(email, blob, desde, hasta, key=None, now=None):
     """Devuelve el blob MAS NUEVO entre el que tiene ESTE worker y el que dejo el otro en disco.
     gunicorn corre 2 workers y _PF_CACHE es memoria de cada uno: cuando uno se queda con un
@@ -25891,7 +25927,7 @@ def _pf_mejor(email, blob, desde, hasta, key=None, now=None):
             _PF_DISCO["email"] = email
             _PF_DISCO["ts"] = _time.time()
         otro = _PF_DISCO["blob"]
-        if otro and _pf_blob_ts(otro) > _pf_blob_ts(blob):
+        if otro and _pf_es_periodo(otro, desde, hasta) and _pf_blob_ts(otro) > _pf_blob_ts(blob):
             if key is not None and now is not None:
                 _PF_CACHE[key] = (now, otro)    # me pongo al dia: dejo de servir el viejo
             return otro
@@ -25937,7 +25973,12 @@ def _pf_periodo_blob(email, desde, hasta, espera=8, solo_fresco=False):
         # CEROS, que es un dato falso en pantalla. Prefiero el ultimo snapshot guardado en disco: es
         # de hace un rato pero es real, y el proximo poll (a los 2s) ya trae el valor fresco.
         try:
-            return _pf_mejor(email, _load_last_blob(email) or _blob_vacio(), desde, hasta, key, now)
+            # 22-11-2026: la foto de disco SOLO si es de este mismo periodo (antes se servia la de HOY
+            # para cualquier rango, y pasada la medianoche la de AYER para hoy)
+            _foto = _load_last_blob(email) if desde == hasta == _hoy() else None
+            if not _pf_es_periodo(_foto, desde, hasta):
+                _foto = None
+            return _pf_mejor(email, _foto or _blob_vacio(), desde, hasta, key, now)
         except Exception:
             return _blob_vacio()
     try:
