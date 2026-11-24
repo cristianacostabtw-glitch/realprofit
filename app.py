@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-23-gasto-cp-farmalab"})
+    return jsonify({"ok": True, "v": "2026-11-23-cp9-noxalab"})
 
 
 _KPI_DBG = {}
@@ -22224,6 +22224,27 @@ _ADS_CUENTAS = {
         "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
         # Cuenta "CP 8" (pertenece a CP3, asignada al usuario del sistema de CP1). USD, agregada el 15-11-2026; pixel LIMPIEZA ANASHEI compartido. El gasto se suma
         # solo si el id tambien esta en META_ACTS_EXTRA (Render): estar aca no alcanza.
+        "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
+        "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
+        "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
+                 "Si venís buscando:\n\n"
+                 "\U0001f525 Recuperar tu energía y llegar a la noche con ganas\n"
+                 "\U0001f4aa Sentirte más fuerte y seguro de vos mismo\n"
+                 "❤️ Apoyar una mejor circulación y vitalidad masculina\n\n"
+                 "...no sos el único.\n\n"
+                 "Miles de hombres ya están sumando NoxaLab a su rutina diaria.\n"
+                 "Solo 1 scoop al día, disuelto en agua.\n"
+                 "Fórmula en polvo con 7 activos y NAD+ liposomal.\n\n"
+                 "\U0001f447 Tocá \"Comprar Ahora\" y descubrí por qué."),
+    },
+    "cp12": {
+        "portfolio": "CP3",
+        "nombre": "CP9", "ad_account": "2153884198547049", "token_env": "META_TOKEN",
+        "page": "1175786222292931", "pixel": "1592535622574011", "ig": "17841415440483313",  # IG @noxalab.ar
+        # Cuenta "CP9" (portfolio CP3 2319467322225445, igual que "CP 8"/cp9), asignada al usuario del
+        # sistema de CP1 con control total. USD, agregada el 23-11-2026. El gasto se suma solo si el
+        # id tambien esta en META_ACTS_EXTRA (Render): estar aca no alcanza. OJO: al 23-11 el pixel
+        # LIMPIEZA ANASHEI todavia NO esta compartido con esta cuenta (el chequeo lo avisa).
         "landing": "https://noxalab-arg.myshopify.com/products/noxalab",
         "titulo": "+10.000 Hombres Usan NoxaLab \U0001f4aa", "subtitulo": "Ultimas unidades", "presupuesto": 35,
         "copy": ("⚡ ¿Sentís que el cuerpo ya no responde como antes?\n\n"
