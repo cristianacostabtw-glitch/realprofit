@@ -2477,7 +2477,7 @@ _SOLO_DASH = r"""
   PLAT.forEach(function(p){
    var right, on=(p.key==='mp'&&mpOn)||(p.key==='shopify'&&shopOn)||(p.key==='meta'&&metaOn)||(p.key==='envialo'&&window._rpEnv)||(p.key==='tn'&&window._rpTn)||(p.key==='meli'&&window._rpMeli)||(p.key==='tiktok'&&window._rpTk)||(p.key==='gads'&&window._rpGa)||(p.key==='redchat'&&window._rpRc);
    if(p.soon){ right='<span style="display:inline-flex;align-items:center;gap:6px;background:#241a10;border:1px solid #4a3a1a;color:#ffb35a;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700">&#128336; Proximamente</span>'; }
-   else if(on){ var du=(p.key==='redchat')?'/desconectar-redchat':(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':(p.key==='gads')?'/desconectar-gads':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; if(p.key==='gads'){ cambiar='<a href="#" onclick="rpGaToggle();return false;" style="'+ds+'">'+(window._rpGaOpen?'Cerrar':'Ver script')+'</a>'; } var etiqCon=(p.key==='redchat'&&window._rpRcInfo&&window._rpRcInfo.cuenta)?('Conectado &middot; '+esc(window._rpRcInfo.cuenta)):(p.key==='gads'&&window._rpGaInfo&&window._rpGaInfo.cuenta&&window._rpGaInfo.cuenta.nombre)?('Conectado &middot; '+esc(window._rpGaInfo.cuenta.nombre)):(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
+   else if(on){ var du=(p.key==='redchat')?'/desconectar-redchat':(p.key==='shopify')?'/desconectar-shopify':(p.key==='meta')?'/desconectar-meta':(p.key==='envialo')?'/desconectar-envialo':(p.key==='tn')?'/desconectar-tiendanube':(p.key==='meli')?'/desconectar-meli':(p.key==='tiktok')?'/desconectar-tiktok':(p.key==='gads')?'/desconectar-gads':'/desconectar-mp'; var cambiar=(p.key==='mp')?'<a href="#" onclick="rpMpSwitchOpen();return false;" style="'+ds+'">&#128260; Cambiar cuenta</a>':''; if(p.key==='gads'){ cambiar='<a href="#" onclick="rpGaToggle();return false;" style="'+ds+'">'+(window._rpGaOpen?'Cerrar':'Ver script')+'</a>'; } if(p.key==='meli'){ cambiar='<a href="/meli?clonar=1" onclick="window.location.assign(\'/meli?clonar=1\');return false;" style="'+ds+'">+ Agregar otra cuenta</a>'; } var etiqCon=(p.key==='redchat'&&window._rpRcInfo&&window._rpRcInfo.cuenta)?('Conectado &middot; '+esc(window._rpRcInfo.cuenta)):(p.key==='gads'&&window._rpGaInfo&&window._rpGaInfo.cuenta&&window._rpGaInfo.cuenta.nombre)?('Conectado &middot; '+esc(window._rpGaInfo.cuenta.nombre)):(p.key==='meli'&&window._rpMeliNick)?('Conectado &middot; '+esc(window._rpMeliNick)):(p.key==='mp'&&window._rpMpNick)?('Conectado &middot; '+esc(window._rpMpNick)):'Conectado'; right=chip(etiqCon,'#34d399','#0e2a1c','#17492f')+cambiar+'<a href="'+du+'" onclick="window.location.assign(\''+du+'\');return false;" style="'+ds+'">Desconectar</a>'; }
    else { var b;
     if(p.key==='mp'){ b='<a href="/conectar-mp" onclick="window.location.assign(\'/conectar-mp\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
     else if(p.key==='meli'){ b='<a href="/conectar-meli" onclick="window.location.assign(\'/conectar-meli\');return false;" style="'+bs+'">&#9889; Conectar</a>'; }
@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas"})
+    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas2"})
 
 
 _KPI_DBG = {}
@@ -31866,7 +31866,7 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--acc);cursor:point
 <script>
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
-var CONN=false, NICK='', SEL='etiquetas';
+var CONN=false, NICK='', SEL=(/[?&]clonar=1/.test(location.search)?'clonar':'etiquetas');
 var _STKN=null;
 // SOLO lo que se usa. Pedido de Cristian (14-10-2026): el resto de las secciones no las
 // toca nunca y ademas costaban plata en velocidad — "Stock pendiente" disparaba
@@ -31888,7 +31888,8 @@ var FEATURES=[
  {k:'etiquetas',ic:IC_ETQ,t:'Etiquetas + SKU',d:'Tildá las ventas a despachar y bajá las etiquetas ya estampadas con el SKU (potes) y la hoja PARA EMPAQUETAR.',soon:false,nocon:true},
  {k:'skuetq',ic:IC_SKUE,t:'SKU de etiquetas',d:'Esto es lo que se estampa en cada etiqueta de MercadoLibre y en la hoja PARA EMPAQUETAR.',soon:false},
  {k:'ventas',ic:IC_VTA,t:'Ventas',d:'Tus órdenes de Mercado Libre: comprador, unidades, total y estado.',soon:false},
- {k:'stocksync',ic:IC_STK,t:'Stock y sincronización',d:'El stock de tu tienda y el de Mercado Libre, emparejados por SKU. Mirá las diferencias y sincronizá.',soon:false}
+ {k:'stocksync',ic:IC_STK,t:'Stock y sincronización',d:'El stock de tu tienda y el de Mercado Libre, emparejados por SKU. Mirá las diferencias y sincronizá.',soon:false},
+ {k:'clonar',ic:IC_ML,t:'Otras cuentas y traspaso',d:'Agregá otra cuenta de Mercado Libre (la principal no cambia) y pasá publicaciones de una a otra con las mismas cuotas y la misma configuración.',soon:false}
 ];
 function renderSide(){
  var s=document.getElementById('side');
@@ -31902,6 +31903,7 @@ function renderInteg(){
    : '<span class="soon" style="background:#3a1220;color:#ff8ba3">SIN CONECTAR</span>';
  var pie = CONN
    ? '<div style="padding:3px 13px 0;font-size:11px;color:#5b6b82">'+esc(NICK||'')+' &middot; <a href="/desconectar-meli" style="color:#7aa2c8">Desconectar</a></div>'
+     +'<div style="padding:6px 13px 0"><a href="#" onclick="sel(\'clonar\');return false;" style="color:#9fd0ff;font-size:11.5px;font-weight:700">+ Agregar otra cuenta</a></div>'
    : '<div style="padding:3px 13px 0"><a href="/conectar-meli" style="color:#9fd0ff;font-size:11.5px;font-weight:700">\u26a1 Conectar Mercado Libre</a></div>';
  return '<div class="gr" style="margin-top:16px">Integraciones</div>'
   +'<div class="it" style="cursor:default"><span class="ic">'+IC_ML+'</span><span>Mercado Libre</span>'+chip+'</div>'+pie;
