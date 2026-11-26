@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas2"})
+    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas3"})
 
 
 _KPI_DBG = {}
@@ -29529,16 +29529,29 @@ def _meli_items_full(tok, uid, con_desc=True):
         if len(lote) < 100 or offset >= total or offset >= 2000:
             break
     items = []
+    import time as _tt
     for i in range(0, len(ids), 20):
-        try:
-            rr = requests.get("%s/items" % MELI_API, headers=h,
-                              params={"ids": ",".join(ids[i:i + 20])}, timeout=30)
-            arr = rr.json() if rr.content else []
-        except Exception:
-            arr = []
+        arr, codigo = None, None
+        for intento in range(4):
+            try:
+                rr = requests.get("%s/items" % MELI_API, headers=h,
+                                  params={"ids": ",".join(ids[i:i + 20])}, timeout=30)
+                codigo = rr.status_code
+                arr = rr.json() if rr.content else []
+            except Exception as e:
+                arr = {"message": "%s: %s" % (type(e).__name__, str(e)[:120])}
+            if isinstance(arr, list):
+                break
+            _tt.sleep(1.5 * (intento + 1))      # 429 u otro error de ML: esperar y reintentar
+        if not isinstance(arr, list):
+            # nada de saltear en silencio: una lista incompleta se clonaria a medias
+            raise RuntimeError("Mercado Libre contesto error al leer las publicaciones (HTTP %s): %s"
+                               % (codigo, _json.dumps(arr, ensure_ascii=False)[:300]))
         for wrap in arr:
+            if not isinstance(wrap, dict):
+                continue
             b = wrap.get("body") or {}
-            if b.get("id"):
+            if isinstance(b, dict) and b.get("id"):
                 items.append(b)
     if con_desc:
         for b in items:
@@ -30073,7 +30086,10 @@ def meli_publicaciones_ventas():
     tok, uid = _meli_ctx(_cl)
     if not tok or not uid:
         return jsonify({"ok": False, "msg": "Mercado Libre no conectado"})
-    filas = [_meli_fila(b) for b in _meli_items_full(tok, uid, con_desc=False)]
+    try:
+        filas = [_meli_fila(b) for b in _meli_items_full(tok, uid, con_desc=False)]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "%s: %s" % (type(e).__name__, str(e)[:400])})
     filas.sort(key=lambda x: -(x["vendidas"] or 0))
     con = [f for f in filas if (f["vendidas"] or 0) >= 1]
     return jsonify({"ok": True, "total": len(filas), "con_ventas": len(con),
