@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-envio"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-fixbe"})
 
 
 _KPI_DBG = {}
@@ -27519,8 +27519,11 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
     r = blob["raw"]
     _F = _IVA_F_CMP    # COMPRAS: el IVA que le cobran a el (21%), contenido en el precio
-    _fact = (r.get("facturado", 0.0) or 0.0) - (r.get("meli_mono_fact", 0.0) or 0.0)
-    _iva_deb = _fact * _IVA_F_VTA    # VENTAS: 21% contenido en la facturacion (ver IVA_VENTAS_PCT)
+    _fact = r.get("facturado", 0.0) or 0.0
+    # OJO: _fact se usa MAS ABAJO para el margen y el break even (facturacion TOTAL). El debito de
+    # IVA va sin las ventas MONOTRIBUTO (NX), en su propia variable. (27-11: haber pisado _fact
+    # restaba NX dos veces a la tienda y el break even CPA cayo de ~39.000 a 24.102.)
+    _iva_deb = (_fact - (r.get("meli_mono_fact", 0.0) or 0.0)) * _IVA_F_VTA    # VENTAS: 21% contenido en la facturacion (ver IVA_VENTAS_PCT)
     # OJO con la comisión de MercadoLibre: _meli_resumen deja mp_costo_real en 0 y la pone en
     # meli_comision, así que si sólo se mira mp_costo_real el crédito de MELI se pierde. Esa
     # comisión (cargo por vender + costo de cuotas) trae el IVA adentro igual que la de MP.
