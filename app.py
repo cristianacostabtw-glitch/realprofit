@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas4"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-multi"})
 
 
 _KPI_DBG = {}
@@ -19251,6 +19251,50 @@ def _meli_resumen(email, desde, hasta):
         _MELI_ULT_ERROR = "no hay token de MercadoLibre conectado"
         return None
     _MELI_ULT_ERROR = ""
+    # VARIAS CUENTAS (27-11-2026, pedido de Cristian: "que se vea lo de las dos cuentas"): ademas
+    # de la principal se suman las cuentas AGREGADAS (/meli/cuentas). Las agregadas son
+    # MONOTRIBUTO (VISIONPURE_ARGENTINA = NoxaLab NX): sus ventas no generan debito de IVA y sus
+    # costos/comisiones no dan credito (ver meli_mono_fact / meli_mono_cred en el bloque de IVA).
+    # Solo desde ML_MULTI_DESDE, para no cambiar el historico ya cerrado.
+    _ctas_ml = [{"clave": email, "user_id": uid, "principal": True, "nick": ""}]
+    try:
+        for _c in (_meli_cuentas(email) or []):
+            if not _c.get("principal") and str(_c.get("user_id")) != str(uid):
+                _ctas_ml.append(_c)
+    except Exception:
+        pass
+    ordenes_ml = []
+    for _cta in _ctas_ml:
+        _desde_c = desde
+        if not _cta["principal"]:
+            if str(hasta)[:10] < ML_MULTI_DESDE:
+                continue
+            _desde_c = max(str(desde)[:10], ML_MULTI_DESDE)
+            _tk_c = _meli_token(_cta["clave"])
+            if not _tk_c or not _cta.get("user_id"):
+                continue
+            _res_c = _meli_ordenes_cuenta(_tk_c, _cta["user_id"], _desde_c, hasta)
+            if _res_c is None:
+                _MELI_ULT_ERROR = "no pude leer las ventas de la cuenta %s" % (_cta.get("nick") or _cta["clave"])
+                continue
+            for _o in _res_c:
+                _o["_rp_mono"] = True
+            ordenes_ml += _res_c
+            continue
+        h = {"Authorization": "Bearer " + tok}
+        _res_p = _meli_ordenes_cuenta(tok, uid, desde, hasta, _err=True)
+        if _res_p is None:
+            return None
+        ordenes_ml += _res_p
+    return _meli_resumen_de(email, desde, hasta, ordenes_ml)
+
+
+ML_MULTI_DESDE = "2026-11-26"
+
+
+def _meli_ordenes_cuenta(tok, uid, desde, hasta, _err=False):
+    """Todas las ordenes de UNA cuenta de ML en el periodo (paginado). None si la API fallo."""
+    global _MELI_ULT_ERROR
     h = {"Authorization": "Bearer " + tok}
     ordenes_ml = []
     # PAGINADO: el tope estaba en 8 paginas = 400 ordenes POR PERIODO. Para un dia sobra, pero al
@@ -19271,6 +19315,8 @@ def _meli_resumen(email, desde, hasta):
                 "order.date_created.from": desde + "T00:00:00.000-03:00",
                 "order.date_created.to": hasta + "T23:59:59.000-03:00"})
             if rr.status_code >= 400:
+                if not _err:
+                    return None
                 # OJO: un error de la API NO es "no vendio nada". Cortando aca el dia quedaba
                 # con MELI en CERO y, como la pauta de MELI se lee por otra via (la API de
                 # facturacion) y esa SI entra, el canal mostraba una perdida inventada: el
@@ -19288,6 +19334,10 @@ def _meli_resumen(email, desde, hasta):
                 break
     except Exception:
         return None
+    return ordenes_ml
+
+
+def _meli_resumen_de(email, desde, hasta, ordenes_ml):
     costos = (_costos().get(email) or {})
     # PAGOS DE MP DE LAS VENTAS DE MELI. El sale_fee que informa ML es SOLO "cargos de Mercado
     # Libre" (cargo por vender + costo de cuotas). MercadoPago le saca dos cosas mas a la misma
@@ -19310,9 +19360,12 @@ def _meli_resumen(email, desde, hasta):
     unidades = ordenes = sin_costo = 0
     oper_negro = 0     # ventas con el fulfillment en negro ($800 justos, por su fecha)
     prodmap, ords_list = {}, []
+    fact_mono = cred_mono = 0.0
+    neto_mono = 0.0
     for o in ordenes_ml:
         if (o.get("status") or "").lower() != "paid":
             continue
+        _cp_antes = costo_prod
         ordenes += 1
         if _ful_sin_iva(_oper_dia_pedido(o.get("date_created"), desde, hasta)):
             oper_negro += 1
@@ -19361,7 +19414,11 @@ def _meli_resumen(email, desde, hasta):
                 envio_real += 1
         envio_ml += _env_o
         ret_ml += _ret_o
-        ords_list.append({"num": str(o.get("id") or ""), "origen": "MercadoLibre",
+        if o.get("_rp_mono"):
+            fact_mono += tot
+            cred_mono += (costo_prod - _cp_antes) + com_orden
+            neto_mono += tot - com_orden - _env_o - _ret_o
+        ords_list.append({"num": str(o.get("id") or ""), "origen": "MercadoLibre" + (" NX" if o.get("_rp_mono") else ""),
                           "estado": "Pagado", "fecha": (o.get("date_created") or ""),
                           "total": round(tot, 2),
                           "neto": round(tot - com_orden - _env_o - _ret_o, 2)})
@@ -19427,6 +19484,9 @@ def _meli_resumen(email, desde, hasta):
     r["meli_neto"] = round(fact - comis_ml - envio_ml - ret_ml - adelanto_monto, 2)
     r["meli_sin_costo"] = sin_costo
     r["meli_adelanto"] = round(adelanto_monto, 2)
+    # Monotributo (cuentas agregadas): lo que NO entra al IVA. El adelanto de esas ventas tampoco.
+    r["meli_mono_fact"] = round(fact_mono, 2)
+    r["meli_mono_cred"] = round(cred_mono + neto_mono * MELI_ADELANTO_PCT / 100.0, 2)
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
             for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
     ords_list.sort(key=lambda x: x.get("fecha") or "", reverse=True)
@@ -19881,6 +19941,7 @@ def _combinar_resumen(a, b):
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
                    "meli_envio", "meli_retenciones", "meli_cargo_envio",
+           "meli_mono_fact", "meli_mono_cred",
            "iva_ebook", "mp_ebook", "perc_ebook", "impuesto_ganancias"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
@@ -26877,6 +26938,8 @@ def _pf_dia_clave(email, dia) -> str:
     # CP2 deja de sumar desde el 10-11 (META_ACTS_FUERA_DESDE): esos dias se recalculan una vez.
     if str(dia)[:10] >= "2026-11-10":
         ck += "|cp2x|ivaeb"
+    if str(dia)[:10] >= ML_MULTI_DESDE:
+        ck += "|mlmulti"
         try:
             if _impul_ordenes(email):
                 ck += "|gan%g|ret1" % EBOOK_GANANCIAS_PCT     # 21-11: Ganancias 5% + retencion IIBB una sola vez
@@ -27331,7 +27394,7 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # IVA (Responsable Inscripto): débito 21% de la fact, crédito de producto+envío+comisiones.
     r = blob["raw"]
     _F = _IVA_F_CMP    # COMPRAS: el IVA que le cobran a el (21%), contenido en el precio
-    _fact = r.get("facturado", 0.0) or 0.0
+    _fact = (r.get("facturado", 0.0) or 0.0) - (r.get("meli_mono_fact", 0.0) or 0.0)
     _iva_deb = _fact * _IVA_F_VTA    # VENTAS: 21% contenido en la facturacion (ver IVA_VENTAS_PCT)
     # OJO con la comisión de MercadoLibre: _meli_resumen deja mp_costo_real en 0 y la pone en
     # meli_comision, así que si sólo se mira mp_costo_real el crédito de MELI se pierde. Esa
@@ -27354,7 +27417,8 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
                  + (r.get("mp_costo_real", 0) or 0) \
                  + (r.get("meli_comision", 0) or 0) \
                  + (r.get("meli_adelanto", 0) or 0) \
-                 + (r.get("publi_meli", 0) or 0)
+                 + (r.get("publi_meli", 0) or 0) \
+                 - (r.get("meli_mono_cred", 0) or 0)
     # La PERCEPCION de IVA se suma ENTERA, no dividida por 1,21: ya es IVA, no un precio que lo
     # contiene. La RETENCION de IIBB no entra aca: es otro impuesto (ver la nota en IIBB_PCT).
     _iva_cred = _base_cred * _F + (r.get("percep_iva", 0) or 0)
