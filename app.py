@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-multi2"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-selector"})
 
 
 _KPI_DBG = {}
@@ -19246,7 +19246,7 @@ def _meli_resumen(email, desde, hasta):
       - costo de producto: por SKU (meli:X2-POTE). Si no esta cargado queda en 0 y se cuenta
         en meli_sin_costo, en vez de inventar un numero."""
     global _MELI_ULT_ERROR
-    tok, uid = _meli_ctx(email)
+    tok, uid = _meli_ctx(email, activa=False)
     if not tok or not uid:
         _MELI_ULT_ERROR = "no hay token de MercadoLibre conectado"
         return None
@@ -29411,8 +29411,11 @@ def meli_callback():
 def meli_estado():
     email = _user_actual()
     d = (_meli_tokens().get(email) if email else None) or {}
+    _cl = _meli_cuenta_activa(email) if email else None
+    _da = (_meli_tokens().get(_cl) or {}) if _cl else d
     return jsonify({"ok": True, "conectado": bool(d.get("access_token")),
-                    "nickname": d.get("nickname", ""), "user_id": d.get("user_id")})
+                    "nickname": _da.get("nickname", ""), "user_id": _da.get("user_id"),
+                    "activa": _cl or (email or ""), "es_principal": not _cl})
 
 
 @app.get("/desconectar-meli")
@@ -29551,9 +29554,7 @@ def meli_ventas():
     email = _user_actual()
     if not email:
         return jsonify({"ok": False, "ventas": []})
-    tok = _meli_token(email)
-    d = _meli_tokens().get(email) or {}
-    uid = d.get("user_id")
+    tok, uid = _meli_ctx(email)
     if not tok or not uid:
         return jsonify({"ok": False, "msg": "Mercado Libre no conectado", "ventas": []})
     try:
@@ -29587,11 +29588,51 @@ def meli_ventas():
     return jsonify({"ok": True, "ventas": out, "total": (j.get("paging") or {}).get("total")})
 
 
-def _meli_ctx(email):
-    """(token, user_id) del ML conectado, o (None, None)."""
+def _meli_cuenta_activa(email):
+    """Cuenta de ML elegida en el selector de la seccion MercadoLibre (cookie rp_meli_cta).
+    Solo vale DENTRO de la seccion (/meli y /meli/...): el Dashboard, los resumenes y los
+    procesos de fondo siempre usan la principal. None = la principal."""
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return None
+        pth = request.path or ""
+        if not (pth == "/meli" or pth.startswith("/meli/")):
+            return None
+        cl = _meli_clave_de(email, request.cookies.get("rp_meli_cta") or "")
+        return cl if cl and cl != email else None
+    except Exception:
+        return None
+
+
+def _meli_ctx(email, activa=True):
+    """(token, user_id) del ML conectado, o (None, None). Con activa=True, dentro de la seccion
+    MercadoLibre devuelve la cuenta elegida en el selector (etiquetas, ventas, publicaciones, stock)."""
+    if activa:
+        _cl = _meli_cuenta_activa(email)
+        if _cl:
+            _tk = _meli_token(_cl)
+            _dd = _meli_tokens().get(_cl) or {}
+            if _tk and _dd.get("user_id"):
+                return _tk, _dd.get("user_id")
     tok = _meli_token(email)
     d = _meli_tokens().get(email) or {}
     return tok, d.get("user_id")
+
+
+@app.get("/meli/cuenta-activa")
+def meli_cuenta_activa_set():
+    """Elige con que cuenta de ML trabaja la seccion MercadoLibre (cookie). Vacio = principal."""
+    email = _user_actual()
+    if not email:
+        return redirect("/login")
+    cl = _meli_clave_de(email, request.args.get("clave") or "")
+    resp = redirect("/meli")
+    if cl and cl != email:
+        resp.set_cookie("rp_meli_cta", cl, max_age=60 * 60 * 24 * 90, httponly=True, samesite="Lax", secure=True)
+    else:
+        resp.delete_cookie("rp_meli_cta")
+    return resp
 
 
 @app.get("/meli/prep-ver")
@@ -32015,7 +32056,7 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--acc);cursor:point
 <script>
 function esc(s){var d=document.createElement('div');d.textContent=(s==null?'':''+s);return d.innerHTML;}
 function money(n){ n=Math.round(Number(n)||0); return '$'+n.toLocaleString('es-AR'); }
-var CONN=false, NICK='', SEL=(/[?&]clonar=1/.test(location.search)?'clonar':'etiquetas');
+var CONN=false, NICK='', ACTIVA='', CTAS_ALL=[], SEL=(/[?&]clonar=1/.test(location.search)?'clonar':'etiquetas');
 var _STKN=null;
 // SOLO lo que se usa. Pedido de Cristian (14-10-2026): el resto de las secciones no las
 // toca nunca y ademas costaban plata en velocidad — "Stock pendiente" disparaba
@@ -32051,7 +32092,11 @@ function renderInteg(){
    ? '<span class="soon" style="background:#0e2a1c;color:#34d399">CONECTADA</span>'
    : '<span class="soon" style="background:#3a1220;color:#ff8ba3">SIN CONECTAR</span>';
  var pie = CONN
-   ? '<div style="padding:3px 13px 0;font-size:11px;color:#5b6b82">'+esc(NICK||'')+' &middot; <a href="/desconectar-meli" style="color:#7aa2c8">Desconectar</a></div>'
+   ? (CTAS_ALL.length>1
+      ? '<div style="padding:6px 13px 0"><div style="font-size:10.5px;color:#5b6b82;margin-bottom:4px">Trabajando con la cuenta</div><select onchange="location=\'/meli/cuenta-activa?clave=\'+encodeURIComponent(this.value)" style="width:100%;background:#0f1726;color:#e2e8f0;border:1px solid #2a3a5c;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:700">'
+        +CTAS_ALL.map(function(c){ return '<option value="'+esc(c.clave)+'"'+(c.clave===ACTIVA?' selected':'')+'>'+esc(c.nick)+(c.principal?' (principal)':'')+'</option>'; }).join('')+'</select></div>'
+      : '')
+     +'<div style="padding:3px 13px 0;font-size:11px;color:#5b6b82">'+esc(NICK||'')+' &middot; <a href="/desconectar-meli" style="color:#7aa2c8">Desconectar</a></div>'
      +'<div style="padding:6px 13px 0"><a href="#" onclick="sel(\'clonar\');return false;" style="color:#9fd0ff;font-size:11.5px;font-weight:700">+ Agregar otra cuenta</a></div>'
    : '<div style="padding:3px 13px 0"><a href="/conectar-meli" style="color:#9fd0ff;font-size:11.5px;font-weight:700">\u26a1 Conectar Mercado Libre</a></div>';
  return '<div class="gr" style="margin-top:16px">Integraciones</div>'
@@ -33185,7 +33230,8 @@ function ssErrores(res){
    return esc(x.id)+': '+esc(x.msg||'error'); }).join('<br>')+'</div>' : '';
 }
 function boot(){ renderSide(); renderMain();
- fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||'';
+ fetch('/meli/cuentas').then(function(r){return r.json();}).then(function(j){ CTAS_ALL=(j&&j.cuentas)||[]; renderSide(); }).catch(function(){});
+ fetch('/meli/estado').then(function(r){return r.json();}).then(function(s){ s=s||{}; CONN=!!s.conectado; NICK=s.nickname||''; ACTIVA=s.activa||'';
   var e=document.getElementById('estado'); if(CONN){ e.className='chip on'; e.textContent='✓ Conectado'+(NICK?(' · '+NICK):''); } else { e.className='chip off'; e.textContent='No conectado'; }
   renderSide(); renderMain();
   // Ya no se pide /meli/stock-esperando al abrir: esa seccion no esta mas y la llamada
