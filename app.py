@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-multi"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-multi2"})
 
 
 _KPI_DBG = {}
@@ -19277,8 +19277,13 @@ def _meli_resumen(email, desde, hasta):
             if _res_c is None:
                 _MELI_ULT_ERROR = "no pude leer las ventas de la cuenta %s" % (_cta.get("nick") or _cta["clave"])
                 continue
+            _pg_c = _mp_pagos_con_token(_tk_c, _desde_c, hasta)
             for _o in _res_c:
                 _o["_rp_mono"] = True
+                if _pg_c:
+                    _pm_c = _pg_c.get(str(_o.get("id") or ""))
+                    if _pm_c:
+                        _o["_rp_pago"] = _pm_c
             ordenes_ml += _res_c
             continue
         h = {"Authorization": "Bearer " + tok}
@@ -19290,6 +19295,70 @@ def _meli_resumen(email, desde, hasta):
 
 
 ML_MULTI_DESDE = "2026-11-26"
+_MP_TK_ULT = {}   # clave/estado de la ultima lectura de pagos con token de ML (para /meli/mp-prueba)
+
+
+def _mp_pagos_con_token(tok, desde, hasta):
+    """Pagos aprobados de MercadoPago leidos con el token de ML de una cuenta AGREGADA (el MP de
+    ese usuario es la misma cuenta). {ref_orden_ml: {cargos, ret}}. None si MP no acepta el token."""
+    try:
+        h2 = (_dt.date.fromisoformat(str(hasta)[:10]) + _dt.timedelta(days=4)).isoformat()
+    except Exception:
+        h2 = hasta
+    out, off = {}, 0
+    try:
+        for _ in range(40):
+            r = requests.get("https://api.mercadopago.com/v1/payments/search",
+                             headers={"Authorization": "Bearer " + tok},
+                             params={"sort": "date_approved", "criteria": "desc", "range": "date_approved",
+                                     "begin_date": str(desde)[:10] + "T00:00:00.000-03:00",
+                                     "end_date": h2 + "T23:59:59.999-03:00", "status": "approved",
+                                     "offset": off, "limit": 100}, timeout=30)
+            _MP_TK_ULT["status"] = r.status_code
+            if r.status_code >= 400:
+                _MP_TK_ULT["error"] = (r.text or "")[:200]
+                return None
+            res = (r.json() or {}).get("results") or []
+            for p in res:
+                ref = str(p.get("external_reference") or (p.get("order") or {}).get("id") or "").strip()
+                _ret, _cargos = 0.0, {}
+                for _c in (p.get("charges_details") or []):
+                    _nm = str(_c.get("name") or "")
+                    _am = float(((_c.get("amounts") or {}).get("original")) or _c.get("amount") or 0)
+                    _cargos[_nm] = round(_cargos.get(_nm, 0.0) + _am, 2)
+                    if "payer" in _nm:
+                        continue
+                    if _c.get("type") == "tax" or _nm.startswith("tax_withholding") or "iibb" in _nm.lower():
+                        _ret += _am
+                if ref:
+                    out[ref] = {"cargos": _cargos, "ret": round(_ret, 2)}
+            off += 100
+            if len(res) < 100:
+                break
+    except Exception as e:
+        _MP_TK_ULT["error"] = str(e)[:200]
+        return None
+    _MP_TK_ULT["pagos"] = len(out)
+    return out
+
+
+@app.get("/meli/mp-prueba")
+def meli_mp_prueba():
+    """Prueba si MercadoPago acepta el token de ML de cada cuenta agregada (solo lectura)."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    res = []
+    hoy = _hoy()
+    for c in (_meli_cuentas(email) or []):
+        if c.get("principal"):
+            continue
+        tk = _meli_token(c["clave"])
+        _MP_TK_ULT.clear()
+        pg = _mp_pagos_con_token(tk, hoy, hoy) if tk else None
+        res.append({"cuenta": c.get("nick"), "lee_pagos": pg is not None, "pagos_hoy": len(pg or {}),
+                    "status": _MP_TK_ULT.get("status"), "error": _MP_TK_ULT.get("error", "")})
+    return jsonify({"ok": True, "cuentas": res})
 
 
 def _meli_ordenes_cuenta(tok, uid, desde, hasta, _err=False):
@@ -19403,7 +19472,7 @@ def _meli_resumen_de(email, desde, hasta, ordenes_ml):
         # que la ganancia del dashboard CAMBIARA entre dos lecturas del mismo periodo.
         # ENVIO y RETENCIONES de ESTA venta, del pago real de MercadoPago.
         _env_o = _ret_o = 0.0
-        _pm = _pg_ml.get(str(o.get("id") or ""))
+        _pm = o.get("_rp_pago") or _pg_ml.get(str(o.get("id") or ""))
         if _pm:
             for _nm, _am in (_pm.get("cargos") or {}).items():
                 _n = str(_nm).lower()
