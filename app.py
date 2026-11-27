@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-selector"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-ivacanal"})
 
 
 _KPI_DBG = {}
@@ -19342,6 +19342,55 @@ def _mp_pagos_con_token(tok, desde, hasta):
     return out
 
 
+@app.get("/meli/nx-detalle")
+def meli_nx_detalle():
+    """AUDITORIA (solo lectura): desglose real de cada venta de las cuentas agregadas en un dia:
+    orden de ML (total, sale_fee, envio/logistica) + pago de MP (monto, neto recibido, fee_details,
+    charges_details). Sin datos del comprador."""
+    email = _user_actual()
+    if not email:
+        return jsonify({"ok": False}), 401
+    dia = (request.args.get("dia") or _hoy())[:10]
+    out = []
+    for c in (_meli_cuentas(email) or []):
+        if c.get("principal"):
+            continue
+        tk = _meli_token(c["clave"])
+        if not tk:
+            continue
+        ords = _meli_ordenes_cuenta(tk, c["user_id"], dia, dia) or []
+        h = {"Authorization": "Bearer " + tk}
+        for o in ords:
+            it = []
+            for x in (o.get("order_items") or []):
+                itm = x.get("item") or {}
+                it.append({"titulo": (itm.get("title") or "")[:60], "sku": itm.get("seller_sku") or itm.get("seller_custom_field"),
+                           "q": x.get("quantity"), "precio": x.get("unit_price"), "sale_fee": x.get("sale_fee"),
+                           "listing": x.get("listing_type_id")})
+            pagos = []
+            for pg in (o.get("payments") or []):
+                pid = pg.get("id")
+                d = {}
+                try:
+                    rr = requests.get("https://api.mercadopago.com/v1/payments/%s" % pid, headers=h, timeout=20)
+                    d = rr.json() if rr.status_code < 400 else {"error": rr.status_code}
+                except Exception as e:
+                    d = {"error": str(e)[:80]}
+                pagos.append({"id": pid, "status": d.get("status"), "monto": d.get("transaction_amount"),
+                              "neto": (d.get("transaction_details") or {}).get("net_received_amount"),
+                              "envio_pagado_comprador": pg.get("shipping_cost"),
+                              "fee_details": d.get("fee_details"),
+                              "charges": [{"n": ch.get("name"), "t": ch.get("type"),
+                                           "a": (ch.get("amounts") or {}).get("original"),
+                                           "acc": ch.get("accounts")} for ch in (d.get("charges_details") or [])],
+                              "error": d.get("error")})
+            shp = o.get("shipping") or {}
+            out.append({"cuenta": c.get("nick"), "orden": o.get("id"), "estado": o.get("status"),
+                        "total": o.get("total_amount"), "pagado": o.get("paid_amount"),
+                        "envio_id": shp.get("id"), "items": it, "pagos": pagos})
+    return jsonify({"ok": True, "dia": dia, "ventas": out})
+
+
 @app.get("/meli/mp-prueba")
 def meli_mp_prueba():
     """Prueba si MercadoPago acepta el token de ML de cada cuenta agregada (solo lectura)."""
@@ -27578,13 +27627,17 @@ def _pf_periodo_calcular(email, desde, hasta, key, now):
     # ganancia total: sobraba justo el IVA a pagar (medido 26-09-2026: $ 737.675 contra
     # $ 453.380). Los dos canales tienen que cerrar contra el total, siempre.
     try:
-        _ml_f2 = float(r.get("meli_facturado", 0) or 0)
+        # Las cuentas MONOTRIBUTO (NX) no llevan IVA: se sacan del debito y del credito del canal,
+        # igual que en el IVA total. Sin esto el bloque MercadoLibre le restaba IVA a NX (27-11:
+        # margen 31,9% en vez de ~42%).
+        _ml_f2 = float(r.get("meli_facturado", 0) or 0) - float(r.get("meli_mono_fact", 0) or 0)
         _ml_deb = _ml_f2 * _IVA_F_VTA        # tambien son ventas suyas: 21%
         # MELI no tiene envío propio ni comisión de MercadoPago ni 0,6% de tienda
         # El adelanto de ML viene con IVA adentro. Las retenciones y el cargo por envio NO.
         _ml_cred = ((r.get("meli_costo", 0) or 0) + (r.get("meli_comision", 0) or 0)
                     + (r.get("meli_adelanto", 0) or 0)
-                    + (r.get("publi_meli", 0) or 0)) * _F
+                    + (r.get("publi_meli", 0) or 0)
+                    - (r.get("meli_mono_cred", 0) or 0)) * _F
         _ml_iva = _ml_deb - _ml_cred
         r["ml_iva_total"] = round(_ml_deb, 2)
         r["ml_iva_favor"] = round(_ml_cred, 2)
