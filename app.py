@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-fixbe"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-audit"})
 
 
 _KPI_DBG = {}
@@ -19259,7 +19259,8 @@ def _meli_resumen(email, desde, hasta):
     _ctas_ml = [{"clave": email, "user_id": uid, "principal": True, "nick": ""}]
     try:
         for _c in (_meli_cuentas(email) or []):
-            if not _c.get("principal") and str(_c.get("user_id")) != str(uid):
+            if (not _c.get("principal") and str(_c.get("user_id")) != str(uid)
+                    and not str(_c.get("clave") or "").endswith("#destino")):   # destino de clonado: no suma
                 _ctas_ml.append(_c)
     except Exception:
         pass
@@ -19272,12 +19273,16 @@ def _meli_resumen(email, desde, hasta):
             _desde_c = max(str(desde)[:10], ML_MULTI_DESDE)
             _tk_c = _meli_token(_cta["clave"])
             if not _tk_c or not _cta.get("user_id"):
+                _canal_fallo("meli")           # sin token: el dia NO se graba como completo
                 continue
             _res_c = _meli_ordenes_cuenta(_tk_c, _cta["user_id"], _desde_c, hasta)
             if _res_c is None:
                 _MELI_ULT_ERROR = "no pude leer las ventas de la cuenta %s" % (_cta.get("nick") or _cta["clave"])
+                _canal_fallo("meli")
                 continue
             _pg_c = _mp_pagos_con_token(_tk_c, _desde_c, hasta)
+            if _pg_c is None and _res_c:
+                _canal_fallo("mp")             # sin pagos de MP: envio/retenciones faltarian
             for _o in _res_c:
                 _o["_rp_mono"] = True
                 if _pg_c:
@@ -27063,13 +27068,14 @@ def _pf_dia_clave(email, dia) -> str:
     # CP2 deja de sumar desde el 10-11 (META_ACTS_FUERA_DESDE): esos dias se recalculan una vez.
     if str(dia)[:10] >= "2026-11-10":
         ck += "|cp2x|ivaeb"
-    if str(dia)[:10] >= ML_MULTI_DESDE:
-        ck += "|mlmulti|mlenv"
         try:
             if _impul_ordenes(email):
                 ck += "|gan%g|ret1" % EBOOK_GANANCIAS_PCT     # 21-11: Ganancias 5% + retencion IIBB una sola vez
         except Exception:
             pass       # ivaeb: ebooks con IVA entero e IIBB 3,5% (11-11-2026)          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
+    # MELI multi-cuenta (27-11): los dias desde ML_MULTI_DESDE se recalculan una vez.
+    if str(dia)[:10] >= ML_MULTI_DESDE:
+        ck += "|mlmulti|mlenv"
     return ck
 
 
@@ -28410,12 +28416,14 @@ def _imp_cred_oper(r) -> float:
              + float(r.get("mp_costo_real", 0) or 0)
              + float(r.get("meli_comision", 0) or 0)
              + float(r.get("meli_adelanto", 0) or 0)
-             + float(r.get("publi_meli", 0) or 0))
+             + float(r.get("publi_meli", 0) or 0)
+             - float(r.get("meli_mono_cred", 0) or 0))     # NX monotributo: sin credito
     return _base * _IVA_F_CMP
 
 
 _IMP_SERIE_CAMPOS = ("facturado", "ordenes", "costo_prod", "envio_monto", "oper_monto",
-                     "mp_costo_real", "meli_comision", "meli_adelanto", "oper_monto_sin_iva")
+                     "mp_costo_real", "meli_comision", "meli_adelanto", "oper_monto_sin_iva",
+                     "meli_mono_fact", "meli_mono_cred")
 
 
 def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
@@ -28477,7 +28485,7 @@ def _imp_serie(email, d1, hasta, raw_tot, conf_ri):
     fa = da = ca = 0.0
     for f, v in dias:
         ri = _imp_es_ri(conf_ri, f)
-        deb = v["facturado"] * _IVA_F_VTA if ri else 0.0
+        deb = (v["facturado"] - v.get("meli_mono_fact", 0.0)) * _IVA_F_VTA if ri else 0.0   # NX sin debito
         cred = _imp_cred_oper(v) if ri else 0.0
         fa += v["facturado"]
         da += deb
