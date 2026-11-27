@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas3"})
+    return jsonify({"ok": True, "v": "2026-11-26-meli-cuentas4"})
 
 
 _KPI_DBG = {}
@@ -32012,8 +32012,8 @@ function cargarClonar(origen){
    +'<label style="font-size:12.5px;color:#9db4cf">Stock a publicar <input id="clonstk" placeholder="igual que ahora" style="width:130px;background:#0b1220;border:1px solid #23304a;color:#e6eefc;border-radius:8px;padding:6px 9px;font-size:12.5px"></label>'
    +'<label style="font-size:12.5px;color:#9db4cf"><input type="checkbox" id="clonpau" checked> Crearlas <b>pausadas</b> (las revis\u00e1s y las activ\u00e1s vos)</label></div>';
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:13px">'
-   +'<button id="clonb1" onclick="clonCorrer(false)" style="background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer">\U0001f9ea Probar sin publicar</button>'
-   +'<button id="clonb2" onclick="clonCorrer(true)" style="background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer">\U0001f4e4 Publicar en la otra cuenta</button></div>';
+   +'<button id="clonb1" onclick="clonCorrer(false)" style="background:#1f2937;border:1px solid #334155;color:#e2e8f0;border-radius:10px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer">🧪 Probar sin publicar</button>'
+   +'<button id="clonb2" onclick="clonCorrer(true)" style="background:#14532d;border:1px solid #1f6b3c;color:#d9f9e4;border-radius:10px;padding:10px 16px;font-size:12.5px;font-weight:800;cursor:pointer">📤 Publicar en la otra cuenta</button></div>';
   h+='<div id="clonres" style="margin-top:14px"></div>';
   c.innerHTML=h;
  }).catch(function(ex){ c.innerHTML=err({msg:ex.message}); });
