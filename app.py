@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-audit"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-audit2"})
 
 
 _KPI_DBG = {}
@@ -19285,10 +19285,11 @@ def _meli_resumen(email, desde, hasta):
                 _canal_fallo("mp")             # sin pagos de MP: envio/retenciones faltarian
             for _o in _res_c:
                 _o["_rp_mono"] = True
-                if _pg_c:
-                    _pm_c = _pg_c.get(str(_o.get("id") or ""))
-                    if _pm_c:
-                        _o["_rp_pago"] = _pm_c
+                _pm_c = (_pg_c or {}).get(str(_o.get("id") or ""))
+                if _pm_c:
+                    _o["_rp_pago"] = _pm_c
+                elif _pg_c is not None and str(_o.get("status") or "") == "paid":
+                    _canal_fallo("mp")         # venta paga sin su pago de MP: envio/retenciones faltarian
             ordenes_ml += _res_c
             continue
         h = {"Authorization": "Bearer " + tok}
@@ -19336,7 +19337,14 @@ def _mp_pagos_con_token(tok, desde, hasta):
                     if _c.get("type") == "tax" or _nm.startswith("tax_withholding") or "iibb" in _nm.lower():
                         _ret += _am
                 if ref:
-                    out[ref] = {"cargos": _cargos, "ret": round(_ret, 2)}
+                    _prev = out.get(ref)
+                    if _prev and str(p.get("id") or "") not in _prev["ids"]:   # orden pagada con 2 medios: se SUMAN
+                        for _nm, _am in _cargos.items():
+                            _prev["cargos"][_nm] = round(_prev["cargos"].get(_nm, 0.0) + _am, 2)
+                        _prev["ret"] = round(_prev["ret"] + _ret, 2)
+                        _prev["ids"].append(str(p.get("id") or ""))
+                    elif not _prev:
+                        out[ref] = {"cargos": _cargos, "ret": round(_ret, 2), "ids": [str(p.get("id") or "")]}
             off += 100
             if len(res) < 100:
                 break
@@ -19484,7 +19492,7 @@ def _meli_resumen_de(email, desde, hasta, ordenes_ml):
     oper_negro = 0     # ventas con el fulfillment en negro ($800 justos, por su fecha)
     prodmap, ords_list = {}, []
     fact_mono = cred_mono = 0.0
-    neto_mono = 0.0
+    neto_mono = ret_mono = 0.0
     for o in ordenes_ml:
         if (o.get("status") or "").lower() != "paid":
             continue
@@ -19538,7 +19546,8 @@ def _meli_resumen_de(email, desde, hasta, ordenes_ml):
             # el envio de mas (27-11, NX orden 2000019809748312: shp 14.440,90, el comprador pago
             # 4.850,90, costo real 9.590 = el neto de MP). Solo desde ML_MULTI_DESDE.
             if str(o.get("date_created") or "")[:10] >= ML_MULTI_DESDE:
-                _env_comp = sum(float(_pg.get("shipping_cost") or 0) for _pg in (o.get("payments") or []))
+                _env_comp = sum(float(_pg.get("shipping_cost") or 0) for _pg in (o.get("payments") or [])
+                                if str(_pg.get("status") or "approved") == "approved")
                 _env_o = max(0.0, _env_o - _env_comp)
             if _env_o:
                 envio_real += 1
@@ -19548,6 +19557,7 @@ def _meli_resumen_de(email, desde, hasta, ordenes_ml):
             fact_mono += tot
             cred_mono += (costo_prod - _cp_antes) + com_orden
             neto_mono += tot - com_orden - _env_o - _ret_o
+            ret_mono += _ret_o
         ords_list.append({"num": str(o.get("id") or ""), "origen": "MercadoLibre" + (" NX" if o.get("_rp_mono") else ""),
                           "estado": "Pagado", "fecha": (o.get("date_created") or ""),
                           "total": round(tot, 2),
@@ -19616,6 +19626,7 @@ def _meli_resumen_de(email, desde, hasta, ordenes_ml):
     r["meli_adelanto"] = round(adelanto_monto, 2)
     # Monotributo (cuentas agregadas): lo que NO entra al IVA. El adelanto de esas ventas tampoco.
     r["meli_mono_fact"] = round(fact_mono, 2)
+    r["meli_mono_ret"] = round(ret_mono, 2)
     r["meli_mono_cred"] = round(cred_mono + neto_mono * MELI_ADELANTO_PCT / 100.0, 2)
     prod = [{"nombre": k, "unidades": v, "facturado": 0.0}
             for k, v in sorted(prodmap.items(), key=lambda x: -x[1])[:10]]
@@ -20071,7 +20082,7 @@ def _combinar_resumen(a, b):
            "meli_ventas", "meli_unidades", "meli_facturado", "meli_cobrado",
            "meli_comision", "meli_costo", "meli_ganancia", "meli_sin_costo", "meli_adelanto",
                    "meli_envio", "meli_retenciones", "meli_cargo_envio",
-           "meli_mono_fact", "meli_mono_cred",
+           "meli_mono_fact", "meli_mono_cred", "meli_mono_ret",
            "iva_ebook", "mp_ebook", "perc_ebook", "impuesto_ganancias"]
     for k in SUM:
         r[k] = round((ra.get(k) or 0) + (rb.get(k) or 0), 2)
@@ -23407,6 +23418,8 @@ def _fin_datos_dia(email, f) -> dict:
         ml_fact = float(mraw.get("meli_facturado") or mraw.get("facturado") or 0)
         ml_limpio = float(mraw.get("meli_cobrado") or mraw.get("cobrado") or 0)
         ml_iibb = float(mraw.get("iibb_monto") or 0)
+        if getattr(_SHOP_ESTADO, "fallo", None):   # 27-11: NX (cuenta agregada) o su MP fallo
+            raise RuntimeError("MELI/MP de una cuenta agregada sin respuesta")
     except Exception:
         if _meli_tokens().get(email):      # MELI conectado y fallo: no se escribe la fila a medias
             raise RuntimeError("MercadoLibre no respondio para %s: no escribo la fila" % d)
@@ -27075,7 +27088,7 @@ def _pf_dia_clave(email, dia) -> str:
             pass       # ivaeb: ebooks con IVA entero e IIBB 3,5% (11-11-2026)          # mp3: la version mp2 (02-11 16:29) dejaba pedidos sin su pago de MP
     # MELI multi-cuenta (27-11): los dias desde ML_MULTI_DESDE se recalculan una vez.
     if str(dia)[:10] >= ML_MULTI_DESDE:
-        ck += "|mlmulti|mlenv"
+        ck += "|mlmulti2|mlenv"
     return ck
 
 
@@ -28680,10 +28693,11 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
                        "computa_ext": bool(conf.get("computa_ext"))}   # informativo: NUNCA resta
     # ---- IIBB ----
     base = conf.get("iibb_base") if conf.get("iibb_base") in ("neto", "bruto") else "neto"
-    fact = float(raw.get("facturado", 0) or 0)
+    _mono_f = float(raw.get("meli_mono_fact", 0) or 0)       # NX (otro CUIT, monotributo): fuera de esta tarjeta
+    fact = float(raw.get("facturado", 0) or 0) - _mono_f
     pct_txt = ("%g" % IIBB_PCT).replace(".", ",")
     if base == "bruto":
-        dev = float(raw.get("iibb_monto", 0) or 0)
+        dev = float(raw.get("iibb_monto", 0) or 0) - _mono_f * IIBB_PCT / 100.0
         lab_iibb = "%s%% sobre lo facturado con IVA" % pct_txt
     else:
         # Base neta = lo facturado SIN el IVA debito. Solo lo vendido siendo RI lleva IVA adentro:
@@ -28694,11 +28708,12 @@ def _imp_resumen(email, mes, con_serie=False) -> dict:
         neto_ri = 0.0
         if not iva.get("no_aplica"):
             neto_ri = (float(raw_iva.get("facturado", 0) or 0)
+                       - float(raw_iva.get("meli_mono_fact", 0) or 0)
                        - float(raw_iva.get("reemb_monto", 0) or 0))
         dev = ((neto_tot - neto_ri) + neto_ri / (1.0 + IVA_VENTAS_PCT / 100.0)) * IIBB_PCT / 100.0
         lab_iibb = ("%s%% sobre lo facturado (monotributo: sin IVA que descontar)" % pct_txt
                     if iva.get("no_aplica") else "%s%% sobre lo facturado sin IVA" % pct_txt)
-    ret_mp = float(raw.get("retenciones_mp", 0) or 0)
+    ret_mp = float(raw.get("retenciones_mp", 0) or 0) - float(raw.get("meli_mono_ret", 0) or 0)
     ret = ret_mp + perc_iibb_g
     iibb = {"base": base, "pct": IIBB_PCT, "devengado": round(dev, 2), "retenido_mp": round(ret_mp, 2),
             "percep_gastos": round(perc_iibb_g, 2), "retenido": round(ret, 2),
