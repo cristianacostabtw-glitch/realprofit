@@ -8899,7 +8899,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-ivacanal"})
+    return jsonify({"ok": True, "v": "2026-11-27-meli-envio"})
 
 
 _KPI_DBG = {}
@@ -19528,6 +19528,13 @@ def _meli_resumen_de(email, desde, hasta, ordenes_ml):
                 if _n.startswith("shp") or "shipping" in _n:
                     _env_o += float(_am or 0)
             _ret_o = float(_pm.get("ret") or 0)
+            # La parte del envio que PAGO EL COMPRADOR (payments[].shipping_cost) MercadoPago te la
+            # devuelve en el neto: el shp_dropoff viene por el costo ENTERO. Sin restarla se contaba
+            # el envio de mas (27-11, NX orden 2000019809748312: shp 14.440,90, el comprador pago
+            # 4.850,90, costo real 9.590 = el neto de MP). Solo desde ML_MULTI_DESDE.
+            if str(o.get("date_created") or "")[:10] >= ML_MULTI_DESDE:
+                _env_comp = sum(float(_pg.get("shipping_cost") or 0) for _pg in (o.get("payments") or []))
+                _env_o = max(0.0, _env_o - _env_comp)
             if _env_o:
                 envio_real += 1
         envio_ml += _env_o
@@ -27057,7 +27064,7 @@ def _pf_dia_clave(email, dia) -> str:
     if str(dia)[:10] >= "2026-11-10":
         ck += "|cp2x|ivaeb"
     if str(dia)[:10] >= ML_MULTI_DESDE:
-        ck += "|mlmulti"
+        ck += "|mlmulti|mlenv"
         try:
             if _impul_ordenes(email):
                 ck += "|gan%g|ret1" % EBOOK_GANANCIAS_PCT     # 21-11: Ganancias 5% + retencion IIBB una sola vez
