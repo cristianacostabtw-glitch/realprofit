@@ -8900,7 +8900,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-mlclave"})
+    return jsonify({"ok": True, "v": "2026-11-27-pixelcp3"})
 
 
 _KPI_DBG = {}
@@ -20802,7 +20802,8 @@ _MARCA_CP3_SUBIR = {"id": "gulab+visionpure",
                     "paginas": _MARCA_GULAB["paginas"] + _MARCA_VISIONPURE["paginas"],
                     "dominios": _MARCA_GULAB["dominios"] + _MARCA_VISIONPURE["dominios"],
                     "igs": _MARCA_GULAB["igs"] + _MARCA_VISIONPURE["igs"],
-                    "pixels": _MARCA_GULAB["pixels"]}   # ARRASCAETA ya esta en Gulab
+                    # 27-11 (Cristian): + "11 09 se me para se me mueve" (creado hoy en CP 3, compartido con CP US)
+                    "pixels": _MARCA_GULAB["pixels"] + ["2342096006640948"]}   # ARRASCAETA ya esta en Gulab
 # 23-11-2026 (Cristian): "tiene que tomar el gasto de la CP asignada que tiene". El GASTO del
 # dashboard de esta cuenta es la CP ENTERA (todas sus campañas), sin filtrar por marca. Con el
 # filtro Gulab el 23-11 sumaba solo "22-11 CBO TEST COCO ACEITIN" (US$21,95 = $38.794) y dejaba
