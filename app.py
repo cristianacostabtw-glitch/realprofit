@@ -8900,7 +8900,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-surfeo2"})
+    return jsonify({"ok": True, "v": "2026-11-27-surfeo3"})
 
 
 _KPI_DBG = {}
@@ -44133,6 +44133,7 @@ def _surf_correr(slot, forzar=False):
             return {"ok": True, "msg": "apagado"}
         hoy = _surf_ahora().strftime("%Y-%m-%d")
         dia = d.setdefault("dias", {}).setdefault(hoy, {"ents": {}, "log": [], "hechos": []})
+        dia.setdefault("ents", {}); dia.setdefault("log", []); dia.setdefault("hechos", [])
         if slot in dia["hechos"] and not forzar:
             return {"ok": True, "msg": "ya corrio"}
         c = _surf_conf(d)
