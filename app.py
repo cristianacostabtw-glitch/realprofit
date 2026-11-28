@@ -8900,7 +8900,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-surfeo3"})
+    return jsonify({"ok": True, "v": "2026-11-27-mlclave"})
 
 
 _KPI_DBG = {}
@@ -27090,6 +27090,14 @@ def _pf_dia_clave(email, dia) -> str:
     # MELI multi-cuenta (27-11): los dias desde ML_MULTI_DESDE se recalculan una vez.
     if str(dia)[:10] >= ML_MULTI_DESDE:
         ck += "|mlmulti2|mlenv"
+        # 27-11: las cuentas de ML conectadas son parte de la clave. Si se conecta o se desconecta
+        # una (paso: farmalab quedo con VISIONPURE_ARGENTINA conectada por error), los dias se recalculan.
+        try:
+            _uids = sorted(str(c.get("user_id") or "") for c in (_meli_cuentas(email) or [])
+                           if not str(c.get("clave") or "").endswith("#destino"))
+            ck += "|mlu" + (",".join(_uids) or "0")
+        except Exception:
+            pass
     return ck
 
 
