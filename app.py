@@ -384,7 +384,7 @@ SOLO_ADMIN = [
 
 # Rutas que puede tocar cualquiera que este logueado (la app no arranca sin esto).
 _LIBRES = ("/login", "/logout", "/registro", "/pf-version", "/static", "/favicon", "/rp",
-           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/", "/escaner", "/mcp/")
+           "/wa-webhook", "/wa-web-hook", "/c/", "/seguimiento/", "/s/", "/escaner", "/mcp/", "/surf-tick")
 
 
 def _seccion_de(path):
@@ -8900,7 +8900,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-surfeo"})
+    return jsonify({"ok": True, "v": "2026-11-27-surfeo2"})
 
 
 _KPI_DBG = {}
@@ -43949,6 +43949,7 @@ def _stub(_ruta):
 # MODO: "prueba" (default) solo anota lo que haria; "real" cambia presupuestos; "apagado" no corre.
 SURF_FILE = DATA_DIR / "surfeo.json"
 SURF_LOCK = DATA_DIR / "surfeo.lock"
+SURF_HIST = DATA_DIR / "surfeo_historial.jsonl"     # TODO lo que hizo el surfeo, para siempre (una linea por evento)
 SURF_SLOTS = ("11:00", "12:30", "14:00", "15:30", "17:00", "18:30", "20:00", "21:30")
 SURF_RESET = "22:30"
 SURF_VENTANA_MIN = 80                 # una revision atrasada (reinicio) todavia corre hasta 80 min despues
@@ -43980,6 +43981,17 @@ def _surf_guardar(d):
     tmp = SURF_FILE.with_suffix(".tmp")
     tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
     tmp.replace(SURF_FILE)
+
+
+def _surf_hist(ev):
+    try:
+        ev = dict(ev)
+        ev.setdefault("fecha", _surf_ahora().strftime("%Y-%m-%d"))
+        ev.setdefault("hora", _surf_ahora().strftime("%H:%M"))
+        with open(SURF_HIST, "a", encoding="utf-8") as f:
+            f.write(_json.dumps(ev, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 def _surf_conf(d):
@@ -44139,6 +44151,8 @@ def _surf_correr(slot, forzar=False):
                 if e["id"] in excl:
                     continue
                 st = dia["ents"].setdefault(e["id"], {"base": e["budget"], "cur": e["budget"]})
+                if slot != "manual" and slot in (st.get("slots") or []):
+                    continue                         # ya se aplico en esta revision (corrida anterior cortada)
                 if modo == "real" and e["budget"] != st["cur"]:
                     st["cur"] = e["budget"]          # alguien lo cambio a mano: se respeta
                     if not st.get("subas"):
@@ -44163,6 +44177,7 @@ def _surf_correr(slot, forzar=False):
                             j = r.json() if r.content else {}
                             if r.status_code >= 400 or j.get("error"):
                                 fila["error"] = ((j.get("error") or {}).get("message") or str(r.status_code))[:160]
+                                _surf_hist(dict(fila, evento="error"))
                                 res.append(fila)
                                 continue
                         except Exception as ex:
@@ -44173,6 +44188,12 @@ def _surf_correr(slot, forzar=False):
                     if slot == SURF_RESET:
                         st.update({"subas": [], "compras_ult_suba": None, "tramos_hechos": [], "ult_bajada": None})
                     dia["log"].append(fila)
+                    if slot != "manual":
+                        _surf_hist(dict(fila, evento="cambio"))
+                if slot != "manual":
+                    st.setdefault("slots", []).append(slot)
+                    if modo == "real" and fila.get("a") is not None:
+                        _surf_guardar(d)             # cada cambio real queda guardado en el momento
                 res.append(fila)
         dia["hechos"].append(slot)
         dia.setdefault("revisiones", []).append({"slot": slot, "hora": _surf_ahora().strftime("%H:%M"),
@@ -44186,30 +44207,57 @@ def _surf_correr(slot, forzar=False):
         lk.close()
 
 
-def _surf_loop():
-    import time as _t
-    _t.sleep(90)
-    while True:
-        try:
-            ah = _surf_ahora()
-            hhmm = ah.strftime("%H:%M")
-            d = _surf_leer()
-            if (d.get("modo") or "prueba") != "apagado":
-                hechos = ((d.get("dias") or {}).get(ah.strftime("%Y-%m-%d")) or {}).get("hechos") or []
-                for s in SURF_SLOTS + (SURF_RESET,):
-                    h, m = map(int, s.split(":"))
-                    ini = ah.replace(hour=h, minute=m, second=0, microsecond=0)
-                    if s not in hechos and ini <= ah < ini + _dt.timedelta(minutes=SURF_VENTANA_MIN):
-                        if s != SURF_RESET and hhmm >= SURF_RESET:
-                            continue
-                        _surf_correr(s)
-                        break
-        except Exception:
-            pass
-        _t.sleep(60)
+def _surf_tick():
+    """Corre la revision que toque ahora (si no corrio). Devuelve el resultado o None."""
+    ah = _surf_ahora()
+    hhmm = ah.strftime("%H:%M")
+    d = _surf_leer()
+    if (d.get("modo") or "prueba") == "apagado":
+        return None
+    hechos = ((d.get("dias") or {}).get(ah.strftime("%Y-%m-%d")) or {}).get("hechos") or []
+    for s in SURF_SLOTS + (SURF_RESET,):
+        h, m = map(int, s.split(":"))
+        ini = ah.replace(hour=h, minute=m, second=0, microsecond=0)
+        if s not in hechos and ini <= ah < ini + _dt.timedelta(minutes=SURF_VENTANA_MIN):
+            if s != SURF_RESET and hhmm >= SURF_RESET:
+                continue
+            return _surf_correr(s)
+    return None
 
 
-threading.Thread(target=_surf_loop, daemon=True).start()
+_SURF_TICK = {"t": 0.0}
+
+
+def _surf_tick_seguro():
+    try:
+        _surf_tick()
+    except Exception as ex:
+        _surf_hist({"evento": "error_tick", "error": str(ex)[:200]})
+
+
+@app.before_request
+def _surf_tick_hook():
+    """Con preload_app los hilos que nacen al importar no viven en los workers: el surfeo se dispara
+    desde los requests (cada 60 s por worker, en un hilo) y desde GitHub Actions (/surf-tick)."""
+    try:
+        ahora = _time.time()
+        if ahora - _SURF_TICK["t"] < 60:
+            return
+        _SURF_TICK["t"] = ahora
+        threading.Thread(target=_surf_tick_seguro, daemon=True, name="surfeo").start()
+    except Exception:
+        pass
+
+
+@app.get("/surf-tick")
+def surf_tick_ep():
+    """Lo llama GitHub Actions cada 10 min. Solo corre la revision programada que toque (idempotente)."""
+    try:
+        r = _surf_tick()
+    except Exception as ex:
+        _surf_hist({"evento": "error_tick", "error": str(ex)[:200]})
+        return jsonify({"ok": False, "error": str(ex)[:200]})
+    return jsonify({"ok": True, "corrio": (r or {}).get("slot"), "modo": (r or {}).get("modo")})
 
 
 def _surf_es_dueno():
@@ -44242,10 +44290,12 @@ def pf_surfeo_modo():
     lk = _surf_lock()
     try:
         d = _surf_leer()
+        antes = d.get("modo") or "prueba"
         d["modo"] = m
         _surf_guardar(d)
     finally:
         lk.close()
+    _surf_hist({"evento": "modo", "motivo": "modo %s -> %s" % (antes, m), "quien": _user_actual()})
     return jsonify({"ok": True, "modo": m})
 
 
@@ -44266,7 +44316,55 @@ def pf_surfeo_excluir():
         _surf_guardar(d)
     finally:
         lk.close()
+    _surf_hist({"evento": "excluir", "id": eid, "motivo": ("vuelve a entrar" if sacar else "excluida del surfeo"),
+                "quien": _user_actual()})
     return jsonify({"ok": True, "excluir": sorted(ex)})
+
+
+def _surf_hist_leer(dias=30):
+    desde = (_surf_ahora() - _dt.timedelta(days=dias)).strftime("%Y-%m-%d")
+    out = []
+    try:
+        with open(SURF_HIST, encoding="utf-8") as f:
+            for ln in f:
+                try:
+                    ev = _json.loads(ln)
+                except Exception:
+                    continue
+                if str(ev.get("fecha") or "") >= desde:
+                    out.append(ev)
+    except FileNotFoundError:
+        pass
+    return out
+
+
+@app.get("/pf-surfeo/historial")
+def pf_surfeo_historial():
+    if not _surf_es_dueno():
+        return jsonify({"ok": False}), 403
+    try:
+        dias = max(1, min(365, int(request.args.get("dias") or 30)))
+    except Exception:
+        dias = 30
+    return jsonify({"ok": True, "eventos": _surf_hist_leer(dias)})
+
+
+@app.get("/pf-surfeo/historial.csv")
+def pf_surfeo_historial_csv():
+    if not _surf_es_dueno():
+        return Response("solo el administrador", status=403)
+    import csv as _csv
+    import io as _io
+    buf = _io.StringIO()
+    cols = ["fecha", "hora", "evento", "slot", "modo", "cuenta", "tipo", "id", "nombre", "compras", "gasto",
+            "roas", "cpa", "de", "a", "motivo", "error", "quien"]
+    w = _csv.writer(buf, delimiter=";")
+    w.writerow(cols)
+    for ev in _surf_hist_leer(365):
+        w.writerow([("" if ev.get(c) is None else str(ev.get(c)).replace(".", ",") if c in (
+            "gasto", "roas", "cpa", "de", "a") else ev.get(c)) for c in cols])
+    return Response("\ufeff" + buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=surfeo_historial.csv"})
 
 
 @app.post("/pf-surfeo/correr")
@@ -44321,6 +44419,7 @@ th{color:#94a3b8;font-weight:600}.up{color:#22c55e;font-weight:700}.dn{color:#f9
 <div class="card"><b>Revisiones de hoy</b><div id="slots"></div></div>
 <div class="card"><b>Cambios de hoy</b><div id="cambios"></div></div>
 <div class="card"><b>Última revisión (todas las campañas y conjuntos)</b><div id="ult"></div></div>
+<div class="card"><b>Historial (últimos 30 días)</b> · <a href="/pf-surfeo/historial.csv" style="color:#38bdf8">Bajar en Excel (CSV)</a><div id="hist"></div></div>
 <script>
 function $(s){return document.querySelector(s)}
 function f(n){return n==null?'—':(Math.round(n*100)/100).toLocaleString('es-AR')}
@@ -44341,7 +44440,13 @@ document.querySelectorAll('[data-m]').forEach(function(b){b.onclick=function(){
 $('#ya').onclick=function(){$('#ult').innerHTML='<div class="sub">Revisando todas las cuentas…</div>';
  fetch('/pf-surfeo/correr',{method:'POST'}).then(r=>r.json()).then(function(j){$('#ult').innerHTML='<div class="sub">Ahora (prueba, no cambió nada)</div>'+tabla(j.filas||[]);});};
 function excl(id){if(!confirm('¿Excluir '+id+' del surfeo?'))return;fetch('/pf-surfeo/excluir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(cargar);}
-cargar();setInterval(cargar,60000);
+function hist(){fetch('/pf-surfeo/historial?dias=30').then(r=>r.json()).then(function(j){var ev=(j.eventos||[]).slice().reverse();
+ if(!ev.length){$('#hist').innerHTML='<div class="sub">Todavía no hay nada.</div>';return;}
+ var h='<table><tr><th>Fecha</th><th>Hora</th><th>Qué</th><th>Cuenta</th><th>Campaña / conjunto</th><th>Compras</th><th>ROAS</th><th>Costo USD</th><th>Presupuesto</th><th>Motivo</th><th>Modo</th></tr>';
+ ev.forEach(function(r){var cl=(r.a==null||r.de==null)?'':(r.a>r.de?'up':'dn');
+  h+='<tr><td>'+(r.fecha||'')+'</td><td>'+(r.hora||'')+'</td><td>'+(r.evento||'')+'</td><td>'+(r.cuenta||'')+'</td><td>'+(r.nombre||r.id||'')+'</td><td>'+(r.compras==null?'':r.compras)+'</td><td>'+(r.roas==null?'':f(r.roas))+'</td><td>'+(r.cpa==null?'':f(r.cpa))+'</td><td>'+(r.de==null?'':(f(r.de)+(r.a==null?'':' → <span class="'+cl+'">'+f(r.a)+'</span>')))+'</td><td>'+(r.error?'<span class="err">'+r.error+'</span>':(r.motivo||''))+'</td><td>'+(r.modo||'')+'</td></tr>';});
+ $('#hist').innerHTML=h+'</table>';});}
+cargar();hist();setInterval(function(){cargar();hist();},60000);
 </script></body></html>"""
 
 
