@@ -367,6 +367,7 @@ SECCIONES = {
 # aunque escriba la URL. Va aparte de SECCIONES a proposito: si estuviera solo "fuera de la lista"
 # el guardia las dejaria pasar (las rutas sin seccion se permiten, porque son el armazon de la app).
 SOLO_ADMIN = [
+    "/pf-surfeo",
     "/pf-cps", "/impultienda/importar",
     "/pf-periodo", "/pf-ventas", "/pf-ordenes", "/pf-orden", "/pf-recompras", "/pf-marketing",
     "/pf-mp-", "/pf-opciones", "/pf-cfg", "/pf-diag", "/pf-debug-ordenes", "/pf-debug-meli", "/pf-botify",
@@ -8899,7 +8900,7 @@ def pf_recompras():
 @app.get("/pf-version")
 def pf_version():
     """Marcador de versión (sin login) para confirmar que el deploy está fresco."""
-    return jsonify({"ok": True, "v": "2026-11-27-meli-audit2"})
+    return jsonify({"ok": True, "v": "2026-11-27-surfeo"})
 
 
 _KPI_DBG = {}
@@ -43934,6 +43935,414 @@ def pf_desp_logistica():
 @app.route("/<path:_ruta>", methods=["GET", "POST"])
 def _stub(_ruta):
     return jsonify({"ok": True})
+
+
+
+# ===================== SURFEO DE PRESUPUESTO (27-11-2026) =====================
+# Reglas de Cristian (version NoxaLab, cuentas en USD). 8 revisiones por dia con datos de HOY:
+#   SUBIR (costo por compra < USD 12): 2 compras y ROAS > 4 -> +20% | 3+ compras y ROAS >= 3 (primera
+#   suba) -> +40% | cada compra nueva desde la ultima suba con ROAS >= 3 -> +40%. Una accion por revision.
+#   BAJAR (solo lo subido hoy): ROAS < 3 -> se saca la ultima suba | ROAS >= 3 y costo 14,5-17 -> -15%,
+#   17-20 -> -20%, > 20 -> -30% (una bajada por tramo desde la ultima suba). Nunca debajo del inicial.
+#   VOLVER: compra nueva + el costo mejora de tramo sin bajar de 12 -> se deshace la ultima bajada.
+#   22:30 todo vuelve al presupuesto con el que arranco el dia. La puja no se toca, no se pausa nada.
+# MODO: "prueba" (default) solo anota lo que haria; "real" cambia presupuestos; "apagado" no corre.
+SURF_FILE = DATA_DIR / "surfeo.json"
+SURF_LOCK = DATA_DIR / "surfeo.lock"
+SURF_SLOTS = ("11:00", "12:30", "14:00", "15:30", "17:00", "18:30", "20:00", "21:30")
+SURF_RESET = "22:30"
+SURF_VENTANA_MIN = 80                 # una revision atrasada (reinicio) todavia corre hasta 80 min despues
+SURF_CUENTAS_DEF = ["cp1", "cp3", "cp4", "cp5", "cp6", "cp7", "cp8", "cp9", "cp12"]   # NoxaLab
+SURF_CFG_DEF = {"cpa_sube": 12.0, "roas_min": 3.0, "roas_2": 4.0, "suba_2": 20, "suba_3": 40,
+                "tramos": [[14.5, 17.0, 15], [17.0, 20.0, 20], [20.0, 1e9, 30]]}
+_SURF_COMPRA = ("omni_purchase", "purchase", "offsite_conversion.fb_pixel_purchase")
+
+
+def _surf_ahora():
+    return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=-3)))
+
+
+def _surf_lock():
+    import fcntl
+    f = open(SURF_LOCK, "a+")
+    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+    return f
+
+
+def _surf_leer():
+    try:
+        return _json.loads(SURF_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _surf_guardar(d):
+    tmp = SURF_FILE.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(SURF_FILE)
+
+
+def _surf_conf(d):
+    c = dict(SURF_CFG_DEF)
+    c.update(d.get("cfg") or {})
+    return c
+
+
+def _surf_acc(a, tipo):
+    """Compras o valor de compra de una fila de insights (sin sumar dos veces el mismo evento)."""
+    lst = a.get(tipo) or []
+    for t in _SURF_COMPRA:
+        for x in lst:
+            if x.get("action_type") == t:
+                return float(x.get("value") or 0)
+    return 0.0
+
+
+def _surf_get(url, params):
+    out = []
+    for _ in range(20):
+        j = requests.get(url, params=params, timeout=40).json()
+        if j.get("error"):
+            raise RuntimeError((j["error"].get("message") or "error de Meta")[:200])
+        out += j.get("data") or []
+        nxt = (j.get("paging") or {}).get("next")
+        if not nxt:
+            break
+        url, params = nxt, None
+    return out
+
+
+def _surf_entidades(key):
+    """[{id,nombre,tipo,budget(centavos),compras,valor,gasto}] de UNA cuenta: CBO activas con presupuesto
+    diario y conjuntos ABO activos con presupuesto diario propio, con los numeros de HOY."""
+    cfg = _ADS_CUENTAS.get(key) or {}
+    acct = cfg.get("ad_account")
+    tok = _ads_token_para_cuenta(key)
+    if not acct or not tok:
+        raise RuntimeError("sin token con permiso")
+    base = "%s/act_%s" % (_ADS_API, acct)
+    cur = requests.get(base, params={"fields": "currency,name", "access_token": tok}, timeout=30).json()
+    moneda = (cur.get("currency") or "").upper()
+    filt = _json.dumps([{"field": "effective_status", "operator": "IN", "value": ["ACTIVE"]}])
+    camps = _surf_get(base + "/campaigns", {"fields": "id,name,daily_budget", "filtering": filt,
+                                             "limit": 200, "access_token": tok})
+    sets = _surf_get(base + "/adsets", {"fields": "id,name,campaign_id,daily_budget", "filtering": filt,
+                                         "limit": 300, "access_token": tok})
+    ins_c = {x.get("campaign_id"): x for x in _surf_get(base + "/insights", {
+        "level": "campaign", "date_preset": "today", "limit": 500, "access_token": tok,
+        "fields": "campaign_id,spend,actions,action_values"})}
+    ins_s = {x.get("adset_id"): x for x in _surf_get(base + "/insights", {
+        "level": "adset", "date_preset": "today", "limit": 500, "access_token": tok,
+        "fields": "adset_id,spend,actions,action_values"})}
+    cbo = {c["id"] for c in camps if int(c.get("daily_budget") or 0) > 0}
+    act_ids = {c["id"] for c in camps}
+    ents = []
+    for c in camps:
+        if c["id"] in cbo:
+            i = ins_c.get(c["id"]) or {}
+            ents.append({"id": c["id"], "nombre": c.get("name", ""), "tipo": "CBO",
+                         "budget": int(c["daily_budget"]), "gasto": float(i.get("spend") or 0),
+                         "compras": _surf_acc(i, "actions"), "valor": _surf_acc(i, "action_values")})
+    for s in sets:
+        if s.get("campaign_id") in cbo or s.get("campaign_id") not in act_ids:
+            continue
+        if int(s.get("daily_budget") or 0) <= 0:
+            continue
+        i = ins_s.get(s["id"]) or {}
+        ents.append({"id": s["id"], "nombre": s.get("name", ""), "tipo": "ABO",
+                     "budget": int(s["daily_budget"]), "gasto": float(i.get("spend") or 0),
+                     "compras": _surf_acc(i, "actions"), "valor": _surf_acc(i, "action_values")})
+    return moneda, (cur.get("name") or key), tok, ents
+
+
+def _surf_tramo(cpa, c):
+    for n, (a, b, _p) in enumerate(c["tramos"]):
+        if a <= cpa < b:
+            return n
+    return -1
+
+
+def _surf_decidir(e, st, c):
+    """(nuevo_budget, motivo) o (None, motivo). st = estado de la entidad hoy (se modifica)."""
+    p, g, v = e["compras"], e["gasto"], e["valor"]
+    roas = (v / g) if g > 0 else 0.0
+    cpa = (g / p) if p > 0 else 1e9
+    curb, baseb = st["cur"], st["base"]
+    subas = st.setdefault("subas", [])             # [budget antes de cada suba]
+    tr = _surf_tramo(cpa, c)
+    # 1) BAJAR: solo si hoy se subio algo
+    if subas and curb > baseb:
+        if roas < c["roas_min"]:
+            antes = subas.pop()
+            st["tramos_hechos"] = []
+            return max(baseb, antes), "ROAS %.2f < %.1f: se saca la ultima suba" % (roas, c["roas_min"])
+        if tr >= 0 and tr not in st.setdefault("tramos_hechos", []):
+            pct = c["tramos"][tr][2]
+            nuevo = max(baseb, int(round(curb * (1 - pct / 100.0))))
+            if nuevo < curb:
+                st["tramos_hechos"].append(tr)
+                st["ult_bajada"] = {"antes": curb, "tramo": tr, "compras": p}
+                return nuevo, "costo USD %.2f (tramo %d): -%d%%" % (cpa, tr + 1, pct)
+    # 2) DESHACER la ultima bajada: compra nueva y el costo mejora de tramo sin bajar de cpa_sube
+    ub = st.get("ult_bajada")
+    if ub and p > ub.get("compras", 0) and cpa >= c["cpa_sube"] and tr < ub.get("tramo", 0):
+        st["ult_bajada"] = None
+        return ub["antes"], "compra nueva y el costo mejoro de tramo (USD %.2f): se deshace la bajada" % cpa
+    # 3) SUBIR
+    if p >= 2 and cpa < c["cpa_sube"]:
+        ult = st.get("compras_ult_suba")
+        if ult is None:
+            if p == 2 and roas > c["roas_2"]:
+                pct = c["suba_2"]
+            elif p >= 3 and roas >= c["roas_min"]:
+                pct = c["suba_3"]
+            else:
+                return None, "sin cambios (ROAS %.2f, %d compras)" % (roas, p)
+        elif p > ult and roas >= c["roas_min"]:
+            pct = c["suba_3"]
+        else:
+            return None, "sin compra nueva desde la ultima suba"
+        subas.append(curb)
+        st["compras_ult_suba"] = p
+        st["tramos_hechos"] = []
+        st["ult_bajada"] = None
+        return int(round(curb * (1 + pct / 100.0))), "%d compras, ROAS %.2f, costo USD %.2f: +%d%%" % (
+            p, roas, cpa, pct)
+    return None, "sin cambios"
+
+
+def _surf_correr(slot, forzar=False):
+    """Una revision (slot 'HH:MM') o el reseteo (SURF_RESET). Idempotente entre los 2 workers."""
+    lk = _surf_lock()
+    try:
+        d = _surf_leer()
+        modo = d.get("modo") or "prueba"
+        if modo == "apagado" and not forzar:
+            return {"ok": True, "msg": "apagado"}
+        hoy = _surf_ahora().strftime("%Y-%m-%d")
+        dia = d.setdefault("dias", {}).setdefault(hoy, {"ents": {}, "log": [], "hechos": []})
+        if slot in dia["hechos"] and not forzar:
+            return {"ok": True, "msg": "ya corrio"}
+        c = _surf_conf(d)
+        excl = set(d.get("excluir") or [])
+        res = []
+        for key in (d.get("cuentas") or SURF_CUENTAS_DEF):
+            try:
+                moneda, nom, tok, ents = _surf_entidades(key)
+            except Exception as ex:
+                res.append({"cuenta": key, "error": str(ex)[:160]})
+                continue
+            if moneda != "USD":
+                res.append({"cuenta": key, "nombre": nom, "error": "cuenta en %s: no se surfea" % moneda})
+                continue
+            for e in ents:
+                if e["id"] in excl:
+                    continue
+                st = dia["ents"].setdefault(e["id"], {"base": e["budget"], "cur": e["budget"]})
+                if modo == "real" and e["budget"] != st["cur"]:
+                    st["cur"] = e["budget"]          # alguien lo cambio a mano: se respeta
+                    if not st.get("subas"):
+                        st["base"] = e["budget"]
+                if slot == SURF_RESET:
+                    nuevo = st["base"] if st["cur"] != st["base"] else None
+                    motivo = "22:30: vuelve al presupuesto inicial" if nuevo else "sin cambios"
+                else:
+                    nuevo, motivo = _surf_decidir(e, st, c)
+                fila = {"hora": _surf_ahora().strftime("%H:%M"), "slot": slot, "cuenta": key, "id": e["id"],
+                        "nombre": e["nombre"][:60], "tipo": e["tipo"], "compras": int(e["compras"]),
+                        "gasto": round(e["gasto"], 2),
+                        "roas": round(e["valor"] / e["gasto"], 2) if e["gasto"] > 0 else 0,
+                        "cpa": round(e["gasto"] / e["compras"], 2) if e["compras"] > 0 else None,
+                        "de": st["cur"] / 100.0, "a": (nuevo / 100.0) if nuevo else None,
+                        "motivo": motivo, "modo": modo}
+                if nuevo and nuevo != st["cur"]:
+                    if modo == "real":
+                        try:
+                            r = requests.post("%s/%s" % (_ADS_API, e["id"]),
+                                              data={"daily_budget": int(nuevo), "access_token": tok}, timeout=30)
+                            j = r.json() if r.content else {}
+                            if r.status_code >= 400 or j.get("error"):
+                                fila["error"] = ((j.get("error") or {}).get("message") or str(r.status_code))[:160]
+                                res.append(fila)
+                                continue
+                        except Exception as ex:
+                            fila["error"] = str(ex)[:160]
+                            res.append(fila)
+                            continue
+                    st["cur"] = int(nuevo)
+                    if slot == SURF_RESET:
+                        st.update({"subas": [], "compras_ult_suba": None, "tramos_hechos": [], "ult_bajada": None})
+                    dia["log"].append(fila)
+                res.append(fila)
+        dia["hechos"].append(slot)
+        dia.setdefault("revisiones", []).append({"slot": slot, "hora": _surf_ahora().strftime("%H:%M"),
+                                                 "modo": modo, "filas": res})
+        dia["revisiones"] = dia["revisiones"][-12:]
+        for k in sorted(d["dias"].keys())[:-7]:
+            d["dias"].pop(k, None)
+        _surf_guardar(d)
+        return {"ok": True, "slot": slot, "modo": modo, "filas": res}
+    finally:
+        lk.close()
+
+
+def _surf_loop():
+    import time as _t
+    _t.sleep(90)
+    while True:
+        try:
+            ah = _surf_ahora()
+            hhmm = ah.strftime("%H:%M")
+            d = _surf_leer()
+            if (d.get("modo") or "prueba") != "apagado":
+                hechos = ((d.get("dias") or {}).get(ah.strftime("%Y-%m-%d")) or {}).get("hechos") or []
+                for s in SURF_SLOTS + (SURF_RESET,):
+                    h, m = map(int, s.split(":"))
+                    ini = ah.replace(hour=h, minute=m, second=0, microsecond=0)
+                    if s not in hechos and ini <= ah < ini + _dt.timedelta(minutes=SURF_VENTANA_MIN):
+                        if s != SURF_RESET and hhmm >= SURF_RESET:
+                            continue
+                        _surf_correr(s)
+                        break
+        except Exception:
+            pass
+        _t.sleep(60)
+
+
+threading.Thread(target=_surf_loop, daemon=True).start()
+
+
+def _surf_es_dueno():
+    try:
+        return (_user_actual() or "").strip().lower() in _ADS_DUENOS_FIJOS
+    except Exception:
+        return False
+
+
+@app.get("/pf-surfeo/estado")
+def pf_surfeo_estado():
+    if not _surf_es_dueno():
+        return jsonify({"ok": False}), 403
+    d = _surf_leer()
+    hoy = _surf_ahora().strftime("%Y-%m-%d")
+    dia = (d.get("dias") or {}).get(hoy) or {}
+    return jsonify({"ok": True, "modo": d.get("modo") or "prueba", "hoy": hoy, "cfg": _surf_conf(d),
+                    "cuentas": d.get("cuentas") or SURF_CUENTAS_DEF, "excluir": d.get("excluir") or [],
+                    "hechos": dia.get("hechos") or [], "cambios": dia.get("log") or [],
+                    "revisiones": dia.get("revisiones") or [], "slots": list(SURF_SLOTS) + [SURF_RESET]})
+
+
+@app.post("/pf-surfeo/modo")
+def pf_surfeo_modo():
+    if not _surf_es_dueno():
+        return jsonify({"ok": False}), 403
+    m = (request.form.get("modo") or (request.get_json(silent=True) or {}).get("modo") or "").strip()
+    if m not in ("prueba", "real", "apagado"):
+        return jsonify({"ok": False, "msg": "modo invalido"})
+    lk = _surf_lock()
+    try:
+        d = _surf_leer()
+        d["modo"] = m
+        _surf_guardar(d)
+    finally:
+        lk.close()
+    return jsonify({"ok": True, "modo": m})
+
+
+@app.post("/pf-surfeo/excluir")
+def pf_surfeo_excluir():
+    if not _surf_es_dueno():
+        return jsonify({"ok": False}), 403
+    j = request.get_json(silent=True) or {}
+    eid, sacar = str(j.get("id") or "").strip(), bool(j.get("sacar"))
+    if not eid:
+        return jsonify({"ok": False})
+    lk = _surf_lock()
+    try:
+        d = _surf_leer()
+        ex = set(d.get("excluir") or [])
+        (ex.discard if sacar else ex.add)(eid)
+        d["excluir"] = sorted(ex)
+        _surf_guardar(d)
+    finally:
+        lk.close()
+    return jsonify({"ok": True, "excluir": sorted(ex)})
+
+
+@app.post("/pf-surfeo/correr")
+def pf_surfeo_correr():
+    """Revision manual YA, SIEMPRE en modo prueba (no cambia nada): para ver que decidiria ahora."""
+    if not _surf_es_dueno():
+        return jsonify({"ok": False}), 403
+    lk = _surf_lock()
+    try:
+        d = _surf_leer()
+        modo_antes = d.get("modo") or "prueba"
+        d["modo"] = "prueba"
+        hoy = _surf_ahora().strftime("%Y-%m-%d")
+        bk = _json.dumps((d.get("dias") or {}).get(hoy) or {})
+        _surf_guardar(d)
+    finally:
+        lk.close()
+    try:
+        r = _surf_correr("manual", forzar=True)
+    finally:
+        lk = _surf_lock()
+        try:
+            d = _surf_leer()
+            d["modo"] = modo_antes
+            d.setdefault("dias", {})[hoy] = _json.loads(bk)      # la prueba manual no toca el estado del dia
+            _surf_guardar(d)
+        finally:
+            lk.close()
+    return jsonify(r)
+
+
+@app.get("/pf-surfeo")
+def pf_surfeo_pagina():
+    if not _surf_es_dueno():
+        return Response("<h3 style='font-family:system-ui;padding:40px'>Solo el administrador.</h3>", status=403)
+    return Response(_SURF_HTML, mimetype="text/html")
+
+
+_SURF_HTML = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Surfeo de presupuesto</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#e5e7eb;margin:0;padding:16px}
+h1{font-size:20px;margin:0 0 4px}.sub{color:#94a3b8;font-size:13px;margin-bottom:14px}
+.b{border:1px solid #334155;background:#111a2e;color:#e5e7eb;padding:8px 14px;border-radius:8px;cursor:pointer;margin:0 6px 6px 0}
+.b.on{background:#0ea5e9;border-color:#0ea5e9;color:#04111f;font-weight:700}.b.real.on{background:#ef4444;border-color:#ef4444;color:#fff}
+.card{background:#111a2e;border:1px solid #1e293b;border-radius:10px;padding:12px;margin:12px 0;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{padding:6px 8px;border-bottom:1px solid #1e293b;text-align:left;white-space:nowrap}
+th{color:#94a3b8;font-weight:600}.up{color:#22c55e;font-weight:700}.dn{color:#f97316;font-weight:700}.err{color:#f87171}
+.chip{display:inline-block;padding:2px 8px;border-radius:99px;background:#1e293b;margin:2px;font-size:12px}.chip.ok{background:#14532d}</style></head><body>
+<h1>Surfeo de presupuesto</h1><div class="sub">Cuentas en USD de NoxaLab · subir con costo &lt; USD 12 · bajar 14,5 / 17 / 20 · 22:30 vuelve al inicial · la puja no se toca</div>
+<div><b>Modo:</b> <button class="b" data-m="prueba">Prueba (no toca nada)</button><button class="b real" data-m="real">REAL (mueve presupuestos)</button><button class="b" data-m="apagado">Apagado</button>
+<button class="b" id="ya">Ver qué haría AHORA</button></div>
+<div class="card"><b>Revisiones de hoy</b><div id="slots"></div></div>
+<div class="card"><b>Cambios de hoy</b><div id="cambios"></div></div>
+<div class="card"><b>Última revisión (todas las campañas y conjuntos)</b><div id="ult"></div></div>
+<script>
+function $(s){return document.querySelector(s)}
+function f(n){return n==null?'—':(Math.round(n*100)/100).toLocaleString('es-AR')}
+function tabla(rows){if(!rows.length)return '<div class="sub">Nada todavía.</div>';
+ var h='<table><tr><th>Hora</th><th>Cuenta</th><th>Campaña / conjunto</th><th>Tipo</th><th>Compras</th><th>Gasto USD</th><th>ROAS</th><th>Costo USD</th><th>Presupuesto</th><th>Qué hace</th><th></th></tr>';
+ rows.forEach(function(r){ if(r.error&&!r.id){h+='<tr><td></td><td>'+r.cuenta+'</td><td colspan="9" class="err">'+r.error+'</td></tr>';return;}
+  var cl=r.a==null?'':(r.a>r.de?'up':'dn'); var pres=r.a==null?f(r.de):(f(r.de)+' → <span class="'+cl+'">'+f(r.a)+'</span>');
+  h+='<tr><td>'+(r.hora||'')+'</td><td>'+r.cuenta+'</td><td>'+r.nombre+'</td><td>'+r.tipo+'</td><td>'+r.compras+'</td><td>'+f(r.gasto)+'</td><td>'+f(r.roas)+'</td><td>'+f(r.cpa)+'</td><td>'+pres+'</td><td>'+(r.error?'<span class="err">'+r.error+'</span>':r.motivo)+'</td><td><button class="b" onclick="excl(\''+r.id+'\')">Excluir</button></td></tr>';});
+ return h+'</table>';}
+function cargar(){fetch('/pf-surfeo/estado').then(r=>r.json()).then(function(j){
+ document.querySelectorAll('[data-m]').forEach(function(b){b.classList.toggle('on',b.dataset.m===j.modo)});
+ $('#slots').innerHTML=j.slots.map(function(s){return '<span class="chip'+(j.hechos.indexOf(s)>=0?' ok':'')+'">'+s+'</span>'}).join('')+(j.excluir.length?'<div class="sub">Excluidos: '+j.excluir.join(', ')+'</div>':'');
+ $('#cambios').innerHTML=tabla(j.cambios.slice().reverse());
+ var u=j.revisiones.length?j.revisiones[j.revisiones.length-1]:null; $('#ult').innerHTML=u?('<div class="sub">'+u.slot+' ('+u.hora+', modo '+u.modo+')</div>'+tabla(u.filas)):'<div class="sub">Todavía no corrió ninguna.</div>';});}
+document.querySelectorAll('[data-m]').forEach(function(b){b.onclick=function(){
+ if(b.dataset.m==='real'&&!confirm('¿Pasar a REAL? Desde la próxima revisión va a SUBIR y BAJAR presupuestos de verdad.'))return;
+ fetch('/pf-surfeo/modo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modo:b.dataset.m})}).then(cargar);}});
+$('#ya').onclick=function(){$('#ult').innerHTML='<div class="sub">Revisando todas las cuentas…</div>';
+ fetch('/pf-surfeo/correr',{method:'POST'}).then(r=>r.json()).then(function(j){$('#ult').innerHTML='<div class="sub">Ahora (prueba, no cambió nada)</div>'+tabla(j.filas||[]);});};
+function excl(id){if(!confirm('¿Excluir '+id+' del surfeo?'))return;fetch('/pf-surfeo/excluir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).then(cargar);}
+cargar();setInterval(cargar,60000);
+</script></body></html>"""
 
 
 if __name__ == "__main__":
